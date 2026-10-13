@@ -1,7 +1,7 @@
 use super::{
     api::{self, Action, Health, Level, Peer, PeerState, Request, Shortcut, Status},
     handoff,
-    layout_model::{self, Layout, LayoutDocument, Monitor},
+    layout_model::{self, Layout, LayoutDocument, MAX_SNAP, Monitor},
     model::{ConfigDocument, Contents, Document},
     nearby::{BrowserStatus, NearbyBrowser},
     sharing::Observer,
@@ -220,21 +220,23 @@ impl NativeApp {
                 x,
                 y,
                 tolerance,
+                computer,
             } => {
-                let mut moved = self.layout.draft.clone();
-                let index = moved
-                    .monitors
-                    .iter()
-                    .position(|m| m.id == id)
-                    .context("Unknown computer")?;
-                let (x, y) = moved
-                    .snap_move(index, x, y, tolerance.min(2048) as i32)
-                    .context("Computers cannot overlap")?;
-                moved.monitors[index].x = x;
-                moved.monitors[index].y = y;
+                let moved = self.layout.draft.moved(&id, x, y, tolerance, computer)?;
                 self.rearrange(moved)?;
-                tracing::info!(%id, "tile moved");
+                tracing::info!(%id, computer, "tile moved");
                 self.restart();
+            }
+            // Asked at every step of a drag, so it answers alone.
+            Request::Preview {
+                id,
+                x,
+                y,
+                tolerance,
+                computer,
+            } => {
+                let preview = self.layout.draft.preview(&id, x, y, tolerance, computer);
+                return Ok(serde_json::to_value(preview)?);
             }
             Request::Place {
                 id,
@@ -863,7 +865,7 @@ impl NativeApp {
             height,
         });
         let index = next.monitors.len() - 1;
-        let Some((x, y)) = next.snap_move(index, x, y, tolerance.min(2048) as i32) else {
+        let Some((x, y)) = next.snap_move(index, x, y, tolerance.min(MAX_SNAP) as i32) else {
             return;
         };
         next.monitors[index].x = x;
@@ -1185,6 +1187,7 @@ impl NativeApp {
             sharing: Some(sharing),
             health,
             layout: Some(self.layout.draft.clone()),
+            seams: self.layout.draft.seams(),
             peers,
             pause_at_edges: Some(config.switching.pause_at_edges),
             shortcuts: vec![Shortcut {
@@ -1643,11 +1646,27 @@ mod tests {
         assert_eq!(tile(&app, "local"), ("This Mac".into(), 0));
         assert_eq!(tile(&app, "peer:desk"), ("desk".into(), 3008));
 
+        // A preview during the drag says where it lands and moves nothing.
+        let preview = app
+            .request(Request::Preview {
+                id: "peer:desk".into(),
+                x: -1910,
+                y: 0,
+                tolerance: 20,
+                computer: true,
+            })
+            .unwrap();
+        assert_eq!(
+            (&preview["x"], &preview["seams"][0]["at"]),
+            (&(-1920).into(), &0.into())
+        );
+        assert_eq!(tile(&app, "peer:desk"), ("desk".into(), 3008));
         app.request(Request::MoveTile {
             id: "peer:desk".into(),
             x: -1920,
             y: 0,
             tolerance: 0,
+            computer: true,
         })
         .unwrap();
         assert_eq!(tile(&app, "peer:desk"), ("desk".into(), -1920));
