@@ -6,7 +6,26 @@ This is a prototype release; the live qualification checklist is in TESTPLAN.md.
 curl --proto '=https' --tlsv1.2 -fsSL https://github.com/demfabris/zflow/releases/latest/download/install.sh | bash
 ```
 
-## New in 0.6.0: the pointer walks across computers
+## New in 0.6.1: Windows crossings no longer get stuck
+
+- After Alt+Tab into an administrator window, the lock screen or a UAC prompt,
+  Windows could keep a key it never saw released and refuse every crossing
+  until that key was pressed again. It now forgets such keys within a second.
+- Crossing from Windows no longer waits for the clipboard. Content copied in
+  Excel, Word or Remote Desktop could freeze the pointer on both computers at
+  the edge, and a freeze over a second turned sharing off. If Windows stalls,
+  input still comes back, and sharing now stays on.
+- A crossing the other computer refuses, for example while it is still
+  finishing the last one, keeps the connection instead of reconnecting, and
+  Windows waits half a second before crossing to that computer again.
+- While an administrator window has focus on Windows, crossings in either
+  direction are refused with a notice, instead of the pointer stopping at the
+  edge. Windows tells a Mac it is busy in the wording the Mac expects, so the
+  Mac cancels instead of reporting a failure.
+- 0.6.1 connects to 0.6.0. Only Windows changed; the Mac and Linux builds are
+  otherwise identical.
+
+## Previous release: the pointer walks across computers (0.6.0)
 
 - With three or more computers arranged, the pointer moves straight from one
   computer to the next one beside it, and back, while the computer whose

@@ -494,6 +494,7 @@ mod tests {
         ("0.4.0", b"zflow/5", b"zflow-hello/5"),
         ("0.5.0", b"zflow/6", b"zflow-hello/5"),
         ("0.6.0", b"zflow/7", b"zflow-hello/5"),
+        ("0.6.1", b"zflow/7", b"zflow-hello/5"),
     ];
 
     #[test]

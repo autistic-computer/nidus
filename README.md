@@ -4,9 +4,9 @@ zflow shares keyboard, pointer, and trackpad input over authenticated QUIC.
 Windows now has a native WinUI 3 preview with keyboard and pointer sharing,
 screen arrangement, clipboard sharing and a notification-area app. See
 [Windows setup and build instructions](windows/README.md). This source version
-is 0.6.0; update all participating computers together. Its input protocol,
-which lets the pointer walk from one paired computer to the next, cannot
-connect to 0.5.0 or older installations.
+is 0.6.1; update all participating computers together. Its input protocol,
+unchanged since 0.6.0, lets the pointer walk from one paired computer to the
+next and cannot connect to 0.5.0 or older installations.
 
 The arrangement shows each active monitor separately, with its display name
 and computer. Drag individual monitors to match your desk. Sizes use physical
