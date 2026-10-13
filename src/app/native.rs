@@ -1451,6 +1451,7 @@ mod tests {
             "health",
             "pairing_window",
             "layout",
+            "seams",
             "own_mark",
             "unplaced",
             "peers",
