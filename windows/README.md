@@ -155,8 +155,12 @@ prompt keeps the existing app running. Elevation lasts for this run only;
 require local input. It does not install a service, driver, or UIAccess bypass.
 If Windows rejects an input release after a focus change, zflow retains it and
 retries until Windows permits it, before accepting another activation.
+While an administrator window has focus, a normal zflow refuses crossings in
+both directions and says why, rather than leaving the pointer at the edge.
 Remote keys and buttons release on disconnect, lease expiry, pause, and
-shutdown. A native watchdog returns physical input if the engine stalls.
+shutdown. A native watchdog returns physical input if the engine stalls,
+without pausing sharing. A crossing the other computer refuses keeps the
+connection, and Windows waits half a second before trying that computer again.
 
 Automated checks:
 
