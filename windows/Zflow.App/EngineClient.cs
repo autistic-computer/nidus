@@ -15,7 +15,12 @@ internal sealed class EngineClient
     private Process? process;
     private readonly Queue<string> recentErrors = new();
 
-    public async Task<JsonObject> SendAsync(object request, int timeoutMs = 12000)
+    public async Task<JsonObject> SendAsync(object request, int timeoutMs = 12000) =>
+        (await RequestAsync(request, timeoutMs))?.AsObject() ?? throw new IOException("The engine returned no state.");
+
+    // Most commands answer with the engine's state; `preview` answers with
+    // where a move would land, or null where it cannot go.
+    public async Task<JsonNode?> RequestAsync(object request, int timeoutMs = 12000)
     {
         using var timeout = new CancellationTokenSource(timeoutMs);
         await using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
@@ -28,8 +33,8 @@ internal sealed class EngineClient
         int length = BinaryPrimitives.ReadInt32BigEndian(header);
         if (length is < 0 or > 65536) throw new IOException("Invalid response from the input engine.");
         body = new byte[length]; await pipe.ReadExactlyAsync(body, timeout.Token);
-        var result = JsonNode.Parse(body)?.AsObject() ?? throw new IOException("The engine returned no state.");
-        if (result["error"] is JsonValue error) throw new InvalidOperationException(error.GetValue<string>());
+        var result = JsonNode.Parse(body);
+        if (result is JsonObject { } answer && answer["error"] is JsonValue error) throw new InvalidOperationException(error.GetValue<string>());
         return result;
     }
 
