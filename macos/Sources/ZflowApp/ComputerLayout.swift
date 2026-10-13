@@ -624,7 +624,6 @@ struct ComputerLayout: View {
     return bounds.isNull ? CGRect(x: 0, y: 0, width: 1600, height: 1000) : bounds
   }
 }
-}
 
 /// A screen on the board, tinted like its computer, with its name.
 private struct ScreenView: View {
