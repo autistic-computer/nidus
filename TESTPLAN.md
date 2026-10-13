@@ -130,6 +130,11 @@ keyboard modes, and opt-in Unicode/PNG clipboard sharing. Check emergency
 pause, disconnect with held input, lock/unlock, sleep/wake, display/DPI changes,
 tray close/reopen/quit, restart, start at login, and reinstall preserving keys.
 Verify a secure/elevated desktop is unavailable and does not leave held keys.
+Alt+Tab into an administrator window: crossing either way is refused with a
+notice and the pointer stays put. Alt+Tab back, or press Win+L and unlock,
+then cross within a second: the hook has forgotten the keys it never saw
+released. Copy a large range in Excel, then cross: the pointer moves on the
+other computer at once and the clip follows.
 Record actual OS versions, hardware, and results; passing simulated protocol
 tests does not qualify the native capture path.
 

@@ -13,6 +13,9 @@ static event_fn emit;
 static volatile LONG remote_input;
 static volatile LONG64 heartbeat;
 static BOOL keys[256];
+// Keys whose last press this hook swallowed. Windows never saw them go down,
+// so only their own key-up can say they are released.
+static BOOL swallowed[256];
 static HHOOK keyboard_hook, mouse_hook;
 static HWND clipboard_window;
 #define ZFLOW_TAG ((ULONG_PTR)0x5a464c4f)
@@ -100,18 +103,22 @@ static LRESULT CALLBACK keyboard(int n, WPARAM w, LPARAM l) {
     if (n < 0) return CallNextHookEx(NULL, n, w, l);
     const KBDLLHOOKSTRUCT *k = (const KBDLLHOOKSTRUCT *)l;
     if (k->flags & LLKHF_INJECTED) return CallNextHookEx(NULL, n, w, l);
+    int vk = k->vkCode & 255;
     BOOL down = !(k->flags & LLKHF_UP);
-    BOOL repeat = keys[k->vkCode & 255];
-    keys[k->vkCode & 255] = down;
+    BOOL repeat = keys[vk];
+    keys[vk] = down;
+    swallowed[vk] = FALSE;
     BOOL ctrl = keys[VK_LCONTROL] || keys[VK_RCONTROL];
     BOOL win = keys[VK_LWIN] || keys[VK_RWIN];
-    if (down && ctrl && win && (k->vkCode == VK_BACK || k->vkCode == VK_F12)) {
-        if (k->vkCode == VK_BACK) InterlockedExchange(&remote_input, 0);
-        if (!repeat) event(k->vkCode == VK_BACK ? 5 : 6, 0, 0, 0);
+    if (down && ctrl && win && (vk == VK_BACK || vk == VK_F12)) {
+        if (vk == VK_BACK) InterlockedExchange(&remote_input, 0);
+        if (!repeat) event(vk == VK_BACK ? 5 : 6, 0, 0, 0);
+        swallowed[vk] = TRUE;
         return 1;
     }
     if (InterlockedCompareExchange(&remote_input, 0, 0)) {
         if (!down || !repeat) event(1, (int)k->scanCode, down, (int)k->flags | ((int)k->vkCode << 8));
+        swallowed[vk] = down;
         return 1;
     }
     return CallNextHookEx(NULL, n, w, l);
@@ -143,6 +150,35 @@ static LRESULT CALLBACK mouse(int n, WPARAM w, LPARAM l) {
     return result;
 }
 
+static BOOL input_desktop_is_default(void) {
+    HDESK desktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+    if (!desktop) return FALSE;
+    WCHAR name[256];
+    DWORD bytes = 0;
+    BOOL ok = GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &bytes);
+    CloseDesktop(desktop);
+    return ok && wcscmp(name, L"Default") == 0;
+}
+
+// A key-up can bypass this hook: the lock screen, UAC and Ctrl+Alt+Del take
+// input on their own desktop, and a focused administrator window takes it
+// from a normal process's hooks. A key left down here would block every
+// crossing and edge guard. Keys the hook let through also show in the async
+// key state, so one that reads up on two ticks in a row was released unseen.
+static void forget_unseen_releases(void) {
+    static BOOL up_before[256];
+    BOOL elsewhere = !input_desktop_is_default();
+    for (int i = 1; i < 256; ++i) {
+        BOOL up = keys[i] && (elsewhere || (!swallowed[i] && !(GetAsyncKeyState(i) & 0x8000)));
+        if (up && up_before[i]) {
+            keys[i] = FALSE;
+            swallowed[i] = FALSE;
+            up = FALSE;
+        }
+        up_before[i] = up;
+    }
+}
+
 static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_APP + 1) {
         // Check and grab on the hook thread so a key cannot go down between
@@ -164,9 +200,11 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM 
     } else if (message == WM_TIMER) {
         if (InterlockedCompareExchange(&remote_input, 0, 0) &&
             GetTickCount64() - (ULONGLONG)InterlockedCompareExchange64(&heartbeat, 0, 0) > 1000) {
+            // A stalled engine is not the escape chord: return input, keep sharing on.
             InterlockedExchange(&remote_input, 0);
-            event(5, 0, 0, 0);
+            event(8, 0, 0, 0);
         }
+        forget_unseen_releases();
     }
     return DefWindowProcW(window, message, w, l);
 }
@@ -236,13 +274,7 @@ int zflow_desktop_available(void) {
         info->Data.WTSInfoExLevel1.SessionState == WTSActive &&
         info->Data.WTSInfoExLevel1.SessionFlags == WTS_SESSIONSTATE_UNLOCK;
     WTSFreeMemory(info);
-    if (!unlocked) return 0;
-    HDESK desktop = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
-    if (!desktop) return 0;
-    WCHAR name[256];
-    BOOL ok = GetUserObjectInformationW(desktop, UOI_NAME, name, sizeof(name), &bytes);
-    CloseDesktop(desktop);
-    return ok && wcscmp(name, L"Default") == 0;
+    return unlocked && input_desktop_is_default();
 }
 
 int zflow_input_clean(void) {

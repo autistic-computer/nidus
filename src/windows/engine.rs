@@ -77,11 +77,36 @@ enum Network {
         session: u64,
         result: Result<DesktopResponse>,
     },
+    /// What the clipboard held when the pointer left for `peer`.
+    Copied {
+        peer: String,
+        result: Result<Option<crate::clipboard::Clip>>,
+    },
+    ClipboardFailed(String),
     Discovery(DiscoveryEvent),
 }
 struct Link {
     handle: SessionHandle,
     dialed: bool,
+}
+/// A crossing waiting for the other computer to prepare its desktop.
+struct Arming {
+    peer: String,
+    session: u64,
+    token: u64,
+}
+/// Peers refuse a crossing with exactly this while they send their own input,
+/// and treat it as a cancelled crossing rather than a failed one.
+const SENDING: &str = "This computer is sending its own input";
+/// How long after a crossing to or from a peer ends without going through,
+/// or after it hands the pointer back, Windows waits before crossing to it
+/// again. The peer is still finishing its side and would refuse.
+const HOLD_OFF: Duration = Duration::from_millis(500);
+/// Clipboard reads wait for the app that copied to render its data, so they
+/// run off the engine loop: a crossing never waits for the clipboard.
+enum ClipJob {
+    Read(String),
+    Write(crate::clipboard::Clip),
 }
 struct Outbound {
     peer: String,
@@ -109,7 +134,9 @@ struct Engine {
     inbound: Option<(String, u64)>,
     lease: Option<desktop::Lease>,
     outbound: Option<Outbound>,
-    arming: Option<(String, u64)>,
+    arming: Option<Arming>,
+    hold_off: Option<(String, Instant)>,
+    clipboard: mpsc::Sender<ClipJob>,
     geometry: Geometry,
     desktop_available: bool,
     boundaries: Vec<input::Boundary>,
@@ -188,6 +215,8 @@ pub async fn run(path: PathBuf) -> Result<()> {
         lease: None,
         outbound: None,
         arming: None,
+        hold_off: None,
+        clipboard: clipboard_worker(network.clone()),
         geometry,
         desktop_available: input::available(),
         boundaries: Vec::new(),
@@ -223,7 +252,12 @@ pub async fn run(path: PathBuf) -> Result<()> {
             Some(message)=net.recv()=>{if let Err(error)=engine.network(message).await {engine.notice=Some(format!("{error:#}"));}},
             Some(event)=received.recv()=>engine.session(event),
             capture=captured.recv()=>match capture {
-                Some(input::Event::Escape)=>{engine.local();engine.config.daemon.sharing=false;engine.save_config()?;},
+                Some(input::Event::Escape)=>{
+                    engine.local();engine.config.daemon.sharing=false;
+                    // The chord must never stop the engine, even when the file changed outside the app.
+                    if let Err(error)=engine.save_config(){engine.config.daemon.sharing=false;engine.notice=Some(format!("{error:#}"));}
+                },
+                Some(input::Event::Stalled)=>if engine.outbound.is_some(){engine.local();engine.notice=Some("Input returned to Windows because zflow stopped responding".into());},
                 Some(input::Event::Activate)=>{
                     if engine.outbound.is_some(){engine.local();}else if let Some(peer)=engine.links.keys().next().cloned(){engine.pending_activation=Some((peer,Instant::now()+Duration::from_secs(3)));}
                 },
@@ -808,7 +842,7 @@ impl Engine {
                     if self.inbound.as_ref().is_some_and(|(p, _)| p == &peer)
                         || self.outbound.as_ref().is_some_and(|o| o.peer == peer)
                         || self.lease.as_ref().is_some_and(|l| l.peer == peer)
-                        || self.arming.as_ref().is_some_and(|(p, _)| p == &peer)
+                        || self.arming.as_ref().is_some_and(|a| a.peer == peer)
                     {
                         self.local();
                     }
@@ -874,6 +908,8 @@ impl Engine {
             Network::Discovery(DiscoveryEvent::Stopped) => {
                 self.notice = Some("Network discovery stopped; Add by address still works".into())
             }
+            Network::Copied { peer, result } => self.copied(peer, result),
+            Network::ClipboardFailed(reason) => self.notice = Some(reason),
             Network::Prepared {
                 peer,
                 session,
@@ -898,16 +934,44 @@ impl Engine {
                     }
                     return Ok(());
                 }
-                if self.arming.as_ref() != Some(&(peer.clone(), session)) {
-                    self.links[&peer]
-                        .handle
-                        .close(SessionCloseReason::LocalRelease);
+                let prepared = matches!(result, Ok(DesktopResponse::Prepared { .. }));
+                if !self
+                    .arming
+                    .as_ref()
+                    .is_some_and(|a| a.peer == peer && a.session == session && a.token == token)
+                {
+                    // Cancelled while the other computer prepared.
+                    if prepared {
+                        self.finish(&peer, session, token);
+                    }
                     return Ok(());
                 }
-                // Keep arming reserved until all validation succeeds. Any error
-                // cancels the remote lease by closing this session below.
+                self.arming = None;
+                // A refused or failed crossing keeps the session. The other
+                // computer reserved nothing unless it prepared, and Finish
+                // gives that back; only a Finish that fails closes the session.
+                let response = match result {
+                    Ok(response @ DesktopResponse::Prepared { .. }) => response,
+                    Ok(DesktopResponse::Unavailable { reason }) => {
+                        self.hold_off(&peer);
+                        if reason == SENDING {
+                            return Ok(());
+                        }
+                        bail!("{peer} could not take input: {reason}");
+                    }
+                    Ok(response) => {
+                        self.links[&peer]
+                            .handle
+                            .close(SessionCloseReason::BackendUnavailable);
+                        bail!("{peer} did not prepare its desktop: {response:?}");
+                    }
+                    // The request already closed the session.
+                    Err(error) => {
+                        self.hold_off(&peer);
+                        return Err(error);
+                    }
+                };
                 let checked = (|| -> Result<()> {
-                    let response = result?;
                     if let Some(h) = &handoff {
                         h.check_prepared(response)?;
                         ensure!(
@@ -915,16 +979,12 @@ impl Engine {
                                 && h.entry_region.contains(input::cursor()?),
                             "The pointer left the edge while the other computer was preparing"
                         );
-                    } else {
-                        ensure!(
-                            matches!(response, DesktopResponse::Prepared { .. }),
-                            "Other computer did not prepare its desktop"
-                        );
                     }
                     ensure!(
                         self.config.daemon.sharing && input::available() && input::clean(),
                         "Release keys and mouse buttons before switching"
                     );
+                    input::unblocked()?;
                     let h = &self.links[&peer].handle;
                     let mut random = [0u8; 16];
                     getrandom::fill(&mut random).map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -932,26 +992,29 @@ impl Engine {
                         session_epoch: SessionEpoch(random),
                         transport_generation: h.generation(),
                         activation_id: ActivationId(token),
-                    })?;
-                    input::grab()?;
-                    Ok(())
+                    })
                 })();
-                self.arming = None;
                 if let Err(error) = checked {
-                    self.links[&peer]
-                        .handle
-                        .close(SessionCloseReason::BackendUnavailable);
+                    self.hold_off(&peer);
+                    self.finish(&peer, session, token);
                     return Err(error);
                 }
-                self.send_clip(&peer);
                 self.outbound = Some(Outbound {
-                    peer,
+                    peer: peer.clone(),
                     session,
                     token,
                     handoff: handoff.map(|handoff| *handoff),
                     polling: false,
                     next_poll: Instant::now(),
                 });
+                if let Err(error) = input::grab() {
+                    // Ends the activation and finishes the handoff.
+                    self.hold_off(&peer);
+                    self.local();
+                    return Err(error);
+                }
+                self.notice = None;
+                self.send_clip(&peer);
             }
             Network::Polled {
                 peer,
@@ -979,6 +1042,8 @@ impl Engine {
                                     }
                                 })
                                 .transpose();
+                            // Motion from the hand-back must not cross straight back.
+                            self.hold_off(&peer);
                             self.local();
                             if let Some(back) = back? {
                                 input::move_to(back)?;
@@ -1012,12 +1077,9 @@ impl Engine {
         {
             link.handle.close(SessionCloseReason::LocalRelease);
         }
-        if let Some((peer, session)) = self.arming.take()
-            && let Some(link) = self.links.get(&peer)
-            && link.handle.id() == session
-        {
-            link.handle.close(SessionCloseReason::LocalRelease);
-        }
+        // A crossing still preparing finishes the other computer's handoff
+        // when its answer arrives.
+        self.arming = None;
         if let Some(out) = self.outbound.take()
             && let Some(link) = self.links.get(&out.peer)
         {
@@ -1039,6 +1101,28 @@ impl Engine {
             self.previous = p;
         }
     }
+    /// Keeps Windows from crossing to `peer` for [`HOLD_OFF`].
+    fn hold_off(&mut self, peer: &str) {
+        self.hold_off = Some((peer.to_owned(), Instant::now() + HOLD_OFF));
+    }
+    /// Gives back a desktop `peer` prepared in `session` for a crossing that
+    /// did not start. Only a Finish that fails needs the session closed.
+    fn finish(&self, peer: &str, session: u64, token: u64) {
+        let Some(link) = self.links.get(peer).filter(|l| l.handle.id() == session) else {
+            return;
+        };
+        let handle = link.handle.clone();
+        tokio::spawn(async move {
+            let finished = handoff::check_finished(
+                handle
+                    .desktop_request(DesktopRequest::Finish { token })
+                    .await,
+            );
+            if finished.is_err() {
+                handle.close(SessionCloseReason::BackendUnavailable);
+            }
+        });
+    }
     fn arm(&mut self, peer: String, handoff: Option<handoff::Handoff>) {
         if !self.config.daemon.sharing
             || !input::available()
@@ -1049,22 +1133,36 @@ impl Engine {
         {
             return;
         }
-        let Some(link) = self.links.get(&peer) else {
-            return;
-        };
-        if !self
-            .config
-            .peers
-            .get(&peer)
-            .is_some_and(|p| p.permissions.receive_normal)
+        if !self.links.contains_key(&peer)
+            || !self
+                .config
+                .peers
+                .get(&peer)
+                .is_some_and(|p| p.permissions.receive_normal)
+            || self
+                .hold_off
+                .as_ref()
+                .is_some_and(|(held, until)| *held == peer && Instant::now() < *until)
         {
+            return;
+        }
+        // The hooks cannot hold back input meant for a more privileged window,
+        // so a crossing from it would move both pointers.
+        if let Err(error) = input::unblocked() {
+            self.hold_off(&peer);
+            self.notice = Some(format!("{error:#}"));
             return;
         }
         let Ok(token) = handoff::token() else {
             return;
         };
-        let session = link.handle.id();
-        self.arming = Some((peer.clone(), session));
+        let handle = self.links[&peer].handle.clone();
+        let session = handle.id();
+        self.arming = Some(Arming {
+            peer: peer.clone(),
+            session,
+            token,
+        });
         // Input comes back from the other computer, but Windows does not
         // route it on to a third one.
         let handoff = handoff.map(|mut h| {
@@ -1088,7 +1186,6 @@ impl Engine {
             },
             |h| h.prepare(token),
         );
-        let handle = link.handle.clone();
         let tx = self.network.clone();
         tokio::spawn(async move {
             let result = handle.desktop_request(request).await;
@@ -1123,7 +1220,7 @@ impl Engine {
             SessionEventKind::Closed { reason } => {
                 if self.outbound.as_ref().is_some_and(|o| o.peer == peer)
                     || self.inbound.as_ref().is_some_and(|(p, _)| p == &peer)
-                    || self.arming.as_ref().is_some_and(|(p, _)| p == &peer)
+                    || self.arming.as_ref().is_some_and(|a| a.peer == peer)
                     || self
                         .lease
                         .as_ref()
@@ -1173,6 +1270,7 @@ impl Engine {
                         let p = &self.config.peers[&peer];
                         self.injector.configure(p.keyboard, p.reverse_scroll);
                         self.inbound = Some((peer.clone(), session_id));
+                        self.notice = None;
                     }
                     let closed = effects
                         .iter()
@@ -1221,9 +1319,10 @@ impl Engine {
             }
             SessionEventKind::Clipboard { clip } => {
                 if self.config.daemon.sharing && self.config.clipboard.share && input::available() {
-                    match clipboard::write(&clip) {
-                        Ok(()) => self.clip_echo.entry(peer).or_default().written(&clip),
-                        Err(e) => self.notice = Some(e.to_string()),
+                    self.clip_echo.entry(peer).or_default().written(&clip);
+                    if self.clipboard.try_send(ClipJob::Write(clip)).is_err() {
+                        self.notice =
+                            Some("Clipboard is busy; it stayed on the other computer".into());
                     }
                 }
             }
@@ -1246,10 +1345,7 @@ impl Engine {
                 .is_some_and(|p| p.permissions.send_normal),
             "This computer may not control Windows"
         );
-        ensure!(
-            self.outbound.is_none() && self.arming.is_none(),
-            "Windows is sending input"
-        );
+        ensure!(self.outbound.is_none() && self.arming.is_none(), SENDING);
         ensure!(
             self.inbound
                 .as_ref()
@@ -1269,6 +1365,9 @@ impl Engine {
         }
         if matches!(request, DesktopRequest::Prepare { .. }) {
             ensure!(self.lease.is_none(), "A desktop handoff is already active");
+            // Refuse before moving the pointer: a crossing Windows cannot
+            // inject into would leave it stuck at the entry point.
+            self.injector.ready()?;
             input::boundaries(&[]);
             self.boundaries.clear();
             let (lease, response) = desktop::prepare(peer.into(), session, request)?;
@@ -1286,6 +1385,9 @@ impl Engine {
             self.injector.release();
             self.inbound = None;
             self.lease = None;
+            // The pointer rests on the edge it just left by; the peer is
+            // still finishing its crossing.
+            self.hold_off(peer);
         }
         Ok(response)
     }
@@ -1496,18 +1598,22 @@ impl Engine {
             self.boundaries = boundaries;
         }
     }
+    /// Sends what this computer copied to `peer`, which the pointer just went to.
     fn send_clip(&mut self, peer: &str) {
-        if !self.config.clipboard.share {
-            return;
+        if self.config.clipboard.share
+            && self
+                .clipboard
+                .try_send(ClipJob::Read(peer.to_owned()))
+                .is_err()
+        {
+            self.notice = Some("Clipboard is busy; it stayed on this computer".into());
         }
-        match clipboard::read() {
+    }
+    fn copied(&mut self, peer: String, result: Result<Option<crate::clipboard::Clip>>) {
+        match result {
             Ok(Some(clip)) => {
-                if self
-                    .clip_echo
-                    .entry(peer.to_owned())
-                    .or_default()
-                    .should_send(&clip)
-                    && let Some(link) = self.links.get(peer)
+                if let Some(link) = self.links.get(&peer)
+                    && self.clip_echo.entry(peer).or_default().should_send(&clip)
                 {
                     link.handle.send_clipboard(clip);
                 }
@@ -1516,6 +1622,33 @@ impl Engine {
             Err(e) => self.notice = Some(e.to_string()),
         }
     }
+}
+
+/// Runs clipboard jobs in order on a blocking thread. Reading waits for the
+/// app that copied to render its data, which can take as long as that app
+/// likes; the engine loop keeps pulsing the input watchdog meanwhile.
+fn clipboard_worker(network: mpsc::Sender<Network>) -> mpsc::Sender<ClipJob> {
+    let (jobs, mut queue) = mpsc::channel(8);
+    tokio::spawn(async move {
+        while let Some(job) = queue.recv().await {
+            let done = tokio::task::spawn_blocking(move || match job {
+                ClipJob::Read(peer) => Some(Network::Copied {
+                    peer,
+                    result: clipboard::read(),
+                }),
+                ClipJob::Write(clip) => clipboard::write(&clip)
+                    .err()
+                    .map(|e| Network::ClipboardFailed(e.to_string())),
+            })
+            .await;
+            if let Ok(Some(message)) = done
+                && network.send(message).await.is_err()
+            {
+                break;
+            }
+        }
+    });
+    jobs
 }
 
 async fn resolve(address: &str) -> Result<SocketAddr> {

@@ -47,6 +47,8 @@ pub enum Event {
     Escape,
     Activate,
     EdgeHit(Point, Edge),
+    /// The native watchdog returned input because the engine stopped pulsing.
+    Stalled,
     Stopped,
 }
 static EVENTS: OnceLock<mpsc::Sender<Event>> = OnceLock::new();
@@ -108,6 +110,7 @@ extern "C" fn event(kind: i32, code: i32, value: i32, extra: i32) -> i32 {
                 _ => return 1,
             },
         ),
+        8 => Event::Stalled,
         _ => return 1,
     };
     i32::from(EVENTS.get().is_some_and(|tx| tx.try_send(event).is_ok()))
@@ -502,6 +505,15 @@ fn post(kind: i32, code: i32, value: i32, extra: i32) -> Result<()> {
     Ok(())
 }
 
+/// Windows refuses every event this process posts while a more privileged
+/// window, such as an administrator terminal, has focus, and that window's
+/// input also skips this process's hooks. A motionless move finds out.
+pub fn unblocked() -> Result<()> {
+    post(4, 0, 0, 0)
+}
+
+const RELEASE_PENDING: &str = "Windows has not released the previous input. Focus a normal window locally, or restart zflow as administrator in Settings.";
+
 pub struct Injector {
     post: fn(i32, i32, i32, i32) -> Result<()>,
     keys: BTreeSet<HidUsage>,
@@ -562,13 +574,20 @@ impl Injector {
         }
         Ok(())
     }
+    /// Whether a crossing into this desktop can work: the last release went
+    /// through and Windows accepts posted input now. Otherwise the entering
+    /// pointer would stop at the entry point.
+    pub fn ready(&mut self) -> Result<()> {
+        if self.releasing {
+            self.release();
+            ensure!(!self.releasing, RELEASE_PENDING);
+        }
+        (self.post)(4, 0, 0, 0)
+    }
     pub fn apply(&mut self, effects: Vec<ReceiverEffect>) -> Result<()> {
         if self.releasing {
             self.release();
-            ensure!(
-                !self.releasing,
-                "Windows has not released the previous input. Focus a normal window locally, or restart zflow as administrator in Settings."
-            );
+            ensure!(!self.releasing, RELEASE_PENDING);
         }
         let result = (|| {
             for effect in effects {
@@ -757,6 +776,30 @@ mod tests {
             assert!(!p.contains(&(1, 0x30, 1, 0)));
         });
         i.apply(vec![key(5, true), key(5, false)]).unwrap();
+    }
+    #[test]
+    fn a_crossing_in_waits_for_windows_to_accept_input_and_for_pending_releases() {
+        let mut i = fake();
+        i.ready().unwrap();
+        assert_eq!(
+            POSTS.with_borrow(Clone::clone),
+            [(4, 0, 0, 0)],
+            "the probe does not move the pointer"
+        );
+        i.apply(vec![ReceiverEffect::Button {
+            button: PointerButton(1),
+            pressed: true,
+            synthetic: false,
+        }])
+        .unwrap();
+        FAIL.set(true);
+        assert!(i.ready().is_err(), "an administrator window has focus");
+        i.release();
+        FAIL.set(false);
+        POSTS.with_borrow_mut(Vec::clear);
+        i.ready().unwrap();
+        POSTS.with_borrow(|p| assert_eq!(p, &[(3, 1, 0, 0), (4, 0, 0, 0)]));
+        assert!(!i.releasing);
     }
     #[test]
     fn arrow_repeat_and_pc_modifier_positions() {
