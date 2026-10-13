@@ -205,28 +205,29 @@ async fn native_engine_pairs_persists_reconnects_and_stops() {
         .unwrap();
     assert!(matches!(snapshot, DesktopResponse::Snapshot { .. }));
 
-    let mut layout = state["layout"].clone();
-    let local_right = layout["monitors"]
-        .as_array()
-        .unwrap()
+    let monitors = state["layout"]["monitors"].as_array().unwrap();
+    let local: Vec<_> = monitors.iter().filter(|m| m["peer"].is_null()).collect();
+    let local_right = local
         .iter()
-        .filter(|m| m["peer"].is_null())
         .map(|m| m["x"].as_i64().unwrap() + m["width"].as_i64().unwrap())
         .max()
         .unwrap();
+    let tile = monitors.iter().find(|m| m["peer"] == "smoke-peer").unwrap();
     // Leave a gap so real physical pointer motion cannot cross during this test.
-    let monitors = layout["monitors"].as_array_mut().unwrap();
-    let tile = monitors
-        .iter_mut()
-        .find(|m| m["peer"] == "smoke-peer")
-        .unwrap();
-    tile["x"] = json!(local_right + 128);
-    let arrange = json!({"command":"arrange","layout":layout,"version":state["layout_version"]});
-    let arranged = request(&path, arrange.clone()).await;
-    assert!(arranged["error"].is_null(), "{arranged}");
+    let moved = request(
+        &path,
+        json!({"command":"move_tile","id":tile["id"],"x":local_right + 128,"y":tile["y"],"tolerance":0,"computer":true}),
+    )
+    .await;
+    assert!(moved["error"].is_null(), "{moved}");
+    let overlapping = request(
+        &path,
+        json!({"command":"preview","id":tile["id"],"x":local[0]["x"],"y":local[0]["y"],"tolerance":0,"computer":true}),
+    )
+    .await;
     assert!(
-        !request(&path, arrange).await["error"].is_null(),
-        "stale arrangements must be rejected"
+        overlapping.is_null(),
+        "overlapping screens must be refused: {overlapping}"
     );
     for setting in [
         json!({"command":"keyboard","peer":"smoke-peer","mode":"pc-positions"}),
