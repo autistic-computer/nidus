@@ -80,9 +80,13 @@ struct ComputersView: View {
     VStack(alignment: .leading, spacing: 8) {
       if let layout = snapshot.layout {
         Arrangement(model: model, snapshot: snapshot, layout: layout, shelf: .bottom)
-          .frame(height: snapshot.unplaced.isEmpty ? 300 : 400)
-        Text("Arrange individual monitors with touching edges to switch computers. Other movement between this Mac’s monitors follows system display settings.")
-          .font(.callout).foregroundStyle(.secondary)
+          .frame(height: snapshot.unplaced.isEmpty ? 320 : 420)
+        Text(
+          "Drag a computer by any of its screens or its name; double-click it to move its screens one by one. The pointer crosses to another computer at the lit seams."
+        )
+        .font(.callout).foregroundStyle(.secondary)
+        ComputerInspector(model: model, snapshot: snapshot, layout: layout)
+          .padding(.top, 14)
       }
     }
   }
@@ -90,7 +94,7 @@ struct ComputersView: View {
 
 /// The canvas with the engine's layout and shelf, sending moves and drops.
 private struct Arrangement: View {
-  var model: AppModel
+  @Bindable var model: AppModel
   var snapshot: Snapshot
   var layout: Layout
   var shelf: ShelfEdge
@@ -99,11 +103,12 @@ private struct Arrangement: View {
   var body: some View {
     ComputerLayout(
       tiles: LayoutTile.tiles(layout, peers: snapshot.peers, ownMark: snapshot.ownMark),
-      unplaced: snapshot.unplaced, shelf: shelf, searching: searching
+      seams: snapshot.seams, sharing: snapshot.sharing == true,
+      unplaced: snapshot.unplaced, shelf: shelf, searching: searching,
+      selection: $model.selection, adjusting: $model.adjusting,
+      move: { await model.move($0) },
+      preview: { await model.preview($0) }
     ) { computer, x, y, tolerance in
-      model.send(
-        CoreRequest(command: "move_tile", id: computer.id, x: x, y: y, tolerance: tolerance))
-    } place: { computer, x, y, tolerance in
       model.send(
         CoreRequest(command: "place", id: computer.id, x: x, y: y, tolerance: tolerance))
     }

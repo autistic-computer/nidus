@@ -34,7 +34,7 @@ struct MenuBarView: View {
           .padding(.horizontal, 8).padding(.bottom, 2)
         ForEach(peers) { peer in
           MenuRow(title: peer.name, symbol: "desktopcomputer") {
-            model.show(.computer(peer.name))
+            model.show(computer: peer.name)
           } trailing: {
             HStack(spacing: 5) {
               StateDot(state: peer.state)

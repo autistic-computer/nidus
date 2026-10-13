@@ -7,8 +7,18 @@ import SwiftUI
 enum Page: Hashable {
   case computers
   case settings
-  /// A paired computer, by name.
-  case computer(String)
+}
+
+/// A computer on the board: this Mac, or a paired one by name.
+enum Owner: Hashable, Sendable {
+  case thisMac
+  case peer(String)
+
+  /// A layout tile's owner, where nil is this Mac.
+  init(_ peer: String?) { self = peer.map(Owner.peer) ?? .thisMac }
+  var peer: String? {
+    if case .peer(let name) = self { name } else { nil }
+  }
 }
 
 @MainActor @Observable
@@ -19,6 +29,10 @@ final class AppModel {
   /// The last request that failed, shown for a few seconds.
   var failure: String?
   var page = Page.computers
+  /// The computer the arrangement has selected, whose settings show under it.
+  var selection: Owner?
+  /// The computer whose screens move one by one rather than together.
+  var adjusting: Owner?
   /// Shows the Add by address sheet.
   var addingAddress = false
   /// Posts a computer that joined. The app sets it; each notice comes once.
@@ -112,9 +126,23 @@ final class AppModel {
       joined?(notice)
     }
     holdActivity(next.sharing == true)
-    if case .computer(let name) = page, !next.peers.contains(where: { $0.name == name }) {
-      page = .computers
+    let gone = { (owner: Owner?) in
+      owner?.peer.map { name in !next.peers.contains { $0.name == name } } ?? false
     }
+    if gone(selection) { selection = nil }
+    if gone(adjusting) { adjusting = nil }
+  }
+
+  /// Moves screens on the arrangement and waits for the snapshot that shows
+  /// them there, so a dropped computer does not jump back first.
+  func move(_ move: Move) async {
+    await perform(move.request)
+  }
+  /// Where a drag would land, asked at each step. Nil where it cannot go,
+  /// or when the engine cannot answer.
+  func preview(_ move: Move) async -> Preview? {
+    guard !busy else { return nil }
+    return try? await core.preview(move.preview)
   }
 
   /// Shows a failed request for a few seconds.
@@ -139,6 +167,12 @@ final class AppModel {
       ProcessInfo.processInfo.endActivity(activity)
       self.activity = nil
     }
+  }
+
+  /// The Computers page with a paired computer selected on it.
+  func show(computer name: String) {
+    selection = .peer(name)
+    show(.computers)
   }
 
   /// Brings the window to the front, on `page` when given. The app gets its

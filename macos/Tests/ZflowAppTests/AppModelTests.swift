@@ -25,7 +25,7 @@ private func snapshot(
     {"status":{"state":"ready","peer":null,"title":"Ready"},"sharing":false,"health":[\(health)],
     "pairing_window":\(window),
     "layout":{"monitors":[{"id":"local","label":"This Mac","x":0,"y":0,"width":1512,"height":982}
-    \(monitors.map { "," + $0 }.joined())]},"own_mark":"fedcba","unplaced":[\(unplaced)],
+    \(monitors.map { "," + $0 }.joined())]},"seams":[],"own_mark":"fedcba","unplaced":[\(unplaced)],
     "peers":[\(rows.joined(separator: ","))],
     "pause_at_edges":false,"shortcuts":[],"share_clipboard":false,"autostart":null,"config_path":"",
     "notices":[\(posts.joined(separator: ","))],
@@ -161,19 +161,22 @@ private func temporary() -> URL {
   #expect(model.fix(for: computers) == retry)
 }
 
-@MainActor @Test func forgettingTheShownComputerGoesBackToComputers() async throws {
+@MainActor @Test func forgettingTheSelectedComputerClearsTheSelection() async throws {
   let directory = temporary()
   defer { try? FileManager.default.removeItem(at: directory) }
   let model = try model(directory)
   model.apply(try snapshot(peers: [("desk", "connected"), ("xps", "unreachable")]))
-  model.page = .computer("desk")
+  model.show(computer: "desk")
+  model.adjusting = .peer("desk")
+  #expect(model.page == .computers && model.selection == .peer("desk"))
   model.apply(try snapshot(peers: [("desk", "connected")]))
-  #expect(model.page == .computer("desk"))
+  #expect(model.selection == .peer("desk"))
   model.apply(try snapshot(peers: [("xps", "unreachable")]))
-  #expect(model.page == .computers)
-  model.page = .settings
+  #expect(model.selection == nil && model.adjusting == nil)
+  // This Mac stays selected whatever is forgotten.
+  model.selection = .thisMac
   model.apply(try snapshot())
-  #expect(model.page == .settings)
+  #expect(model.selection == .thisMac)
   await model.shutdown()
 }
 
@@ -228,4 +231,58 @@ private func temporary() -> URL {
   #expect(first.maxX == second.minX)
   #expect(first.minY == second.minY)
   #expect(first.minX == 344 && first.minY == 192)
+}
+
+@Test func eachComputersScreensFormOneIsland() throws {
+  let json = """
+    {"monitors":[
+      {"id":"local/a","label":"Studio · This Mac","display":{"id":"a","name":"Studio Display","active":true,"bounds":{"x":0,"y":0,"width":5120,"height":2880},"width_mm":597,"height_mm":336},"x":0,"y":0,"width":2388,"height":1344},
+      {"id":"peer:desk","label":"desk","peer":"desk","x":2388,"y":0,"width":1920,"height":1080},
+      {"id":"local/b","label":"Built-in · This Mac","display":{"id":"b","name":"Built-in Display","active":true},"x":590,"y":1344,"width":1208,"height":784}
+    ]}
+    """
+  let decoder = JSONDecoder()
+  decoder.keyDecodingStrategy = .convertFromSnakeCase
+  let layout = try decoder.decode(Layout.self, from: Data(json.utf8))
+  let islands = Island.islands(LayoutTile.tiles(layout, peers: [], ownMark: "fedcba"))
+  #expect(islands.map(\.owner) == [.thisMac, .peer("desk")])
+  #expect(islands[0].tiles.map(\.id) == ["local/a", "local/b"])
+  #expect(islands[0].name == "This Mac" && islands[1].name == "desk")
+  #expect(ComputerInspector.detail(layout.monitors[0].display) == "27″ · 5120 × 2880")
+  #expect(ComputerInspector.detail(layout.monitors[2].display) == nil)
+}
+
+@Test func aDragShowsWhereTheEngineLandsIt() {
+  let anchor = Computer(id: "local/a", label: "Studio", x: 0, y: 0, width: 2388, height: 1344)
+  var drag = Drag(
+    anchor: anchor, owner: .thisMac, computer: true, scale: 0.1, origin: .zero)
+  drag.travel = CGSize(width: 2400.4, height: 30)
+  // Until the engine answers, the screens follow the pointer.
+  #expect(drag.shown == drag.travel && !drag.refused)
+  let move = drag.move(tolerance: ComputerLayout.tolerance(0.1))
+  #expect(move == Move(id: "local/a", x: 2400, y: 30, tolerance: 140, computer: true))
+  drag.asked = drag.travel
+  drag.landing = Preview(x: 2388, y: 0, seams: [])
+  #expect(drag.shown == CGSize(width: 2388, height: 0))
+  drag.landing = nil
+  #expect(drag.refused && drag.shown == drag.travel)
+  let screen = LayoutTile(computer: anchor)
+  let other = LayoutTile(
+    computer: Computer(id: "local/b", label: "", x: 0, y: 1344, width: 10, height: 10))
+  #expect(drag.moves(screen) && drag.moves(other))
+  drag.computer = false
+  #expect(drag.moves(screen) && !drag.moves(other))
+}
+
+@Test func seamsDecodeAndDrawShortOfTheirEnds() throws {
+  let decoder = JSONDecoder()
+  decoder.keyDecodingStrategy = .convertFromSnakeCase
+  let seam = try decoder.decode(
+    Seam.self,
+    from: Data(
+      #"{"a":"local","b":"peer:desk","vertical":true,"at":100,"start":0,"end":100,"same_computer":false}"#
+        .utf8))
+  #expect(seam.vertical && !seam.sameComputer)
+  let line = ComputerLayout.line(seam, inset: 3, scale: 0.5, origin: CGPoint(x: 10, y: 20))
+  #expect(line.boundingRect == CGRect(x: 60, y: 23, width: 0, height: 44))
 }
