@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// The one window: the computers, settings, and a page for each paired computer.
+/// The one window: the computers, on their arrangement, and settings.
 struct MainView: View {
   @Bindable var model: AppModel
 
@@ -43,10 +43,6 @@ struct MainView: View {
         ComputersView(model: model, snapshot: snapshot)
       case .settings:
         SettingsView(model: model, snapshot: snapshot)
-      case .computer(let name):
-        if let peer = snapshot.peers.first(where: { $0.name == name }) {
-          ComputerView(model: model, peer: peer)
-        }
       }
     } else if let error = model.error {
       ContentUnavailableView {
@@ -69,24 +65,6 @@ private struct Sidebar: View {
     List(selection: $model.page) {
       Label("Computers", systemImage: "rectangle.3.group").tag(Page.computers)
       Label("Settings", systemImage: "slider.horizontal.3").tag(Page.settings)
-      let peers = model.snapshot?.peers ?? []
-      if !peers.isEmpty {
-        Section("Paired") {
-          ForEach(peers) { peer in
-            Label {
-              HStack {
-                Text(peer.name).lineLimit(1)
-                Spacer()
-                StateDot(state: peer.state)
-              }
-            } icon: {
-              Image(systemName: "desktopcomputer")
-            }
-            .tag(Page.computer(peer.name))
-            .accessibilityValue(Text(peer.state.label))
-          }
-        }
-      }
     }
     .navigationSplitViewColumnWidth(min: 180, ideal: 210, max: 280)
     .safeAreaInset(edge: .bottom, alignment: .leading) {
