@@ -12,6 +12,8 @@ use crate::desktop::{Display, Edge, MAX_SHARED_TILES, SharedLayout, Tile};
 pub const MAX_MONITORS: usize = MAX_SHARED_TILES;
 pub const MAX_COORDINATE: i32 = 100_000;
 pub const MAX_DIMENSION: u32 = 16_384;
+/// The farthest a move reaches for an edge to snap to.
+pub const MAX_SNAP: u32 = 2048;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -43,6 +45,39 @@ pub struct Transition {
     pub source_end: f64,
     pub target_start: f64,
     pub target_end: f64,
+}
+
+/// Where two screens touch: the line the settings window draws between
+/// them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Seam {
+    /// The screen left of the line, or above it.
+    pub a: String,
+    /// The screen right of the line, or below it.
+    pub b: String,
+    /// Whether the screens sit side by side, so the line stands upright.
+    pub vertical: bool,
+    /// The line's x when it stands upright, else its y.
+    pub at: i32,
+    /// Where the line starts and ends along its length.
+    pub start: i32,
+    pub end: i32,
+    /// Whether both screens belong to one computer. The pointer goes
+    /// between those as that computer's own display settings say, so it
+    /// crosses to another computer only at the other seams.
+    pub same_computer: bool,
+}
+
+/// What a move would do, for the window to show while a screen is dragged.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Preview {
+    /// Where the dragged screen would land.
+    pub x: i32,
+    pub y: i32,
+    /// The seams of the layout the move would make.
+    pub seams: Vec<Seam>,
 }
 
 impl Monitor {
@@ -243,62 +278,218 @@ impl Layout {
         transitions
     }
 
+    /// Where screens touch, each pair once. Inactive screens touch nothing.
+    pub fn seams(&self) -> Vec<Seam> {
+        if self.validate().is_err() {
+            return Vec::new();
+        }
+        let mut seams = Vec::new();
+        for (index, one) in self.monitors.iter().enumerate() {
+            for other in &self.monitors[index + 1..] {
+                if !one.active() || !other.active() {
+                    continue;
+                }
+                let (ol, ot, or, ob) = one.bounds();
+                let (tl, tt, tr, tb) = other.bounds();
+                let (a, b, vertical, at, start, end) = if or == tl {
+                    (one, other, true, or, ot.max(tt), ob.min(tb))
+                } else if ol == tr {
+                    (other, one, true, ol, ot.max(tt), ob.min(tb))
+                } else if ob == tt {
+                    (one, other, false, ob, ol.max(tl), or.min(tr))
+                } else if ot == tb {
+                    (other, one, false, ot, ol.max(tl), or.min(tr))
+                } else {
+                    continue;
+                };
+                if start >= end {
+                    continue;
+                }
+                // Valid geometry keeps every edge well inside i32.
+                seams.push(Seam {
+                    a: a.id.clone(),
+                    b: b.id.clone(),
+                    vertical,
+                    at: at as i32,
+                    start: start as i32,
+                    end: end as i32,
+                    same_computer: one.peer == other.peer,
+                });
+            }
+        }
+        seams
+    }
+
     /// Snap to a nearby shared edge, or keep a valid free position. Reject overlap.
     pub fn snap_move(&self, index: usize, x: i32, y: i32, tolerance: i32) -> Option<(i32, i32)> {
         let moving = self.monitors.get(index)?;
-        if !(0..=MAX_COORDINATE).contains(&tolerance) {
+        let (dx, dy) = self.snap(
+            &[index],
+            i64::from(x) - i64::from(moving.x),
+            i64::from(y) - i64::from(moving.y),
+            tolerance,
+        )?;
+        Some((moving.x + dx, moving.y + dy))
+    }
+
+    /// How far to move the screens at `members`, all alike, to go `(dx, dy)`
+    /// or against an edge of another screen within `tolerance` of there, as
+    /// [`Layout::snap_move`] does for one. The members keep where they are
+    /// to each other, so a computer moves with its own arrangement.
+    pub fn snap_group(
+        &self,
+        members: &[usize],
+        dx: i32,
+        dy: i32,
+        tolerance: i32,
+    ) -> Option<(i32, i32)> {
+        self.snap(members, i64::from(dx), i64::from(dy), tolerance)
+    }
+
+    /// The nearest edge within `tolerance` where nothing overlaps wins, else
+    /// `(dx, dy)` itself where nothing overlaps there. Each member is tried
+    /// against each side of each other screen, lined up with that side's
+    /// start, end or middle when one is within `tolerance` too.
+    fn snap(&self, members: &[usize], dx: i64, dy: i64, tolerance: i32) -> Option<(i32, i32)> {
+        if !(0..=MAX_COORDINATE).contains(&tolerance) || members.is_empty() {
             return None;
         }
-        if !moving.active() {
+        let moving = members
+            .iter()
+            .map(|&index| self.monitors.get(index))
+            .collect::<Option<Vec<_>>>()?;
+        if !moving.iter().any(|monitor| monitor.active()) {
             return None;
         }
-        let fits =
-            |x: i64, y: i64| {
-                let mut candidate = moving.clone();
-                candidate.x = i32::try_from(x).ok()?;
-                candidate.y = i32::try_from(y).ok()?;
-                (candidate.valid_geometry()
-                    && self.monitors.iter().enumerate().all(|(i, other)| {
-                        i == index || !other.active() || !candidate.overlaps(other)
-                    }))
-                .then_some((candidate.x, candidate.y))
-            };
-        let (x, y, tolerance) = (i64::from(x), i64::from(y), i64::from(tolerance));
-        let (width, height) = (i64::from(moving.width), i64::from(moving.height));
+        let others: Vec<_> = self
+            .monitors
+            .iter()
+            .enumerate()
+            .filter(|(index, other)| !members.contains(index) && other.active())
+            .map(|(_, other)| other.bounds())
+            .collect();
+        let range = i64::from(-MAX_COORDINATE)..=i64::from(MAX_COORDINATE);
+        // Bounds, not clones: a drag asks this for every pointer motion.
+        let fits = |ex: i64, ey: i64| {
+            moving
+                .iter()
+                .all(|monitor| {
+                    let (left, top, right, bottom) = monitor.bounds();
+                    let (left, top, right, bottom) = (left + ex, top + ey, right + ex, bottom + ey);
+                    range.contains(&left)
+                        && range.contains(&top)
+                        && monitor.valid_geometry()
+                        && (!monitor.active()
+                            || others.iter().all(|&(ol, ot, or, ob)| {
+                                left >= or || right <= ol || top >= ob || bottom <= ot
+                            }))
+                })
+                .then_some(())?;
+            Some((i32::try_from(ex).ok()?, i32::try_from(ey).ok()?))
+        };
+        let tolerance = i64::from(tolerance);
         let mut best: Option<(i64, (i32, i32))> = None;
-        for (other_index, other) in self.monitors.iter().enumerate() {
-            if other_index == index || !other.active() {
-                continue;
-            }
-            let (left, top, right, bottom) = other.bounds();
-            let mut consider = |cx: i64, cy: i64| {
-                let (dx, dy) = (cx - x, cy - y);
-                if dx.abs() > tolerance || dy.abs() > tolerance {
-                    return;
-                }
-                let distance = dx * dx + dy * dy;
-                if best.is_none_or(|(best_distance, _)| distance < best_distance)
-                    && let Some(position) = fits(cx, cy)
-                {
-                    best = Some((distance, position));
-                }
-            };
-            for cx in [left - width, right] {
-                for cy in [y, top, bottom - height] {
-                    if cy < bottom && cy + height > top {
-                        consider(cx, cy);
-                    }
-                }
-            }
-            for cy in [top - height, bottom] {
-                for cx in [x, left, right - width] {
-                    if cx < right && cx + width > left {
-                        consider(cx, cy);
+        for monitor in moving.iter().filter(|monitor| monitor.active()) {
+            let (x, y) = (i64::from(monitor.x), i64::from(monitor.y));
+            let (width, height) = (i64::from(monitor.width), i64::from(monitor.height));
+            let (to_x, to_y) = (x + dx, y + dy);
+            for &(left, top, right, bottom) in &others {
+                // Each side of the other screen: where the dragged one would
+                // touch it, and the span along that side.
+                let sides = [
+                    (true, left - width, top, bottom, height, to_y),
+                    (true, right, top, bottom, height, to_y),
+                    (false, top - height, left, right, width, to_x),
+                    (false, bottom, left, right, width, to_x),
+                ];
+                for (upright, across, start, end, size, dragged) in sides {
+                    // Lined up with the side's start, end or middle beats
+                    // where it was dragged, when that is near enough.
+                    let mut lined_up = [start, end - size, start + (end - start - size) / 2];
+                    lined_up.sort_by_key(|along| (along - dragged).abs());
+                    let along = lined_up
+                        .into_iter()
+                        .filter(|along| (along - dragged).abs() <= tolerance)
+                        .chain([dragged]);
+                    for along in along {
+                        if along >= end || along + size <= start {
+                            continue;
+                        }
+                        let (cx, cy) = if upright {
+                            (across, along)
+                        } else {
+                            (along, across)
+                        };
+                        let (ex, ey) = (cx - x, cy - y);
+                        let (off_x, off_y) = (ex - dx, ey - dy);
+                        if off_x.abs() > tolerance || off_y.abs() > tolerance {
+                            continue;
+                        }
+                        let Some(delta) = fits(ex, ey) else {
+                            continue;
+                        };
+                        let distance = off_x * off_x + off_y * off_y;
+                        if best.is_none_or(|(best_distance, _)| distance < best_distance) {
+                            best = Some((distance, delta));
+                        }
+                        break;
                     }
                 }
             }
         }
-        best.map(|(_, position)| position).or_else(|| fits(x, y))
+        best.map(|(_, delta)| delta).or_else(|| fits(dx, dy))
+    }
+
+    /// This layout with screen `id` at `(x, y)`, or against an edge within
+    /// `tolerance` of there. With `computer`, every screen of its computer
+    /// moves alike.
+    pub fn moved(&self, id: &str, x: i32, y: i32, tolerance: u32, computer: bool) -> Result<Self> {
+        let index = self
+            .monitors
+            .iter()
+            .position(|monitor| monitor.id == id)
+            .with_context(|| format!("The layout has no screen {id}"))?;
+        let anchor = &self.monitors[index];
+        let members: Vec<usize> = if computer {
+            (0..self.monitors.len())
+                .filter(|&other| self.monitors[other].peer == anchor.peer)
+                .collect()
+        } else {
+            vec![index]
+        };
+        let (dx, dy) = self
+            .snap(
+                &members,
+                i64::from(x) - i64::from(anchor.x),
+                i64::from(y) - i64::from(anchor.y),
+                tolerance.min(MAX_SNAP) as i32,
+            )
+            .context("Screens cannot overlap")?;
+        let mut moved = self.clone();
+        for member in members {
+            moved.monitors[member].x += dx;
+            moved.monitors[member].y += dy;
+        }
+        Ok(moved)
+    }
+
+    /// What [`Layout::moved`] would make, without keeping it. None where
+    /// the screens cannot go.
+    pub fn preview(
+        &self,
+        id: &str,
+        x: i32,
+        y: i32,
+        tolerance: u32,
+        computer: bool,
+    ) -> Option<Preview> {
+        let moved = self.moved(id, x, y, tolerance, computer).ok()?;
+        let screen = moved.monitors.iter().find(|monitor| monitor.id == id)?;
+        Some(Preview {
+            x: screen.x,
+            y: screen.y,
+            seams: moved.seams(),
+        })
     }
 }
 
@@ -572,6 +763,147 @@ mod tests {
         assert_eq!(layout.snap_move(1, i32::MIN, i32::MIN, 10), None);
         assert_eq!(layout.snap_move(2, 0, 0, 10), None);
         assert_eq!(layout.snap_move(1, 100, 0, -1), None);
+    }
+
+    #[test]
+    fn snapping_lines_up_middles() {
+        let layout = Layout {
+            monitors: vec![
+                monitor("local", 0, 0, 300, 200),
+                monitor("laptop", 1000, 1000, 100, 60),
+            ],
+        };
+        // Under the monitor, a little off its middle.
+        assert_eq!(layout.snap_move(1, 104, 205, 10), Some((100, 200)));
+        // Beside it, level with its middle.
+        assert_eq!(layout.snap_move(1, 303, 66, 10), Some((300, 70)));
+    }
+
+    #[test]
+    fn seams_are_where_screens_touch() {
+        let mut layout = Layout {
+            monitors: vec![
+                monitor("local", 0, 0, 100, 100),
+                monitor("local/2", 100, 0, 100, 100),
+                monitor("desk", 200, 50, 100, 100),
+                monitor("laptop", 50, 100, 100, 50),
+            ],
+        };
+        layout.monitors[1].peer = None;
+        let seams = layout.seams();
+        let seam = |a: &str, b: &str, vertical, at, start, end, same_computer| Seam {
+            a: a.into(),
+            b: b.into(),
+            vertical,
+            at,
+            start,
+            end,
+            same_computer,
+        };
+        assert_eq!(
+            seams,
+            [
+                seam("local", "local/2", true, 100, 0, 100, true),
+                seam("local", "laptop", false, 100, 50, 100, false),
+                seam("local/2", "desk", true, 200, 50, 100, false),
+                seam("local/2", "laptop", false, 100, 100, 150, false),
+            ]
+        );
+        // An unplugged screen keeps its place but touches nothing.
+        layout.monitors[1].display = Some(Display {
+            id: "2".into(),
+            name: "Studio Display".into(),
+            bounds: crate::desktop::Rect {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+            width_mm: 0,
+            height_mm: 0,
+            active: false,
+        });
+        assert_eq!(layout.seams().len(), 1);
+    }
+
+    #[test]
+    fn a_computer_moves_with_its_own_arrangement() {
+        // This computer has two screens side by side; the laptop is apart.
+        let mut layout = Layout {
+            monitors: vec![
+                monitor("local", 0, 0, 100, 100),
+                monitor("local/2", 100, 20, 100, 60),
+                monitor("laptop", 500, 500, 80, 50),
+            ],
+        };
+        layout.monitors[1].peer = None;
+        // Dragged by its first screen, the second one lands against the
+        // laptop and pulls the first along.
+        let moved = layout.moved("local", 296, 470, 10, true).unwrap();
+        let at = |layout: &Layout, id: &str| {
+            let screen = layout.monitors.iter().find(|m| m.id == id).unwrap();
+            (screen.x, screen.y)
+        };
+        assert_eq!(at(&moved, "local/2"), (400, 490));
+        assert_eq!(at(&moved, "local"), (300, 470));
+        assert_eq!(at(&moved, "laptop"), (500, 500));
+        assert_eq!(
+            layout.snap_group(&[0, 1], 296, 470, 10),
+            Some((300, 470)),
+            "the same, by index"
+        );
+        // One screen alone leaves its neighbor where it was.
+        let alone = layout.moved("local/2", 420, 20, 0, false).unwrap();
+        assert_eq!(
+            (at(&alone, "local"), at(&alone, "local/2")),
+            ((0, 0), (420, 20))
+        );
+        // The whole computer cannot go where any of its screens overlaps.
+        let error = layout.moved("local", 420, 450, 0, true).unwrap_err();
+        assert!(error.to_string().contains("overlap"), "{error}");
+        let error = layout.moved("gone", 0, 0, 0, true).unwrap_err();
+        assert!(error.to_string().contains("no screen gone"), "{error}");
+        assert_eq!(layout.snap_group(&[0, 9], 1, 1, 0), None);
+        assert_eq!(layout.snap_group(&[], 1, 1, 0), None);
+    }
+
+    #[test]
+    fn a_preview_shows_the_landing_and_its_seams_without_moving() {
+        let layout = Layout {
+            monitors: vec![
+                monitor("local", 0, 0, 100, 100),
+                monitor("desk", 300, 0, 100, 100),
+            ],
+        };
+        let preview = layout.preview("desk", 104, 3, 10, true).unwrap();
+        assert_eq!((preview.x, preview.y), (100, 0));
+        assert_eq!(preview.seams.len(), 1);
+        assert!(!preview.seams[0].same_computer);
+        assert_eq!(layout.monitors[1].x, 300, "nothing moved");
+        assert_eq!(layout.preview("desk", 50, 0, 0, true), None);
+    }
+
+    #[test]
+    fn a_step_shorter_than_the_tolerance_leaves_a_seam() {
+        // Arrow keys move 100 units and snap within 99, so a step away from
+        // the seam is not pulled back to it, and a step into a neighbor
+        // stops against it.
+        let layout = Layout {
+            monitors: vec![
+                monitor("local", 0, 0, 100, 100),
+                monitor("desk", 100, 0, 100, 100),
+            ],
+        };
+        let away = layout.moved("desk", 200, 0, 99, true).unwrap();
+        assert_eq!(away.monitors[1].x, 200);
+        assert!(away.seams().is_empty());
+        let back = away.moved("desk", 130, 0, 99, true).unwrap();
+        assert_eq!(back.monitors[1].x, 100);
+        // The old tolerance snapped the step straight back.
+        assert_eq!(
+            layout.moved("desk", 200, 0, 150, true).unwrap().monitors[1].x,
+            100
+        );
     }
 
     #[test]

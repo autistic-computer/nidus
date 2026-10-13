@@ -41,7 +41,7 @@ function desktop(monitors = [{x: 0, y: 0, width: 1920, height: 1080}], monitorDa
     };
     // GNOME 51 reaches the backend only through the stage context.
     const context = {
-        API: 5,
+        API: 6,
         Extension: class {},
         Indicator: class { destroy() {} },
         TextDecoder,
@@ -458,7 +458,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
     await call(':1.99', {command: 'snapshot'});
     assert.equal(d.extension._lease, null);
     assert.equal(d.barriers.length, 0);
-    await call(':1.7', {command: 'snapshot', api: 5});
+    await call(':1.7', {command: 'snapshot', api: 6});
     d.watch.vanished();
     await call(':1.7', {command: 'snapshot'});
     const denied = 'org.freedesktop.DBus.Error.AccessDenied';
@@ -490,7 +490,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
     d.context.Main.layoutManager.monitors.length = 0;
     assert.deepEqual({...await d.extension._request({command: 'focus'})}, {status: 'focus', terminal: true}, 'focus needs no monitors');
     const replies = [];
-    const call = sender => d.extension.CallAsync([JSON.stringify({command: 'focus', api: 5})], {
+    const call = sender => d.extension.CallAsync([JSON.stringify({command: 'focus', api: 6})], {
         get_sender: () => sender,
         return_dbus_error: name => replies.push(name),
         return_value: variant => replies.push(JSON.parse(variant.value[0]).terminal),
@@ -515,10 +515,10 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
         get_sender: () => ':1.7',
         return_value: variant => replies.push(JSON.parse(variant.value[0])),
     });
-    await call({command: 'snapshot', api: 6});
+    await call({command: 'snapshot', api: 7});
     await call({command: 'snapshot', api: 1});
     await call({command: 'snapshot'});
-    await call({command: 'snapshot', api: 5});
+    await call({command: 'snapshot', api: 6});
     assert.match(replies[0].reason, /^Update zflow: its GNOME extension is older/);
     assert.match(replies[1].reason, /^Update zflow: the app is older/);
     assert.match(replies[2].reason, /^Update zflow: the app is older/, 'agents from before API levels speak API 1');
@@ -734,7 +734,7 @@ function clipboardCalls(d) {
     assert.deepEqual(d.notices, [['zflow', notice], ['zflow', 'x'.repeat(256)]]);
     for (const message of [undefined, '', 7]) await assert.rejects(d.extension._request({command: 'notify', message}), /Invalid notice/);
     const replies = [];
-    await d.extension.CallAsync([JSON.stringify({command: 'notify', message: 'hi', api: 5})], {
+    await d.extension.CallAsync([JSON.stringify({command: 'notify', message: 'hi', api: 6})], {
         get_sender: () => ':1.99',
         return_dbus_error: name => replies.push(name),
     });

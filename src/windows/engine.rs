@@ -313,7 +313,7 @@ impl Engine {
         json!({"name":crate::hello::local_name(),"key":self.identity.fingerprint_hex(),"mark":crate::neighbors::mark(self.identity.spki()),
             "pid":std::process::id(),"elevated":input::elevated(),
             "sharing":self.config.daemon.sharing,"clipboard":self.config.clipboard.share,"available":input::available(),"peers":peers,
-            "nearby":self.neighbors.unplaced(&self.config),"layout":self.local_layout(),"sending":self.outbound.as_ref().map(|o|&o.peer),"receiving":self.inbound.as_ref().map(|(p,_)|p),
+            "nearby":self.neighbors.unplaced(&self.config),"layout":self.local_layout(),"seams":self.local_layout().seams(),"sending":self.outbound.as_ref().map(|o|&o.peer),"receiving":self.inbound.as_ref().map(|(p,_)|p),
             "notice":self.notice,"layout_version":self.layout.version,"pause_at_edges":self.config.switching.pause_at_edges,"listen":self.config.transport.listen,"addresses":crate::discovery::this_host_addresses()})
     }
     fn save_config(&mut self) -> Result<()> {
@@ -337,6 +337,34 @@ impl Engine {
             let _ = link.handle.send_layout(self.layout.clone());
         }
         Ok(())
+    }
+    /// Keeps `layout`, this computer's view, as the next version of the
+    /// shared one, and tells the other computers.
+    fn arrange(&mut self, layout: Layout) -> Result<()> {
+        layout.validate()?;
+        ensure!(
+            layout
+                .monitors
+                .iter()
+                .any(|m| m.peer.is_none() && m.active()),
+            "Arrangement needs an active local monitor"
+        );
+        ensure!(
+            layout.monitors.iter().all(|m| m
+                .peer
+                .as_ref()
+                .is_none_or(|p| self.config.peers.contains_key(p))),
+            "Only paired computers can be arranged"
+        );
+        self.local();
+        let own = self.identity.fingerprint_hex();
+        let keys = self.keys();
+        self.layout = layout
+            .to_shared(self.layout.version + 1, &own, &keys)
+            .with_others_from(&self.layout, |key| {
+                key == own || keys.values().any(|known| known == key)
+            });
+        self.save_layout()
     }
     async fn command(&mut self, request: ipc::Request) {
         let ipc::Request { command, reply } = request;
@@ -473,35 +501,26 @@ impl Engine {
                         .reverse_scroll = enabled;
                     self.save_config()?;
                 }
-                ipc::Command::Arrange { layout, version } => {
-                    ensure!(
-                        version == self.layout.version,
-                        "The arrangement changed on another computer. Try your move again."
-                    );
-                    layout.validate()?;
-                    ensure!(
-                        layout
-                            .monitors
-                            .iter()
-                            .any(|m| m.peer.is_none() && m.active()),
-                        "Arrangement needs an active local monitor"
-                    );
-                    ensure!(
-                        layout.monitors.iter().all(|m| m
-                            .peer
-                            .as_ref()
-                            .is_none_or(|p| self.config.peers.contains_key(p))),
-                        "Only paired computers can be arranged"
-                    );
-                    self.local();
-                    let own = self.identity.fingerprint_hex();
-                    let keys = self.keys();
-                    self.layout = layout
-                        .to_shared(self.layout.version + 1, &own, &keys)
-                        .with_others_from(&self.layout, |key| {
-                            key == own || keys.values().any(|known| known == key)
-                        });
-                    self.save_layout()?;
+                ipc::Command::MoveTile {
+                    id,
+                    x,
+                    y,
+                    tolerance,
+                    computer,
+                } => {
+                    let moved = self.local_layout().moved(&id, x, y, tolerance, computer)?;
+                    self.arrange(moved)?;
+                }
+                // Asked at every step of a drag, so it answers alone.
+                ipc::Command::Preview {
+                    id,
+                    x,
+                    y,
+                    tolerance,
+                    computer,
+                } => {
+                    let preview = self.local_layout().preview(&id, x, y, tolerance, computer);
+                    return Ok(json!(preview));
                 }
                 ipc::Command::Activate { peer } => {
                     ensure!(self.links.contains_key(&peer), "Computer is not connected");
