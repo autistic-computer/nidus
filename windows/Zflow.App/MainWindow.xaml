@@ -61,11 +61,15 @@
               <StackPanel Spacing="12">
                 <StackPanel Spacing="4">
                   <TextBlock Text="Screen arrangement" Style="{StaticResource SectionHeading}" />
-                  <TextBlock Text="Arrange individual monitors. Drag their edges together to switch computers." Style="{StaticResource SecondaryText}" />
+                  <TextBlock Text="Drag a computer until its screens touch another’s; the pointer crosses at the lit edges. Double-click one to move its screens one by one." Style="{StaticResource SecondaryText}" />
                 </StackPanel>
                 <Border Background="{ThemeResource ControlAltFillColorSecondaryBrush}" CornerRadius="8"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
-                  <Canvas x:Name="Arrangement" Height="240" SizeChanged="Arrangement_SizeChanged" Background="Transparent" />
+                  <UserControl x:Name="Board" IsTabStop="True" UseSystemFocusVisuals="True" KeyDown="Board_KeyDown"
+                               AutomationProperties.Name="Screen arrangement"
+                               AutomationProperties.HelpText="Arrow keys move the selected computer. Escape lets go of it.">
+                    <Canvas x:Name="Arrangement" Height="280" SizeChanged="Arrangement_SizeChanged" Tapped="Arrangement_Tapped" Background="Transparent" />
+                  </UserControl>
                 </Border>
                 <Grid ColumnSpacing="16">
                   <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
