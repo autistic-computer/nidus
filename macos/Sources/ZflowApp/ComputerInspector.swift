@@ -48,7 +48,7 @@ struct ComputerInspector: View {
           model.selection = island.owner
         } label: {
           HStack(spacing: 12) {
-            Image(systemName: island.symbol).font(.title3).foregroundStyle(island.tint)
+            Image(systemName: island.symbol).font(.title3).foregroundStyle(.secondary)
               .frame(width: 22)
             VStack(alignment: .leading, spacing: 1) {
               Text(island.name).fontWeight(.semibold)
@@ -89,7 +89,7 @@ struct ComputerInspector: View {
 
   private func header(_ island: Island, peer: Peer?) -> some View {
     HStack(spacing: 12) {
-      Image(systemName: island.symbol).font(.system(size: 30)).foregroundStyle(island.tint)
+      Image(systemName: island.symbol).font(.system(size: 30)).foregroundStyle(.secondary)
       VStack(alignment: .leading, spacing: 2) {
         Text(island.name).font(.title2.weight(.semibold))
         HStack(spacing: 6) {
