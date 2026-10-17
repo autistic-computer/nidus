@@ -33,10 +33,6 @@ struct Island: Identifiable, Equatable {
   var state: Peer.State? { tiles.first?.state }
   var mark: String? { tiles.first?.mark }
   var symbol: String { owner == .thisMac ? "laptopcomputer" : "desktopcomputer" }
-  /// The color of its mark's first square, which tints its screens.
-  var tint: Color {
-    mark.flatMap { KeyMark.indices($0).first }.map { KeyMark.palette[$0] } ?? .secondary
-  }
 
   /// Each computer's screens, in the order the layout first names them.
   static func islands(_ tiles: [LayoutTile]) -> [Island] {
@@ -143,6 +139,11 @@ struct ComputerLayout: View {
   /// The shelf computer being carried, and where the pointer is.
   @State private var carried: String?
   @State private var carriedAt = CGPoint.zero
+  /// The screen, and the computer's name, under the pointer. Screens go by
+  /// id, so crossing from one of a computer's screens to the next keeps it
+  /// hovered whether the leave or the enter comes first.
+  @State private var hoveredScreen: String?
+  @State private var hoveredChip: Owner?
   @FocusState private var focused: Bool
 
   /// The size the engine gives a new computer's tile until it says its own.
@@ -155,6 +156,11 @@ struct ComputerLayout: View {
   private var placed: [LayoutTile] { tiles.filter(\.placed) }
   private var islands: [Island] { Island.islands(placed) }
   private var showsShelf: Bool { !unplaced.isEmpty || searching }
+  /// The computer the pointer is over, by one of its screens or its name.
+  /// It shows its outline and its screens' names, as a selected one does.
+  private var hovered: Owner? {
+    hoveredChip ?? placed.first { $0.id == hoveredScreen }?.owner
+  }
 
   var body: some View {
     GeometryReader { area in
@@ -262,7 +268,7 @@ struct ComputerLayout: View {
           path.addEllipse(in: CGRect(x: x - 0.75, y: y - 0.75, width: 1.5, height: 1.5))
         }
       }
-      context.fill(path, with: .color(.secondary.opacity(0.3)))
+      context.fill(path, with: .color(.secondary.opacity(0.15)))
     }
     .accessibilityHidden(true)
   }
@@ -398,14 +404,13 @@ struct ComputerLayout: View {
   private func hull(_ island: Island, scale: CGFloat, origin: CGPoint) -> some View {
     let frame = hullFrame(island, scale: scale, origin: origin)
     let selected = selection == island.owner
-    let shape = RoundedRectangle(cornerRadius: 18)
-    return shape.fill(island.tint.opacity(0.1))
-      .overlay {
-        shape.strokeBorder(
-          selected ? Color.accentColor : island.tint.opacity(0.5),
-          style: StrokeStyle(
-            lineWidth: selected ? 2.5 : 1.5, dash: adjusting == island.owner ? [6, 5] : []))
-      }
+    // Only a selected or pointed at computer shows its outline.
+    return RoundedRectangle(cornerRadius: 18)
+      .strokeBorder(
+        selected ? Color.accentColor : Color.secondary.opacity(0.35),
+        style: StrokeStyle(
+          lineWidth: selected ? 2.5 : 1.5, dash: adjusting == island.owner ? [6, 5] : []))
+      .opacity(selected || hovered == island.owner ? 1 : 0)
       .frame(width: frame.width, height: frame.height)
       .position(x: frame.midX, y: frame.midY)
       .allowsHitTesting(false)
@@ -419,11 +424,19 @@ struct ComputerLayout: View {
     let island = islands.first { $0.owner == tile.owner }
     let computer = tile.computer
     return ScreenView(
-      tile: tile, size: frame.size, tint: island?.tint ?? .secondary, moving: moving,
+      tile: tile, size: frame.size,
+      showsName: selection == tile.owner || hovered == tile.owner, moving: moving,
       refused: moving && drag?.refused == true
     )
     .position(x: frame.midX, y: frame.midY)
     .zIndex(moving ? 1 : 0)
+    .onHover { inside in
+      if inside {
+        hoveredScreen = tile.id
+      } else if hoveredScreen == tile.id {
+        hoveredScreen = nil
+      }
+    }
     .gesture(dragGesture(computer, owner: tile.owner, computer: !alone, scale: scale, origin: origin))
     .onTapGesture(count: 2) { toggleAdjusting(tile.owner) }
     .onTapGesture { select(tile.owner) }
@@ -511,15 +524,12 @@ struct ComputerLayout: View {
   private func chip(_ island: Island, scale: CGFloat, origin: CGPoint) -> some View {
     let anchor = island.tiles[0].computer
     let open = adjusting == island.owner
+    let selected = selection == island.owner
     return HStack(spacing: 7) {
-      Image(systemName: island.symbol).foregroundStyle(.secondary)
-      Text(island.name).fontWeight(.semibold)
-        .foregroundStyle(island.owner == .thisMac ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
-      if let state = island.state {
-        StateDot(state: state)
-        Text(state.label).foregroundStyle(.secondary)
-      }
-      if let mark = island.mark { KeyMark(mark: mark) }
+      Text(island.name).font(.subheadline.weight(.semibold))
+      // Its state is a dot here, in words in its tooltip and the inspector,
+      // so names stay small on the board.
+      if let state = island.state { StateDot(state: state) }
       if open {
         Button("Done") { adjusting = nil }
           .buttonStyle(.borderless).fontWeight(.semibold)
@@ -529,13 +539,24 @@ struct ComputerLayout: View {
     .lineLimit(1)
     .padding(.leading, 9).padding(.trailing, 11)
     .frame(height: 26)
-    .glassEffect(in: .capsule)
+    // Bare on the board, filled faintly under the pointer, and on glass
+    // with a ring while selected.
+    .background(hoveredChip == island.owner ? Color.primary.opacity(0.08) : .clear, in: .capsule)
+    .glassEffect(selected ? .regular : .identity, in: .capsule)
     .overlay {
-      if selection == island.owner {
+      if selected {
         Capsule().strokeBorder(Color.accentColor, lineWidth: 2)
       }
     }
     .contentShape(.capsule)
+    .help(island.state.map { "\(island.name) · \($0.label)" } ?? island.name)
+    .onHover { inside in
+      if inside {
+        hoveredChip = island.owner
+      } else if hoveredChip == island.owner {
+        hoveredChip = nil
+      }
+    }
     .gesture(dragGesture(anchor, owner: island.owner, computer: true, scale: scale, origin: origin))
     .onTapGesture(count: 2) { toggleAdjusting(island.owner) }
     .onTapGesture { select(island.owner) }
@@ -625,11 +646,12 @@ struct ComputerLayout: View {
   }
 }
 
-/// A screen on the board, tinted like its computer, with its name.
+/// A screen on the board, with its name while its computer is selected or
+/// pointed at.
 private struct ScreenView: View {
   var tile: LayoutTile
   var size: CGSize
-  var tint: Color
+  var showsName: Bool
   var moving: Bool
   var refused: Bool
 
@@ -639,11 +661,8 @@ private struct ScreenView: View {
     let shape = RoundedRectangle(cornerRadius: max(2, min(8, size.height / 8)))
     return ZStack(alignment: .bottomLeading) {
       shape.fill(Color(nsColor: .controlBackgroundColor))
-      shape.fill(
-        LinearGradient(
-          colors: [tint.opacity(0.24), tint.opacity(0.08)], startPoint: .top, endPoint: .bottom))
       if let name = computer.display?.name {
-        if size.width >= 64 && size.height >= 30 {
+        if showsName && size.width >= 64 && size.height >= 30 {
           Text(name).font(.caption2.weight(.semibold)).lineLimit(1)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(.thinMaterial, in: .rect(cornerRadius: 4))
