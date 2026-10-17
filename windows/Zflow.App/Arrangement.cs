@@ -41,6 +41,8 @@ public sealed partial class MainWindow
         public readonly JsonObject Monitor = monitor;
         public readonly string Owner = owner;
         public readonly Border Tile = tile;
+        // Its name, when it has room for one.
+        public Border? Caption;
         // Where it sits on the board, and where it shows while a drag carries it.
         public Rect Home, Shown;
         public string Id => Text(Monitor["id"]);
@@ -84,9 +86,12 @@ public sealed partial class MainWindow
     private Drag? drag;
     private bool asking;
     private string? selection, adjusting;
+    // The computer under the pointer, and which of its name or screens the
+    // pointer is over, so going from one to the next keeps it whichever
+    // event comes first.
+    private (string Owner, UIElement Over)? hover;
 
     private static string? Seed(JsonNode? node) => node is JsonValue value && value.TryGetValue(out string? seed) && seed.Length >= 4 && seed.All(Uri.IsHexDigit) ? seed : null;
-    private static Color? Tint(string? mark) => mark is null ? null : MarkColors[Convert.ToInt32(mark[..1], 16) & 7];
     private static Color WithAlpha(Color color, double alpha) => Color.FromArgb((byte)Math.Round(255 * alpha), color.R, color.G, color.B);
     private static Color Accent => ((SolidColorBrush)Brush("AccentFillColorDefaultBrush")).Color;
 
@@ -222,14 +227,12 @@ public sealed partial class MainWindow
         var hull = new Rectangle { RadiusX = 14, RadiusY = 14, IsHitTestVisible = false };
         Canvas.SetZIndex(hull, 0);
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
-        bool local = computer.Owner == Local;
-        content.Children.Add(new FontIcon { Glyph = local ? "\uE7F8" : "\uE7F4", FontSize = 14, Foreground = Brush("TextFillColorSecondaryBrush") });
-        content.Children.Add(new TextBlock { Text = computer.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush(local ? "AccentTextFillColorPrimaryBrush" : "TextFillColorPrimaryBrush") });
+        content.Children.Add(new TextBlock { Text = computer.Name, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush("TextFillColorPrimaryBrush") });
         // Its state is a dot here, in words in its tooltip and the inspector,
-        // so names stay small on the board.
+        // and its mark is in the inspector, so names stay small on the board.
         if (computer.Peer is not null) content.Children.Add(Dot(computer.Peer));
-        if (MarkView(computer.Mark) is { } mark) content.Children.Add(mark);
-        var chip = new Border { Child = content, CornerRadius = new CornerRadius(13), Padding = new Thickness(9, 3, 11, 3), Background = Brush("AcrylicInAppFillColorDefaultBrush") };
+        // Its border keeps its width unselected, so selecting it does not move its name.
+        var chip = new Border { Child = content, CornerRadius = new CornerRadius(13), Padding = new Thickness(9, 3, 11, 3), BorderThickness = new Thickness(2) };
         string described = computer.Peer is null ? ThisPc : $"{computer.Name} · {PeerState(computer.Peer).Label}";
         ToolTipService.SetToolTip(chip, described);
         AutomationProperties.SetName(chip, described);
@@ -241,6 +244,7 @@ public sealed partial class MainWindow
         var island = new Island(computer, hull, chip, done);
         done.Click += (_, _) => Adjust(island.Owner, false);
         AttachDrag(chip, island, () => island.Screens[0], () => true);
+        AttachHover(chip, island);
         Arrangement.Children.Add(hull);
         Arrangement.Children.Add(chip);
         Arrangement.Children.Add(done);
@@ -249,14 +253,7 @@ public sealed partial class MainWindow
 
     private Screen NewScreen(JsonObject monitor, Island island)
     {
-        var face = new Grid { CornerRadius = new CornerRadius(5) };
-        if (Tint(island.Computer.Mark) is Color tint)
-        {
-            var gradient = new LinearGradientBrush { StartPoint = new Point(0, 0), EndPoint = new Point(0, 1) };
-            gradient.GradientStops.Add(new GradientStop { Color = WithAlpha(tint, 0.26), Offset = 0 });
-            gradient.GradientStops.Add(new GradientStop { Color = WithAlpha(tint, 0.08), Offset = 1 });
-            face.Background = gradient;
-        }
+        var face = new Grid();
         var tile = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Background = Brush("SolidBackgroundFillColorTertiaryBrush"), Child = face };
         // A paired computer that cannot take input now shows faded.
         if (island.Computer.Peer is JsonObject peer && !Flag(peer["connected"])) tile.Opacity = 0.62;
@@ -266,12 +263,15 @@ public sealed partial class MainWindow
         {
             // A screen too small for its name shows none.
             if (rect.Width >= 64 && rect.Height >= 30)
-                face.Children.Add(new Border
+            {
+                screen.Caption = new Border
                 {
                     Background = Brush("SolidBackgroundFillColorTertiaryBrush"), CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 2), Margin = new Thickness(5),
                     HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
                     Child = new TextBlock { Text = Text(display["name"], Text(monitor["label"])), FontSize = 11, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = Math.Max(rect.Width - 22, 1) },
-                });
+                };
+                face.Children.Add(screen.Caption);
+            }
         }
         else if (Math.Min(rect.Width, rect.Height) >= 24)
         {
@@ -282,6 +282,7 @@ public sealed partial class MainWindow
         AutomationProperties.SetName(tile, $"{ScreenName(monitor)}, {island.Computer.Name}");
         // Out of adjusting, a screen carries its whole computer.
         AttachDrag(tile, island, () => screen, () => adjusting != island.Owner);
+        AttachHover(tile, island);
         Arrangement.Children.Add(tile);
         return screen;
     }
@@ -307,24 +308,36 @@ public sealed partial class MainWindow
             screen.Tile.BorderBrush = Brush(moving && refused ? "SystemFillColorCriticalBrush" : moving ? "ControlStrongStrokeColorDefaultBrush" : "CardStrokeColorDefaultBrush");
             screen.Tile.BorderThickness = new Thickness(moving && refused ? 2 : 1);
         }
-        var accent = Accent;
         foreach (var island in islands)
         {
             var hull = Hull(island);
             Canvas.SetLeft(island.Hull, hull.X); Canvas.SetTop(island.Hull, hull.Y);
             island.Hull.Width = hull.Width; island.Hull.Height = hull.Height;
-            bool selected = selection == island.Owner;
-            var tint = Tint(island.Computer.Mark) ?? Color.FromArgb(255, 128, 128, 128);
-            island.Hull.Fill = new SolidColorBrush(WithAlpha(tint, 0.1));
-            island.Hull.Stroke = new SolidColorBrush(selected ? accent : WithAlpha(tint, 0.5));
-            island.Hull.StrokeThickness = selected ? 2.5 : 1.5;
-            island.Hull.StrokeDashArray = adjusting == island.Owner ? [4, 3] : [];
-            island.Chip.BorderBrush = selected ? new SolidColorBrush(accent) : Brush("CardStrokeColorDefaultBrush");
-            island.Chip.BorderThickness = new Thickness(selected ? 2 : 1);
             island.Done.Visibility = adjusting == island.Owner ? Visibility.Visible : Visibility.Collapsed;
         }
+        Highlight();
         PlaceChips();
         DrawSeams();
+    }
+
+    // Only the selected computer and the one under the pointer show their
+    // outline and their screens' names, the selected one in the accent. A
+    // name has a background only while selected or under the pointer.
+    private void Highlight()
+    {
+        var accent = Accent;
+        foreach (var island in islands)
+        {
+            bool selected = selection == island.Owner, hovered = hover?.Owner == island.Owner;
+            island.Hull.Stroke = selected ? new SolidColorBrush(accent) : hovered ? Brush("ControlStrongStrokeColorDefaultBrush") : null;
+            island.Hull.Opacity = selected ? 1 : 0.35;
+            island.Hull.StrokeThickness = selected ? 2.5 : 1.5;
+            island.Hull.StrokeDashArray = adjusting == island.Owner ? [4, 3] : [];
+            island.Chip.Background = Brush(selected ? "AcrylicInAppFillColorDefaultBrush" : ReferenceEquals(hover?.Over, island.Chip) ? "SubtleFillColorSecondaryBrush" : "SubtleFillColorTransparentBrush");
+            island.Chip.BorderBrush = selected ? new SolidColorBrush(accent) : null;
+            foreach (var screen in island.Screens)
+                if (screen.Caption is { } caption) caption.Visibility = selected || hovered ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     // An island's screens as shown, with room around them.
@@ -487,6 +500,19 @@ public sealed partial class MainWindow
         element.DoubleTapped += (_, e) => { Adjust(island.Owner, adjusting != island.Owner); e.Handled = true; };
     }
 
+    // The pointer over a computer's name or one of its screens shows its
+    // outline and its screens' names.
+    private void AttachHover(FrameworkElement element, Island island)
+    {
+        element.PointerEntered += (_, _) => { hover = (island.Owner, element); Highlight(); };
+        element.PointerExited += (_, _) =>
+        {
+            if (!ReferenceEquals(hover?.Over, element)) return;
+            hover = null;
+            Highlight();
+        };
+    }
+
     // As far as the pointer went, but with the screens kept on the board.
     private (double, double) Travel(Drag current, double dx, double dy)
     {
@@ -597,7 +623,7 @@ public sealed partial class MainWindow
             var card = new SettingsCard
             {
                 Header = computer.Name, Description = Summary(computer, computer.Peer is null ? null : PeerState(computer.Peer).Label), Content = content, IsClickEnabled = true,
-                HeaderIcon = new FontIcon { Glyph = computer.Owner == Local ? "\uE7F8" : "\uE7F4", Foreground = Tint(computer.Mark) is Color tint ? new SolidColorBrush(tint) : Brush("TextFillColorSecondaryBrush") },
+                HeaderIcon = new FontIcon { Glyph = computer.Owner == Local ? "\uE7F8" : "\uE7F4", Foreground = Brush("TextFillColorSecondaryBrush") },
             };
             card.Click += (_, _) => { Select(computer.Owner); Board.Focus(FocusState.Programmatic); };
             PeersPanel.Children.Add(card);
@@ -616,7 +642,7 @@ public sealed partial class MainWindow
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(new FontIcon { Glyph = local ? "\uE7F8" : "\uE7F4", FontSize = 28, Foreground = Tint(computer.Mark) is Color tint ? new SolidColorBrush(tint) : Brush("TextFillColorSecondaryBrush") });
+        header.Children.Add(new FontIcon { Glyph = local ? "\uE7F8" : "\uE7F4", FontSize = 28, Foreground = Brush("TextFillColorSecondaryBrush") });
         var title = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         title.Children.Add(new TextBlock { Text = name, FontSize = 20, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
         var status = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
