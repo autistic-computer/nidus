@@ -373,7 +373,13 @@ impl Shared {
         // has its old tile.
         if let (None, Some(spot)) = (&namesake, spot)
             && let Err(error) = self
-                .move_tile(&format!("peer:{name}"), spot.x, spot.y, spot.tolerance)
+                .move_tile(
+                    &format!("peer:{name}"),
+                    spot.x,
+                    spot.y,
+                    spot.tolerance,
+                    true,
+                )
                 .await
         {
             tracing::debug!(%error, peer = %name, "placed beside this computer instead");

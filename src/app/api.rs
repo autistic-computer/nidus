@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::layout_model::Layout;
+use super::layout_model::{Layout, Seam};
 use crate::{
     config::PeerConfig, core::KeyboardMode, hello::Notice, neighbors::Unplaced,
     pairing_window::View as PairingWindow,
@@ -25,6 +25,8 @@ pub(super) struct Snapshot<P> {
     pub pairing_window: PairingWindow,
     /// None while there is no layout to arrange.
     pub layout: Option<Layout>,
+    /// Where the layout's screens touch, for the board to draw.
+    pub seams: Vec<Seam>,
     /// This computer's key mark, drawn on its own tile. None until known.
     pub own_mark: Option<String>,
     /// Computers found but not on the board, for the shelf under it.
@@ -223,11 +225,26 @@ pub(crate) enum Request {
     Forget {
         name: String,
     },
+    /// Puts screen `id` at `x`, `y`, or against an edge within `tolerance`
+    /// of there. With `computer`, every screen of its computer moves alike.
     MoveTile {
         id: String,
         x: i32,
         y: i32,
         tolerance: u32,
+        #[serde(default)]
+        computer: bool,
+    },
+    /// Answers where a [`Request::MoveTile`] would land, and the seams it
+    /// would make, without moving anything: a
+    /// [`super::layout_model::Preview`], or null where it cannot go.
+    Preview {
+        id: String,
+        x: i32,
+        y: i32,
+        tolerance: u32,
+        #[serde(default)]
+        computer: bool,
     },
     /// Drops a computer from the shelf onto the board, which trusts it. `id`
     /// is its shelf tile's `key:<fingerprint>`; the point is where it landed.
@@ -359,6 +376,20 @@ mod tests {
             Request::MoveTile { .. }
         ));
         assert!(matches!(
+            parse(
+                r#"{"command":"move_tile","id":"local","x":1,"y":2,"tolerance":8,"computer":true}"#
+            )
+            .unwrap(),
+            Request::MoveTile { computer: true, .. }
+        ));
+        assert!(matches!(
+            parse(r#"{"command":"preview","id":"local","x":1,"y":2,"tolerance":8}"#).unwrap(),
+            Request::Preview {
+                computer: false,
+                ..
+            }
+        ));
+        assert!(matches!(
             parse(r#"{"command":"set_clipboard","share":true}"#).unwrap(),
             Request::SetClipboard { share: true }
         ));
@@ -398,6 +429,7 @@ mod tests {
             health: Vec::new(),
             pairing_window: PairingWindow::default(),
             layout: None,
+            seams: Vec::new(),
             own_mark: None,
             unplaced: Vec::new(),
             peers: Vec::new(),
@@ -417,6 +449,7 @@ mod tests {
             "health",
             "pairing_window",
             "layout",
+            "seams",
             "own_mark",
             "unplaced",
             "peers",

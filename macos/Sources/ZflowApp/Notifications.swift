@@ -71,7 +71,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
       if forget {
         model.send(CoreRequest(command: "forget", name: name))
       } else {
-        model.show(.computer(name))
+        model.show(computer: name)
       }
     }
   }

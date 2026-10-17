@@ -56,15 +56,21 @@ const peer = (name, fields = {}) => ({name, state: 'paired', detail: 'Paired', a
 const found = (id, name, state, fields = {}) => ({id, name, os: null, mark: null, version: null, state, via: 'mdns', ...fields});
 const closedWindow = {state: 'never', seconds_left: null, holding: null, reason: null};
 const ready = {state: 'ready', peer: null, title: 'Ready'};
-// src/app/layout_model.rs Layout: this computer's view, where its own tile has no peer.
+// src/app/layout_model.rs Layout: this computer's view, where its own screens
+// have no peer. This one has a second screen on its left.
+const dell = {id: 'dell', name: 'Dell U2720Q', active: true, bounds: {x: -3840, y: 0, width: 3840, height: 2160}, width_mm: 597, height_mm: 336};
 const layout = {monitors: [
     {id: 'local', label: 'This computer', x: 0, y: 0, width: 2560, height: 1440},
+    {id: 'local/dell', label: 'Dell U2720Q', display: dell, x: -2400, y: 0, width: 2400, height: 1350},
     {id: 'peer:MacBook', label: 'MacBook', peer: 'MacBook', x: 2560, y: 0, width: 1920, height: 1080},
 ]};
+// src/app/layout_model.rs Seam: where the screens touch.
+const crossing = {a: 'local', b: 'peer:MacBook', vertical: true, at: 2560, start: 0, end: 1080, same_computer: false};
+const joint = {a: 'local/dell', b: 'local', vertical: true, at: 0, start: 0, end: 1350, same_computer: true};
 const snapshot = {
-    api: 5, status: ready, sharing: true,
+    api: 6, status: ready, sharing: true,
     health: [{id: 'service', level: 'ok', title: 'Background service', detail: 'Running', action: null}],
-    pairing_window: closedWindow, layout, own_mark: 'a1b2c3', unplaced: [],
+    pairing_window: closedWindow, layout, seams: [joint, crossing], own_mark: 'a1b2c3', unplaced: [],
     peers: [peer('MacBook')], pause_at_edges: false,
     shortcuts: [{title: 'Return input to this computer', keys: 'Ctrl+Super+Backspace'}],
     share_clipboard: false, autostart: true, config_path: '/etc/zflow/zflow.toml', notices: [], platform: null,
@@ -79,6 +85,7 @@ let scrollCalls = 0;
 let clipboardCalls = 0;
 let logsOpened = 0;
 const moves = [];
+const previews = [];
 const places = [];
 const added = [];
 const forgotten = [];
@@ -105,6 +112,7 @@ const object = Gio.DBusExportedObject.wrapJSObject(xml, {
         case 'forget':
             forgotten.push(request.name);
             snapshot.peers = snapshot.peers.filter(peer => peer.name !== request.name);
+            layout.monitors = layout.monitors.filter(monitor => monitor.peer !== request.name);
             break;
         case 'place': {
             places.push(request);
@@ -136,9 +144,20 @@ const object = Gio.DBusExportedObject.wrapJSObject(xml, {
         }
         case 'move_tile': {
             moves.push(request);
-            if (failMove) throw new Error('Computers cannot overlap');
-            Object.assign(layout.monitors.find(monitor => monitor.id === request.id), {x: request.x, y: request.y});
+            if (failMove) throw new Error('Screens cannot overlap');
+            // A computer's screens move alike.
+            const anchor = layout.monitors.find(monitor => monitor.id === request.id);
+            const [dx, dy] = [request.x - anchor.x, request.y - anchor.y];
+            for (const monitor of layout.monitors) {
+                if (request.computer ? monitor.peer === anchor.peer : monitor === anchor) Object.assign(monitor, {x: monitor.x + dx, y: monitor.y + dy});
+            }
             break;
+        }
+        // Lands level with where the screen is, or nowhere while moves fail.
+        case 'preview': {
+            previews.push(request);
+            const anchor = layout.monitors.find(monitor => monitor.id === request.id);
+            return JSON.stringify(failMove ? null : {x: request.x, y: anchor.y, seams: [crossing]});
         }
         default: throw new Error(`Unexpected request ${request.command}`);
         }
@@ -168,36 +187,55 @@ app.connect('activate', () => {
         assert(settings._healthRows[0].title === 'Background service' && settings._health.visible, 'checks that pass stay listed');
         assert(settings._shortcutRows[0].title === 'Return input to this computer', 'shortcuts are listed');
         assert(settings._help.description.includes('/etc/zflow/zflow.toml'), 'the advanced settings file is named');
-        const firstRow = settings._peerRows[0];
+        // Under the arrangement, every computer, in its order.
+        const firstRow = settings._inspectorRows[0];
         await refresh();
-        assert(settings._peerRows[0] === firstRow, 'refresh must preserve keyboard focus');
-        // The layout: tiles for both computers, with this one marked.
-        assert(settings._layout.visible && settings._computers.description.startsWith('Arrange individual'), 'a layout replaces the hint about the other computer');
-        layout.monitors.push({id: 'local/disabled', label: 'Disabled Dell', display: {active: false}, x: 0, y: 0, width: 1920, height: 1080});
+        assert(settings._inspectorRows[0] === firstRow, 'refresh must preserve keyboard focus');
+        assert(settings._inspectorRows.map(row => row.title).join() === 'This Computer,MacBook', 'the computers are listed under the arrangement');
+        assert(settings._inspectorRows[0].subtitle === '2 screens' && settings._inspectorRows[1].subtitle === '1 screen · Not connected', `each row says its screens and state: ${settings._inspectorRows[1].subtitle}`);
+        // The layout: each computer's screens as an island, with its name above.
+        assert(settings._layout.visible && settings._computers.description.startsWith('Drag a computer'), 'a layout replaces the hint about the other computer');
+        layout.monitors.push({id: 'local/disabled', label: 'Disabled Dell', display: {...dell, id: 'disabled', active: false}, x: 0, y: 0, width: 1920, height: 1080});
         await refresh();
         assert(!settings._tiles.has('local/disabled'), 'inactive displays stay off the canvas');
         layout.monitors.pop();
+        await refresh();
         const mac = settings._tiles.get('peer:MacBook').button;
         const local = settings._tiles.get('local').button;
-        assert(settings._tiles.get('peer:MacBook').label.label === 'MacBook' && mac.tooltip_text === 'MacBook', 'tiles are labelled');
-        assert(local.has_css_class('suggested-action') && !mac.has_css_class('suggested-action'), 'this computer is marked');
-        // Every tile shows its key's mark: four colors, one per hex digit, as on the Mac.
+        const here = settings._islands.get('local');
+        const macbook = settings._islands.get('peer:MacBook');
+        assert([...settings._islands.keys()].join() === 'local,peer:MacBook' && here.tiles.length === 2, 'this computer’s screens are one island');
+        assert(here.name.label === 'This Computer' && macbook.name.label === 'MacBook' && macbook.chip.tooltip_text === 'MacBook · Not connected' && !here.dot.visible, 'each island is named, a peer with its state');
+        assert(settings._tiles.get('peer:MacBook').label.label === 'MacBook' && mac.tooltip_text === 'MacBook', 'screens are labelled');
+        assert(settings._tiles.get('local/dell').label.label === 'Dell U2720Q', 'a screen shows its display’s name');
+        assert(mac.has_css_class('zf-away') && !local.has_css_class('zf-away') && !local.has_css_class('suggested-action'), 'a computer that is not connected fades');
+        // A key's mark is four colors, one per hex digit, as on the Mac. The
+        // inspector shows it; the board shows only names and states.
         assert(markColors('a1b2c3').join() === '2,1,3,2' && markColors('zz').length === 0, 'marks read the seed');
-        assert(drawnMark(settings._tiles.get('local').mark) === markColors('a1b2c3').join(), 'this computer shows its own mark');
-        assert(drawnMark(settings._tiles.get('peer:MacBook').mark) === markColors('3d4f00').join(), 'a peer shows its mark');
+        assert(here.chip.get_child().get_first_child() === here.name && here.name.get_next_sibling() === here.dot && !here.dot.get_next_sibling(), 'a name chip holds its name and state only');
+        const [left, right] = [settings._tiles.get('local'), settings._tiles.get('peer:MacBook')];
+        // Only the hovered or selected computer names its screens.
+        const dellName = settings._tiles.get('local/dell').label;
+        assert(settings._selection === null && !dellName.visible, 'screens are unnamed until hovered');
+        settings._hover(left.x + 1, left.y + 1);
+        assert(settings._hovered === 'local' && dellName.visible && !settings._tiles.get('peer:MacBook').label.visible, 'hovering a computer names its screens');
+        settings._hover(null, null);
+        assert(settings._hovered === null && !dellName.visible, 'leaving the board hides the names');
+        assert(left.x + left.size[0] === right.x && settings._shownSeams().length === 2, 'touching screens stay touching, with the seams drawn');
         await refresh();
         assert(settings._tiles.get('peer:MacBook').button === mac, 'an unchanged snapshot keeps the tiles');
-        // An arrow key moves the focused tile 100 units and snaps within 150, as on the Mac.
+        // An arrow key moves the focused screen's computer 100 units and snaps
+        // within a little less, as on the Mac.
         mac.grab_focus();
         assert(controller(mac, Gtk.EventControllerKey).emit('key-pressed', Gdk.KEY_Right, 0, 0), 'the tile takes arrow keys');
         await waitFor(() => moves.length === 1 && idle());
-        assert(JSON.stringify(moves[0]) === JSON.stringify({command: 'move_tile', id: 'peer:MacBook', x: 2660, y: 0, tolerance: 150}), `the key sends one move: ${JSON.stringify(moves)}`);
+        assert(JSON.stringify(moves[0]) === JSON.stringify({command: 'move_tile', id: 'peer:MacBook', x: 2660, y: 0, tolerance: 99, computer: true}), `the key sends one move: ${JSON.stringify(moves)}`);
         await waitFor(() => settings._tiles.get('peer:MacBook').monitor.x === 2660);
         assert(settings._tiles.get('peer:MacBook').button === mac && window.get_focus() === mac, 'a moved tile keeps focus');
         // A drag sends where the tile was dropped, in layout units.
         const drag = controller(settings._board, Gtk.GestureDrag);
-        const press = () => {
-            const {x, y} = settings._tiles.get('peer:MacBook');
+        const press = (id = 'peer:MacBook') => {
+            const {x, y} = settings._tiles.get(id);
             drag.emit('drag-begin', x + 5, y + 5);
         };
         press();
@@ -207,28 +245,60 @@ app.connect('activate', () => {
         drag.emit('drag-begin', 1, 1);
         drag.emit('drag-update', 20, 20);
         drag.emit('drag-end', 20, 20);
-        assert(moves.length === 1 && !settings._busy, 'a click or an empty drag sends nothing');
+        assert(moves.length === 1 && previews.length === 0 && !settings._busy, 'a click or an empty drag sends nothing');
+        // Where the tile shows now; get_child_position gives the last allocation instead.
+        const shown = () => settings._board.get_child_transform(mac).to_translate().join();
         const scale = settings._scale;
         press();
         drag.emit('drag-update', -30, 12);
+        const wanted = {id: 'peer:MacBook', x: 2660 + Math.round(-30 / scale), y: Math.round(12 / scale), tolerance: Math.round(14 / scale), computer: true};
+        // The engine says where it would land, level here, and it shows there.
+        await waitFor(() => settings._drag?.landing);
+        assert(JSON.stringify(previews[0]) === JSON.stringify({command: 'preview', ...wanted}), `a drag asks where it lands: ${JSON.stringify(previews)}`);
+        assert(shown().endsWith(`,${settings._tiles.get('peer:MacBook').y}`) && settings._shownSeams().length === 1, `the screen shows where it lands: ${shown()}`);
         drag.emit('drag-end', -30, 12);
         await waitFor(() => moves.length >= 2 && idle());
-        const dropped = {command: 'move_tile', id: 'peer:MacBook', x: 2660 + Math.round(-30 / scale), y: Math.round(12 / scale), tolerance: Math.round(14 / scale)};
+        const dropped = {command: 'move_tile', ...wanted};
         assert(moves.length === 2 && JSON.stringify(moves[1]) === JSON.stringify(dropped), `a drag sends one move: ${JSON.stringify(moves)}`);
         // A refused move puts the tile back. Times out if it stays where it was dropped.
-        await waitFor(() => settings._tiles.get('peer:MacBook').monitor.x === dropped.x);
+        await waitFor(() => settings._tiles.get('peer:MacBook').monitor.x === dropped.x && !settings._drag);
         failMove = true;
         const tile = settings._tiles.get('peer:MacBook');
         const home = [tile.x, tile.y].join();
-        // Where the tile shows now; get_child_position gives the last allocation instead.
-        const shown = () => settings._board.get_child_transform(mac).to_translate().join();
         press();
         drag.emit('drag-update', -40, 0);
         assert(shown() !== home, 'the tile follows the drag');
+        await waitFor(() => mac.has_css_class('zf-refused'));
         drag.emit('drag-end', -40, 0);
         await waitFor(() => moves.length === 3 && idle() && shown() === home);
-        assert(settings._error.subtitle === 'Computers cannot overlap' && tile.monitor.x === dropped.x, 'the refusal is shown and the layout stays');
+        assert(settings._error.subtitle === 'Screens cannot overlap' && tile.monitor.x === dropped.x && !mac.has_css_class('zf-refused'), 'the refusal is shown and the layout stays');
         failMove = false;
+        // Double-clicking a computer moves its screens one by one, until Done.
+        const click = id => {
+            press(id);
+            drag.emit('drag-end', 0, 0);
+        };
+        click('local/dell');
+        click('local/dell');
+        assert(settings._adjusting === 'local' && settings._selection === 'local' && here.done.visible && settings._adjustRow?.active, 'a double-click adjusts the computer’s screens');
+        press('local/dell');
+        drag.emit('drag-update', 0, -12);
+        drag.emit('drag-end', 0, -12);
+        await waitFor(() => moves.length === 4 && idle());
+        assert(moves[3].id === 'local/dell' && moves[3].computer === false && settings._tiles.get('local').monitor.y === 0, `an adjusted screen moves alone: ${JSON.stringify(moves[3])}`);
+        here.done.emit('clicked');
+        assert(settings._adjusting === null && !here.done.visible && settings._selection === 'local' && !settings._adjustRow.active, 'Done moves the screens together again');
+        const screens = settings._filled.get(settings._screens);
+        assert(screens.map(row => row.title).join() === 'This computer,Dell U2720Q' && screens[1].subtitle === '27″ · 3840 × 2160', `the inspector lists its screens: ${screens[1].subtitle}`);
+        assert(controller(here.chip, Gtk.EventControllerKey).emit('key-pressed', Gdk.KEY_Escape, 0, 0) && settings._selection === null, 'Escape lets go of the computer');
+
+        // Selecting one shows its crossings, screens and settings.
+        settings._inspectorRows[1].emit('activated');
+        assert(settings._selection === 'peer:MacBook' && macbook.chip.has_css_class('zf-selected') && window.get_focus() === macbook.chip, 'a row selects its computer');
+        assert(settings._inspector.title === 'MacBook' && settings._inspector.description === 'Paired' && settings._peerSettings.visible, 'the inspector shows the computer');
+        assert(drawnMark(settings._inspector.header_suffix.get_first_child()) === markColors('3d4f00').join(), 'the inspector shows its mark');
+        const crossings = settings._filled.get(settings._crossings);
+        assert(crossings.length === 1 && crossings[0].title === 'This Computer' && crossings[0].subtitle === 'Left edge of MacBook → This computer', `its crossing is listed: ${crossings[0]?.subtitle}`);
         const keyboard = settings._keyboards.get('MacBook');
         assert(keyboard.selected === 0, 'a peer without a keyboard mode shows standard keys');
         assert(keyboard.subtitle.includes('next time it takes control'), 'the dropdown says when a change applies');
@@ -242,7 +312,7 @@ app.connect('activate', () => {
         find('MacBook').keyboard = 'pc_positions';
         await waitFor(() => keyboard.selected === 1);
         assert(keyboardCalls === 2, 'a snapshot moves the dropdown without sending a request');
-        assert(settings._peerRows[0] === firstRow && settings._keyboards.get('MacBook') === keyboard, 'a keyboard change keeps the row');
+        assert(settings._keyboards.get('MacBook') === keyboard, 'a keyboard change keeps the row');
         const control = settings._controls.get('MacBook');
         assert(control.active, 'a paired computer can control this one');
         control.active = false;
@@ -251,7 +321,7 @@ app.connect('activate', () => {
         find('MacBook').allow_control = true;
         await waitFor(() => control.active);
         assert(controlCalls === 1, 'a snapshot moves the switch without sending a request');
-        assert(settings._peerRows[0] === firstRow, 'a permission change keeps the row');
+        assert(settings._controls.get('MacBook') === control, 'a permission change keeps the row');
         assert(!settings._pause.active && settings._pause.sensitive, 'crossings do not pause by default');
         settings._pause.active = true;
         await waitFor(() => snapshot.pause_at_edges && idle() && settings._pause.sensitive);
@@ -274,13 +344,12 @@ app.connect('activate', () => {
         assert(!scroll.active, 'scrolling starts the right way round');
         scroll.active = true;
         await waitFor(() => find('MacBook').reverse_scroll && idle() && scroll.sensitive);
-        assert(scrollCalls === 1 && settings._peerRows[0] === firstRow, 'reversing scroll sends set_peer once and keeps the row');
-        firstRow.expanded = true;
+        assert(scrollCalls === 1 && settings._scrolls.get('MacBook') === scroll, 'reversing scroll sends set_peer once and keeps the row');
         Object.assign(find('MacBook'), {state: 'controlled_from_here', detail: 'Controlled from here'});
-        await waitFor(() => settings._peerRows[0] !== firstRow);
-        assert(settings._peerRows[0].expanded, 'a rebuilt row stays open');
-        assert(settings._peerRows[0].subtitle === 'Controlled from here', 'the row shows the state the agent sends');
+        await waitFor(() => settings._inspector.description === 'Controlled from here');
+        assert(macbook.chip.tooltip_text === 'MacBook · Controlled from here' && macbook.dot.has_css_class('zf-dot-accent') && !mac.has_css_class('zf-away'), 'the island shows the state the agent sends');
         Object.assign(find('MacBook'), {state: 'connected', detail: 'Connected'});
+        settings._select(null);
 
         // Computers found on the network wait on a shelf under the board.
         assert(!settings._shelf.visible && settings._found.size === 0, 'no shelf while nothing is found');
@@ -321,7 +390,7 @@ app.connect('activate', () => {
         const placed = {command: 'place', id: 'key:aa', x: landed[0], y: landed[1], tolerance: Math.round(14 / unit)};
         assert(JSON.stringify(places[0]) === JSON.stringify(placed), `a drop sends one place: ${JSON.stringify(places)}`);
         await waitFor(() => !settings._found.has('key:aa') && settings._tiles.has('peer:fedora'));
-        assert(drawnMark(settings._tiles.get('peer:fedora').mark) === markColors('1abc9e').join(), 'a placed computer keeps its mark');
+        assert(settings._computerList().find(({owner}) => owner === 'peer:fedora')?.seed === '1abc9e', 'a placed computer keeps its mark');
         // With the keyboard, Enter puts one beside this computer.
         const laptop = settings._found.get('key:bb');
         assert(controller(laptop.button, Gtk.EventControllerKey).emit('key-pressed', Gdk.KEY_Return, 0, 0), 'a found tile takes Enter');
@@ -345,9 +414,10 @@ app.connect('activate', () => {
         await refresh();
         assert(!settings._joinedRow.visible, 'a dismissed notice stays away');
         // Forgetting asks nothing: the computer goes back on the shelf.
-        descendant(settings._computers, widget => widget instanceof Gtk.Button && widget.tooltip_text === 'Forget laptop').emit('clicked');
+        settings._select('peer:laptop');
+        descendant(settings._inspector, widget => widget instanceof Gtk.Button && widget.tooltip_text === 'Forget laptop').emit('clicked');
         await waitFor(() => forgotten.includes('laptop') && idle());
-        assert(!find('laptop'), 'forget needs no confirmation');
+        assert(!find('laptop') && settings._selection === null && !settings._islands.has('peer:laptop'), 'forget needs no confirmation and lets go of the computer');
 
         // A fresh install's window shows how long it takes a computer by itself.
         snapshot.pairing_window = {state: 'open', seconds_left: 530, holding: null, reason: null};
@@ -392,7 +462,7 @@ app.connect('activate', () => {
         freshWindow.present();
         await waitFor(() => fresh._sharing.sensitive);
         // A fresh install has nothing to show but the shelf and its window.
-        assert(fresh._peerRows[0].title === 'No computers added yet', 'a fresh install starts with no computers');
+        assert(fresh._inspectorRows.some(row => row.title === 'No computers added yet'), 'a fresh install starts with no computers');
         fresh.destroy();
         freshWindow.close();
         // Hold an older reply while the fixture goes offline. An explicit refresh
@@ -419,6 +489,7 @@ app.connect('activate', () => {
         await refresh();
         assert(!settings._sharing.sensitive && !settings._addButton.sensitive && !settings._clipboard.sensitive, 'offline controls disabled');
         assert(!settings._layout.visible && settings._computers.description === 'Arrange computers in zflow on the other computer.', 'without a layout, the hint comes back');
+        assert(settings._islands.size === 0, 'without a layout, no islands show');
         assert(statusText(snapshot) === 'Needs attention', 'offline status');
         assert(settings._healthRows[0].subtitle === 'Start the zflow system service', 'the check says what failed');
         assert(!settings._shortcuts.visible, 'no shortcuts without the service');
@@ -430,7 +501,7 @@ app.connect('activate', () => {
         const before = callCount;
         await settings.client.refresh();
         assert(callCount === before, 'closed window stops polling');
-        print('GTK settings: status, checks, shortcuts, focus, layout moves, marks, the shelf, placing, joined notices, the pairing window, add by address, keyboard mode, control permission, reverse scrolling, pause at edges, share clipboard, logs, open rows, pause, rollback, login, first run, forget, offline and cleanup passed');
+        print('GTK settings: status, checks, shortcuts, focus, islands, seams, previews, adjusting, the inspector, marks, the shelf, placing, joined notices, the pairing window, add by address, keyboard mode, control permission, reverse scrolling, pause at edges, share clipboard, logs, pause, rollback, login, first run, forget, offline and cleanup passed');
     })().catch(error => { failure = error; printerr(error.stack); }).finally(() => {
         settings.destroy();
         object.unexport();

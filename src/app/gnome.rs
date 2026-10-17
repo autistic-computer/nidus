@@ -2,6 +2,7 @@
 use super::{
     api::{self, Action, Health, Level, Peer, PeerState, Request, Shortcut, Status},
     desktop::DesktopReceiver,
+    layout_model::Layout,
 };
 use anyhow::{Context, Result, bail, ensure};
 use std::{
@@ -13,7 +14,7 @@ pub const BUS: &str = "io.zflow.Desktop";
 const PATH: &str = "/io/zflow/Desktop";
 /// packaging/gnome-extension/client.js mirrors this. Raise both when the agent
 /// and the extension stop understanding each other.
-pub(super) const API: u32 = 5;
+pub(super) const API: u32 = 6;
 const AUTOSTART: &str = "autostart/io.zflow.desktop-agent.desktop";
 /// Where the package keeps the service's settings.
 const CONFIG_PATH: &str = "/etc/zflow/zflow.toml";
@@ -74,14 +75,37 @@ impl Service {
                 x,
                 y,
                 tolerance,
+                computer,
             } => {
                 crate::peer_view::request(&DaemonRequest::MoveTile {
                     id,
                     x,
                     y,
                     tolerance,
+                    computer,
                 })
                 .await?;
+            }
+            Request::Preview {
+                id,
+                x,
+                y,
+                tolerance,
+                computer,
+            } => {
+                let request = DaemonRequest::Preview {
+                    id,
+                    x,
+                    y,
+                    tolerance,
+                    computer,
+                };
+                return match crate::peer_view::request(&request).await? {
+                    crate::peer_view::DesktopReply::Preview { preview } => {
+                        Ok(serde_json::to_value(preview)?)
+                    }
+                    _ => bail!("Unexpected response; update the zflow service"),
+                };
             }
             Request::SetAutostart { enabled } => set_autostart(enabled)?,
             Request::SetSwitching { pause_at_edges } => {
@@ -213,6 +237,7 @@ fn snapshot(
             .as_ref()
             .map(|daemon| daemon.pairing_window.clone())
             .unwrap_or_default(),
+        seams: layout.as_ref().map(Layout::seams).unwrap_or_default(),
         layout,
         own_mark: daemon.as_ref().and_then(|daemon| daemon.own_mark.clone()),
         unplaced: daemon

@@ -20,7 +20,6 @@ public sealed partial class MainWindow : Window
     private JsonObject? state;
     private bool refreshing, applying, dragging, quitting;
     private string previousView = "";
-    private double scale = 0.1;
     public MainWindow()
     {
         InitializeComponent();
@@ -95,109 +94,16 @@ public sealed partial class MainWindow : Window
             int connected = next["peers"]?.AsArray().Count(p => Flag(p?["connected"])) ?? 0;
             ConnectionSummary.Text = sending != "" ? $"Controlling {sending}" : receiving != "" ? $"Controlled by {receiving}" : !Flag(next["available"]) ? "Waiting for an unlocked Windows desktop" : !SharingSwitch.IsOn ? "Sharing paused · your input stays here" : $"Ready to share · {connected} computer{(connected == 1 ? "" : "s")} connected";
             NetworkDetails.Text = "Listening on " + Text(next["listen"]) + "\n" + string.Join("\n", next["addresses"]?.AsArray().Select(a => Text(a)) ?? []);
-            string view = new JsonObject { ["peers"] = next["peers"]?.DeepClone(), ["nearby"] = next["nearby"]?.DeepClone(), ["layout"] = next["layout"]?.DeepClone() }.ToJsonString();
-            if (view != previousView && !dragging) { previousView = view; DrawArrangement(); DrawPeers(); DrawNearby(); }
+            // What the arrangement and the computers under it show.
+            var shown = new JsonObject();
+            foreach (string key in new[] { "peers", "nearby", "layout", "seams", "sending", "receiving", "mark", "sharing" }) shown[key] = next[key]?.DeepClone();
+            string view = shown.ToJsonString();
+            if (view != previousView && !dragging) { previousView = view; DrawArrangement(); DrawInspector(); DrawNearby(); }
             if (next["notice"] is JsonValue notice) { MessageBar.Title = "Connection notice"; MessageBar.Message = notice.GetValue<string>(); MessageBar.Visibility = Visibility.Visible; MessageBar.IsOpen = true; }
         }
         finally { applying = wasApplying; }
     }
-    private void DrawArrangement()
-    {
-        if (dragging || Arrangement.ActualWidth <= 64 || state?["layout"]?["monitors"] is not JsonArray allMonitors) return;
-        Arrangement.Children.Clear();
-        var monitors = allMonitors.Where(m => m?["display"]?["active"] is null || Flag(m["display"]!["active"])).ToArray();
-        if (monitors.Length == 0) return;
-        double width = Arrangement.ActualWidth, height = Arrangement.Height;
-        int left = monitors.Min(m => Number(m?["x"])), top = monitors.Min(m => Number(m?["y"]));
-        int right = monitors.Max(m => Number(m?["x"]) + Number(m?["width"])), bottom = monitors.Max(m => Number(m?["y"]) + Number(m?["height"]));
-        scale = Math.Min((width - 64) / Math.Max(right - left, 1), (height - 64) / Math.Max(bottom - top, 1));
-        double ox = (width - (right - left) * scale) / 2, oy = (height - (bottom - top) * scale) / 2;
-        foreach (var node in monitors)
-        {
-            if (node is not JsonObject m) continue;
-            bool local = m["peer"] is null;
-            double tileWidth = Number(m["width"]) * scale, tileHeight = Number(m["height"]) * scale;
-            var stack = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
-            if (tileHeight >= 80 && tileWidth >= 44) stack.Children.Add(new FontIcon { Glyph = local ? "\uE7F8" : "\uE7F4", FontSize = 22 });
-            if (tileHeight >= 24 && tileWidth >= 30) stack.Children.Add(new TextBlock { Text = Text(m["display"]?["name"], Text(m["label"])), FontSize = 13, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = tileWidth - 20 });
-            if (m["display"] is not null && tileHeight >= 66 && tileWidth >= 30) stack.Children.Add(new TextBlock { Text = local ? "This PC" : Text(m["peer"]), FontSize = 12, Foreground = Brush("TextFillColorSecondaryBrush"), HorizontalAlignment = HorizontalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = tileWidth - 20 });
-            // Preserve physical proportions and touching edges even when a screen is too small for labels.
-            var tile = new Border { Width = tileWidth, Height = tileHeight, CornerRadius = new CornerRadius(7), BorderThickness = new Thickness(local ? 2 : 1), BorderBrush = Brush(local ? "AccentFillColorDefaultBrush" : "CardStrokeColorDefaultBrush"), Background = Brush("CardBackgroundFillColorDefaultBrush"), Child = stack };
-            Canvas.SetLeft(tile, ox + (Number(m["x"]) - left) * scale); Canvas.SetTop(tile, oy + (Number(m["y"]) - top) * scale);
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(tile, $"{Text(m["label"])} screen. Drag to arrange.");
-            ToolTipService.SetToolTip(tile, Text(m["label"]));
-            AttachDrag(tile, m);
-            Arrangement.Children.Add(tile);
-        }
-    }
     private static Brush Brush(string key) => (Brush)Application.Current.Resources[key];
-    private void AttachDrag(Border tile, JsonObject monitor)
-    {
-        Point start = default; double x = 0, y = 0; int originalX = 0, originalY = 0;
-        tile.PointerPressed += (_, e) =>
-        {
-            if (applying || !e.GetCurrentPoint(tile).Properties.IsLeftButtonPressed) return;
-            start = e.GetCurrentPoint(Arrangement).Position; x = Canvas.GetLeft(tile); y = Canvas.GetTop(tile);
-            originalX = Number(monitor["x"]); originalY = Number(monitor["y"]); dragging = tile.CapturePointer(e.Pointer); e.Handled = true;
-        };
-        tile.PointerMoved += (_, e) => { if (!dragging || tile.PointerCaptures.Count == 0) return; var p = e.GetCurrentPoint(Arrangement).Position; Canvas.SetLeft(tile, x + p.X - start.X); Canvas.SetTop(tile, y + p.Y - start.Y); };
-        tile.PointerReleased += async (_, e) =>
-        {
-            if (!dragging || tile.PointerCaptures.Count == 0 || state?["layout"] is not JsonObject layout) return;
-            var copy = layout.DeepClone().AsObject(); var array = copy["monitors"]!.AsArray();
-            var moving = array.First(m => Text(m?["id"]) == Text(monitor["id"]))!.AsObject();
-            int newX = originalX + (int)Math.Round((Canvas.GetLeft(tile) - x) / scale), newY = originalY + (int)Math.Round((Canvas.GetTop(tile) - y) / scale);
-            // Snap the nearest pair of parallel edges, preserving free movement along the other axis.
-            double best = 28 / scale; int snappedX = newX, snappedY = newY;
-            foreach (var other in array.Where(n => Text(n?["id"]) != Text(moving["id"]) && (n?["display"]?["active"] is null || Flag(n["display"]!["active"]))))
-            {
-                int ax = Number(other?["x"]), ay = Number(other?["y"]), aw = Number(other?["width"]), ah = Number(other?["height"]), mw = Number(moving["width"]), mh = Number(moving["height"]);
-                if (newY < ay + ah && newY + mh > ay) foreach (int target in new[] { ax - mw, ax + aw }) if (Math.Abs(newX - target) < best) { best = Math.Abs(newX - target); snappedX = target; snappedY = newY; }
-                if (newX < ax + aw && newX + mw > ax) foreach (int target in new[] { ay - mh, ay + ah }) if (Math.Abs(newY - target) < best) { best = Math.Abs(newY - target); snappedX = newX; snappedY = target; }
-            }
-            moving["x"] = snappedX; moving["y"] = snappedY;
-            dragging = false; tile.ReleasePointerCaptures();
-            await SendAsync(new { command = "arrange", layout = copy, version = state["layout_version"]!.GetValue<ulong>() }); previousView = ""; await RefreshAsync();
-        };
-        tile.PointerCaptureLost += (_, _) => { if (dragging) { dragging = false; DrawArrangement(); } };
-    }
-    private void DrawPeers()
-    {
-        var expanded = PeersPanel.Children.OfType<SettingsExpander>().Where(card => card.IsExpanded).Select(card => card.Tag as string).ToHashSet();
-        PeersPanel.Children.Clear();
-        if (state?["peers"] is not JsonArray peers || peers.Count == 0) { PeersPanel.Children.Add(new SettingsCard { Header = "No computers added", Description = "Find a nearby computer or add one by its Tailscale name or address.", HeaderIcon = new FontIcon { Glyph = "\uE7F4" } }); return; }
-        foreach (var peer in peers)
-        {
-            string name = Text(peer?["name"]); bool connected = Flag(peer?["connected"]);
-            var card = new SettingsExpander
-            {
-                Header = name, Tag = name, IsExpanded = expanded.Contains(name),
-                Description = connected ? "Connected · Mark " + Text(peer?["mark"]) : Text(peer?["status"], "Connecting…"),
-                HeaderIcon = new FontIcon { Glyph = "\uE7F4" }
-            };
-            var control = new Button { Content = "Control", IsEnabled = connected };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(control, "Control " + name);
-            control.Click += async (_, _) => await SendAsync(new { command = "activate", peer = name });
-            card.Content = control;
-            var mode = new ComboBox { MinWidth = 170, ItemsSource = new[] { "Standard keys", "PC key positions", "Mac shortcuts" }, SelectedIndex = Text(peer?["keyboard"]) switch { "pc_positions" => 1, "mac" => 2, _ => 0 } };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(mode, "Keyboard mode for " + name);
-            mode.SelectionChanged += async (_, _) => { if (!applying && mode.SelectedIndex >= 0) await SendAsync(new { command = "keyboard", peer = name, mode = new[] { "standard", "pc_positions", "mac" }[mode.SelectedIndex] }); };
-            card.Items.Add(new SettingsCard { Header = "Keyboard mode", Description = "How keys from this computer work here.", Content = mode });
-            var scroll = new ToggleSwitch { IsOn = Flag(peer?["reverse_scroll"]) };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(scroll, "Reverse scrolling for " + name);
-            scroll.Toggled += async (_, _) => { if (!applying) await SendAsync(new { command = "reverse_scroll", peer = name, enabled = scroll.IsOn }); };
-            card.Items.Add(new SettingsCard { Header = "Reverse scrolling", Content = scroll });
-            var forget = new Button { Content = "Remove" };
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(forget, "Remove " + name);
-            forget.Click += async (_, _) =>
-            {
-                var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "Remove " + name + "?", Content = "You’ll need to add this computer again to share input.", PrimaryButtonText = "Remove", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Close };
-                if (await dialog.ShowAsync() == ContentDialogResult.Primary) await SendAsync(new { command = "forget", peer = name });
-            };
-            card.Items.Add(new SettingsCard { Header = "Remove computer", Content = forget });
-            PeersPanel.Children.Add(card);
-        }
-    }
     private void DrawNearby()
     {
         NearbyPanel.Children.Clear();

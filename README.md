@@ -8,8 +8,11 @@ is 0.6.1; update all participating computers together. Its input protocol,
 unchanged since 0.6.0, lets the pointer walk from one paired computer to the
 next and cannot connect to 0.5.0 or older installations.
 
-The arrangement shows each active monitor separately, with its display name
-and computer. Drag individual monitors to match your desk. Sizes use physical
+The arrangement shows each computer's active monitors together as an island,
+named above it. Drag a computer to match your desk; double-click it to move
+its monitors one by one. Lit seams mark where the pointer crosses to another
+computer. Selecting a computer lists its crossings, monitors and settings
+under the arrangement. Sizes use physical
 dimensions when available, otherwise OS coordinate dimensions. Existing
 computer tiles split automatically; disconnected monitors keep their saved
 positions and return when reconnected. Mirrored displays share one cursor
@@ -308,10 +311,14 @@ Advanced Linux settings remain in
 
 ## Arrange computers
 
-Each tile represents one computer's combined desktop. Drag in any direction,
-including vertical offsets. Nearby edges snap together; overlapping tiles are
-rejected. Only the touching portion of an edge permits crossing. Physical
-monitor placement inside a computer remains the operating system's job.
+A computer's screens move together. Drag it in any direction, including
+vertical offsets, or select it and use the arrow keys. While it moves, the
+arrangement shows where it will land and the seams it will make: nearby edges
+snap together, and a place where screens would overlap shows red and is
+rejected. Only the touching portion of an edge permits crossing, and the
+arrangement lights exactly that portion. Double-click a computer, or choose
+**Adjust screens** on it, to move its screens one by one. Where the pointer
+goes between one computer's own screens remains the operating system's job.
 
 Paired computers share one layout: a tile moved on one computer moves on the
 other, and each computer writes its own tile's size. Until the Mac first

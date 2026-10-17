@@ -73,11 +73,24 @@ pub enum Request {
     /// Moves a computer in the shared layout. `id` names a tile of
     /// [`DesktopStatus::layout`]; it lands at `x`, `y` in layout units, or
     /// against an edge within `tolerance` of there.
+    /// With `computer`, every screen of its computer moves alike.
     MoveTile {
         id: String,
         x: i32,
         y: i32,
         tolerance: u32,
+        #[serde(default)]
+        computer: bool,
+    },
+    /// Answers where [`Request::MoveTile`] would land without moving
+    /// anything, as [`DesktopReply::Preview`].
+    Preview {
+        id: String,
+        x: i32,
+        y: i32,
+        tolerance: u32,
+        #[serde(default)]
+        computer: bool,
     },
     /// Tries each paired computer that is not connected again now, instead
     /// of after its link's wait.
@@ -406,8 +419,14 @@ pub fn parse_address(input: &str) -> anyhow::Result<SocketAddr> {
 #[serde(tag = "response", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopReply {
     Status(Box<DesktopStatus>),
+    /// None where the screens cannot go.
+    Preview {
+        preview: Option<crate::app::layout_model::Preview>,
+    },
     Ack,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 #[cfg(target_os = "linux")]
