@@ -209,12 +209,18 @@ app.connect('activate', () => {
         assert(settings._tiles.get('peer:MacBook').label.label === 'MacBook' && mac.tooltip_text === 'MacBook', 'screens are labelled');
         assert(settings._tiles.get('local/dell').label.label === 'Dell U2720Q', 'a screen shows its display’s name');
         assert(mac.has_css_class('zf-away') && !local.has_css_class('zf-away') && !local.has_css_class('suggested-action'), 'a computer that is not connected fades');
-        // Every island shows its key's mark: four colors, one per hex digit, as on the Mac.
+        // A key's mark is four colors, one per hex digit, as on the Mac. The
+        // inspector shows it; the board shows only names and states.
         assert(markColors('a1b2c3').join() === '2,1,3,2' && markColors('zz').length === 0, 'marks read the seed');
-        assert(drawnMark(here.mark) === markColors('a1b2c3').join(), 'this computer shows its own mark');
-        assert(drawnMark(macbook.mark) === markColors('3d4f00').join(), 'a peer shows its mark');
-        assert(mac.has_css_class(`zf-tint-${markColors('3d4f00')[0]}`) && local.has_css_class(`zf-tint-${markColors('a1b2c3')[0]}`), 'screens take their computer’s color');
+        assert(here.chip.get_child().get_first_child() === here.name && here.name.get_next_sibling() === here.dot && !here.dot.get_next_sibling(), 'a name chip holds its name and state only');
         const [left, right] = [settings._tiles.get('local'), settings._tiles.get('peer:MacBook')];
+        // Only the hovered or selected computer names its screens.
+        const dellName = settings._tiles.get('local/dell').label;
+        assert(settings._selection === null && !dellName.visible, 'screens are unnamed until hovered');
+        settings._hover(left.x + 1, left.y + 1);
+        assert(settings._hovered === 'local' && dellName.visible && !settings._tiles.get('peer:MacBook').label.visible, 'hovering a computer names its screens');
+        settings._hover(null, null);
+        assert(settings._hovered === null && !dellName.visible, 'leaving the board hides the names');
         assert(left.x + left.size[0] === right.x && settings._shownSeams().length === 2, 'touching screens stay touching, with the seams drawn');
         await refresh();
         assert(settings._tiles.get('peer:MacBook').button === mac, 'an unchanged snapshot keeps the tiles');
@@ -290,6 +296,7 @@ app.connect('activate', () => {
         settings._inspectorRows[1].emit('activated');
         assert(settings._selection === 'peer:MacBook' && macbook.chip.has_css_class('zf-selected') && window.get_focus() === macbook.chip, 'a row selects its computer');
         assert(settings._inspector.title === 'MacBook' && settings._inspector.description === 'Paired' && settings._peerSettings.visible, 'the inspector shows the computer');
+        assert(drawnMark(settings._inspector.header_suffix.get_first_child()) === markColors('3d4f00').join(), 'the inspector shows its mark');
         const crossings = settings._filled.get(settings._crossings);
         assert(crossings.length === 1 && crossings[0].title === 'This Computer' && crossings[0].subtitle === 'Left edge of MacBook → This computer', `its crossing is listed: ${crossings[0]?.subtitle}`);
         const keyboard = settings._keyboards.get('MacBook');
@@ -383,7 +390,7 @@ app.connect('activate', () => {
         const placed = {command: 'place', id: 'key:aa', x: landed[0], y: landed[1], tolerance: Math.round(14 / unit)};
         assert(JSON.stringify(places[0]) === JSON.stringify(placed), `a drop sends one place: ${JSON.stringify(places)}`);
         await waitFor(() => !settings._found.has('key:aa') && settings._tiles.has('peer:fedora'));
-        assert(drawnMark(settings._islands.get('peer:fedora').mark) === markColors('1abc9e').join(), 'a placed computer keeps its mark');
+        assert(settings._computerList().find(({owner}) => owner === 'peer:fedora')?.seed === '1abc9e', 'a placed computer keeps its mark');
         // With the keyboard, Enter puts one beside this computer.
         const laptop = settings._found.get('key:bb');
         assert(controller(laptop.button, Gtk.EventControllerKey).emit('key-pressed', Gdk.KEY_Return, 0, 0), 'a found tile takes Enter');

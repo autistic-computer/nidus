@@ -55,8 +55,8 @@ const OS_NAMES = {linux: 'Linux', macos: 'macOS', windows: 'Windows'};
 // by its low three bits, as the Mac app does, so a key looks the same on
 // every computer.
 const MARK_COLORS = ['#E5484D', '#F76B15', '#FFC53D', '#30A46C', '#12A594', '#0090FF', '#8E4EC6', '#D6409F'];
-// A computer's screens are tinted with its mark's first color. This theme's
-// buttons are restyled at application priority, so every state is set here.
+// This theme's buttons are restyled at application priority, so every state
+// is set here. Color on the board means the selection or a crossing.
 const CSS = `
 .zf-shelf { border: 1.5px dashed alpha(currentColor, 0.25); border-radius: 12px; padding: 8px 12px; }
 .zf-mark { min-width: 7px; min-height: 7px; border-radius: 2px; }
@@ -64,27 +64,22 @@ ${MARK_COLORS.map((color, index) => `.zf-mark-${index} { background: ${color}; }
 button.zf-screen { min-width: 0; min-height: 0; padding: 0; border-radius: 6px; background-color: @view_bg_color; background-image: none;
     box-shadow: inset 0 0 0 1px alpha(currentColor, 0.2), 0 1px 2px alpha(black, 0.06); }
 button.zf-screen:hover { box-shadow: inset 0 0 0 1px alpha(currentColor, 0.38), 0 1px 2px alpha(black, 0.06); }
-${MARK_COLORS.map((color, index) => `button.zf-screen.zf-tint-${index} { background-image: linear-gradient(alpha(${color}, 0.26), alpha(${color}, 0.08)); }`).join('\n')}
 button.zf-screen.zf-away { opacity: 0.62; filter: grayscale(0.9); }
 button.zf-screen.zf-moving { box-shadow: inset 0 0 0 1px alpha(currentColor, 0.38), 0 6px 14px alpha(black, 0.25); }
 button.zf-screen.zf-refused { box-shadow: inset 0 0 0 2px @error_color, 0 6px 14px alpha(black, 0.25); }
 .zf-screen-name { font-size: 0.75em; font-weight: 600; padding: 1px 5px; margin: 5px; border-radius: 4px; background: alpha(@view_bg_color, 0.75); }
-button.zf-chip { min-height: 26px; padding: 0 11px 0 9px; border-radius: 999px; background-color: @window_bg_color; background-image: none;
-    box-shadow: 0 0 0 1px alpha(currentColor, 0.12), 0 1px 3px alpha(black, 0.12); }
-button.zf-chip:hover { background-image: image(alpha(currentColor, 0.05)); }
-button.zf-chip:active { background-image: image(alpha(currentColor, 0.1)); }
-button.zf-chip.zf-selected { box-shadow: 0 0 0 2px @accent_bg_color, 0 1px 3px alpha(black, 0.12); }
-.zf-chip .zf-local { color: @accent_color; }
+button.zf-chip { min-height: 24px; padding: 0 9px; border-radius: 999px; background-color: transparent; background-image: none; box-shadow: none; }
+button.zf-chip:hover { background-image: image(alpha(currentColor, 0.08)); }
+button.zf-chip:active { background-image: image(alpha(currentColor, 0.12)); }
+button.zf-chip.zf-selected { background-color: @window_bg_color; box-shadow: 0 0 0 2px @accent_bg_color, 0 1px 3px alpha(black, 0.12); }
 button.zf-done { min-height: 26px; padding: 0 12px; border-radius: 999px; }
 .zf-dot { min-width: 8px; min-height: 8px; border-radius: 999px; box-shadow: inset 0 0 0 1.5px alpha(currentColor, 0.45); }
 .zf-dot-success { background: @success_color; box-shadow: none; }
 .zf-dot-warning { background: @warning_color; box-shadow: none; }
 .zf-dot-accent { background: @accent_bg_color; box-shadow: none; }
-${MARK_COLORS.map((color, index) => `.zf-icon-${index} { color: ${color}; }`).join('\n')}
 `;
 // [red, green, blue] from 0 to 1, for cairo.
 const channels = hex => [1, 3, 5].map(at => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
-const TINTS = MARK_COLORS.map(channels);
 
 function button(label, action, css = []) {
     const widget = new Gtk.Button({label, valign: Gtk.Align.CENTER, css_classes: css});
@@ -271,6 +266,8 @@ export class Settings {
         // Seams fade while sharing is off, since the pointer crosses none.
         this._crossing = true;
         this._selection = null;
+        // The computer under the pointer, which shows its outline and screen names.
+        this._hovered = null;
         // The computer whose screens move one by one.
         this._adjusting = null;
         this._pressed = null;
@@ -295,6 +292,10 @@ export class Settings {
         drag.connect('drag-update', (_drag, dx, dy) => this._dragTile(drag, dx, dy));
         drag.connect('drag-end', (_drag, dx, dy) => this._dropTile(dx, dy));
         this._board.add_controller(drag);
+        const motion = new Gtk.EventControllerMotion();
+        motion.connect('motion', (_motion, x, y) => this._hover(x, y));
+        motion.connect('leave', () => this._hover(null, null));
+        this._board.add_controller(motion);
         // A Gtk.Fixed does not report its width, so the area under it does.
         // It draws the islands' outlines; the one over the board draws the
         // seams, which lie along the screens' edges.
@@ -545,18 +546,16 @@ export class Settings {
     // A computer's name above its screens. Dragging it moves the computer;
     // double-clicking it, or one of its screens, adjusts them one by one.
     _newIsland(owner) {
-        const icon = new Gtk.Image({icon_name: 'computer-symbolic'});
-        const name = new Gtk.Label({ellipsize: Pango.EllipsizeMode.END, max_width_chars: 16, css_classes: ['heading']});
+        const name = new Gtk.Label({ellipsize: Pango.EllipsizeMode.END, max_width_chars: 16, css_classes: ['caption-heading']});
         // Its state is a dot here, in words in its tooltip and the inspector,
-        // so names stay small on the board.
+        // and its mark is in the inspector, so names stay small on the board.
         const dot = new Gtk.Box({css_classes: ['zf-dot'], valign: Gtk.Align.CENTER});
-        const mark = new Gtk.Box({spacing: 2, valign: Gtk.Align.CENTER});
-        const content = new Gtk.Box({spacing: 7});
-        for (const child of [icon, name, dot, mark]) content.append(child);
+        const content = new Gtk.Box({spacing: 6});
+        for (const child of [name, dot]) content.append(child);
         const chip = new Gtk.Button({child: content, css_classes: ['zf-chip']});
         const done = new Gtk.Button({label: 'Done', tooltip_text: 'Move its screens together again', css_classes: ['zf-done', 'suggested-action'], visible: false});
         // Where its name sits on the board, and on which side of its outline.
-        const island = {owner, chip, done, icon, name, dot, mark, seed: null, tint: null, tiles: [], x: 0, y: 0, size: [0, 0], spot: null, doneAt: {x: 0, y: 0, size: [0, 0]}};
+        const island = {owner, chip, done, name, dot, seed: null, tiles: [], x: 0, y: 0, size: [0, 0], spot: null, doneAt: {x: 0, y: 0, size: [0, 0]}};
         chip.connect('clicked', () => this._select(owner));
         done.connect('clicked', () => this._adjust(owner, false));
         chip.add_controller(this._keys(() => island.tiles[0], () => true));
@@ -572,18 +571,14 @@ export class Settings {
         island.tiles = tiles;
         island.seed = seed;
         island.name.label = name ?? THIS_COMPUTER;
-        toggleClass(island.name, 'zf-local', !name);
         const state = peer?.state;
         island.dot.visible = !!name;
         island.dot.css_classes = dotClasses(state);
         island.chip.tooltip_text = name ? [name, STATES[state]?.[0]].filter(Boolean).join(' · ') : THIS_COMPUTER;
-        showMark(island.mark, seed);
-        const index = markColors(seed)[0];
-        island.tint = index === undefined ? null : TINTS[index];
         const away = !!name && AWAY.has(state);
         for (const tile of tiles) {
             const {monitor} = tile;
-            tile.button.css_classes = ['zf-screen', ...index === undefined ? [] : [`zf-tint-${index}`], ...away ? ['zf-away'] : []];
+            tile.button.css_classes = ['zf-screen', ...away ? ['zf-away'] : []];
             tile.label.label = monitor.display?.name ?? monitor.label;
             tile.button.tooltip_text = monitor.label;
             tile.button.update_property([Gtk.AccessibleProperty.DESCRIPTION], [`${island.name.label}. Position ${monitor.x}, ${monitor.y}. Drag it or use the arrow keys to move it.`]);
@@ -640,6 +635,19 @@ export class Settings {
         this._updateInspector();
     }
 
+    // The computer whose outline or name is under the pointer, or none.
+    _hover(x, y) {
+        const inside = ([left, top, width, height]) => x >= left && x < left + width && y >= top && y < top + height;
+        const island = x === null ? null : [...this._islands.values()].find(island => {
+            const hull = this._hull(island);
+            return hull && (inside(hull) || inside([island.x, island.y, ...island.size]));
+        });
+        const owner = island?.owner ?? null;
+        if (owner === this._hovered) return;
+        this._hovered = owner;
+        this._placeTiles();
+    }
+
     // The scale and origin that center the layout on the board, with room
     // above it for the computers' names, as the Mac app fits it.
     _fit(monitors, width, height) {
@@ -691,8 +699,10 @@ export class Settings {
                 this._board.move(tile.button, shown[0], shown[1]);
                 toggleClass(tile.button, 'zf-moving', moving);
                 toggleClass(tile.button, 'zf-refused', moving && refused);
-                // A screen too small for its name shows none.
-                tile.label.visible = !!tile.monitor.display && shown[2] >= 64 && shown[3] >= 30;
+                // Only the selected or hovered computer names its screens,
+                // and a screen too small for its name shows none.
+                const named = tile.owner === this._selection || tile.owner === this._hovered;
+                tile.label.visible = named && !!tile.monitor.display && shown[2] >= 64 && shown[3] >= 30;
                 tile.icon.visible = !tile.monitor.display && Math.min(shown[2], shown[3]) >= 24;
             }
             this._placeChips();
@@ -761,10 +771,11 @@ export class Settings {
         }
     }
 
-    // The islands' outlines, on a dotted backdrop like a desk mat.
+    // The selected and hovered computers' outlines, on a faint dotted
+    // backdrop like a desk mat.
     _drawIslands(area, cr, width) {
         const fg = area.get_color();
-        cr.setSourceRGBA(fg.red, fg.green, fg.blue, 0.14);
+        cr.setSourceRGBA(fg.red, fg.green, fg.blue, 0.07);
         for (let x = 9; x < width; x += 18) {
             for (let y = 9; y < this._boardSize[1]; y += 18) {
                 cr.newSubPath();
@@ -775,14 +786,11 @@ export class Settings {
         if (this._layout.visible) {
             const color = accent();
             for (const island of this._islands.values()) {
-                const hull = this._hull(island);
-                if (!hull) continue;
-                const tint = island.tint ?? [fg.red, fg.green, fg.blue];
                 const selected = this._selection === island.owner;
+                const hull = (selected || this._hovered === island.owner) && this._hull(island);
+                if (!hull) continue;
                 roundedRect(cr, ...hull, 14);
-                cr.setSourceRGBA(...tint, 0.1);
-                cr.fillPreserve();
-                cr.setSourceRGBA(...selected ? color : tint, selected ? 1 : 0.5);
+                cr.setSourceRGBA(...selected ? color : [fg.red, fg.green, fg.blue], selected ? 1 : 0.35);
                 cr.setLineWidth(selected ? 2.5 : 1.5);
                 cr.setDash(this._adjusting === island.owner ? [6, 5] : [], 0);
                 cr.stroke();
@@ -1222,8 +1230,7 @@ export class Settings {
         this._scrolls.clear();
         const rows = computers.map(computer => {
             const row = new Adw.ActionRow({title: computer.name, subtitle: summary(computer), use_markup: false, activatable: true});
-            const tint = markColors(computer.seed)[0];
-            row.add_prefix(new Gtk.Image({icon_name: 'computer-symbolic', css_classes: tint === undefined ? [] : [`zf-icon-${tint}`]}));
+            row.add_prefix(new Gtk.Image({icon_name: 'computer-symbolic'}));
             if (computer.peer) row.add_suffix(new Gtk.Box({css_classes: dotClasses(computer.peer.state), valign: Gtk.Align.CENTER}));
             const mark = new Gtk.Box({spacing: 2, valign: Gtk.Align.CENTER});
             showMark(mark, computer.seed);
@@ -1241,10 +1248,14 @@ export class Settings {
     }
 
     _showComputer(computer, crossings) {
-        const {owner, name, peer, tiles} = computer;
+        const {owner, name, peer, tiles, seed} = computer;
         this._inspector.title = name;
         this._inspector.description = peer ? peer.detail : null;
         const header = new Gtk.Box({spacing: 6, valign: Gtk.Align.CENTER});
+        // Its mark shows here rather than on the board.
+        const mark = new Gtk.Box({spacing: 2, valign: Gtk.Align.CENTER, margin_end: 6});
+        showMark(mark, seed);
+        header.append(mark);
         if (peer) {
             // Forgetting puts it back on the shelf, so it takes no asking.
             const forget = new Gtk.Button({icon_name: 'user-trash-symbolic', tooltip_text: `Forget ${name}`, valign: Gtk.Align.CENTER, css_classes: ['flat']});
