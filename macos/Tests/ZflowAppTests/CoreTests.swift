@@ -103,7 +103,11 @@ import Testing
     _ = try await core.request(
       CoreRequest(command: "move_tile", id: "nowhere", x: 0, y: 0, tolerance: 8))
     Issue.record("An unknown tile cannot move")
-  } catch { #expect(error.localizedDescription == "Unknown computer") }
+  } catch { #expect(error.localizedDescription == "The layout has no screen nowhere") }
+  // A drag over nothing gets no landing rather than an error.
+  let nowhere = try await core.preview(
+    CoreRequest(command: "preview", id: "nowhere", x: 0, y: 0, tolerance: 8, computer: true))
+  #expect(nowhere == nil)
   // A computer added by address waits on the shelf until its hello comes back.
   let added = try await core.request(CoreRequest(command: "add_address", address: "100.64.0.7"))
   let tile = try #require(added.unplaced.first)

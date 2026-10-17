@@ -53,8 +53,9 @@ protocols cannot connect; pairing keys are preserved.
    or `host:port`. Bracket IPv6 when including a port.
 3. Compare the six-character marks on both computers. Add each computer on
    the other one too; discovery alone never grants input access.
-4. Drag individual monitor tiles, including this PC's, until their edges touch.
-   The arrangement propagates to connected peers. A remote monitor at an edge
+4. Drag the other computer until its screens touch this PC's; the lit edges are
+   where the pointer crosses. A computer's screens move together; double-click
+   it to move them one by one. The arrangement propagates to connected peers. A remote monitor at an edge
    takes priority over a Windows monitor across that boundary. Disabled monitors
    leave the canvas and retain their saved positions for reconnection.
    If one physical panel is connected to two computers, it can appear twice:

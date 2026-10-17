@@ -48,9 +48,25 @@ pub enum Command {
         peer: String,
         enabled: bool,
     },
-    Arrange {
-        layout: crate::app::layout_model::Layout,
-        version: u64,
+    /// Puts screen `id` at `x`, `y`, or against an edge within `tolerance`
+    /// of there. With `computer`, every screen of its computer moves alike.
+    MoveTile {
+        id: String,
+        x: i32,
+        y: i32,
+        tolerance: u32,
+        #[serde(default)]
+        computer: bool,
+    },
+    /// Where a `MoveTile` would land and the seams it would make, without
+    /// moving anything. Null where it cannot go.
+    Preview {
+        id: String,
+        x: i32,
+        y: i32,
+        tolerance: u32,
+        #[serde(default)]
+        computer: bool,
     },
     Activate {
         peer: String,

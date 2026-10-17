@@ -77,8 +77,6 @@ const MAX_LOCAL_CLIENTS: usize = 64;
 const LAYOUT_FILE: &str = "layout.json";
 /// A paired computer's tile has this size until that computer writes its own.
 const PEER_TILE_SIZE: (u32, u32) = (1920, 1080);
-/// The largest snap distance a move may ask for, in layout units, as on the Mac.
-const MAX_SNAP: u32 = 2048;
 /// Logind answers Unknown when a reply is slow or races a property change.
 /// Such a short Unknown holds injection and keeps the last definite state for
 /// authorization, so it does not end a live crossing.
@@ -841,6 +839,7 @@ impl Shared {
         x: i32,
         y: i32,
         tolerance: u32,
+        computer: bool,
     ) -> Result<()> {
         let current = self.layout_or_initial().await?;
         let keys = peer_keys(&*self.config.read().await);
@@ -851,6 +850,7 @@ impl Shared {
             id,
             (x, y),
             tolerance,
+            computer,
         )?;
         let version = moved.version;
         ensure!(
@@ -1974,8 +1974,9 @@ fn initial_layout(
 }
 
 /// A new version of `layout`, edited by this computer, with the tile `id` of
-/// its view at (x, y), or against an edge within `tolerance` of there. Tiles
-/// of computers not paired here stay where they were.
+/// its view at (x, y), or against an edge within `tolerance` of there; with
+/// `computer`, every tile of its computer moves alike. Tiles of computers
+/// not paired here stay where they were.
 fn with_tile_moved(
     layout: &crate::desktop::SharedLayout,
     own: &str,
@@ -1983,19 +1984,10 @@ fn with_tile_moved(
     id: &str,
     (x, y): (i32, i32),
     tolerance: u32,
+    computer: bool,
 ) -> Result<crate::desktop::SharedLayout> {
-    let mut view = layout_view(layout, own, keys);
-    let index = view
-        .monitors
-        .iter()
-        .position(|monitor| monitor.id == id)
-        .with_context(|| format!("The layout has no computer {id}"))?;
-    let (x, y) = view
-        .snap_move(index, x, y, tolerance.min(MAX_SNAP) as i32)
-        .context("Computers cannot overlap")?;
-    view.monitors[index].x = x;
-    view.monitors[index].y = y;
-    let moved = view
+    let moved = layout_view(layout, own, keys)
+        .moved(id, x, y, tolerance, computer)?
         .to_shared(layout.version.saturating_add(1), own, keys)
         .with_others_from(layout, |key| {
             key == own || keys.values().any(|known| known == key)
@@ -3274,10 +3266,12 @@ mod tests {
             (tile.x, tile.y)
         };
 
-        // Dropped 20 units into this computer, it snaps against its left edge.
-        let moved = with_tile_moved(&layout, &own, &keys, "peer:mac", (-1900, 40), 150).unwrap();
+        // Dropped 20 units into this computer and 40 under its top, it snaps
+        // against its left edge, level with its top.
+        let moved =
+            with_tile_moved(&layout, &own, &keys, "peer:mac", (-1900, 40), 150, false).unwrap();
         assert_eq!((moved.version, &moved.editor), (8, &own));
-        assert_eq!(at(&moved, &fingerprint(2)), (-1920, 40));
+        assert_eq!(at(&moved, &fingerprint(2)), (-1920, 0));
         assert_eq!(at(&moved, &own), (0, 0));
         assert_eq!(
             at(&moved, &fingerprint(5)),
@@ -3285,21 +3279,31 @@ mod tests {
             "the unpaired computer stays where its peers placed it"
         );
         // This computer's own tile moves by its view's id.
-        let moved = with_tile_moved(&moved, &own, &keys, "local", (0, 1100), 0).unwrap();
+        let moved = with_tile_moved(&moved, &own, &keys, "local", (0, 1100), 0, true).unwrap();
         assert_eq!((moved.version, at(&moved, &own)), (9, (0, 1100)));
         assert_eq!(moved.tiles.len(), 3);
         // A tile moved over one this computer cannot show replaces it.
-        let covered = with_tile_moved(&moved, &own, &keys, "local", (0, 4900), 0).unwrap();
+        let covered = with_tile_moved(&moved, &own, &keys, "local", (0, 4900), 0, false).unwrap();
         assert!(covered.tiles.iter().all(|t| t.key != fingerprint(5)));
 
         // A huge tolerance is capped rather than read as a negative one.
-        assert!(with_tile_moved(&layout, &own, &keys, "peer:mac", (-1900, 40), u32::MAX).is_ok());
-        let error = with_tile_moved(&layout, &own, &keys, "peer:desk", (0, 0), 0).unwrap_err();
         assert!(
-            error.to_string().contains("no computer peer:desk"),
-            "{error}"
+            with_tile_moved(
+                &layout,
+                &own,
+                &keys,
+                "peer:mac",
+                (-1900, 40),
+                u32::MAX,
+                false
+            )
+            .is_ok()
         );
-        let error = with_tile_moved(&layout, &own, &keys, "peer:mac", (100, 100), 0).unwrap_err();
+        let error =
+            with_tile_moved(&layout, &own, &keys, "peer:desk", (0, 0), 0, false).unwrap_err();
+        assert!(error.to_string().contains("no screen peer:desk"), "{error}");
+        let error =
+            with_tile_moved(&layout, &own, &keys, "peer:mac", (100, 100), 0, false).unwrap_err();
         assert!(error.to_string().contains("overlap"), "{error}");
     }
 

@@ -15,8 +15,40 @@ struct DisplayInfo: Codable, Equatable, Sendable {
   var id: String
   var name: String
   var active: Bool
+  /// Its pixels, as macOS or the other computer reports them.
+  var bounds: Bounds?
+  /// Zero when the system cannot say.
+  var widthMm: Int?
+  var heightMm: Int?
+
+  struct Bounds: Codable, Equatable, Sendable {
+    var width: Int
+    var height: Int
+  }
 }
 struct Layout: Decodable, Equatable, Sendable { var monitors: [Computer] }
+/// src/app/layout_model.rs Seam: where two screens touch, in layout units.
+struct Seam: Decodable, Equatable, Sendable {
+  /// The screen left of the line, or above it.
+  var a: String
+  var b: String
+  /// Whether the screens sit side by side, so the line stands upright.
+  var vertical: Bool
+  /// The line's x when it stands upright, else its y.
+  var at: Int
+  var start: Int
+  var end: Int
+  /// Both screens are one computer's, whose display settings move the
+  /// pointer between them. The pointer crosses to another computer only at
+  /// the other seams.
+  var sameComputer: Bool
+}
+/// src/app/layout_model.rs Preview: where a move would land, for a drag to show.
+struct Preview: Decodable, Equatable, Sendable {
+  var x: Int
+  var y: Int
+  var seams: [Seam]
+}
 /// src/neighbors.rs Unplaced: a computer found around this Mac that is not
 /// on the board yet, for the shelf.
 struct Unplaced: Decodable, Identifiable, Equatable, Sendable {
@@ -80,6 +112,8 @@ struct Snapshot: Decodable, Equatable, Sendable {
   var health: [Health]
   var pairingWindow: PairingWindow
   var layout: Layout?
+  /// Where the layout's screens touch.
+  var seams: [Seam]
   /// This Mac's key mark, drawn on its tile.
   var ownMark: String?
   /// Computers found but not on the board yet.
@@ -168,9 +202,13 @@ struct CoreRequest: Encodable, Sendable {
   var reverseScroll: Bool?
   var pauseAtEdges: Bool?
   var share: Bool?
+  /// With `move_tile` and `preview`: every screen of the computer moves.
+  var computer: Bool?
 }
-struct CoreResponse: Decodable {
-  var snapshot: Snapshot?
+/// The engine answers each request with a snapshot, but `preview` with a
+/// Preview, or null where the screens cannot go.
+private struct CoreResponse<Answer: Decodable>: Decodable {
+  var snapshot: Answer?
   var error: String?
 }
 struct AppError: LocalizedError {
@@ -199,6 +237,18 @@ actor CoreBridge {
   private var closed = false
   init(path: String) { self.path = path }
   func request(_ request: CoreRequest) throws -> Snapshot {
+    guard let snapshot = try call(request, answer: Snapshot.self) else {
+      throw AppError(message: "The sharing engine returned no status")
+    }
+    return snapshot
+  }
+  /// Where a dragged screen would land; nil where it cannot go.
+  func preview(_ request: CoreRequest) throws -> Preview? {
+    try call(request, answer: Preview.self)
+  }
+  private func call<Answer: Decodable>(_ request: CoreRequest, answer: Answer.Type) throws
+    -> Answer?
+  {
     guard !closed else { throw AppError(message: "The sharing engine has stopped") }
     if handle == nil { handle = try CoreHandle(path: path) }
     let encoder = JSONEncoder()
@@ -210,12 +260,10 @@ actor CoreBridge {
     defer { zflow_string_free(response) }
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
-    let result = try decoder.decode(CoreResponse.self, from: Data(String(cString: response).utf8))
+    let result = try decoder.decode(
+      CoreResponse<Answer>.self, from: Data(String(cString: response).utf8))
     if let error = result.error { throw AppError(message: error) }
-    guard let snapshot = result.snapshot else {
-      throw AppError(message: "The sharing engine returned no status")
-    }
-    return snapshot
+    return result.snapshot
   }
   func shutdown() {
     closed = true

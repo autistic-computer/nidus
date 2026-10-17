@@ -95,6 +95,22 @@ async fn desktop_command(
         shared.add_address(address)?;
         return Ok(DesktopReply::Ack);
     }
+    // Asked at every step of a drag and only reads, like the status.
+    if let Request::Preview {
+        id,
+        x,
+        y,
+        tolerance,
+        computer,
+    } = request
+    {
+        authorize_peer(stream, daemon_uid, shared.active_uid())?;
+        let preview = shared
+            .layout_status()
+            .await
+            .and_then(|layout| layout.preview(&id, x, y, tolerance, computer));
+        return Ok(DesktopReply::Preview { preview });
+    }
     // Asked every second and only reads, so it skips the config lock too.
     if let Request::Status {} = request {
         authorize_peer(stream, daemon_uid, shared.active_uid())?;
@@ -156,8 +172,9 @@ async fn desktop_command(
             x,
             y,
             tolerance,
+            computer,
         } => {
-            shared.move_tile(&id, x, y, tolerance).await?;
+            shared.move_tile(&id, x, y, tolerance, computer).await?;
             Ok(DesktopReply::Ack)
         }
         Request::Place {
