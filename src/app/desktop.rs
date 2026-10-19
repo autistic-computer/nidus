@@ -2,6 +2,14 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+/// Whether the focused app is a terminal, as GNOME Shell last said. A lens reads it so its keys
+/// and copies act the way a crossing's do.
+pub(crate) static FOCUSED_TERMINAL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// Whether GNOME Shell has said anything about focus yet, so [`FOCUSED_TERMINAL`] means something.
+pub(crate) static FOCUS_KNOWN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Default)]
 struct State {
     ready: bool,
@@ -405,6 +413,8 @@ async fn forward_signals(
     let mut terminal = Some(focus(proxy).await);
     loop {
         if let Some(terminal) = terminal {
+            FOCUSED_TERMINAL.store(terminal, std::sync::atomic::Ordering::Relaxed);
+            FOCUS_KNOWN.store(true, std::sync::atomic::Ordering::Relaxed);
             report(Request::Focus { terminal }).await;
         }
         terminal = tokio::select! {

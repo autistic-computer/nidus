@@ -201,6 +201,34 @@ impl LayoutRoute {
 #[derive(Clone, Default)]
 pub(super) struct Hops(Arc<std::sync::Mutex<BTreeMap<String, Door>>>);
 
+/// How long taking AWDL down may take for a lens.
+const LENS_AWDL_LIMIT: Duration = Duration::from_secs(5);
+
+/// Every link's live session, ready for a crossing or not. A lens needs only this.
+#[derive(Clone, Default)]
+pub(super) struct Connected(Arc<std::sync::Mutex<BTreeMap<String, SessionHandle>>>);
+
+impl Connected {
+    fn set(&self, peer: &str, session: Option<SessionHandle>) {
+        let mut sessions = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match session {
+            Some(session) => sessions.insert(peer.to_owned(), session),
+            None => sessions.remove(peer),
+        };
+    }
+
+    fn get(&self, peer: &str) -> Option<SessionHandle> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(peer)
+            .cloned()
+    }
+}
+
 /// A ready link: its session, and the way to hand it a crossing.
 #[derive(Clone)]
 pub(super) struct Door {
@@ -336,9 +364,63 @@ pub struct Links {
     dialing: Vec<JoinHandle<()>>,
     /// The links ready for a crossing.
     hops: Hops,
+    /// Every live session, for a lens.
+    connected: Connected,
 }
 
 impl Links {
+    /// Opens a lens onto peer `name`'s screen over its live session. Its text copies land on
+    /// this Mac's pasteboard, and with `reduce_wifi_latency` AWDL stays down while it is open.
+    pub fn open_lens(
+        &mut self,
+        name: &str,
+        viewer: Arc<crate::lens::viewer::Viewer>,
+        reduce_wifi_latency: bool,
+    ) -> Result<()> {
+        use super::clipboard::{MacPasteboard, Pasteboard};
+        use crate::clipboard::{Clip, ClipKind};
+        let session = self
+            .connected
+            .get(name)
+            .with_context(|| format!("{name} is not connected"))?;
+        let runtime = self.runtime.as_ref().context("sharing is off")?;
+        let inputs = crate::lens::client::start(&viewer);
+        let peer = name.to_owned();
+        runtime.spawn(async move {
+            let copied = move |text: String| {
+                let written = Clip::new(ClipKind::Text, text.into_bytes())
+                    .and_then(|clip| MacPasteboard.write(&clip));
+                if let Err(error) = written {
+                    tracing::warn!(%error, "lens copy did not reach the pasteboard");
+                }
+            };
+            // AWDL's channel hops stall Wi-Fi for tens of milliseconds twice a second, which a
+            // lens shows as the circle freezing.
+            let wifi = reduce_wifi_latency.then(|| super::awdl::shared().want());
+            if wifi.is_some() {
+                let peer = peer.clone();
+                tokio::spawn(
+                    async move { super::awdl::shared().down(&peer, LENS_AWDL_LIMIT).await },
+                );
+            }
+            let open = session.open_lens();
+            let opened = std::time::Instant::now();
+            let result = crate::lens::client::run(open, viewer.clone(), inputs, copied).await;
+            let status = viewer.status();
+            tracing::info!(
+                %peer,
+                width = status.width,
+                height = status.height,
+                frames = status.frames,
+                seconds = opened.elapsed().as_secs_f32(),
+                error = result.err().map(|error| format!("{error:#}")),
+                "lens closed"
+            );
+            drop(wifi);
+        });
+        Ok(())
+    }
+
     pub fn new() -> Result<Self> {
         Self::with_receiving(Receiving::mac()?)
     }
@@ -393,6 +475,7 @@ impl Links {
             heard_sender,
             dialing: Vec::new(),
             hops: Hops::default(),
+            connected: Connected::default(),
         })
     }
 
@@ -456,6 +539,7 @@ impl Links {
                 window: self.dial_window,
                 heard: self.heard_sender.clone(),
                 hops: self.hops.clone(),
+                connected: self.connected.clone(),
                 commands: commands.downgrade(),
             };
             let layouts = LayoutRoute {
@@ -846,6 +930,7 @@ struct Remote {
     heard: mpsc::UnboundedSender<Heard>,
     /// Every link ready for a crossing, which this one joins while ready.
     hops: Hops,
+    connected: Connected,
     /// This link's own commands, for a crossing another link hands on.
     /// Weak, so dropping the link's sender still stops it.
     commands: mpsc::WeakUnboundedSender<Command>,
@@ -926,6 +1011,7 @@ async fn run(
                 });
                 let opened_at = Instant::now();
                 let mut inbound = receiving.inbound(name, &session.handle);
+                remote.connected.set(name, Some(session.handle.clone()));
                 let served = session
                     .serve(
                         &mut commands,
@@ -937,6 +1023,7 @@ async fn run(
                     )
                     .await;
                 remote.hops.set(name, None);
+                remote.connected.set(name, None);
                 // Lets go of whatever the peer held before the session goes.
                 drop(inbound);
                 let reason = match served {
@@ -1459,6 +1546,10 @@ impl Session {
                     Some(SessionEventKind::Clipboard { clip }) => {
                         inbound.clipboard().keep(self.handle.peer(), clip);
                     }
+                    // This Mac does not share its screen yet; dropping the stream refuses it.
+                    Some(SessionEventKind::Lens { .. }) => {
+                        tracing::info!(peer = %self.handle.peer(), "lens refused: this Mac does not share its screen");
+                    }
                     Some(SessionEventKind::OutboundEnded) => {}
                     None => return Served::Lost("input session closed".into()),
                 },
@@ -1720,7 +1811,7 @@ mod tests {
                             SessionEventKind::Clipboard { clip } => {
                                 let _ = clips_tx.send(clip);
                             }
-                            SessionEventKind::OutboundEnded => {}
+                            SessionEventKind::Lens { .. } | SessionEventKind::OutboundEnded => {}
                         }
                     }
                 });

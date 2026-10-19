@@ -52,6 +52,7 @@ mod arrange;
 mod clipboard;
 mod crossing;
 mod desktop;
+mod lens;
 mod links;
 mod peer_view;
 const ACCEPT_EVENT_CAPACITY: usize = 64;
@@ -454,6 +455,8 @@ struct Shared {
     chord_peer: Mutex<Option<String>>,
     /// Per peer, the clip last sent to it and the one it last gave here.
     clipboard_echo: Mutex<BTreeMap<String, crate::clipboard::Echo>>,
+    /// The desktop agent's standing offer to serve the next lens.
+    lens_host: Mutex<Option<tokio::net::UnixStream>>,
     desktop: desktop::Hub,
     seat: watch::Receiver<SeatState>,
     /// The inbound injection gate, kept current by `watch_seat`.
@@ -514,6 +517,7 @@ impl Shared {
             inbound_owner: Mutex::new(None),
             chord_peer: Mutex::new(None),
             clipboard_echo: Mutex::new(BTreeMap::new()),
+            lens_host: Mutex::new(None),
             desktop: desktop::Hub::default(),
             seat,
             seat_gate: RwLock::new(initial_seat),
@@ -2280,6 +2284,7 @@ impl Shared {
                 }
             }
             SessionEventKind::Clipboard { clip } => self.keep_clipboard(event.peer, clip),
+            SessionEventKind::Lens { stream } => self.serve_lens(event.peer, stream),
             SessionEventKind::Layout { layout } => {
                 self.merge_layout(&event.peer, event.session_id, layout)
                     .await;
@@ -2993,6 +2998,7 @@ mod tests {
                 },
                 keyboard: KeyboardMode::Standard,
                 reverse_scroll: false,
+                share_screen: false,
             },
         );
         assert!(receiver_authorized(
@@ -3082,6 +3088,7 @@ mod tests {
                 },
                 keyboard: KeyboardMode::Standard,
                 reverse_scroll: false,
+                share_screen: false,
             },
         );
         config
@@ -3374,6 +3381,7 @@ mod tests {
                 },
                 keyboard: KeyboardMode::Standard,
                 reverse_scroll: false,
+                share_screen: false,
             },
         );
         shared.sessions.lock().await.insert(name.to_owned(), local);

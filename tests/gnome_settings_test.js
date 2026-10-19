@@ -51,7 +51,7 @@ function waitFor(predicate) {
 }
 
 // src/app/api.rs Snapshot, as the agent sends it.
-const peer = (name, fields = {}) => ({name, state: 'paired', detail: 'Paired', allow_control: true, keyboard: 'standard', reverse_scroll: false, mark: '3d4f00', ...fields});
+const peer = (name, fields = {}) => ({name, state: 'paired', detail: 'Paired', allow_control: true, keyboard: 'standard', reverse_scroll: false, share_screen: false, mark: '3d4f00', ...fields});
 // src/neighbors.rs Unplaced: a computer found on the network.
 const found = (id, name, state, fields = {}) => ({id, name, os: null, mark: null, version: null, state, via: 'mdns', ...fields});
 const closedWindow = {state: 'never', seconds_left: null, holding: null, reason: null};
@@ -82,6 +82,7 @@ let callCount = 0;
 let keyboardCalls = 0;
 let controlCalls = 0;
 let scrollCalls = 0;
+let lensCalls = 0;
 let clipboardCalls = 0;
 let logsOpened = 0;
 const moves = [];
@@ -128,7 +129,7 @@ const object = Gio.DBusExportedObject.wrapJSObject(xml, {
             break;
         case 'set_peer': {
             const peer = find(request.name);
-            const fields = ['keyboard', 'allow_control', 'reverse_scroll'].filter(field => field in request);
+            const fields = ['keyboard', 'allow_control', 'reverse_scroll', 'share_screen'].filter(field => field in request);
             assert(fields.length === 1, 'each control changes one field');
             if ('keyboard' in request) {
                 keyboardCalls++;
@@ -136,6 +137,9 @@ const object = Gio.DBusExportedObject.wrapJSObject(xml, {
             } else if ('allow_control' in request) {
                 controlCalls++;
                 peer.allow_control = request.allow_control;
+            } else if ('share_screen' in request) {
+                lensCalls++;
+                peer.share_screen = request.share_screen;
             } else {
                 scrollCalls++;
                 peer.reverse_scroll = request.reverse_scroll;
@@ -345,6 +349,11 @@ app.connect('activate', () => {
         scroll.active = true;
         await waitFor(() => find('MacBook').reverse_scroll && idle() && scroll.sensitive);
         assert(scrollCalls === 1 && settings._scrolls.get('MacBook') === scroll, 'reversing scroll sends set_peer once and keeps the row');
+        const lens = settings._lensRows.get('MacBook');
+        assert(!lens.active, 'no computer may look at this screen until it is allowed');
+        lens.active = true;
+        await waitFor(() => find('MacBook').share_screen && idle() && lens.sensitive);
+        assert(lensCalls === 1 && settings._lensRows.get('MacBook') === lens, 'allowing a lens sends set_peer once and keeps the row');
         Object.assign(find('MacBook'), {state: 'controlled_from_here', detail: 'Controlled from here'});
         await waitFor(() => settings._inspector.description === 'Controlled from here');
         assert(macbook.chip.tooltip_text === 'MacBook · Controlled from here' && macbook.dot.has_css_class('zf-dot-accent') && !mac.has_css_class('zf-away'), 'the island shows the state the agent sends');

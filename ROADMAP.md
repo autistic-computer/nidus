@@ -31,6 +31,7 @@ Tags: **exists**, **partial**, **missing**. "Guess" marks anything not proven by
 | 7 | Mac pointer acceleration? | **None by default: one count moves one point.** Spike I showed posted motion is not accelerated. A libinput-style curve in Rust felt accelerated in the first sitting, so it is opt-in through `ZFLOW_MAC_POINTER`. A virtual HID device needs Karabiner's driver or Apple's CoreHID entitlement (`SPEC.md:581-590`). |
 | 8 | Protocol bumps? | **One batched `zflow/3` bump, no `zflow/2` fallback.** New desktop commands are strict JSON anyway. |
 | 9 | How do computers pair? | **Arrange to pair (0.3.0, `zflow/4`).** Computers find each other and a person drags one into place; a fresh install takes one lone computer by itself within 10 minutes. Code pairing and UDP 43120 are gone. See SPEC.md, "Arrange to pair". |
+| 10 | Lens: how does one computer show another's screen? | **A lossless tile stream on its own QUIC stream, the lens first, paced by acknowledgements, built to lossless from previews (0.7.0, `zflow/8`).** GNOME captures through Mutter and PipeWire in the desktop agent; zflowd relays. See SPEC.md, "Lens". |
 
 ---
 
@@ -511,6 +512,23 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Sw
   - The live sitting in TESTPLAN.md, "Arrange to pair sitting".
   - Introductions through the layout are built (0.6.0): a computer trusts a found computer a peer placed, unless a person here forgot it. See SPEC.md, "Introductions".
   - Vouching for a fresh computer, so one next to a group is not a rival. Hellos carry the vouch slots already, filled with random bytes.
+
+### Lens (0.7.0)
+
+- **Scope:** look at another computer's screen in a circle around the pointer, click and type there, and copy from it, without crossing. Moved here from the screenportal prototype, without GStreamer.
+- **Status (2026-10-18):** built on the `lens` branch, not yet run live. The input ALPN is `zflow/8` and the version 0.7.0.
+  - Core (`src/lens/`): tile encoder and decoder with damage, previews and the ring, the acknowledgement pacer, wire messages, the viewing client and the viewed host.
+  - GNOME is viewed: the desktop agent runs a Mutter remote desktop session and reads PipeWire; zflowd checks `share_screen` and relays.
+  - The Mac views: an overlay panel draws the chunks under the lens with Core Animation, and forwards pointer, buttons, scroll and keys. Cmd+C copies, Escape closes. "Look at <computer>" in the menu bar or Ctrl+Option+L opens it, and AWDL stays down while it is open.
+  - The GNOME settings window has a "Can see this screen" switch per computer.
+- **Left:**
+  - The live sitting in TESTPLAN.md, "Lens".
+  - Viewing from Linux and Windows, and viewing a Mac or Windows screen. The Mac's own "Can see this screen" switch waits for the second.
+  - Choosing the monitor; the primary is recorded. A computer whose display is off has no monitor to record; Mutter's virtual monitors could cover it.
+  - Opening a lens by pushing at an edge with no screen behind it.
+- **Acceptance:** on the LAN, a pointer move shows the matching pixels within one round trip plus 5 ms at p95 once the desktop is filled; text selected through the lens pastes on the Mac; on a 2 Mbit/s link the lens stays responsive while content changes.
+- **Size:** about 3000 LOC.
+- **Risks:** Mutter's private APIs change between releases; PipeWire buffer formats and damage on other compositors.
 
 ### Phase 5 (later)
 

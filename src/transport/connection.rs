@@ -65,6 +65,7 @@ pub struct InputConnection {
     control_receive: ControlReceiver,
     datagrams: DatagramChannel,
     clipboard: ClipboardChannel,
+    lens: LensChannel,
 }
 
 impl fmt::Debug for InputConnection {
@@ -95,6 +96,7 @@ impl InputConnection {
             control_receive: self.control_receive,
             datagrams: self.datagrams,
             clipboard: self.clipboard,
+            lens: self.lens,
         }
     }
 
@@ -112,6 +114,56 @@ pub struct InputChannels {
     pub control_receive: ControlReceiver,
     pub datagrams: DatagramChannel,
     pub clipboard: ClipboardChannel,
+    pub lens: LensChannel,
+}
+
+/// The two-way streams that carry a lens: tiles one way, the viewer's pointer, keys and
+/// acknowledgements the other. One may be open in each direction. They send below the control
+/// stream's priority, so tiles never hold up input.
+#[derive(Clone)]
+pub struct LensChannel {
+    connection: Connection,
+}
+
+/// Both halves of one lens stream, after the preface.
+pub struct LensStream {
+    pub send: quinn::SendStream,
+    pub receive: quinn::RecvStream,
+}
+
+/// Why a lens stream was stopped, for the other end's diagnostics.
+const LENS_REFUSED: u32 = 1;
+
+impl LensChannel {
+    /// Opens a lens onto the peer's screen.
+    pub async fn open(&self) -> Result<LensStream, TransportError> {
+        let failed = |error: &dyn fmt::Display| TransportError::Lens(error.to_string());
+        let (mut send, receive) = self.connection.open_bi().await?;
+        send.set_priority(-1).map_err(|error| failed(&error))?;
+        send.write_all(crate::lens::wire::PREFACE)
+            .await
+            .map_err(|error| failed(&error))?;
+        Ok(LensStream { send, receive })
+    }
+
+    /// Waits for the peer to open a lens onto this computer's screen. A stream without the
+    /// lens preface is stopped, and the connection stays up.
+    pub async fn accept(&self) -> Result<LensStream, TransportError> {
+        let failed = |error: &dyn fmt::Display| TransportError::Lens(error.to_string());
+        let (mut send, mut receive) = self.connection.accept_bi().await?;
+        let mut preface = [0_u8; crate::lens::wire::PREFACE.len()];
+        receive
+            .read_exact(&mut preface)
+            .await
+            .map_err(|error| failed(&error))?;
+        if &preface != crate::lens::wire::PREFACE {
+            let _ = receive.stop(VarInt::from_u32(LENS_REFUSED));
+            let _ = send.reset(VarInt::from_u32(LENS_REFUSED));
+            return Err(TransportError::Lens("the peer sent a stray stream".into()));
+        }
+        send.set_priority(-1).map_err(|error| failed(&error))?;
+        Ok(LensStream { send, receive })
+    }
 }
 
 /// The kind and length a clipboard stream announces, if it may be read.
@@ -752,7 +804,10 @@ fn input_connection(
             negotiated_maximum,
             outgoing,
         },
-        clipboard: ClipboardChannel { connection },
+        clipboard: ClipboardChannel {
+            connection: connection.clone(),
+        },
+        lens: LensChannel { connection },
     }
 }
 

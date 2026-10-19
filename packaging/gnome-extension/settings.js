@@ -207,6 +207,7 @@ export class Settings {
         this._keyboards = new Map();
         this._controls = new Map();
         this._scrolls = new Map();
+        this._lensRows = new Map();
         // The rows each inspector group shows.
         this._filled = new Map();
         this._inspectorKey = null;
@@ -369,7 +370,7 @@ export class Settings {
         if (this._busy) return false;
         this._busy = true;
         this._sharing.sensitive = this._login.sensitive = this._addButton.sensitive = this._pause.sensitive = this._clipboard.sensitive = false;
-        for (const row of [...this._keyboards.values(), ...this._controls.values(), ...this._scrolls.values()]) row.sensitive = false;
+        for (const row of [...this._keyboards.values(), ...this._controls.values(), ...this._scrolls.values(), ...this._lensRows.values()]) row.sensitive = false;
         this._showError(null);
         let success = false;
         try { await this.client.call(request); success = true; }
@@ -1204,10 +1205,12 @@ export class Settings {
             const keyboard = this._keyboards.get(peer.name);
             const control = this._controls.get(peer.name);
             const scroll = this._scrolls.get(peer.name);
+            const lens = this._lensRows.get(peer.name);
             keyboard.selected = Math.max(0, KEYBOARD_MODES.indexOf(peer.keyboard));
             control.active = peer.allow_control;
             scroll.active = !!peer.reverse_scroll;
-            keyboard.sensitive = control.sensitive = scroll.sensitive = !this._busy;
+            lens.active = !!peer.share_screen;
+            keyboard.sensitive = control.sensitive = scroll.sensitive = lens.sensitive = !this._busy;
         }
         this._updating = false;
     }
@@ -1228,6 +1231,7 @@ export class Settings {
         this._keyboards.clear();
         this._controls.clear();
         this._scrolls.clear();
+        this._lensRows.clear();
         const rows = computers.map(computer => {
             const row = new Adw.ActionRow({title: computer.name, subtitle: summary(computer), use_markup: false, activatable: true});
             row.add_prefix(new Gtk.Image({icon_name: 'computer-symbolic'}));
@@ -1298,6 +1302,7 @@ export class Settings {
         this._keyboards.clear();
         this._controls.clear();
         this._scrolls.clear();
+        this._lensRows.clear();
         this._peerSettings.visible = !!peer;
         if (!peer) {
             this._fill(this._peerSettings, []);
@@ -1318,7 +1323,12 @@ export class Settings {
             if (!this._updating) this._run({command: 'set_peer', name, reverse_scroll: scroll.active});
         });
         this._scrolls.set(name, scroll);
-        this._fill(this._peerSettings, [control, keyboard, scroll]);
+        const lens = new Adw.SwitchRow({title: 'Can see this screen', subtitle: 'Through a lens around its pointer'});
+        lens.connect('notify::active', () => {
+            if (!this._updating) this._run({command: 'set_peer', name, share_screen: lens.active});
+        });
+        this._lensRows.set(name, lens);
+        this._fill(this._peerSettings, [control, keyboard, scroll, lens]);
     }
 
     _crossingRow(seam, mine) {
