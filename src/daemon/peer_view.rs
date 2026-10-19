@@ -37,6 +37,7 @@ pub(super) fn start(shared: Arc<Shared>) -> Result<()> {
                         crate::peer_view::Request::Desktop {} => {
                             super::desktop::serve(shared.clone(), stream, daemon_uid).await?;
                         }
+                        crate::peer_view::Request::Lens {} => shared.offer_lens(stream).await,
                         request => {
                             let reply = desktop_command(&mut stream, &shared, daemon_uid, request)
                                 .await
@@ -159,11 +160,12 @@ async fn desktop_command(
             allow_control,
             keyboard,
             reverse_scroll,
+            share_screen,
         } => {
             let Some(peer) = config.peers.get_mut(&name) else {
                 bail!("Unknown computer {name}");
             };
-            crate::peer_view::set_peer(peer, allow_control, keyboard, reverse_scroll);
+            crate::peer_view::set_peer(peer, allow_control, keyboard, reverse_scroll, share_screen);
             shared.apply_config_locked(config, true).await?;
             Ok(DesktopReply::Ack)
         }

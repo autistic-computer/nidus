@@ -51,6 +51,18 @@ struct MenuBarView: View {
           }
         }
       }
+      let linked = peers.filter(\.state.linked)
+      if !linked.isEmpty {
+        let target = AppModel.lensTarget(peers: peers, last: model.lastLooked)
+        Divider().padding(.vertical, 4)
+        ForEach(linked) { peer in
+          MenuRow(title: "Look at \(peer.name)", symbol: "magnifyingglass") {
+            model.look(at: peer.name)
+          } trailing: {
+            if peer.name == target { Text(LensHotKey.label) }
+          }
+        }
+      }
       Divider().padding(.vertical, 4)
       MenuRow(title: "Open zflow") {
         model.show()

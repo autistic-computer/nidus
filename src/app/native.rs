@@ -132,9 +132,15 @@ pub(crate) struct NativeApp {
     crossing_error: Option<String>,
     maintenance: Instant,
     retry_at: Instant,
+    /// The lens this Mac looks through, shared with the UI thread.
+    lens: Arc<crate::lens::viewer::Viewer>,
 }
 
 impl NativeApp {
+    pub(crate) fn lens(&self) -> Arc<crate::lens::viewer::Viewer> {
+        self.lens.clone()
+    }
+
     pub fn open(path: PathBuf) -> Result<Self> {
         let mut document = ConfigDocument::open(path)?;
         document.validate()?;
@@ -183,6 +189,7 @@ impl NativeApp {
             crossing_error: None,
             maintenance: Instant::now() - MAINTENANCE,
             retry_at: Instant::now(),
+            lens: Arc::default(),
         };
         if let Some(kept) = &app.shared.draft.layout {
             app.links.share_layout(kept.clone());
@@ -292,6 +299,7 @@ impl NativeApp {
                 allow_control,
                 keyboard,
                 reverse_scroll,
+                share_screen,
             } => {
                 let peer = self
                     .document
@@ -299,7 +307,13 @@ impl NativeApp {
                     .peers
                     .get_mut(&name)
                     .with_context(|| format!("Unknown computer {name}"))?;
-                crate::peer_view::set_peer(peer, allow_control, keyboard, reverse_scroll);
+                crate::peer_view::set_peer(
+                    peer,
+                    allow_control,
+                    keyboard,
+                    reverse_scroll,
+                    share_screen,
+                );
                 self.save_config()?;
                 // Links take who may control this Mac without reconnecting,
                 // so a crossing in progress carries on.
@@ -315,6 +329,12 @@ impl NativeApp {
                 self.save_config()?;
                 // Links take it without reconnecting, like peer settings.
                 self.sync_links();
+            }
+            Request::Lens { name } => {
+                let reduce_wifi_latency =
+                    self.document.saved().macos.block_awdl && self.helper_ready;
+                self.links
+                    .open_lens(&name, self.lens.clone(), reduce_wifi_latency)?
             }
             // The app keeps the login item.
             Request::SetAutostart { .. }
@@ -1492,6 +1512,7 @@ mod tests {
                 allow_control: Some(true),
                 keyboard: None,
                 reverse_scroll: None,
+                share_screen: None,
             })
             .unwrap_err();
         assert_eq!(error.to_string(), "Unknown computer desk");
@@ -1521,6 +1542,7 @@ mod tests {
                 allow_control: Some(true),
                 keyboard: Some(crate::core::KeyboardMode::PcPositions),
                 reverse_scroll: Some(true),
+                share_screen: None,
             })
             .unwrap();
         assert_eq!(app.retry_at, armed_at, "sharing did not restart");
@@ -1882,6 +1904,7 @@ mod tests {
             allow_control: Some(true),
             keyboard: Some(crate::core::KeyboardMode::PcPositions),
             reverse_scroll: None,
+            share_screen: None,
         })
         .unwrap();
         let (own, old) = (app.own_key().unwrap(), desk.fingerprint_hex());
@@ -2083,6 +2106,7 @@ mod tests {
                     },
                     keyboard: crate::core::KeyboardMode::Standard,
                     reverse_scroll: false,
+                    share_screen: false,
                 },
             );
         }

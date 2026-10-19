@@ -106,7 +106,11 @@ you added; updating the Linux service interrupts an active connection.
 Computers on 0.3.0 and on 0.2.0 or older cannot connect, so update every
 computer. GNOME updates an
 extension from extensions.gnome.org by itself when the Extensions app or
-Extension Manager is installed; a bundled copy changes at your next login. If the extension and the app get too far apart,
+Extension Manager is installed. A bundled copy from 0.7.0 on reloads by
+itself after an update: the extension loads GNOME Shell's code from a folder
+named after that code, and the desktop agent turns the extension off and on
+when it finds it older than the app. Updating from 0.6.1 or older still needs
+one more login. If the extension and the app get too far apart,
 the panel and settings say **Update zflow**. Until the extension is set up,
 the zflow window shows a banner with the step that is left: **Install**,
 **Turn On**, or **Log Out**.
@@ -252,6 +256,12 @@ Toshy, keyd, xremap and kanata also grab `zflow remote keyboard`, so use
 `keyboards_UserCustom_dct = {'zflow remote keyboard': 'Apple'}` in its config.
 To keep keyd off it, add `-1209:5a01` under `[ids]`. `zflow doctor` warns when
 it finds one of them while a computer uses another mode.
+
+## Lens
+
+The lens shows another computer's screen in a circle around your pointer, live and exact. Click, type and scroll there, select text and press Cmd+C to bring it back. Escape, or a click outside the circle, closes it. Choose "Look at <computer>" in the Mac's menu bar, or press Ctrl+Option+L to open or close a lens on the computer you looked at last. For now a Mac can look at a GNOME computer, which records its primary monitor through Mutter, and that computer must allow it: turn on "Can see this screen" for the Mac in its zflow settings. It is off by default. See SPEC.md, "Lens".
+
+The computer being looked at sends the circle first, then a ring around it, then the rest of its desktop, at the pace the link allows, so moving the lens stays instant once the desktop has arrived. A slow link shows blocky previews that sharpen within a round trip or two.
 
 ## Settings and configuration
 

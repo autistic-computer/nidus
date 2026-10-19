@@ -5,7 +5,7 @@ mod awdl;
 mod clipboard;
 mod handoff_server;
 mod inject;
-mod keys;
+pub(crate) mod keys;
 mod link;
 mod local_network;
 mod pointer;

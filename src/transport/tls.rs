@@ -26,7 +26,7 @@ use crate::identity::Identity;
 
 use super::TransportError;
 
-pub const INPUT_ALPN_PROTOCOL: &[u8] = b"zflow/7";
+pub const INPUT_ALPN_PROTOCOL: &[u8] = b"zflow/8";
 /// Answered on the input port by computers that do not trust each other yet.
 pub const HELLO_ALPN_PROTOCOL: &[u8] = b"zflow-hello/5";
 const INPUT_KEEP_ALIVE: std::time::Duration = std::time::Duration::from_secs(5);
@@ -275,14 +275,15 @@ fn tls_server_config(
 
 fn input_client_transport_config() -> quinn::TransportConfig {
     let mut config = datagram_transport_config();
-    // Only the initiator opens the single critical stream.
-    config.max_concurrent_bidi_streams(0_u8.into());
+    // Only the initiator opens the single critical stream; the other side may open one lens.
+    config.max_concurrent_bidi_streams(1_u8.into());
     config
 }
 
 fn input_server_transport_config() -> quinn::TransportConfig {
     let mut config = datagram_transport_config();
-    config.max_concurrent_bidi_streams(1_u8.into());
+    // The critical stream, and one lens the initiator may open.
+    config.max_concurrent_bidi_streams(2_u8.into());
     config
 }
 
@@ -495,6 +496,7 @@ mod tests {
         ("0.5.0", b"zflow/6", b"zflow-hello/5"),
         ("0.6.0", b"zflow/7", b"zflow-hello/5"),
         ("0.6.1", b"zflow/7", b"zflow-hello/5"),
+        ("0.7.0", b"zflow/8", b"zflow-hello/5"),
     ];
 
     #[test]

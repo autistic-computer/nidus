@@ -20,6 +20,7 @@ mod ffi;
 pub mod forgotten;
 pub mod hello;
 pub mod identity;
+pub mod lens;
 pub mod link;
 #[cfg(target_os = "linux")]
 pub mod linux;

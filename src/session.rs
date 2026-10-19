@@ -153,6 +153,10 @@ pub enum SessionEventKind {
     Clipboard {
         clip: crate::clipboard::Clip,
     },
+    /// The peer opened a lens onto this computer's screen. Dropping the stream refuses it.
+    Lens {
+        stream: crate::transport::LensStream,
+    },
     Closed {
         reason: String,
     },
@@ -187,6 +191,7 @@ pub struct SessionHandle {
     clipboard: crate::transport::ClipboardChannel,
     /// The clip being sent, if any. A newer one cancels it.
     sending_clip: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+    lens: crate::transport::LensChannel,
 }
 
 pub(crate) fn desktop_operation(request: &crate::desktop::DesktopRequest) -> &'static str {
@@ -212,6 +217,11 @@ pub(crate) fn desktop_response_kind(response: &crate::desktop::DesktopResponse) 
 }
 
 impl SessionHandle {
+    /// Opens a lens onto the peer's screen. The peer refuses it unless this computer may view it.
+    pub async fn open_lens(&self) -> Result<crate::transport::LensStream> {
+        Ok(self.lens.open().await?)
+    }
+
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -322,6 +332,7 @@ pub async fn start_session(
         capabilities: InputCapabilities::default(),
         clipboard: channels.clipboard.clone(),
         sending_clip: Arc::new(Mutex::new(None)),
+        lens: channels.lens.clone(),
     };
 
     let reporter = Reporter {
@@ -377,6 +388,8 @@ async fn run_session(
     // this session runs.
     let clips = tokio::spawn(receive_clips(channels.clipboard.clone(), reporter.clone()));
     let _clips = AbortOnDrop(clips.abort_handle());
+    let lenses = tokio::spawn(receive_lenses(channels.lens.clone(), reporter.clone()));
+    let _lenses = AbortOnDrop(lenses.abort_handle());
     let setup = async {
         let negotiated = negotiate(&mut channels, &options.offer).await?;
         channels
@@ -743,6 +756,26 @@ async fn receive_clips(clipboard: crate::transport::ClipboardChannel, reporter: 
             }
             Err(crate::transport::TransportError::Clipboard(reason)) => {
                 tracing::info!(peer = %reporter.peer, session_id = reporter.session_id, %reason, "clip from peer dropped");
+            }
+            Err(_) => return,
+        }
+    }
+}
+
+async fn receive_lenses(lens: crate::transport::LensChannel, reporter: Reporter) {
+    loop {
+        match lens.accept().await {
+            Ok(stream) => {
+                if reporter
+                    .send(SessionEventKind::Lens { stream })
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            Err(crate::transport::TransportError::Lens(reason)) => {
+                tracing::info!(peer = %reporter.peer, session_id = reporter.session_id, %reason, "lens from peer refused");
             }
             Err(_) => return,
         }
@@ -1748,6 +1781,7 @@ mod tests {
                 capabilities: InputCapabilities::default(),
                 clipboard: channels.clipboard.clone(),
                 sending_clip: Arc::new(Mutex::new(None)),
+                lens: channels.lens.clone(),
             };
             tokio::spawn(async move {
                 let _ = run_session(
@@ -1786,6 +1820,143 @@ mod tests {
             panic!("expected a clip")
         };
         assert_eq!(received, clip);
+    }
+
+    #[tokio::test]
+    async fn a_lens_opened_on_one_end_reaches_the_other_and_carries_tiles_both_ways() {
+        use crate::lens::wire::{LensMessage, read, write};
+        let (left, _right, mut events, _client, _server) = desktop_test_pair().await;
+        let mut viewer = left.open_lens().await.unwrap();
+        write(
+            &mut viewer.send,
+            LensMessage::Move {
+                x: 10,
+                y: 20,
+                radius: 300,
+                id: 1,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let SessionEventKind::Lens { stream: mut viewed } = event.kind else {
+            panic!("expected a lens")
+        };
+        let (message, _) = read(&mut viewed.receive).await.unwrap().unwrap();
+        assert!(matches!(message, LensMessage::Move { id: 1, .. }));
+        let frame = LensMessage::Frame {
+            serial: 1,
+            request: 1,
+            exact: true,
+        };
+        write(&mut viewed.send, frame.clone(), Some(&[7; 1000]))
+            .await
+            .unwrap();
+        let received = read(&mut viewer.receive).await.unwrap().unwrap();
+        assert_eq!(received, (frame, Some(vec![7; 1000])));
+    }
+
+    #[tokio::test]
+    async fn a_viewer_decodes_tiles_acknowledges_them_and_gets_its_copy() {
+        use crate::lens::{
+            client,
+            tiles::{Budget, Encoder},
+            viewer::{Input, State, Viewer},
+            wire::{LensMessage, read, write},
+        };
+        let (left, _right, mut events, _client, _server) = desktop_test_pair().await;
+        let viewer = Arc::new(Viewer::default());
+        let input = client::start(&viewer);
+        let (copied, mut copies) = mpsc::unbounded_channel();
+        // A session closes with its last handle, so the test keeps `left`.
+        let opener = left.clone();
+        let running = tokio::spawn(client::run(
+            async move { opener.open_lens().await },
+            viewer.clone(),
+            input,
+            move |text| {
+                let _ = copied.send(text);
+            },
+        ));
+        viewer.send(Input::Move {
+            x: 100.,
+            y: 50.,
+            radius: 40.,
+        });
+        let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let SessionEventKind::Lens { stream: mut viewed } = event.kind else {
+            panic!("expected a lens")
+        };
+        let (moved, _) = read(&mut viewed.receive).await.unwrap().unwrap();
+        assert_eq!(
+            moved,
+            LensMessage::Move {
+                x: 100,
+                y: 50,
+                radius: 40,
+                id: 1
+            }
+        );
+        let (width, height) = (320, 200);
+        write(
+            &mut viewed.send,
+            LensMessage::Ready {
+                width: width as u16,
+                height: height as u16,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let mut encoder = Encoder::new(width, height).unwrap();
+        let pixels = vec![200_u8; width * height * 4];
+        let unlimited = Budget {
+            lens: usize::MAX,
+            fill: usize::MAX,
+        };
+        let body = encoder
+            .encode(&pixels, width * 4, None, unlimited, 0)
+            .unwrap()
+            .body
+            .unwrap();
+        let frame = LensMessage::Frame {
+            serial: 1,
+            request: 1,
+            exact: true,
+        };
+        write(&mut viewed.send, frame, Some(&body)).await.unwrap();
+        let (ack, _) = read(&mut viewed.receive).await.unwrap().unwrap();
+        assert_eq!(ack, LensMessage::Ack { serial: 1 });
+        let status = viewer.status();
+        assert_eq!(
+            (status.state, status.width, status.frames),
+            (State::Open, 320, 1)
+        );
+        let mut chunk = vec![0_u8; 256 * 256 * 4];
+        assert_eq!(viewer.chunk(0, &mut chunk, 256 * 4), Some((256, 200)));
+        assert!(chunk[..256 * 4].iter().all(|byte| *byte == 200));
+        viewer.send(Input::Copy);
+        let (copy, _) = read(&mut viewed.receive).await.unwrap().unwrap();
+        assert_eq!(copy, LensMessage::Copy);
+        let text = LensMessage::Copied {
+            text: "selected on the other computer".into(),
+        };
+        write(&mut viewed.send, text, None).await.unwrap();
+        let copy = tokio::time::timeout(Duration::from_secs(1), copies.recv())
+            .await
+            .unwrap();
+        assert_eq!(copy.as_deref(), Some("selected on the other computer"));
+        viewer.send(Input::Close);
+        assert!(read(&mut viewed.receive).await.unwrap().is_none());
+        running.await.unwrap().unwrap();
+        assert_eq!(viewer.status().state, State::Closed);
     }
 
     #[tokio::test]

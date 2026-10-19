@@ -61,12 +61,14 @@ impl Service {
                 allow_control,
                 keyboard,
                 reverse_scroll,
+                share_screen,
             } => {
                 crate::peer_view::request(&DaemonRequest::SetPeer {
                     name,
                     allow_control,
                     keyboard,
                     reverse_scroll,
+                    share_screen,
                 })
                 .await?;
             }
@@ -166,6 +168,7 @@ impl Service {
             Request::Reload
             | Request::SetAwdl { .. }
             | Request::HelperReady { .. }
+            | Request::Lens { .. }
             | Request::AllowAccessibility
             | Request::CheckAccessibility
             | Request::Discover => bail!("Not available on this computer"),
@@ -676,6 +679,7 @@ mod tests {
                     },
                     keyboard: crate::core::KeyboardMode::Standard,
                     reverse_scroll: false,
+                    share_screen: false,
                 },
             );
         }

@@ -1,9 +1,12 @@
 //! Owned JSON messages at the Swift/Rust boundary. All engine work runs off the UI thread.
-use crate::app::NativeApp;
+use crate::{
+    app::NativeApp,
+    lens::viewer::{Input, Viewer},
+};
 use std::{
     ffi::{CStr, CString, c_char},
     path::PathBuf,
-    sync::mpsc,
+    sync::{Arc, mpsc},
     thread::JoinHandle,
     time::Duration,
 };
@@ -12,6 +15,8 @@ type Reply = mpsc::Sender<String>;
 pub struct ZflowApp {
     commands: mpsc::Sender<(String, Reply)>,
     thread: Option<JoinHandle<()>>,
+    /// Read and written straight from the UI thread, so a frame never waits for the app thread.
+    lens: Arc<Viewer>,
 }
 
 fn response(result: anyhow::Result<serde_json::Value>) -> String {
@@ -55,6 +60,7 @@ pub unsafe extern "C" fn zflow_app_create(
         // Input a peer holds is let go if the app is told to quit by a signal.
         crate::macos::install_exit_handlers();
         let mut app = NativeApp::open(path)?;
+        let lens = app.lens();
         let (commands, requests) = mpsc::channel::<(String, Reply)>();
         let thread = std::thread::Builder::new()
             .name("zflow-app".into())
@@ -76,6 +82,7 @@ pub unsafe extern "C" fn zflow_app_create(
         Ok(ZflowApp {
             commands,
             thread: Some(thread),
+            lens,
         })
     })
     .unwrap_or_else(|_| Err(anyhow::anyhow!("The sharing engine could not start")));
@@ -138,5 +145,186 @@ pub unsafe extern "C" fn zflow_app_destroy(app: *mut ZflowApp) {
     drop(app);
     if let Some(thread) = thread {
         let _ = thread.join();
+    }
+}
+
+/// The lens as the UI sees it. `state` is 0 closed, 1 opening, 2 open, 3 failed.
+#[repr(C)]
+pub struct ZflowLensStatus {
+    pub state: u32,
+    pub width: u32,
+    pub height: u32,
+    pub frames: u64,
+}
+
+fn lens<'a>(app: *const ZflowApp) -> Option<&'a Viewer> {
+    // SAFETY: a nonnull handle is live for the call, by the caller contract.
+    (!app.is_null()).then(|| unsafe { &*(*app).lens })
+}
+
+/// # Safety
+/// `app` must be a live handle or null. Lens calls may come from any thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_status(app: *const ZflowApp) -> ZflowLensStatus {
+    let status = lens(app).map(Viewer::status).unwrap_or_default();
+    ZflowLensStatus {
+        state: status.state as u32,
+        width: status.width,
+        height: status.height,
+        frames: status.frames,
+    }
+}
+
+/// Why the lens failed, or null. Free the string with `zflow_string_free`.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_error(app: *const ZflowApp) -> *mut c_char {
+    lens(app)
+        .and_then(Viewer::error)
+        .map_or(std::ptr::null_mut(), |error| {
+            string(error.replace('\0', ""))
+        })
+}
+
+/// Writes up to `capacity` ids of chunks under the circle that changed since they were last
+/// copied, and returns how many it wrote.
+///
+/// # Safety
+/// `app` must be a live handle or null; `ids` must hold `capacity` writable values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_dirty(
+    app: *const ZflowApp,
+    x: f64,
+    y: f64,
+    radius: f64,
+    ids: *mut u32,
+    capacity: usize,
+) -> usize {
+    let Some(viewer) = lens(app) else { return 0 };
+    if ids.is_null() || capacity == 0 {
+        return 0;
+    }
+    // SAFETY: the caller supplies `capacity` writable values.
+    let ids = unsafe { std::slice::from_raw_parts_mut(ids, capacity) };
+    viewer.dirty(x, y, radius, ids)
+}
+
+/// Copies chunk `id` as BGRx rows `stride` bytes apart into `pixels`, which holds `length`
+/// bytes, and writes its size. False if there is no such chunk or the buffer is too small.
+///
+/// # Safety
+/// `app` must be a live handle or null; `pixels` must hold `length` writable bytes; `width` and
+/// `height` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_chunk(
+    app: *const ZflowApp,
+    id: u32,
+    pixels: *mut u8,
+    length: usize,
+    stride: usize,
+    width: *mut u32,
+    height: *mut u32,
+) -> bool {
+    let Some(viewer) = lens(app) else {
+        return false;
+    };
+    if pixels.is_null() || width.is_null() || height.is_null() {
+        return false;
+    }
+    // SAFETY: the caller supplies `length` writable bytes.
+    let pixels = unsafe { std::slice::from_raw_parts_mut(pixels, length) };
+    let Some((w, h)) = viewer.chunk(id as usize, pixels, stride) else {
+        return false;
+    };
+    // SAFETY: writable outputs supplied by the caller.
+    unsafe {
+        *width = w as u32;
+        *height = h as u32;
+    }
+    true
+}
+
+/// Moves the lens, and the other computer's pointer, to `x`, `y` in its capture pixels.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_move(app: *const ZflowApp, x: f64, y: f64, radius: f64) {
+    if let Some(viewer) = lens(app)
+        && x.is_finite()
+        && y.is_finite()
+        && radius.is_finite()
+    {
+        viewer.send(Input::Move { x, y, radius });
+    }
+}
+
+/// `button` is 1 left, 2 middle, 3 right, 4 back, 5 forward.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_button(app: *const ZflowApp, button: u32, pressed: bool) {
+    // zflow numbers buttons the HID way: primary, secondary, middle.
+    let button = match button {
+        1 => 1,
+        2 => 3,
+        3 => 2,
+        4 | 5 => button as u8,
+        _ => return,
+    };
+    if let Some(viewer) = lens(app) {
+        viewer.send(Input::Button { button, pressed });
+    }
+}
+
+/// `keycode` is a macOS virtual key code; keys zflow does not know are dropped.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_key(app: *const ZflowApp, keycode: u16, pressed: bool) {
+    if let Some(viewer) = lens(app)
+        && let Some(usage) = crate::macos::keys::mac_keycode_to_hid(keycode)
+    {
+        viewer.send(Input::Key { usage, pressed });
+    }
+}
+
+/// Scrolls by pixels; positive `dy` scrolls content up, as a trackpad swipe down does.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_scroll(app: *const ZflowApp, dx: f64, dy: f64) {
+    if let Some(viewer) = lens(app)
+        && dx.is_finite()
+        && dy.is_finite()
+    {
+        viewer.send(Input::Scroll { dx, dy });
+    }
+}
+
+/// Copies the other computer's selection to this Mac's clipboard.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_copy(app: *const ZflowApp) {
+    if let Some(viewer) = lens(app) {
+        viewer.send(Input::Copy);
+    }
+}
+
+/// Closes the lens. Opening goes through `zflow_app_request` with `{"command":"lens","name":…}`.
+///
+/// # Safety
+/// `app` must be a live handle or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn zflow_lens_close(app: *const ZflowApp) {
+    if let Some(viewer) = lens(app) {
+        viewer.send(Input::Close);
     }
 }
