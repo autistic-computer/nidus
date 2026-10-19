@@ -49,6 +49,7 @@ pub(super) fn validate(message: &WireMessage) -> Result<(), WireError> {
         }
         WireMessage::Motion(frame) => frame.touch_snapshot.as_ref().map_or(Ok(()), touch),
         WireMessage::Probe(_) => Ok(()),
+        WireMessage::Lens(message) => message.validate().map_err(WireError::Invalid),
         WireMessage::Hello(hello) => {
             limit("name bytes", hello.name.len(), MAX_NAME_BYTES)?;
             limit("version bytes", hello.version.len(), MAX_VERSION_BYTES)?;

@@ -33,8 +33,13 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends /tmp/zflow.deb | tee /tmp/install.log
 test -x /usr/bin/zflow
 /usr/bin/zflow --version
-# The extension is exactly what scripts/pack-extension.sh uploads.
-test "$(ls /usr/share/gnome-shell/extensions/zflow@demfabris | tr '\n' ' ')" = 'client.js extension.js indicator.js metadata.json prefs.js settings.js '
+# The extension is what scripts/pack-extension.sh uploads, plus Shell's code again in the build
+# folder `current` names, which the loader reloads without a new login.
+extension=/usr/share/gnome-shell/extensions/zflow@demfabris
+test "$(ls "$extension" | grep -v '^build-' | tr '\n' ' ')" = 'client.js current extension.js indicator.js metadata.json prefs.js settings.js shell.js '
+build=$(cat "$extension/current")
+test "$(ls "$extension/$build" | tr '\n' ' ')" = 'client.js indicator.js shell.js '
+cmp "$extension/shell.js" "$extension/$build/shell.js"
 test -f /usr/share/applications/io.zflow.zflow.desktop
 grep -qx 'Icon=io.zflow.zflow' /usr/share/applications/io.zflow.zflow.desktop
 test -f /usr/share/icons/hicolor/scalable/apps/io.zflow.zflow.svg

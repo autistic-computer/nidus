@@ -45,6 +45,10 @@ final class AppModel {
   var busy = false
   let services = Services()
   let updates = Updates()
+  let lens = LensController()
+  /// The computer the lens last looked at, which ⌃⌥L opens again.
+  private(set) var lastLooked: String?
+  @ObservationIgnored private var hotKey: LensHotKey?
   let configPath: String
   let showSettingsAtLaunch: Bool
   /// Set by the menu bar icon, which lives as long as the app.
@@ -68,6 +72,8 @@ final class AppModel {
     showSettingsAtLaunch = arguments.contains("--show-settings")
     core = CoreBridge(path: configPath)
     guard polling else { return }
+    hotKey = LensHotKey { [weak self] in self?.toggleLens() }
+    hotKey?.register()
     poller = Task { [weak self] in
       var ticks = 0
       while !Task.isCancelled {
@@ -75,7 +81,8 @@ final class AppModel {
         await self.perform(CoreRequest(command: "snapshot"), quiet: true)
         let access = NSPasteboard.general.accessBehavior
         if access != self.pasteAccess { self.pasteAccess = access }
-        if ticks % 20 == 0 { await self.checkServices() }
+        // Beside the poll, so a slow helper never holds the window on an old snapshot.
+        if ticks % 20 == 0 { Task { await self.checkServices() } }
         ticks += 1
         try? await Task.sleep(for: .milliseconds(500))
       }
@@ -167,6 +174,36 @@ final class AppModel {
       ProcessInfo.processInfo.endActivity(activity)
       self.activity = nil
     }
+  }
+
+  /// Shows the lens around the pointer onto computer `name`'s screen. It
+  /// shows at once, and says why if the engine cannot open it.
+  func look(at name: String) {
+    guard !busy else { return }
+    lastLooked = name
+    Task {
+      let handle: LensHandle
+      do { handle = try await core.lens() } catch { return report(error.localizedDescription) }
+      let session = lens.show(name, handle: handle)
+      let failure = await attempt(CoreRequest(command: "lens", name: name))
+      lens.requested(session, failure: failure)
+    }
+  }
+
+  /// ⌃⌥L: closes the lens, or opens one on the computer `lensTarget` picks.
+  func toggleLens() {
+    if lens.isOpen { return lens.close() }
+    guard let name = Self.lensTarget(peers: snapshot?.peers ?? [], last: lastLooked) else {
+      return NSSound.beep()
+    }
+    look(at: name)
+  }
+  /// The computer ⌃⌥L looks at: the last one looked at while it is still
+  /// connected, else the first connected one.
+  nonisolated static func lensTarget(peers: [Peer], last: String?) -> String? {
+    let linked = peers.filter(\.state.linked)
+    if let last, linked.contains(where: { $0.name == last }) { return last }
+    return linked.first?.name
   }
 
   /// The Computers page with a paired computer selected on it.
@@ -286,6 +323,13 @@ final class AppModel {
     guard !busy else { return }
     busy = true
     poller?.cancel()
+    hotKey?.unregister()
+    lens.close()
     await core.shutdown()
   }
+}
+
+extension Peer.State {
+  /// Connected, so the lens can look at it.
+  var linked: Bool { [.connected, .controllingThis, .controlledFromHere].contains(self) }
 }

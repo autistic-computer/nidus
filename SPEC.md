@@ -70,6 +70,7 @@ zflow MUST:
 | QoS marking | provisional | Radio and energy matrix |
 | Automatic path failover | planned | Candidate-racing failure matrix |
 | Clipboard text and PNG images, with the pointer | Linux built; macOS planned | Phase 4 acceptance in ROADMAP.md |
+| Lens: a live lossless view of a GNOME screen around a Mac pointer | experiment; built, not yet run live | Lens sitting in TESTPLAN.md |
 | File transfer | deferred | Separate bulk transport |
 
 Linux pre-login scope begins in real-root userspace once zflowd is active. Graphical-greeter support begins when the display manager starts; VT keyboard support may begin earlier. Firmware, initramfs, LUKS, macOS FileVault preboot, and other environments where zflow code cannot run remain excluded.
@@ -219,6 +220,7 @@ The receiver MUST release state from the prior epoch before accepting a new epoc
 | Motion state | QUIC datagrams | cumulative pointer and scroll state, complete touch snapshots |
 | Probe | QUIC datagrams | application probe and echo data |
 | Clipboard | one unidirectional QUIC stream per transfer, below the control stream's priority | one clip |
+| Lens | one bidirectional QUIC stream per lens, below the control stream's priority | the viewer's moves, acknowledgements, buttons, keys, scroll and copies; the viewed computer's tile packets |
 | Bulk | separate best-effort QUIC connection and socket | file data after v1 |
 
 Input control MUST NOT share a stream with clipboard or file data. If zflow applies a socket service class, bulk traffic MUST use an unmarked endpoint.
@@ -226,6 +228,23 @@ Input control MUST NOT share a stream with clipboard or file data. If zflow appl
 ### Clipboard
 
 The clipboard goes with the pointer and moves at no other time. The computer the pointer leaves sends its clipboard to the one it enters: a sender reads its own clipboard once its crossing reaches the other computer, by edge or chord, and a computer that was being controlled reads its clipboard when that control ends, by return, escape chord or lease end. Nothing reads the clipboard while the pointer stays put, and a crossing never waits for a clip. A clip is one representation: UTF-8 text if the clipboard has text, else one PNG image. Files never go. A clip holds at most 3 MiB (`MAX_CLIP_BYTES`); a larger clipboard stays where it is, and that computer shows a notice. Each computer opts in for itself with `[clipboard] share`, off by default: it sends only with its own switch on and keeps what arrives only with its own switch on. Each transfer is its own stream on the input connection, and QUIC sends datagrams ahead of stream data, so a large clip does not hold up input. A newer clip cancels one still on its way, and a bad or oversized clip ends only its own stream. Each computer remembers, per peer, the last clip that peer had from it or gave it, and sends only a different one, so a clip never bounces back. Logs name only a clip's kind and size.
+
+### Lens
+
+A lens shows another computer's screen in a circle around this computer's pointer, live and pixel exact, so a person can read, click, select and copy there without crossing over. The viewer opens one bidirectional stream on the input connection, prefaced `zflow-lens\0` and sent below the control stream's priority; either end of a connection may open one. Messages are the `Lens` family behind a four-byte length, and a `Frame` is followed by its tile packet the same way. The viewed computer refuses a lens with a reason unless its sharing is on and the viewer's peer record has `share_screen`, off by default, and it serves one lens at a time. Only a GNOME computer can be viewed for now, and only from a Mac.
+
+The viewed computer records one monitor, the primary, through a Mutter remote desktop session in the desktop agent, which owns the session bus; zflowd checks permission and relays the stream to the agent without reading it. Frames arrive over PipeWire in shared memory with Mutter's damage rectangles. Nothing is copied: the newest buffer stays out of the stream while the encoder reads it in place, and goes back to Mutter when a newer frame arrives. Damage limits which tiles are compared. The encoder cuts the desktop into 64×64 tiles and keeps the pixels behind what the viewer shows, so it sends a tile only when those differ. A tile packet is zstd-compressed records, each a tile id, a level and its pixels; the decoder MUST check a whole packet before changing any pixel.
+
+The viewer acknowledges every frame, and the viewed computer keeps about two round trips of data unacknowledged, sized from the delivery rate the acknowledgements show. It never queues more: whatever waits merges into the next frame, since the encoder diffs against what the viewer has. Each frame spends that budget in order:
+
+1. Tiles under the lens that the viewer has never had. These always go, as 2× or 4× downscaled previews when the budget is short, so the lens never shows a hole.
+2. Changed and preview tiles under the lens, exact, from the centre out. Waiting 100 ms counts as being one lens radius closer, so an animation at the centre cannot starve the edge.
+3. A 256-pixel ring around the lens, exact, refreshed at most every 250 ms, from half the window.
+4. The rest of the desktop, exact, compared and refreshed at most once a second, from the same half.
+
+Once the desktop is filled, moving the lens waits for nothing; only changed pixels cross the network. The viewer keeps the desktop in 256-pixel chunks and redraws only chunks whose tiles changed, so a move copies no pixels.
+
+The lens centre travels in the viewed computer's capture pixels and also places its pointer there through Mutter's absolute motion. Buttons, scroll and physical keys follow on the same Mutter session, and keys go through the viewer's keyboard mode, as in a crossing. A copy presses the viewed computer's copy shortcut, Ctrl+Shift+C in a terminal and Ctrl+C elsewhere, and returns the selection as text of at most `MAX_CLIP_BYTES`. Until GNOME Shell has said which app has focus, a copy is refused rather than risk Ctrl+C in a terminal. It lands on the viewer's clipboard whatever `[clipboard] share` says, since the person asked for it. The viewed computer releases every key and button it pressed when the lens ends. On a Mac with "Reduce Wi-Fi lag" on, AWDL stays down while a lens is open, as during a crossing. Logs name peers and sizes, never pixels or copied text.
 
 QUIC retransmission cannot deliver an event after connection death. The receiver owns failure recovery.
 
@@ -801,6 +820,9 @@ Release matrices from TESTPLAN.md gate each beta along the way.
 ## Decision register
 
 ### Settled for the first prototype
+
+- The GNOME extension's `extension.js` is a loader that never changes. It imports Shell's code from the `build-<hash>` folder that `current` names, because GJS caches a module by its path until logout. After an update the desktop agent turns the extension off and on, so the new folder loads without a login. Checked in a headless GNOME Shell 50: a new folder ran new code, and a file changed in place did not (reloadable extension, 2026-10-19).
+- The lens rides the input connection on its own stream, below input's priority, paced by application acknowledgements rather than QUIC's congestion window alone, since QUIC buffers whatever the application writes. It captures through Mutter's private remote desktop and screencast APIs in the desktop agent and PipeWire directly, with no GStreamer; zflowd only relays (lens design, 2026-10-18).
 
 - The Cargo package is `zflow-kvm`, the installed binary is `zflow`, and the project license is GPL-3.0-or-later (maintainer implementation decision, 2026-08-31).
 - The Linux evdev/uinput backend remains independent after the bounded Lan Mouse reuse gate found that reuse would require a maintained fork without removing zflow's backend or protocol work. Lan Mouse remains a reference for later portal/EIS work (reuse gate, 2026-08-31).

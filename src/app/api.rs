@@ -118,6 +118,8 @@ pub(super) struct Peer {
     pub keyboard: KeyboardMode,
     /// Whether its scrolling is turned around here.
     pub reverse_scroll: bool,
+    /// Whether it may look at this screen through a lens.
+    pub share_screen: bool,
     /// Its key's mark, as its tile on the shelf showed it.
     pub mark: String,
 }
@@ -150,6 +152,7 @@ impl Peer {
             allow_control: record.permissions.send_normal,
             keyboard: record.keyboard,
             reverse_scroll: record.reverse_scroll,
+            share_screen: record.share_screen,
             mark: record
                 .spki_der()
                 .map(|spki| crate::neighbors::mark(&spki))
@@ -221,6 +224,9 @@ pub(crate) enum Request {
         allow_control: Option<bool>,
         keyboard: Option<KeyboardMode>,
         reverse_scroll: Option<bool>,
+        /// Whether it may look at this screen through a lens.
+        #[serde(default)]
+        share_screen: Option<bool>,
     },
     Forget {
         name: String,
@@ -267,6 +273,10 @@ pub(crate) enum Request {
     SetClipboard {
         share: bool,
     },
+    /// Mac: opens a lens onto computer `name`'s screen.
+    Lens {
+        name: String,
+    },
     SetAutostart {
         enabled: bool,
     },
@@ -311,6 +321,7 @@ mod tests {
             },
             keyboard: KeyboardMode::Mac,
             reverse_scroll: false,
+            share_screen: false,
         }
     }
 
@@ -363,7 +374,7 @@ mod tests {
             serde_json::json!({
                 "name": "desk", "state": "controlled_from_here", "detail": "Controlled from here",
                 "allow_control": false, "keyboard": "mac", "reverse_scroll": false,
-                "mark": crate::neighbors::mark(&[1]),
+                "share_screen": false, "mark": crate::neighbors::mark(&[1]),
             })
         );
     }

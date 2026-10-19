@@ -2,6 +2,14 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+/// Whether the focused app is a terminal, as GNOME Shell last said. A lens reads it so its keys
+/// and copies act the way a crossing's do.
+pub(crate) static FOCUSED_TERMINAL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+/// Whether GNOME Shell has said anything about focus yet, so [`FOCUSED_TERMINAL`] means something.
+pub(crate) static FOCUS_KNOWN: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[derive(Default)]
 struct State {
     ready: bool,
@@ -405,6 +413,8 @@ async fn forward_signals(
     let mut terminal = Some(focus(proxy).await);
     loop {
         if let Some(terminal) = terminal {
+            FOCUSED_TERMINAL.store(terminal, std::sync::atomic::Ordering::Relaxed);
+            FOCUS_KNOWN.store(true, std::sync::atomic::Ordering::Relaxed);
             report(Request::Focus { terminal }).await;
         }
         terminal = tokio::select! {
@@ -526,6 +536,12 @@ async fn call(
                     "GNOME desktop RPC completed"
                 );
             }
+            // An update installs a new build that the running extension has not loaded yet.
+            if let crate::desktop::DesktopResponse::Unavailable { reason } = response
+                && reason.contains("GNOME extension is older than the app")
+            {
+                reload_extension(proxy.connection()).await;
+            }
             // Warn once for a run of identical refusals, such as each retry
             // against a GNOME extension from another release.
             let mut refused = REFUSED.lock().unwrap_or_else(|e| e.into_inner());
@@ -547,7 +563,7 @@ async fn call(
 
 /// The extension as desktop-agent --install writes it. debian/rules installs
 /// and scripts/pack-extension.sh uploads the same files.
-const EXTENSION_FILES: [(&str, &str); 6] = [
+const EXTENSION_FILES: [(&str, &str); 7] = [
     (
         "metadata.json",
         include_str!("../../packaging/gnome-extension/metadata.json"),
@@ -555,6 +571,10 @@ const EXTENSION_FILES: [(&str, &str); 6] = [
     (
         "extension.js",
         include_str!("../../packaging/gnome-extension/extension.js"),
+    ),
+    (
+        "shell.js",
+        include_str!("../../packaging/gnome-extension/shell.js"),
     ),
     (
         "indicator.js",
@@ -573,6 +593,53 @@ const EXTENSION_FILES: [(&str, &str); 6] = [
         include_str!("../../packaging/gnome-extension/prefs.js"),
     ),
 ];
+/// What GNOME Shell runs, copied again into a folder named after its contents, which extension.js
+/// loads. A new folder is new code to GJS, so an update reloads without a new login.
+const SHELL_FILES: [&str; 3] = ["shell.js", "indicator.js", "client.js"];
+
+/// The build folder's name, as debian/rules computes it: the first 16 hex digits of the SHA-256
+/// of Shell's files, in order.
+fn build_name() -> String {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    for name in SHELL_FILES {
+        let (_, contents) = EXTENSION_FILES
+            .iter()
+            .find(|(file, _)| *file == name)
+            .expect("every Shell file ships");
+        hash.update(contents.as_bytes());
+    }
+    let digest = hash.finalize();
+    let hex: String = digest[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("build-{hex}")
+}
+
+/// How often the agent may turn the extension off and on to load an update.
+const RELOAD_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Turns the extension off and on, so its loader runs the build an update installed. An extension
+/// from before the loader keeps its old code until the next login.
+async fn reload_extension(connection: &zbus::Connection) {
+    static LAST: Mutex<Option<std::time::Instant>> = Mutex::new(None);
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|at| at.elapsed() < RELOAD_EVERY) {
+            return;
+        }
+        *last = Some(std::time::Instant::now());
+    }
+    tracing::info!("reloading the GNOME extension to run the installed build");
+    for method in ["DisableExtension", "EnableExtension"] {
+        if let Err(error) = shell_call(connection, method).await {
+            tracing::warn!(method, %error, "GNOME extension not reloaded");
+            return;
+        }
+    }
+}
+
 // GNOME Shell's ExtensionState values.
 const ACTIVE: f64 = 1.0;
 const OUT_OF_DATE: f64 = 4.0;
@@ -697,6 +764,28 @@ fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> a
             std::fs::write(user.join(name), contents)?;
         }
     }
+    let build = build_name();
+    std::fs::create_dir_all(user.join(&build))?;
+    for name in SHELL_FILES {
+        let (_, contents) = EXTENSION_FILES
+            .iter()
+            .find(|(file, _)| *file == name)
+            .expect("every Shell file ships");
+        let path = user.join(&build).join(name);
+        if std::fs::read_to_string(&path).ok().as_deref() != Some(contents) {
+            std::fs::write(path, contents)?;
+        }
+    }
+    std::fs::write(user.join("current"), format!("{build}\n"))?;
+    // Shell keeps an older build's code in memory, so its files can go.
+    for entry in std::fs::read_dir(user)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("build-") && name != build && entry.file_type()?.is_dir() {
+            std::fs::remove_dir_all(entry.path())?;
+        }
+    }
     Ok(())
 }
 
@@ -795,6 +884,27 @@ mod tests {
                 assert_eq!(std::fs::read_to_string(user.join(name)).unwrap(), contents);
             }
         }
+    }
+
+    #[test]
+    fn the_shell_code_goes_into_a_build_folder_that_replaces_older_ones() {
+        let root = tempfile::tempdir().unwrap();
+        let user = root.path().join("extension");
+        std::fs::create_dir_all(user.join("build-00000000000000aa")).unwrap();
+        write_extension_at(&user, false, true).unwrap();
+        let build = build_name();
+        assert_eq!(build.len(), "build-".len() + 16);
+        assert_eq!(
+            std::fs::read_to_string(user.join("current")).unwrap(),
+            format!("{build}\n")
+        );
+        for name in SHELL_FILES {
+            assert_eq!(
+                std::fs::read(user.join(&build).join(name)).unwrap(),
+                std::fs::read(user.join(name)).unwrap()
+            );
+        }
+        assert!(!user.join("build-00000000000000aa").exists());
     }
 
     #[test]

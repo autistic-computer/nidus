@@ -16,6 +16,7 @@ use crate::{
         MotionFrame, NegotiatedSession, NegotiationOffer, ProbeMessage, ReliableControlMessage,
     },
     desktop::DesktopMessage,
+    lens::wire::LensMessage,
 };
 
 pub use error::WireError;
@@ -28,6 +29,8 @@ pub const MAX_RELIABLE_PAYLOAD_BYTES: usize = 32 * 1_024;
 pub const MAX_MOTION_PAYLOAD_BYTES: usize = 8 * 1_024;
 pub const MAX_PROBE_PAYLOAD_BYTES: usize = 128;
 pub const MAX_HELLO_PAYLOAD_BYTES: usize = 1_024;
+/// A copied selection, the largest lens message. Tile packets travel outside the frame.
+pub const MAX_LENS_PAYLOAD_BYTES: usize = crate::lens::wire::MAX_TEXT_BYTES + 64;
 /// A computer's name fits one DNS label, so the mDNS record can carry it.
 pub const MAX_NAME_BYTES: usize = 63;
 pub const MAX_VERSION_BYTES: usize = 32;
@@ -45,6 +48,7 @@ pub enum Family {
     // 6 was the code pairing offer, before 0.3.0.
     Desktop = 7,
     Hello = 8,
+    Lens = 9,
 }
 
 impl Family {
@@ -56,6 +60,7 @@ impl Family {
             Self::Probe => MAX_PROBE_PAYLOAD_BYTES,
             Self::Desktop => crate::desktop::MAX_MESSAGE_BYTES,
             Self::Hello => MAX_HELLO_PAYLOAD_BYTES,
+            Self::Lens => MAX_LENS_PAYLOAD_BYTES,
         }
     }
 }
@@ -72,6 +77,7 @@ impl TryFrom<u8> for Family {
             5 => Ok(Self::Probe),
             7 => Ok(Self::Desktop),
             8 => Ok(Self::Hello),
+            9 => Ok(Self::Lens),
             other => Err(WireError::UnknownFamily(other)),
         }
     }
@@ -86,6 +92,7 @@ pub enum WireMessage {
     Probe(ProbeMessage),
     Desktop(DesktopMessage),
     Hello(Hello),
+    Lens(LensMessage),
 }
 
 impl WireMessage {
@@ -98,6 +105,7 @@ impl WireMessage {
             Self::Probe(_) => Family::Probe,
             Self::Desktop(_) => Family::Desktop,
             Self::Hello(_) => Family::Hello,
+            Self::Lens(_) => Family::Lens,
         }
     }
 }
@@ -155,6 +163,7 @@ fn frame(message: &WireMessage) -> Result<Vec<u8>, WireError> {
         WireMessage::Motion(frame) => codec::encode(frame, header)?,
         WireMessage::Probe(probe) => codec::encode(probe, header)?,
         WireMessage::Hello(hello) => codec::encode(hello, header)?,
+        WireMessage::Lens(message) => codec::encode(message, header)?,
         WireMessage::Desktop(message) => {
             let mut bytes = header;
             serde_json::to_writer(&mut bytes, message)
@@ -190,6 +199,7 @@ fn decode_inner(bytes: &[u8], expected: Option<Family>) -> Result<WireMessage, W
         Family::Motion => WireMessage::Motion(codec::decode(payload)?),
         Family::Probe => WireMessage::Probe(codec::decode(payload)?),
         Family::Hello => WireMessage::Hello(codec::decode(payload)?),
+        Family::Lens => WireMessage::Lens(codec::decode(payload)?),
         Family::Desktop => WireMessage::Desktop(
             serde_json::from_slice(payload)
                 .map_err(|error| WireError::Invalid(error.to_string()))?,

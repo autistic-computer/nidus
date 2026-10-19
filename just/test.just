@@ -20,6 +20,7 @@ native: (_platform "mac")
 desktop:
     node tests/gnome_desktop_test.mjs
     node tests/gnome_panel_test.mjs
+    node tests/gnome_loader_test.mjs
 
 # Exercise native GTK controls through D-Bus on the current display (Linux).
 gtk: (_platform "linux")
