@@ -75,7 +75,8 @@ final class AppModel {
         await self.perform(CoreRequest(command: "snapshot"), quiet: true)
         let access = NSPasteboard.general.accessBehavior
         if access != self.pasteAccess { self.pasteAccess = access }
-        if ticks % 20 == 0 { await self.checkServices() }
+        // Beside the poll, so a slow helper never holds the window on an old snapshot.
+        if ticks % 20 == 0 { Task { await self.checkServices() } }
         ticks += 1
         try? await Task.sleep(for: .milliseconds(500))
       }
