@@ -802,6 +802,7 @@ Release matrices from TESTPLAN.md gate each beta along the way.
 
 ### Settled for the first prototype
 
+- The GNOME extension's `extension.js` is a loader that never changes. It imports Shell's code from the `build-<hash>` folder that `current` names, because GJS caches a module by its path until logout. After an update the desktop agent turns the extension off and on, so the new folder loads without a login. Checked in a headless GNOME Shell 50: a new folder ran new code, and a file changed in place did not (reloadable extension, 2026-10-19).
 - The Cargo package is `zflow-kvm`, the installed binary is `zflow`, and the project license is GPL-3.0-or-later (maintainer implementation decision, 2026-08-31).
 - The Linux evdev/uinput backend remains independent after the bounded Lan Mouse reuse gate found that reuse would require a maintained fork without removing zflow's backend or protocol work. Lan Mouse remains a reference for later portal/EIS work (reuse gate, 2026-08-31).
 - Linux uses evdev plus uinput as its system backbone.
