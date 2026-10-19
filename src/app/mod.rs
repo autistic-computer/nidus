@@ -3,7 +3,7 @@
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod api;
 #[cfg(target_os = "linux")]
-mod desktop;
+pub(crate) mod desktop;
 #[cfg(target_os = "linux")]
 pub mod desktop_agent;
 #[cfg(target_os = "linux")]

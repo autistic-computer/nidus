@@ -262,7 +262,8 @@ pub(super) fn answer_while_sending(kind: SessionEventKind) {
         SessionEventKind::OutboundEnded
         | SessionEventKind::Closed { .. }
         | SessionEventKind::Layout { .. }
-        | SessionEventKind::Clipboard { .. } => {}
+        | SessionEventKind::Clipboard { .. }
+        | SessionEventKind::Lens { .. } => {}
     }
 }
 

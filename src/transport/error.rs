@@ -55,6 +55,8 @@ pub enum TransportError {
     DatagramTooLarge { actual: usize, negotiated: usize },
     #[error("clipboard stream failed: {0}")]
     Clipboard(String),
+    #[error("lens stream failed: {0}")]
+    Lens(String),
     #[error("could not derive the hello transcript binding")]
     HelloExporter,
     #[error("hello stream failed: {0}")]

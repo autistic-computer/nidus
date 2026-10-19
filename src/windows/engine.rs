@@ -1336,6 +1336,8 @@ impl Engine {
                     self.local();
                 }
             }
+            // Windows does not share its screen yet; dropping the stream refuses it.
+            SessionEventKind::Lens { .. } => {}
             SessionEventKind::Clipboard { clip } => {
                 if self.config.daemon.sharing && self.config.clipboard.share && input::available() {
                     self.clip_echo.entry(peer).or_default().written(&clip);

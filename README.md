@@ -257,6 +257,12 @@ Toshy, keyd, xremap and kanata also grab `zflow remote keyboard`, so use
 To keep keyd off it, add `-1209:5a01` under `[ids]`. `zflow doctor` warns when
 it finds one of them while a computer uses another mode.
 
+## Lens
+
+The lens shows another computer's screen in a circle around your pointer, live and exact. Click, type and scroll there, select text and press Cmd+C to bring it back. Escape, or a click outside the circle, closes it. Choose "Look at <computer>" in the Mac's menu bar, or press Ctrl+Option+L to open or close a lens on the computer you looked at last. For now a Mac can look at a GNOME computer, which records its primary monitor through Mutter, and that computer must allow it: turn on "Can see this screen" for the Mac in its zflow settings. It is off by default. See SPEC.md, "Lens".
+
+The computer being looked at sends the circle first, then a ring around it, then the rest of its desktop, at the pace the link allows, so moving the lens stays instant once the desktop has arrived. A slow link shows blocky previews that sharpen within a round trip or two.
+
 ## Settings and configuration
 
 The Mac window exposes finding, adding and arranging computers, each computer's

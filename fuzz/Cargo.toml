@@ -63,3 +63,15 @@ path = "fuzz_targets/desktop.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "lens"
+path = "fuzz_targets/lens.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "lens_tiles"
+path = "fuzz_targets/lens_tiles.rs"
+test = false
+doc = false

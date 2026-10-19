@@ -39,6 +39,28 @@ installer fixture tests does not satisfy this matrix. The `just release`
 commands and signing-key setup belong on the publisher's development machine;
 GitHub Actions builds all platforms.
 
+## Lens (0.7.0)
+
+Install 0.7.0 on a Mac A and a GNOME B that trust each other, and log in to
+B again so GNOME Shell loads the new extension. On B, turn on "Can see this
+screen" for A in zflow's settings. Turn sharing on, and on A turn on "Reduce
+Wi-Fi lag".
+
+- From A's menu bar choose "Look at B". Within a second the circle shows B's
+  primary monitor where A's pointer is, sharp, and B's pointer moves with it.
+  Press Ctrl+Option+L to close it and again to open it.
+- Sweep the lens across all of B: after the first pass, the lens never shows
+  a hole or blocky preview over content that did not change.
+- Click, drag-select and type in a text field on B through the lens. Scroll a
+  long page with the trackpad: it moves the way it moves on the Mac.
+- Select text on B, press Cmd+C, press Escape, and paste on A. Repeat in a
+  terminal on B: the shell must not get Ctrl+C.
+- Play a video on B under the lens: it keeps moving, and the pointer still
+  answers at once. On a link limited to 2 Mbit/s, the lens may go blocky while
+  content changes and must sharpen within a second once it stops.
+- Turn `share_screen` off on B and try again: A shows why it cannot look.
+- Close the lens while holding a key or button: nothing stays held on B.
+
 ## Hops across three computers (0.6.0)
 
 Install 0.6.0 on three computers, including GNOME extension API 5, and arrange

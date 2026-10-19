@@ -1,6 +1,6 @@
 [package]
 name = "zflow-kvm"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Low-latency, loss-resilient input sharing for Linux, macOS and Windows"
@@ -37,6 +37,7 @@ thiserror = "2.0"
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "1.1.4"
 toml_edit = { version = "0.25", features = ["serde"] }
+zstd = { version = "0.13", default-features = false }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
@@ -44,6 +45,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 cc = "1.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+pipewire = "0.10"
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }
 evdev = "0.13.2"
 mio = { version = "1.2.2", default-features = false, features = ["os-ext", "os-poll"] }

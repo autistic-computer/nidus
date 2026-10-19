@@ -216,7 +216,8 @@ struct AppError: LocalizedError {
   var errorDescription: String? { message }
 }
 
-// The actor serializes every FFI call. The handle owns its Rust worker and joins it on release.
+// The actor serializes every request; only the lens calls skip it. The handle owns its Rust
+// worker and joins it on release.
 private final class CoreHandle: @unchecked Sendable {
   let pointer: OpaquePointer
   init(path: String) throws {
@@ -229,6 +230,18 @@ private final class CoreHandle: @unchecked Sendable {
     self.pointer = pointer
   }
   deinit { zflow_app_destroy(pointer) }
+}
+/// The engine for the lens calls, which are safe from any thread and never
+/// wait, so the lens makes them straight from the main thread. It holds the
+/// engine weakly: once the bridge lets go of it, every call does nothing.
+final class LensHandle: Sendable {
+  private weak let core: CoreHandle?
+  fileprivate init(_ core: CoreHandle) { self.core = core }
+  /// Runs `body` on the live engine, or returns nil once it is gone.
+  func callAsFunction<T>(_ body: (OpaquePointer) -> T) -> T? {
+    guard let core else { return nil }
+    return withExtendedLifetime(core) { body(core.pointer) }
+  }
 }
 actor CoreBridge {
   let path: String
@@ -249,13 +262,12 @@ actor CoreBridge {
   private func call<Answer: Decodable>(_ request: CoreRequest, answer: Answer.Type) throws
     -> Answer?
   {
-    guard !closed else { throw AppError(message: "The sharing engine has stopped") }
-    if handle == nil { handle = try CoreHandle(path: path) }
+    let handle = try open()
     let encoder = JSONEncoder()
     encoder.keyEncodingStrategy = .convertToSnakeCase
     let data = try encoder.encode(request)
     let text = String(decoding: data, as: UTF8.self)
-    let response = text.withCString { zflow_app_request(handle!.pointer, $0) }
+    let response = text.withCString { zflow_app_request(handle.pointer, $0) }
     guard let response else { throw AppError(message: "The sharing engine returned no response") }
     defer { zflow_string_free(response) }
     let decoder = JSONDecoder()
@@ -265,6 +277,16 @@ actor CoreBridge {
     if let error = result.error { throw AppError(message: error) }
     return result.snapshot
   }
+  /// The engine, started on first use.
+  private func open() throws -> CoreHandle {
+    guard !closed else { throw AppError(message: "The sharing engine has stopped") }
+    if let handle { return handle }
+    let handle = try CoreHandle(path: path)
+    self.handle = handle
+    return handle
+  }
+  /// The engine for the lens, which calls it without this actor.
+  func lens() throws -> LensHandle { LensHandle(try open()) }
   func shutdown() {
     closed = true
     handle = nil

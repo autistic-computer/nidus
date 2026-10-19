@@ -217,6 +217,9 @@ pub struct PeerConfig {
     /// scrolling against a desktop without it. Left out while off.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reverse_scroll: bool,
+    /// Whether this peer may look at this computer's screen through a lens. Left out while off.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub share_screen: bool,
 }
 
 impl PeerConfig {
@@ -232,6 +235,7 @@ impl PeerConfig {
             permissions,
             keyboard: KeyboardMode::Standard,
             reverse_scroll: false,
+            share_screen: false,
         })
     }
 
@@ -626,6 +630,7 @@ mod tests {
                 permissions: PeerPermissions::default(),
                 keyboard: KeyboardMode::Standard,
                 reverse_scroll: false,
+                share_screen: false,
             },
         );
         assert!(matches!(config.validate(), Err(ConfigError::Invalid(_))));

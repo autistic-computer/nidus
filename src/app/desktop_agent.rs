@@ -22,6 +22,7 @@ pub fn run(install: bool) -> Result<()> {
         let state = Arc::new(Mutex::new(super::gnome::State::default()));
         let connection = super::gnome::connect(state.clone()).await?;
         tokio::spawn(super::updates::remind(connection.clone()));
+        tokio::spawn(offer_lenses(connection.clone()));
         let mut timer=tokio::time::interval(Duration::from_secs(2));
         let mut terminate=tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
         let mut interrupt=tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
@@ -61,6 +62,27 @@ pub fn run(install: bool) -> Result<()> {
         }
         None => Ok(()),
     }
+}
+
+/// Keeps an offer to serve a lens open at the service, and serves each lens that arrives.
+async fn offer_lenses(bus: zbus::Connection) {
+    loop {
+        if let Err(error) = offer_lens(&bus).await {
+            tracing::debug!(error = %format_args!("{error:#}"), "lens offer ended");
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
+    }
+}
+
+async fn offer_lens(bus: &zbus::Connection) -> Result<()> {
+    let mut stream = tokio::net::UnixStream::connect(crate::peer_view::SOCKET_PATH).await?;
+    crate::control::write_message(&mut stream, &crate::peer_view::Request::Lens {}).await?;
+    // Waits here until a peer opens a lens.
+    let opened: crate::peer_view::LensOpened = crate::control::read_message(&mut stream).await?;
+    tracing::info!(peer = %opened.peer, "showing this screen through a lens");
+    let result = crate::lens::host::serve(stream, opened, bus).await;
+    tracing::info!("lens closed");
+    result
 }
 
 /// Where the new binary is, once an update replaced the file this agent runs

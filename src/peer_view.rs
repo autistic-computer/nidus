@@ -20,6 +20,14 @@ use crate::{
 };
 
 pub const SOCKET_PATH: &str = "/run/zflow-gui/peers.sock";
+
+/// What the service tells the desktop agent when a peer opens a lens.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LensOpened {
+    pub peer: String,
+    /// How that peer's keys act here, as in a crossing.
+    pub keyboard: KeyboardMode,
+}
 /// The port zflow takes input on unless its configuration says otherwise.
 pub const DEFAULT_INPUT_PORT: u16 = 43119;
 /// The largest message between the service and the desktop agent: a whole
@@ -48,6 +56,9 @@ pub enum Request {
         allow_control: Option<bool>,
         keyboard: Option<KeyboardMode>,
         reverse_scroll: Option<bool>,
+        /// Whether it may look at this screen through a lens.
+        #[serde(default)]
+        share_screen: Option<bool>,
     },
     /// Whether the focused desktop app is a terminal. The desktop agent sends
     /// this; it never leaves this computer.
@@ -55,6 +66,9 @@ pub enum Request {
         terminal: bool,
     },
     Desktop {},
+    /// The desktop agent offers to serve the next lens a peer opens onto this screen. The
+    /// service answers with [`LensOpened`] when one arrives, then relays the lens stream.
+    Lens {},
     SetSwitching {
         pause_at_edges: bool,
     },
@@ -283,6 +297,7 @@ pub fn set_peer(
     allow_control: Option<bool>,
     keyboard: Option<KeyboardMode>,
     reverse_scroll: Option<bool>,
+    share_screen: Option<bool>,
 ) {
     peer.permissions.receive_normal = true;
     if let Some(allowed) = allow_control {
@@ -293,6 +308,9 @@ pub fn set_peer(
     }
     if let Some(reverse) = reverse_scroll {
         peer.reverse_scroll = reverse;
+    }
+    if let Some(share) = share_screen {
+        peer.share_screen = share;
     }
 }
 
@@ -796,8 +814,9 @@ mod tests {
             permissions: one_way,
             keyboard: KeyboardMode::Standard,
             reverse_scroll: false,
+            share_screen: false,
         };
-        set_peer(&mut peer, None, Some(KeyboardMode::Mac), None);
+        set_peer(&mut peer, None, Some(KeyboardMode::Mac), None, None);
         assert_eq!(peer.keyboard, KeyboardMode::Mac);
         assert_eq!(
             peer.permissions,
@@ -806,13 +825,13 @@ mod tests {
                 ..one_way
             }
         );
-        set_peer(&mut peer, Some(false), None, None);
+        set_peer(&mut peer, Some(false), None, None, None);
         assert!(!peer.permissions.send_normal && peer.permissions.inject_prelogin);
         assert_eq!(peer.keyboard, KeyboardMode::Mac);
-        set_peer(&mut peer, Some(true), None, None);
+        set_peer(&mut peer, Some(true), None, None, None);
         assert!(peer.permissions.send_normal);
         assert!(!peer.reverse_scroll);
-        set_peer(&mut peer, None, None, Some(true));
+        set_peer(&mut peer, None, None, Some(true), None);
         assert!(peer.reverse_scroll && peer.permissions.send_normal);
     }
 }
