@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 // Execute the shipped extension with deterministic compositor operations.
-const source = fs.readFileSync(new URL('../packaging/gnome-extension/extension.js', import.meta.url), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace('export default class ', 'class ') + '\nglobalThis.TestExtension = ZflowExtension;';
+const source = fs.readFileSync(new URL('../packaging/gnome-extension/shell.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\r?\n/gm, '').replace('export class ', 'class ') + '\nglobalThis.TestExtension = Zflow;';
 
 function desktop(monitors = [{x: 0, y: 0, width: 1920, height: 1080}], monitorData = {}) {
     let pointer = {x: monitors[0].x + 100, y: monitors[0].y + 100};

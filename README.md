@@ -106,7 +106,11 @@ you added; updating the Linux service interrupts an active connection.
 Computers on 0.3.0 and on 0.2.0 or older cannot connect, so update every
 computer. GNOME updates an
 extension from extensions.gnome.org by itself when the Extensions app or
-Extension Manager is installed; a bundled copy changes at your next login. If the extension and the app get too far apart,
+Extension Manager is installed. A bundled copy from 0.7.0 on reloads by
+itself after an update: the extension loads GNOME Shell's code from a folder
+named after that code, and the desktop agent turns the extension off and on
+when it finds it older than the app. Updating from 0.6.1 or older still needs
+one more login. If the extension and the app get too far apart,
 the panel and settings say **Update zflow**. Until the extension is set up,
 the zflow window shows a banner with the step that is left: **Install**,
 **Turn On**, or **Log Out**.
