@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import Security
 import ServiceManagement
+import Synchronization
 import XPC
 
 @MainActor @Observable
@@ -131,18 +132,31 @@ final class Services {
     else { return false }
     var request = XPCDictionary()
     request["command"] = "check"
-    // Cancelling answers a pending reply with an error, so a stuck helper
-    // cannot hold the check open.
-    DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-      session.cancel(reason: "Helper check timed out")
-    }
     return await withCheckedContinuation { continuation in
+      let answer = Answer(continuation)
+      // Cancelling does not always answer a pending reply, so the deadline
+      // answers itself and a stuck helper cannot hold the check open.
+      DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
+        session.cancel(reason: "Helper check timed out")
+        answer.give(false)
+      }
       session.send(message: request) { result in
         let reply = try? result.get()
         let ready: Bool? = reply?["ready"]
         session.cancel(reason: "Helper checked")
-        continuation.resume(returning: ready == true)
+        answer.give(ready == true)
       }
     }
+  }
+}
+
+/// A check's answer, given once by whichever of the reply and the deadline comes first.
+private final class Answer: Sendable {
+  private let continuation: Mutex<CheckedContinuation<Bool, Never>?>
+  init(_ continuation: CheckedContinuation<Bool, Never>) {
+    self.continuation = Mutex(continuation)
+  }
+  func give(_ ready: Bool) {
+    continuation.withLock { $0.take() }?.resume(returning: ready)
   }
 }
