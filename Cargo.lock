@@ -7873,11 +7873,20 @@ dependencies = [
 
 [[package]]
 name = "zflow-app"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
+ "anyhow",
+ "async-channel",
+ "log",
+ "serde",
+ "serde_json",
+ "tracing-subscriber",
+ "zbus",
+ "zflow-kvm",
  "zz-gpui",
  "zz-gpui-kit",
  "zz-gpui-platform",
+ "zz-gpui-tray",
 ]
 
 [[package]]
@@ -8111,7 +8120,7 @@ dependencies = [
 
 [[package]]
 name = "zz-gpui-kit"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-channel",
