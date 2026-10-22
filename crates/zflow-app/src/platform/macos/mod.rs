@@ -27,7 +27,7 @@ use zz_gpui::{
     actions, div, px,
 };
 use zz_gpui_kit::{
-    Disableable as _, Icon, IconName, Sizable as _,
+    Disableable as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
@@ -765,7 +765,7 @@ pub fn banner(
                 "zflow is running from a disk image or a temporary folder. Drag it into Applications, then open it from there.",
                 Some(
                     Button::new("show-applications")
-                        .small()
+                        .on(widgets::banner_ground(zflow::app::api::Level::Warning, cx))
                         .label("Show Applications")
                         .on_click(|_, _, cx| cx.open_with_system(std::path::Path::new("/Applications")))
                         .into_any_element(),
@@ -824,7 +824,6 @@ fn card(
                 .title_icon(Icon::new(icon))
                 .control(
                     Button::new(id)
-                        .small()
                         .primary()
                         .label("Allow…")
                         .on_click(cx.listener(move |this, _, _, cx| action(this, cx))),
@@ -878,7 +877,6 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
         SettingEntry::new("Displays", "Arrange this Mac’s own screens.").control(
             Button::new("display-settings")
-                .small()
                 .label("Displays…")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| {
@@ -907,7 +905,6 @@ pub fn peer_entries(
         )
         .control(
             Button::new("look")
-                .small()
                 .label("Look")
                 .on(settings_card_ground(cx))
                 .on_click(move |_, _, cx| crate::lens::look(&name, cx)),
@@ -966,7 +963,6 @@ pub fn settings_stacks(
         );
         let fix = waiting.then_some(helper.action).flatten().map(|label| {
             Button::new("fix-helper")
-                .small()
                 .label(label)
                 .disabled(helper.busy)
                 .on(settings_card_ground(cx))
@@ -1005,7 +1001,6 @@ pub fn settings_stacks(
                 .into_any_element()
         } else {
             Button::new(id)
-                .small()
                 .label("Allow…")
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(move |this, _, _, cx| allow(this, cx)))
@@ -1067,7 +1062,6 @@ pub fn settings_stacks(
                 )
                 .control(
                     Button::new("check-updates")
-                        .small()
                         .label("Check for Updates…")
                         .disabled(updates.checking)
                         .on(settings_card_ground(cx))
@@ -1122,7 +1116,6 @@ pub fn this_computer_entries(
     vec![
         SettingEntry::new("Configuration", snapshot.config_path.display().to_string()).control(
             Button::new("open-config")
-                .small()
                 .label("Open…")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| open_config(cx)),

@@ -46,7 +46,7 @@ fn status(snapshot: &Snapshot, cx: &mut Context<ZflowWindow>) -> impl IntoElemen
         .child(
             h_flex()
                 .gap(px(10.0))
-                .child(status_dot(widgets::status_color(status.state, cx)).size(px(10.0)))
+                .child(status_dot(widgets::status_color(status.state, cx)))
                 .child(
                     div()
                         .text_size(rems_from_px(20.0))
@@ -73,8 +73,9 @@ fn problems(
         .iter()
         .filter(|row| row.level != Level::Ok && Some(row.id.as_str()) != skip)
         .map(|row| {
-            let action =
-                platform::health_action(row, cx).map(|action| fix_button(&row.id, &action, cx));
+            let action = platform::health_action(row, cx).map(|action| {
+                fix_button(&row.id, &action, widgets::banner_ground(row.level, cx), cx)
+            });
             widgets::banner(row.level, row.title.clone(), row.detail.clone(), action, cx)
                 .into_any_element()
         })
@@ -132,6 +133,7 @@ fn first_run(
                 .child(
                     Button::new("copy-install")
                         .small()
+                        .on(cx.theme().ground_of(zz_gpui_kit::roles::SETTINGS_PREVIEW))
                         .label(if copied { "Copied" } else { "Copy" })
                         .on_click(cx.listener(|this, _, _, cx| {
                             cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(

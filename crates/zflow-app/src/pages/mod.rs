@@ -10,7 +10,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _,
+    ActiveTheme as _, Colorize as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},
     input::Input,
@@ -84,7 +84,8 @@ fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement
         )
         .child(
             Button::new("try-again")
-                .label("Try Again")
+                .primary()
+                .label("Try again")
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.model.update(cx, Model::reconnect);
                 })),
@@ -94,10 +95,15 @@ fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement
 
 /// A health row's fix button. The app handles the fixes that open
 /// something here; the rest go to the engine.
-pub fn fix_button(id: &str, action: &Action, cx: &mut Context<ZflowWindow>) -> AnyElement {
+pub fn fix_button(
+    id: &str,
+    action: &Action,
+    ground: zz_gpui_kit::Ground,
+    cx: &mut Context<ZflowWindow>,
+) -> AnyElement {
     let command = action.command.clone();
     Button::new(zz_gpui::SharedString::from(format!("fix-{id}")))
-        .small()
+        .on(ground)
         .label(action.label.clone())
         .on_click(cx.listener(move |this, _, window, cx| {
             if !platform::fix(this, &command, window, cx) {
@@ -141,7 +147,7 @@ pub fn add_address(this: &Entity<ZflowWindow>, dialog: Dialog, cx: &mut App) -> 
                             .child(error.clone()),
                     ),
                     None => this.child(widgets::muted(
-                        "It shows up in Found on your network. Drag it into place to add it.",
+                        "It shows up in Found on this network. Drag it into place to add it.",
                         12.0,
                         cx,
                     )),
@@ -149,7 +155,7 @@ pub fn add_address(this: &Entity<ZflowWindow>, dialog: Dialog, cx: &mut App) -> 
         )
         .button_props(
             DialogButtonProps::default()
-                .ok_text("Look Up")
+                .ok_text("Look up")
                 .ok_variant(zz_gpui_kit::button::ButtonVariant::Paint(
                     zz_gpui_kit::Tone::Primary,
                     zz_gpui_kit::Emphasis::Solid,
@@ -203,7 +209,6 @@ pub fn card_danger(
     cx: &App,
 ) -> Button {
     Button::new(id)
-        .small()
         .danger()
         .label(label)
         .on(zz_gpui_kit::settings::settings_card_ground(cx))

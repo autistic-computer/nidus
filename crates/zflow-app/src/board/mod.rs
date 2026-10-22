@@ -33,7 +33,7 @@ use self::geometry::{
 use crate::{
     copy,
     model::{Model, Snapshot},
-    theme::{CHIP, SCREEN, SHELF_TILE},
+    theme::{BOARD, CHIP, SCREEN, SHELF_TILE},
     widgets,
 };
 
@@ -921,6 +921,8 @@ impl Render for Board {
 
         // The mat, the computers' outlines, and the pointer's handlers.
         let mat_theme = theme.clone();
+        // The outline follows the theme's radius, as the well it sits in does.
+        let ring_radius = theme.shape_radius(BOARD, zz_gpui_kit::Shape::Round);
         let backdrop = canvas(
             move |area, _, _| {
                 bounds.set(area);
@@ -964,9 +966,15 @@ impl Render for Board {
                     };
                     window.paint_quad(quad(
                         to_bounds(area, *hull),
-                        Corners::all(px(14.0)),
+                        Corners::all(ring_radius),
                         zz_gpui::transparent_black(),
-                        Edges::all(px(if *selected { 2.5 } else { 1.5 })),
+                        // The kit's chosen ring when selected, its focus ring
+                        // width when hovered.
+                        Edges::all(if *selected {
+                            px(2.0)
+                        } else {
+                            zz_gpui_kit::FOCUS_RING_WIDTH
+                        }),
                         color,
                         if *adjusting {
                             BorderStyle::Dashed
@@ -1091,10 +1099,13 @@ impl Render for Board {
                 );
             for (monitor, _, at) in &island.screens {
                 let moving = moving_ids.contains(&monitor.id);
+                // A computer that is away draws its screens disabled.
                 let state = if moving && refused {
                     PaintState::Focused
                 } else if moving {
                     PaintState::Hover
+                } else if away {
+                    PaintState::Disabled
                 } else {
                     PaintState::Rest
                 };
@@ -1118,7 +1129,6 @@ impl Render for Board {
                             state,
                             cx,
                         )
-                        .when(away, |this| this.opacity(0.62))
                         .when(
                             monitor.display.is_none() && at.width.min(at.height) >= 24.0,
                             |this| {
@@ -1140,23 +1150,17 @@ impl Render for Board {
                                 && at.height >= 30.0,
                             |this| {
                                 this.child(
-                                    div()
-                                        .m(px(5.0))
-                                        .px(px(5.0))
-                                        .py(px(1.0))
-                                        .rounded(px(4.0))
-                                        .bg(theme.background)
-                                        .text_size(rems_from_px(10.5))
-                                        .font_medium()
-                                        .truncate()
-                                        .child(
+                                    div().m(px(5.0)).min_w_0().child(
+                                        zz_gpui_kit::badge::Badge::new(
                                             monitor
                                                 .display
                                                 .as_ref()
                                                 .map_or(monitor.label.clone(), |display| {
                                                     display.name.clone()
                                                 }),
-                                        ),
+                                        )
+                                        .opaque(),
+                                    ),
                                 )
                             },
                         )
@@ -1258,7 +1262,7 @@ impl Render for Board {
                             div()
                                 .text_size(rems_from_px(13.0))
                                 .font_medium()
-                                .child("Found on your network"),
+                                .child("Found on this network"),
                         )
                         .child(widgets::muted(
                             "Drag one next to a screen to add it.",
@@ -1340,13 +1344,14 @@ fn found_tile(
         .py(px(8.0))
         .gap(px(1.0))
         .cursor_pointer()
-        .when(!placeable, |this| this.opacity(0.6))
         .surface_at(
             Surface::new(SHELF_TILE),
             if carried {
                 PaintState::Hover
-            } else {
+            } else if placeable {
                 PaintState::Rest
+            } else {
+                PaintState::Disabled
             },
             cx,
         )

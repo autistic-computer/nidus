@@ -7,8 +7,7 @@ use zz_gpui::{
     Subscription, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    ActiveTheme as _, Disableable as _, IconName, Root, Sizable as _, WindowControls,
-    WindowExt as _, draws_window_controls, h_flex,
+    ActiveTheme as _, Disableable as _, IconName, Root, WindowControls, WindowExt as _, h_flex,
     input::InputState,
     settings::{settings_navigation_button, settings_navigation_row},
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
@@ -54,6 +53,16 @@ impl ZflowWindow {
             cx.observe(&board, |_, _, cx| cx.notify()),
             cx.observe_window_appearance(window, |_, window, cx| {
                 crate::theme::apply(Some(window), cx);
+            }),
+            // A request that failed shows as a toast.
+            cx.observe_in(&model, window, |_, model, window, cx| {
+                if let Some(failure) = model.update(cx, |model, _| model.take_failure()) {
+                    window.push_notification(
+                        zz_gpui_kit::notification::Notification::warning(failure)
+                            .title("That didn’t work"),
+                        cx,
+                    );
+                }
             }),
         ];
         Self {
@@ -173,17 +182,16 @@ impl ZflowWindow {
                         ),
                 )
             });
-        // The drawn close button asks the platform too, as the system's does.
-        let controls = draws_window_controls(window).then(|| {
-            WindowControls::new().on_close_window(|_, window, cx| {
-                if platform::may_close(cx) {
-                    window.remove_window();
-                }
-            })
+        // Empty where the system draws them. The drawn close button asks the
+        // platform too, as the system's does.
+        let controls = WindowControls::new().on_close_window(|_, window, cx| {
+            if platform::may_close(cx) {
+                window.remove_window();
+            }
         });
         window_drag_handle(
             "titlebar-drag",
-            app_titlebar_strip("titlebar", leading, div().children(controls), cx),
+            app_titlebar_strip("titlebar", leading, controls, cx),
             window,
             cx,
         )
@@ -202,29 +210,6 @@ impl Render for ZflowWindow {
         let sidebar = self.sidebar(window, cx);
         let titlebar = self.titlebar(window, cx);
         let content = pages::page(self, window, cx);
-        let failure = self.model.read(cx).failure.clone().map(|failure| {
-            div()
-                .absolute()
-                .bottom(px(16.0))
-                .left(px(SIDEBAR_WIDTH + 16.0))
-                .right(px(16.0))
-                .child(widgets::banner(
-                    zflow::app::api::Level::Warning,
-                    "That didn’t work",
-                    failure,
-                    Some(
-                        zz_gpui_kit::button::Button::new("dismiss-failure")
-                            .small()
-                            .label("Dismiss")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.model.update(cx, Model::dismiss_failure);
-                            }))
-                            .into_any_element(),
-                    ),
-                    cx,
-                ))
-                .into_any_element()
-        });
         let dialogs = Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element);
         let notifications =
             Root::render_notification_layer(window, cx).map(IntoElement::into_any_element);
@@ -234,7 +219,7 @@ impl Render for ZflowWindow {
             sidebar,
             Some(titlebar),
             content,
-            failure.into_iter().chain(dialogs).chain(notifications),
+            dialogs.into_iter().chain(notifications),
         )
         .track_focus(&self.focus)
     }
