@@ -200,24 +200,17 @@ fn pump(
 
     // SAFETY: `hwnd` was created just above on this thread and `state` was
     // stashed by `WM_NCCREATE`.
-    let added = unsafe {
+    unsafe {
         let state =
             &*(GetWindowLongPtrW(hwnd, windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA)
                 as *const TrayState);
         let added = Shell_NotifyIconW(NIM_ADD, &state.notify_icon_data(hwnd)).as_bool();
-        if added {
-            send(&state.events, TrayEvent::Available(true));
+        send(&state.events, TrayEvent::Available(added));
+        if !added {
+            // A busy shell at sign-in can refuse it. The window stays, so the
+            // icon comes back when the shell sends `TaskbarCreated`.
+            log::warn!(target: "zz::tray", "the shell rejected the notification icon");
         }
-        added
-    };
-    if !added {
-        log::warn!(target: "zz::tray", "the shell rejected the notification icon");
-        // SAFETY: same-thread window teardown; `WM_NCDESTROY` frees the state.
-        unsafe {
-            let _ = DestroyWindow(hwnd);
-        }
-        let _ = ready.send(None);
-        return;
     }
     let _ = ready.send(Some(hwnd.0 as isize));
 
