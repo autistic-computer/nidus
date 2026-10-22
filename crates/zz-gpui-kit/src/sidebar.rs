@@ -3,8 +3,7 @@
 
 use crate::{
     ActiveTheme as _, Edge, Ground, IconName, Sizable as _, StyledExt as _, Surface,
-    button::Button,
-    roles,
+    button::Button, roles,
 };
 use zz_gpui::{
     App, CursorStyle, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, Stateful,
@@ -123,7 +122,9 @@ pub fn sidebar_panel(
         .overflow_hidden()
         .relative()
         .surface(Surface::new(roles::SIDEBAR).on(ground), cx)
-        .when(divider, |this| this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx))
+        .when(divider, |this| {
+            this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx)
+        })
         .child(titlebar)
         .child(
             div()

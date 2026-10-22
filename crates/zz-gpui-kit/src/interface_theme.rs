@@ -443,9 +443,8 @@ fn with_spelling_hint(message: String) -> String {
         )
 }
 
-const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
-    ("default", include_str!("../themes/default.json")),
-];
+const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] =
+    [("default", include_str!("../themes/default.json"))];
 
 static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
     BUILTIN_SOURCES

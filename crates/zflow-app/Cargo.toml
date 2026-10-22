@@ -12,9 +12,23 @@ name = "zflow-app"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+zflow-kvm = { path = "../.." }
 zz-gpui = { workspace = true, features = ["default"] }
 zz-gpui-kit.workspace = true
 zz-gpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+zz-gpui-tray = { path = "../zz-gpui-tray" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
+
+[dev-dependencies]
+zz-gpui = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

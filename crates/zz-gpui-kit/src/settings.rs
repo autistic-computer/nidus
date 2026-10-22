@@ -228,7 +228,6 @@ fn reveal_in_scroll(handle: &ScrollHandle, target: Bounds<Pixels>) -> bool {
     true
 }
 
-
 const SETTINGS_GROUP_TITLE_SIZE: f32 = 12.0;
 const SETTINGS_GROUP_TITLE_LINE: f32 = 18.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;

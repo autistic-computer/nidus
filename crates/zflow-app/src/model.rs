@@ -1,0 +1,323 @@
+//! What the window shows and how it asks for changes. A worker thread owns
+//! the line to the engine, polls it for snapshots and runs requests in order,
+//! so nothing blocks the UI thread.
+
+use std::{path::PathBuf, sync::mpsc, time::Duration};
+
+use serde::Deserialize;
+use zflow::app::{
+    api::{self, Request},
+    client::Client,
+};
+use zz_gpui::{App, AppContext as _, AsyncApp, Context, Entity, Task, WeakEntity};
+
+use crate::platform::Platform;
+
+pub type Snapshot = api::Snapshot<Option<Platform>>;
+
+/// How often the window asks for a fresh snapshot.
+#[cfg(target_os = "macos")]
+const POLL: Duration = Duration::from_millis(500);
+#[cfg(not(target_os = "macos"))]
+const POLL: Duration = Duration::from_secs(1);
+/// How long a failed request stays on screen.
+const FAILURE_SHOWN: Duration = Duration::from_secs(8);
+
+/// What the window shows.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Page {
+    Computers,
+    Settings,
+    /// A paired computer, by name.
+    Computer(String),
+}
+
+type Reply = async_channel::Sender<Result<(), String>>;
+
+enum Job {
+    Call { request: Request, reply: Option<Reply> },
+    /// A question whose answer is not a snapshot, such as where a move
+    /// would land.
+    Ask {
+        request: Request,
+        reply: async_channel::Sender<Result<serde_json::Value, String>>,
+    },
+    Reconnect,
+}
+
+enum Event {
+    Snapshot(Box<Snapshot>),
+    /// A request failed. A poll failing is quiet: it says why there is no
+    /// snapshot instead of popping up.
+    Failed { error: String, quiet: bool },
+    #[cfg(target_os = "macos")]
+    Lens(std::sync::Arc<zflow::lens::viewer::Viewer>),
+}
+
+pub struct Model {
+    pub snapshot: Option<Snapshot>,
+    /// Why there is no snapshot.
+    pub error: Option<String>,
+    /// The last request that failed, shown for a few seconds.
+    pub failure: Option<String>,
+    pub page: Page,
+    pub config: PathBuf,
+    /// The window onto another computer's screen.
+    #[cfg(target_os = "macos")]
+    pub lens: Option<std::sync::Arc<zflow::lens::viewer::Viewer>>,
+    jobs: mpsc::Sender<Job>,
+    last_notice: u64,
+    _events: Task<()>,
+    _failure: Option<Task<()>>,
+}
+
+impl Model {
+    pub fn new(config: PathBuf, cx: &mut Context<Self>) -> Self {
+        let (jobs, queue) = mpsc::channel();
+        let (events, inbox) = async_channel::unbounded();
+        let worker_config = config.clone();
+        std::thread::Builder::new()
+            .name("zflow-window".into())
+            .spawn(move || work(&worker_config, &queue, &events))
+            .expect("the worker thread starts");
+        let receive = cx.spawn(async move |this: WeakEntity<Self>, cx: &mut AsyncApp| {
+            while let Ok(event) = inbox.recv().await {
+                if this
+                    .update(cx, |model, cx| model.receive(event, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        Self {
+            snapshot: None,
+            error: None,
+            failure: None,
+            page: Page::Computers,
+            config,
+            #[cfg(target_os = "macos")]
+            lens: None,
+            jobs,
+            last_notice: 0,
+            _events: receive,
+            _failure: None,
+        }
+    }
+
+    /// Sends `request`, and shows why if it fails.
+    pub fn send(&self, request: Request) {
+        let _ = self.jobs.send(Job::Call {
+            request,
+            reply: None,
+        });
+    }
+
+    /// Sends `request` and resolves to why it failed, for a caller that
+    /// shows the reason itself.
+    pub fn attempt(&self, request: Request) -> async_channel::Receiver<Result<(), String>> {
+        let (reply, answer) = async_channel::bounded(1);
+        let _ = self.jobs.send(Job::Call {
+            request,
+            reply: Some(reply),
+        });
+        answer
+    }
+
+    /// Asks `request` and resolves to its raw answer.
+    pub fn ask(
+        &self,
+        request: Request,
+    ) -> async_channel::Receiver<Result<serde_json::Value, String>> {
+        let (reply, answer) = async_channel::bounded(1);
+        let _ = self.jobs.send(Job::Ask { request, reply });
+        answer
+    }
+
+    /// Starts over after the engine could not be reached.
+    pub fn reconnect(&mut self, cx: &mut Context<Self>) {
+        self.error = None;
+        let _ = self.jobs.send(Job::Reconnect);
+        cx.notify();
+    }
+
+    pub fn show(&mut self, page: Page, cx: &mut Context<Self>) {
+        if self.page != page {
+            self.page = page;
+            cx.notify();
+        }
+    }
+
+    pub fn dismiss_failure(&mut self, cx: &mut Context<Self>) {
+        self.failure = None;
+        self._failure = None;
+        cx.notify();
+    }
+
+    /// Notices not posted yet, oldest first. Each comes once.
+    pub fn take_notices(&mut self) -> Vec<zflow::hello::Notice> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+        let fresh: Vec<_> = snapshot
+            .notices
+            .iter()
+            .filter(|notice| notice.id > self.last_notice)
+            .cloned()
+            .collect();
+        if let Some(last) = fresh.iter().map(|notice| notice.id).max() {
+            self.last_notice = last;
+        }
+        fresh
+    }
+
+    pub fn platform(&self) -> Platform {
+        self.snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.platform.clone())
+            .unwrap_or_default()
+    }
+
+    fn receive(&mut self, event: Event, cx: &mut Context<Self>) {
+        match event {
+            Event::Snapshot(snapshot) => {
+                if let Page::Computer(name) = &self.page
+                    && !snapshot.peers.iter().any(|peer| &peer.name == name)
+                {
+                    self.page = Page::Computers;
+                }
+                self.error = None;
+                if self.snapshot.as_ref() != Some(&snapshot) {
+                    self.snapshot = Some(*snapshot);
+                    cx.notify();
+                }
+            }
+            Event::Failed { error, quiet } => {
+                if self.snapshot.is_none() || quiet {
+                    if self.snapshot.is_none() {
+                        self.error = Some(error);
+                    }
+                } else {
+                    self.failure = Some(error);
+                    self._failure = Some(cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(FAILURE_SHOWN).await;
+                        let _ = this.update(cx, |model, cx| model.dismiss_failure(cx));
+                    }));
+                }
+                cx.notify();
+            }
+            #[cfg(target_os = "macos")]
+            Event::Lens(lens) => {
+                self.lens = Some(lens);
+                cx.notify();
+            }
+        }
+    }
+}
+
+/// The worker: connects, then runs each queued request and polls between
+/// them. A request whose answer carries no snapshot is followed by a poll,
+/// so the window shows its effect at once.
+fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_channel::Sender<Event>) {
+    let send = |event| events.send_blocking(event).is_ok();
+    let mut client: Option<Client> = None;
+    // A fresh connection asks for a snapshot at once.
+    let mut fresh = false;
+    loop {
+        let Some(line) = &client else {
+            match Client::connect(config) {
+                Ok(connected) => {
+                    #[cfg(target_os = "macos")]
+                    if !send(Event::Lens(connected.lens().clone())) {
+                        return;
+                    }
+                    client = Some(connected);
+                    fresh = true;
+                }
+                Err(error) => {
+                    if !send(Event::Failed {
+                        error: format!("{error:#}"),
+                        quiet: true,
+                    }) {
+                        return;
+                    }
+                    match jobs.recv() {
+                        Ok(Job::Call {
+                            reply: Some(reply), ..
+                        }) => {
+                            let _ = reply.send_blocking(Err(format!("{error:#}")));
+                        }
+                        Ok(Job::Ask { reply, .. }) => {
+                            let _ = reply.send_blocking(Err(format!("{error:#}")));
+                        }
+                        Ok(_) => {}
+                        Err(_) => return,
+                    }
+                }
+            }
+            continue;
+        };
+        let next = if std::mem::take(&mut fresh) {
+            Err(mpsc::RecvTimeoutError::Timeout)
+        } else {
+            jobs.recv_timeout(POLL)
+        };
+        let (request, reply) = match next {
+            Ok(Job::Call { request, reply }) => (request, reply),
+            Ok(Job::Ask { request, reply }) => {
+                let answer = line.call(&request).map_err(|error| format!("{error:#}"));
+                if reply.send_blocking(answer).is_err() {
+                    log::debug!("a question's asker went away");
+                }
+                continue;
+            }
+            Ok(Job::Reconnect) => {
+                client = None;
+                continue;
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => (Request::Snapshot, None),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        };
+        let polling = matches!(request, Request::Snapshot) && reply.is_none();
+        let answer = line.call(&request).and_then(|answer| {
+            if matches!(request, Request::Snapshot) || zflow::app::client::ANSWERS_WITH_SNAPSHOT {
+                Ok(answer)
+            } else {
+                line.call(&Request::Snapshot)
+            }
+        });
+        let outcome = answer.and_then(|value| {
+            Snapshot::deserialize(value).map_err(|error| anyhow::anyhow!("zflow sent a status this window cannot read: {error}"))
+        });
+        let ok = match outcome {
+            Ok(snapshot) => {
+                if let Some(reply) = &reply {
+                    let _ = reply.send_blocking(Ok(()));
+                }
+                send(Event::Snapshot(Box::new(snapshot)))
+            }
+            Err(error) => {
+                let error = format!("{error:#}");
+                match &reply {
+                    Some(reply) => reply.send_blocking(Err(error)).is_ok(),
+                    None => send(Event::Failed {
+                        error,
+                        quiet: polling,
+                    }),
+                }
+            }
+        };
+        if !ok {
+            return;
+        }
+    }
+}
+
+/// The model, as a global the tray and menus reach.
+pub struct Shared(pub Entity<Model>);
+
+impl zz_gpui::Global for Shared {}
+
+pub fn model(cx: &App) -> Entity<Model> {
+    cx.global::<Shared>().0.clone()
+}

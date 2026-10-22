@@ -5,7 +5,7 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Low-latency, loss-resilient input sharing for Linux, macOS and Windows"
 repository = "https://github.com/demfabris/zflow"
-rust-version = "1.88"
+rust-version = "1.97"
 
 [lib]
 name = "zflow"
@@ -46,7 +46,7 @@ cc = "1.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.10"
-zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
 evdev = "0.13.2"
 mio = { version = "1.2.2", default-features = false, features = ["os-ext", "os-poll"] }
 nix = { version = "0.30", features = ["socket", "user"] }
@@ -82,7 +82,7 @@ resolver = "3"
 edition = "2024"
 license = "GPL-3.0-or-later"
 rust-version = "1.97"
-version = "0.5.0"
+version = "0.7.0"
 
 # The zz-gpui stack, vendored from github.com/demfabris/zz (see crates/README.md).
 [workspace.dependencies]
@@ -236,8 +236,13 @@ type_complexity = "allow"
 used_underscore_binding = "allow"
 unused_self = "allow"
 
-# The UI stack is slow unoptimized.
+[profile.dev]
+debug = 1
+
+# The UI stack is slow unoptimized. "*" reaches only crates outside the
+# workspace, so the vendored ones are named.
 [profile.dev.package]
+"*" = { opt-level = 2 }
 taffy = { opt-level = 3 }
 zz-gpui = { opt-level = 3 }
 zz-gpui-macros = { opt-level = 2 }
