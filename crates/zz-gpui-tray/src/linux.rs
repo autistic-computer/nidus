@@ -33,7 +33,11 @@ impl Drop for Service {
     }
 }
 
-pub(super) fn spawn(options: TrayOptions, menu: Menu, events: Sender<TrayEvent>) -> Option<Service> {
+pub(super) fn spawn(
+    options: TrayOptions,
+    menu: Menu,
+    events: Sender<TrayEvent>,
+) -> Option<Service> {
     let tray = SniTray {
         id: options.id,
         tooltip: options.tooltip,

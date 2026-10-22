@@ -52,7 +52,10 @@ pub fn entries(
             }
             // Placing one happens on the arrangement.
             for computer in found {
-                entries.push(MenuEntry::item(format!("{} — Place…", computer.name), "computers"));
+                entries.push(MenuEntry::item(
+                    format!("{} — Place…", computer.name),
+                    "computers",
+                ));
             }
         }
         #[cfg(target_os = "macos")]
@@ -81,7 +84,10 @@ pub fn entries(
     entries.push(MenuEntry::Separator);
     entries.push(MenuEntry::item("Open zflow", "open"));
     entries.push(MenuEntry::item(
-        update.map_or_else(|| "Check for Updates…".to_owned(), |version| format!("Update to {version}…")),
+        update.map_or_else(
+            || "Check for Updates…".to_owned(),
+            |version| format!("Update to {version}…"),
+        ),
         "updates",
     ));
     entries.push(MenuEntry::item("Quit zflow", "quit"));
@@ -113,14 +119,18 @@ pub fn init(model: &Entity<Model>, cx: &mut App) {
         look: None,
     });
     cx.observe(model, |model, cx| refresh(&model, cx)).detach();
-    if let Some(services) = cx.try_global::<SharedServices>().map(|services| services.0.clone()) {
+    if let Some(services) = cx
+        .try_global::<SharedServices>()
+        .map(|services| services.0.clone())
+    {
         let model = model.clone();
-        cx.observe(&services, move |_, cx| refresh(&model, cx)).detach();
+        cx.observe(&services, move |_, cx| refresh(&model, cx))
+            .detach();
     }
     let model = model.clone();
     cx.spawn(async move |cx| {
         while let Ok(event) = inbox.recv().await {
-            let _ = cx.update(|cx| handle(&event, &model, cx));
+            let () = cx.update(|cx| handle(&event, &model, cx));
         }
     })
     .detach();
@@ -144,9 +154,10 @@ fn refresh(model: &Entity<Model>, cx: &mut App) {
                 | zflow::app::api::State::Controlled
         )
     });
-    let title = snapshot
-        .as_ref()
-        .map_or_else(|| "Needs attention".to_owned(), |snapshot| snapshot.status.title.clone());
+    let title = snapshot.as_ref().map_or_else(
+        || "Needs attention".to_owned(),
+        |snapshot| snapshot.status.title.clone(),
+    );
     let tooltip = match &update {
         Some(_) => "zflow, update available".to_owned(),
         None => format!("zflow, {title}"),
@@ -186,7 +197,9 @@ fn handle(event: &TrayEvent, model: &Entity<Model>, cx: &mut App) {
         "quit" => platform::quit(cx),
         action => {
             if let Some(name) = action.strip_prefix("computer:") {
-                model.update(cx, |model, cx| model.show(Page::Computer(name.to_owned()), cx));
+                model.update(cx, |model, cx| {
+                    model.show(Page::Computer(name.to_owned()), cx);
+                });
                 crate::open(cx);
             } else if let Some(name) = action.strip_prefix("lens:") {
                 #[cfg(target_os = "macos")]
@@ -208,7 +221,11 @@ pub fn rasterize(svg: &str, size: u32) -> Vec<u8> {
         return Vec::new();
     };
     let scale = size as f32 / tree.size().width().max(tree.size().height());
-    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
     pixmap.encode_png().unwrap_or_default()
 }
 

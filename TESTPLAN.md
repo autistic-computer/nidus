@@ -509,6 +509,52 @@ Live installation checks remain:
   a running app, grant first-launch permissions, and test Open at login at its
   final path.
 
+## One app on zz-gpui, October 21
+
+The SwiftUI, WinUI and GTK windows are replaced by one Rust app,
+`crates/zflow-app`, on zz's GPUI fork and widget kit. It reads the same
+snapshot and sends the same requests on every system: in process on a Mac, over
+`io.zflow.Desktop` on Linux, and over the engine's pipe on Windows through
+`src/app/windows_view.rs`. The GNOME extension keeps the panel indicator and
+the Shell work; the Swift AWDL helper stays. The two sections below describe
+the windows this replaced.
+
+Automated checks:
+
+```sh
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings   # zflow, the app, the kit, the tray
+cargo test --locked --all-targets
+just test app
+```
+
+The app's tests drive the arrangement with simulated pointer and key events
+on a fake model: a drag asks where the computer lands, then moves it once on
+drop; a click selects a computer and an arrow key moves it 100 units. Others
+cover the arrangement math, the lens geometry, the pairing note, the GNOME
+setup steps and the Windows status translation.
+
+October 21 verification on Ubuntu 26.10 GNOME (Wayland, Xwayland for
+captures): the window rendered the live agent's snapshot (status, islands with
+a lit seam, the computer list, Settings with every check). macOS and Windows
+were type-checked from Linux only; nothing has run on a Mac or a Windows PC.
+
+Live checks still to run:
+
+- Mac: launch from Finder at login and from the disk image (Move to
+  Applications banner), the menu bar menu and its icon states, Accessibility
+  and Local Network from first run, Paste from other apps, the Wi-Fi helper
+  install and repair, Sparkle checks and an update, the joined notification's
+  Forget, and the lens (⌃⌥L, Escape, Command-C, a click outside, a failure).
+- Windows: install over the WinUI 0.6.x release through Velopack, the
+  notification-area menu, Run at startup, Restart as administrator, Take
+  control and Return here, a second launch showing the window, and
+  `Zflow.App.exe --quit` from `install-windows.ps1`.
+- GNOME: open from Applications and the panel, the setup banner's Install,
+  Turn On and Log Out, an update install and restart, and the window on X11.
+- Every system: drag a computer and a found computer, adjust one screen,
+  forget a computer, add one by address, and check light and dark mode.
+
 ## Native GNOME app and panel, September 16
 
 The GNOME extension retains cursor placement and return barriers and adds a
@@ -526,7 +572,8 @@ pre-login boundary, plus daemon pairing acknowledgements and cancellation.
 Implementation checks on GNOME Shell 50.1, GTK 4.22.4 and libadwaita 1.9.1:
 `just check` passed (236 library tests, eight QUIC tests, both Node suites).
 `just test-gtk` passed the isolated Rust session-service test and GTK controls.
-Use `just test gtk` for that check in the current checkout.
+The GTK window and its checks are gone since October 21; `just test bus` keeps
+the session-service test.
 The extension loaded in a separate headless GNOME Shell and returned desktop
 geometry through its existing API. Native GTK rendering was inspected for the
 settings window and pairing dialog. The live system daemon was not replaced;
@@ -550,7 +597,7 @@ Live checks after installing the updated service and desktop integration:
 
 ## Native macOS app and Linux desktop agent, September 16
 
-Current architecture: SwiftUI MenuBarExtra and Settings, a Rust application
+Architecture until October 21: SwiftUI MenuBarExtra and Settings, a Rust application
 worker behind a C ABI, a Linux desktop agent, and an SMAppService AWDL
 daemon authenticated through same-team XPC. The earlier egui desktop GUI is removed.
 Historical sections below retain their dated measurements, not current commands.

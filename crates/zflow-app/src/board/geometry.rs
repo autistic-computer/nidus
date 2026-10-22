@@ -72,7 +72,12 @@ impl Rect {
         rects.into_iter().reduce(|a, b| {
             let x = a.x.min(b.x);
             let y = a.y.min(b.y);
-            Self::new(x, y, a.right().max(b.right()) - x, a.bottom().max(b.bottom()) - y)
+            Self::new(
+                x,
+                y,
+                a.right().max(b.right()) - x,
+                a.bottom().max(b.bottom()) - y,
+            )
         })
     }
 }
@@ -90,7 +95,11 @@ pub struct Fit {
 impl Fit {
     /// Centers `monitors` on a board `width` by `height`, with room above
     /// for the computers' names.
-    pub fn new<'a>(monitors: impl IntoIterator<Item = &'a Monitor>, width: f32, height: f32) -> Option<Self> {
+    pub fn new<'a>(
+        monitors: impl IntoIterator<Item = &'a Monitor>,
+        width: f32,
+        height: f32,
+    ) -> Option<Self> {
         let mut monitors = monitors.into_iter().peekable();
         monitors.peek()?;
         let (mut left, mut top, mut right, mut bottom) = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
@@ -103,8 +112,7 @@ impl Fit {
         let (span_x, span_y) = ((right - left).max(1) as f32, (bottom - top).max(1) as f32);
         let scale = ((width - 2.0 * ROOM_SIDES) / span_x)
             .min((height - ROOM_ABOVE - ROOM_BELOW) / span_y)
-            .min(MAX_SCALE)
-            .max(0.001);
+            .clamp(0.001, MAX_SCALE);
         Some(Self {
             scale,
             left: left as f32,
@@ -258,13 +266,16 @@ mod tests {
 
     #[test]
     fn a_layout_is_centered_below_the_names() {
-        let monitors = [monitor("a", 0, 0, 1000, 500), monitor("b", 1000, 0, 1000, 500)];
+        let monitors = [
+            monitor("a", 0, 0, 1000, 500),
+            monitor("b", 1000, 0, 1000, 500),
+        ];
         let fit = Fit::new(&monitors, 600.0, BOARD_HEIGHT).unwrap();
         assert!((fit.scale - 0.12).abs() < f32::EPSILON);
         let a = fit.rect(&monitors[0], (0.0, 0.0));
         let b = fit.rect(&monitors[1], (0.0, 0.0));
         assert_eq!(a.right(), b.x, "touching screens stay touching");
-        assert_eq!((a.x + b.right()) / 2.0, 300.0);
+        assert_eq!(f32::midpoint(a.x, b.right()), 300.0);
         assert!(a.y >= ROOM_ABOVE);
         let small = Fit::new(&monitors, 200.0, BOARD_HEIGHT).unwrap();
         assert!(small.scale < 0.12);
@@ -282,7 +293,10 @@ mod tests {
 
     #[test]
     fn seams_sit_on_the_shared_edge() {
-        let monitors = [monitor("a", 0, 0, 1000, 500), monitor("b", 1000, 0, 1000, 500)];
+        let monitors = [
+            monitor("a", 0, 0, 1000, 500),
+            monitor("b", 1000, 0, 1000, 500),
+        ];
         let fit = Fit::new(&monitors, 600.0, BOARD_HEIGHT).unwrap();
         let seam = Seam {
             a: "a".into(),

@@ -17,9 +17,17 @@ use zz_gpui_kit::{
     rems_from_px, v_flex,
 };
 
-use crate::{model::Page, platform, widgets, window::ZflowWindow};
+use crate::{
+    model::{Model, Page},
+    platform, widgets,
+    window::ZflowWindow,
+};
 
-pub fn page(this: &mut ZflowWindow, window: &mut Window, cx: &mut Context<ZflowWindow>) -> AnyElement {
+pub fn page(
+    this: &mut ZflowWindow,
+    window: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> AnyElement {
     let model = this.model.read(cx);
     let content = match (&model.snapshot, &model.error) {
         (Some(_), _) => match model.page.clone() {
@@ -28,8 +36,10 @@ pub fn page(this: &mut ZflowWindow, window: &mut Window, cx: &mut Context<ZflowW
             Page::Computer(name) => {
                 // Each computer lives in the inspector under the board.
                 let owner = format!("peer:{name}");
-                this.board.update(cx, |board, cx| board.select(Some(owner), cx));
-                this.model.update(cx, |model, cx| model.show(Page::Computers, cx));
+                this.board
+                    .update(cx, |board, cx| board.select(Some(owner), cx));
+                this.model
+                    .update(cx, |model, cx| model.show(Page::Computers, cx));
                 computers::render(this, window, cx)
             }
         },
@@ -76,7 +86,7 @@ fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement
             Button::new("try-again")
                 .label("Try Again")
                 .on_click(cx.listener(|this, _, _, cx| {
-                    this.model.update(cx, |model, cx| model.reconnect(cx));
+                    this.model.update(cx, Model::reconnect);
                 })),
         )
         .into_any_element()
@@ -93,7 +103,9 @@ pub fn fix_button(id: &str, action: &Action, cx: &mut Context<ZflowWindow>) -> A
             if !platform::fix(this, &command, window, cx) {
                 match serde_json::from_value::<Request>(serde_json::json!({ "command": command })) {
                     Ok(request) => this.send(request, cx),
-                    Err(error) => log::warn!("zflow offered a fix this window cannot send: {error}"),
+                    Err(error) => {
+                        log::warn!("zflow offered a fix this window cannot send: {error}");
+                    }
                 }
             }
         }))
@@ -138,7 +150,10 @@ pub fn add_address(this: &Entity<ZflowWindow>, dialog: Dialog, cx: &mut App) -> 
         .button_props(
             DialogButtonProps::default()
                 .ok_text("Look Up")
-                .ok_variant(zz_gpui_kit::button::ButtonVariant::Paint(zz_gpui_kit::Tone::Primary, zz_gpui_kit::Emphasis::Solid))
+                .ok_variant(zz_gpui_kit::button::ButtonVariant::Paint(
+                    zz_gpui_kit::Tone::Primary,
+                    zz_gpui_kit::Emphasis::Solid,
+                ))
                 .show_cancel(true),
         )
         .on_ok(move |_, window, cx| {
@@ -160,7 +175,10 @@ fn look_up(this: &Entity<ZflowWindow>, address: String, window: &mut Window, cx:
     let this = this.clone();
     window
         .spawn(cx, async move |cx| {
-            let result = answer.recv().await.unwrap_or_else(|_| Err("zflow stopped".into()));
+            let result = answer
+                .recv()
+                .await
+                .unwrap_or_else(|_| Err("zflow stopped".into()));
             let _ = cx.update(|window, cx| {
                 this.update(cx, |this, cx| {
                     this.looking_up = false;
@@ -178,16 +196,12 @@ fn look_up(this: &Entity<ZflowWindow>, address: String, window: &mut Window, cx:
         .detach();
 }
 
-/// The settings-card ground controls sit on.
-pub fn card_button(id: &'static str, label: &'static str, cx: &App) -> Button {
-    Button::new(id)
-        .small()
-        .label(label)
-        .on(zz_gpui_kit::settings::settings_card_ground(cx))
-}
-
 /// A danger-toned button on a card.
-pub fn card_danger(id: impl Into<zz_gpui::ElementId>, label: impl Into<zz_gpui::SharedString>, cx: &App) -> Button {
+pub fn card_danger(
+    id: impl Into<zz_gpui::ElementId>,
+    label: impl Into<zz_gpui::SharedString>,
+    cx: &App,
+) -> Button {
     Button::new(id)
         .small()
         .danger()
@@ -195,14 +209,10 @@ pub fn card_danger(id: impl Into<zz_gpui::ElementId>, label: impl Into<zz_gpui::
         .on(zz_gpui_kit::settings::settings_card_ground(cx))
 }
 
-pub fn heading(title: impl Into<zz_gpui::SharedString>, description: impl Into<zz_gpui::SharedString>, cx: &App) -> zz_gpui::Div {
+pub fn heading(
+    title: impl Into<zz_gpui::SharedString>,
+    description: impl Into<zz_gpui::SharedString>,
+    cx: &App,
+) -> zz_gpui::Div {
     zz_gpui_kit::settings::settings_page_heading(title, description, cx)
-}
-
-pub fn text_button(id: &'static str, label: &'static str) -> Button {
-    Button::new(id).small().ghost().label(label)
-}
-
-pub fn any(element: impl IntoElement) -> AnyElement {
-    element.into_any_element()
 }

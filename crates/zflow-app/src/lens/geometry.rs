@@ -43,6 +43,7 @@ impl Fit {
     }
 
     /// The screen point of desktop pixel (`column`, `row`).
+    #[cfg(test)]
     pub fn point(&self, column: f64, row: f64) -> (f64, f64) {
         (self.x + column * self.scale, self.y + row * self.scale)
     }
@@ -75,7 +76,10 @@ impl Grid {
     /// Chunk `id`'s pixels: x, y, width, height. The last row and column
     /// are smaller.
     pub fn rect(&self, id: u32) -> (u32, u32, u32, u32) {
-        let (x, y) = ((id % self.columns) * self.chunk, (id / self.columns) * self.chunk);
+        let (x, y) = (
+            (id % self.columns) * self.chunk,
+            (id / self.columns) * self.chunk,
+        );
         (
             x,
             y,
@@ -85,6 +89,7 @@ impl Grid {
     }
 
     /// The chunks under a circle, as the engine counts them.
+    #[cfg(test)]
     pub fn around(&self, x: f64, y: f64, radius: f64) -> Vec<u32> {
         let span = |center: f64, size: u32| {
             let low = (center - radius).max(0.0) as u32 / self.chunk;

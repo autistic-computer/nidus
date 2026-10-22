@@ -19,8 +19,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowLongPtrW, HICON, ICONINFO, MF_CHECKED, MF_GRAYED, MF_SEPARATOR,
     MF_STRING, MSG, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
     SetForegroundWindow, SetWindowLongPtrW, TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON,
-    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_CLOSE, WM_DESTROY,
-    WM_LBUTTONUP, WM_NCCREATE, WM_NCDESTROY, WM_RBUTTONUP, WNDCLASSW, WS_POPUP,
+    TrackPopupMenu, TranslateMessage, WINDOW_EX_STYLE, WM_APP, WM_CLOSE, WM_DESTROY, WM_LBUTTONUP,
+    WM_NCCREATE, WM_NCDESTROY, WM_RBUTTONUP, WNDCLASSW, WS_POPUP,
 };
 use windows::core::{PCWSTR, w};
 
@@ -43,7 +43,10 @@ pub(super) struct NotifyIcon {
 
 // SAFETY: the handle is only ever turned back into an `HWND` for
 // `PostMessageW`, which is documented cross-thread.
-#[allow(unsafe_code, reason = "a Send assertion for a raw handle has no safe form")]
+#[allow(
+    unsafe_code,
+    reason = "a Send assertion for a raw handle has no safe form"
+)]
 unsafe impl Send for NotifyIcon {}
 
 impl NotifyIcon {
@@ -59,7 +62,10 @@ impl NotifyIcon {
 
 impl Drop for NotifyIcon {
     fn drop(&mut self) {
-        #[allow(unsafe_code, reason = "no safe binding posts to a foreign thread's window")]
+        #[allow(
+            unsafe_code,
+            reason = "no safe binding posts to a foreign thread's window"
+        )]
         // SAFETY: the window outlives every drop path: it is destroyed only by
         // this message, and the join below outwaits the teardown.
         unsafe {
@@ -92,14 +98,23 @@ impl TrayState {
             hIcon: self.icon,
             ..Default::default()
         };
-        for (slot, value) in data.szTip.iter_mut().take(127).zip(self.tooltip.encode_utf16()) {
+        for (slot, value) in data
+            .szTip
+            .iter_mut()
+            .take(127)
+            .zip(self.tooltip.encode_utf16())
+        {
             *slot = value;
         }
         data
     }
 }
 
-pub(super) fn spawn(options: TrayOptions, menu: Menu, events: Sender<TrayEvent>) -> Option<NotifyIcon> {
+pub(super) fn spawn(
+    options: TrayOptions,
+    menu: Menu,
+    events: Sender<TrayEvent>,
+) -> Option<NotifyIcon> {
     let (ready_sender, ready) = mpsc::channel();
     let look = std::sync::Arc::new(Mutex::new(None));
     let shared = look.clone();
@@ -107,20 +122,22 @@ pub(super) fn spawn(options: TrayOptions, menu: Menu, events: Sender<TrayEvent>)
         .name("zz-tray".into())
         .spawn(move || pump(options, menu, events, shared, &ready_sender))
         .ok()?;
-    match ready.recv() {
-        Ok(Some(hwnd)) => Some(NotifyIcon {
+    if let Ok(Some(hwnd)) = ready.recv() {
+        Some(NotifyIcon {
             hwnd,
             look,
             thread: Some(thread),
-        }),
-        Ok(None) | Err(_) => {
-            let _ = thread.join();
-            None
-        }
+        })
+    } else {
+        let _ = thread.join();
+        None
     }
 }
 
-#[allow(unsafe_code, reason = "win32 window and shell-icon calls have no safe binding")]
+#[allow(
+    unsafe_code,
+    reason = "win32 window and shell-icon calls have no safe binding"
+)]
 fn pump(
     options: TrayOptions,
     menu: Menu,
@@ -146,7 +163,7 @@ fn pump(
             ..Default::default()
         };
         // A zero atom means the class already exists, which is not fatal.
-        RegisterClassW(&class);
+        RegisterClassW(&raw const class);
 
         let state = Box::new(TrayState {
             events,
@@ -184,8 +201,9 @@ fn pump(
     // SAFETY: `hwnd` was created just above on this thread and `state` was
     // stashed by `WM_NCCREATE`.
     let added = unsafe {
-        let state = &*(GetWindowLongPtrW(hwnd, windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA)
-            as *const TrayState);
+        let state =
+            &*(GetWindowLongPtrW(hwnd, windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA)
+                as *const TrayState);
         let added = Shell_NotifyIconW(NIM_ADD, &state.notify_icon_data(hwnd)).as_bool();
         if added {
             send(&state.events, TrayEvent::Available(true));
@@ -206,9 +224,9 @@ fn pump(
     // SAFETY: the canonical pump, on the thread that owns the window.
     unsafe {
         let mut message = MSG::default();
-        while GetMessageW(&mut message, None, 0, 0).as_bool() {
-            let _ = TranslateMessage(&message);
-            DispatchMessageW(&message);
+        while GetMessageW(&raw mut message, None, 0, 0).as_bool() {
+            let _ = TranslateMessage(&raw const message);
+            DispatchMessageW(&raw const message);
         }
     }
 }
@@ -328,8 +346,8 @@ fn show_menu(hwnd: HWND, state: &TrayState) {
             }
         }
 
-        let mut cursor = Default::default();
-        let _ = GetCursorPos(&mut cursor);
+        let mut cursor = windows::Win32::Foundation::POINT::default();
+        let _ = GetCursorPos(&raw mut cursor);
         // Without this the notification-icon menu cannot be dismissed by
         // clicking away.
         let _ = SetForegroundWindow(hwnd);
@@ -370,15 +388,27 @@ fn tray_icon(icon: &TrayIcon) -> HICON {
     // SAFETY: both bitmaps are built from exactly-sized local buffers and
     // released after `CreateIconIndirect` copies them.
     unsafe {
-        let color = CreateBitmap(width as i32, height as i32, 1, 32, Some(bgra.as_ptr() as _));
-        let monochrome = CreateBitmap(width as i32, height as i32, 1, 1, Some(mask.as_ptr() as _));
+        let color = CreateBitmap(
+            width as i32,
+            height as i32,
+            1,
+            32,
+            Some(bgra.as_ptr().cast()),
+        );
+        let monochrome = CreateBitmap(
+            width as i32,
+            height as i32,
+            1,
+            1,
+            Some(mask.as_ptr().cast()),
+        );
         let info = ICONINFO {
             fIcon: true.into(),
             hbmMask: monochrome,
             hbmColor: color,
             ..Default::default()
         };
-        let icon = CreateIconIndirect(&info).unwrap_or_default();
+        let icon = CreateIconIndirect(&raw const info).unwrap_or_default();
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(color.into());
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(monochrome.into());
         icon

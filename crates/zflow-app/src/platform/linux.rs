@@ -16,7 +16,7 @@ const UUID: &str = "zflow@demfabris";
 /// How often the window checks on the extension.
 const SETUP_POLL: Duration = Duration::from_secs(2);
 /// How often it checks for a release while it is open.
-const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+const UPDATE_INTERVAL: Duration = Duration::from_hours(6);
 
 /// GNOME Shell's `ExtensionState` values.
 const ACTIVE: f64 = 1.0;
@@ -169,9 +169,9 @@ impl Services {
         });
         let updates = cx.spawn(async move |this, cx| {
             loop {
-                let Ok(automatic) = this.update(cx, |services, _| {
-                    services.updates.automatic == Some(true)
-                }) else {
+                let Ok(automatic) =
+                    this.update(cx, |services, _| services.updates.automatic == Some(true))
+                else {
                     return;
                 };
                 if automatic {
@@ -296,7 +296,8 @@ impl Services {
                 match result {
                     Ok(_) => {
                         services.restart_needed = true;
-                        services.updates.note = Some(format!("{tag} is installed. Restart to use it."));
+                        services.updates.note =
+                            Some(format!("{tag} is installed. Restart to use it."));
                         restart(cx);
                     }
                     Err(error) => services.updates.note = Some(format!("{error:#}")),
@@ -313,8 +314,11 @@ impl Services {
         self.setup_busy = true;
         self.setup_error = None;
         cx.notify();
-        let install = (step == Setup::Install)
-            .then(|| model.read(cx).attempt(zflow::app::api::Request::InstallExtension));
+        let install = (step == Setup::Install).then(|| {
+            model
+                .read(cx)
+                .attempt(zflow::app::api::Request::InstallExtension)
+        });
         cx.spawn(async move |this, cx| {
             let result = match install {
                 // GNOME asks before it downloads, so this waits for the person.
@@ -323,10 +327,11 @@ impl Services {
                     .await
                     .unwrap_or_else(|_| Err("zflow stopped".into()))
                     .map_err(|error| anyhow!(error)),
-                None => cx
-                    .background_executor()
-                    .spawn(async move { take_step(step) })
-                    .await,
+                None => {
+                    cx.background_executor()
+                        .spawn(async move { take_step(step) })
+                        .await
+                }
             };
             let _ = this.update(cx, |services, cx| {
                 services.setup_busy = false;
@@ -380,7 +385,7 @@ pub fn notification_response(_: &zz_gpui::SystemNotificationResponse, _: &mut Ap
 
 /// Starts this window again from the newly installed zflow.
 pub fn restart(cx: &mut App) {
-    match Command::new(zflow_executable()).arg("settings").env("ZFLOW_REPLACE", "1").spawn() {
+    match Command::new(zflow_executable()).arg("settings").spawn() {
         Ok(_) => cx.quit(),
         Err(error) => log::warn!("zflow could not restart: {error}"),
     }
@@ -439,7 +444,7 @@ fn save_automatic(automatic: bool) -> Result<()> {
     Ok(())
 }
 
-/// Whether NetworkManager says the connection is metered.
+/// Whether `NetworkManager` says the connection is metered.
 fn metered() -> bool {
     let Ok(bus) = zflow::app::client::system_bus() else {
         return false;
@@ -495,14 +500,17 @@ fn installed_metadata() -> Option<serde_json::Value> {
     let data = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")));
-    let system = std::env::var("XDG_DATA_DIRS")
-        .unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    let system =
+        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
     data.into_iter()
         .chain(system.split(':').map(PathBuf::from))
         .find_map(|dir| {
-            let bytes =
-                std::fs::read(dir.join("gnome-shell/extensions").join(UUID).join("metadata.json"))
-                    .ok()?;
+            let bytes = std::fs::read(
+                dir.join("gnome-shell/extensions")
+                    .join(UUID)
+                    .join("metadata.json"),
+            )
+            .ok()?;
             serde_json::from_slice(&bytes).ok()
         })
 }
@@ -578,7 +586,7 @@ fn enable_at_login() -> Result<()> {
     Ok(())
 }
 
-/// A GVariant string array as `gsettings get` prints it.
+/// A `GVariant` string array as `gsettings get` prints it.
 fn parse_strv(text: &str) -> Vec<String> {
     let text = text.trim().trim_start_matches("@as ");
     text.trim_start_matches('[')
@@ -587,57 +595,6 @@ fn parse_strv(text: &str) -> Vec<String> {
         .map(|item| item.trim().trim_matches('\'').to_owned())
         .filter(|item| !item.is_empty())
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn facts(state: Option<f64>) -> ExtensionFacts {
-        ExtensionFacts {
-            state,
-            loaded_version: Some("0.7.0".into()),
-            installed: true,
-            installed_version: Some("0.7.0".into()),
-            ..ExtensionFacts::default()
-        }
-    }
-
-    #[test]
-    fn the_setup_step_follows_gnome_and_the_disk() {
-        let missing = ExtensionFacts::default();
-        assert_eq!(setup_step(&missing, false), Some(Setup::Install));
-        let on_disk = ExtensionFacts {
-            installed: true,
-            ..ExtensionFacts::default()
-        };
-        assert_eq!(setup_step(&on_disk, false), Some(Setup::LogOut));
-        assert_eq!(setup_step(&facts(Some(ACTIVE)), false), None);
-        assert_eq!(setup_step(&facts(Some(INACTIVE)), false), Some(Setup::Enable));
-        assert_eq!(setup_step(&facts(Some(INITIALIZED)), false), Some(Setup::Enable));
-        assert_eq!(setup_step(&facts(Some(ERROR)), false), Some(Setup::Error));
-        assert_eq!(setup_step(&facts(Some(OUT_OF_DATE)), false), Some(Setup::Outdated));
-        let updated = ExtensionFacts {
-            installed_version: Some("0.8.0".into()),
-            ..facts(Some(ACTIVE))
-        };
-        assert_eq!(setup_step(&updated, false), Some(Setup::Update));
-        let store = ExtensionFacts {
-            loaded_from_store: true,
-            ..facts(Some(ACTIVE))
-        };
-        assert_eq!(setup_step(&store, true), Some(Setup::StoreOutdated));
-        assert_eq!(setup_step(&store, false), None);
-    }
-
-    #[test]
-    fn gsettings_lists_read_back() {
-        assert_eq!(parse_strv("@as []\n"), Vec::<String>::new());
-        assert_eq!(
-            parse_strv("['a@b', 'zflow@demfabris']\n"),
-            vec!["a@b".to_owned(), "zflow@demfabris".to_owned()]
-        );
-    }
 }
 
 // What the pages show for Linux.
@@ -661,10 +618,17 @@ pub const OWN_SCREENS_NOTE: &str =
     "Between this computer’s own screens, the pointer follows GNOME’s display settings.";
 
 /// The extension's next setup step, above every page.
-pub fn banner(this: &mut ZflowWindow, _: &mut Window, cx: &mut Context<ZflowWindow>) -> Option<AnyElement> {
+pub fn banner(
+    this: &mut ZflowWindow,
+    _: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<AnyElement> {
     let services = this.services.read(cx);
     let step = services.setup?;
-    let title = services.setup_error.clone().unwrap_or_else(|| step.title().to_owned());
+    let title = services
+        .setup_error
+        .clone()
+        .unwrap_or_else(|| step.title().to_owned());
     let busy = services.setup_busy;
     let action = step.button().map(|label| {
         Button::new("setup-step")
@@ -674,7 +638,8 @@ pub fn banner(this: &mut ZflowWindow, _: &mut Window, cx: &mut Context<ZflowWind
             .disabled(busy)
             .on_click(cx.listener(|this, _, _, cx| {
                 let model = this.model.clone();
-                this.services.update(cx, |services, cx| services.act(&model, cx));
+                this.services
+                    .update(cx, |services, cx| services.act(&model, cx));
             }))
             .into_any_element()
     });
@@ -721,7 +686,8 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
                 .label("Open")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, _| {
-                    if let Err(error) = Command::new("gnome-control-center").arg("display").spawn() {
+                    if let Err(error) = Command::new("gnome-control-center").arg("display").spawn()
+                    {
                         log::warn!("could not open GNOME's display settings: {error}");
                     }
                 }),
@@ -737,18 +703,32 @@ fn which(program: &str) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-pub fn peer_entries(_: &mut ZflowWindow, _: &Peer, _: &mut Context<ZflowWindow>) -> Vec<SettingEntry> {
+pub fn peer_entries(
+    _: &mut ZflowWindow,
+    _: &Peer,
+    _: &mut Context<ZflowWindow>,
+) -> Vec<SettingEntry> {
     Vec::new()
 }
 
 /// Start at login, which the agent keeps.
-pub fn login_entry(_: &mut ZflowWindow, snapshot: &Snapshot, cx: &mut Context<ZflowWindow>) -> Option<SettingEntry> {
+pub fn login_entry(
+    _: &mut ZflowWindow,
+    snapshot: &Snapshot,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<SettingEntry> {
     let enabled = snapshot.autostart?;
     Some(
-        SettingEntry::new("Start at login", "Keep zflow available after you close this window.").control(
-            Switch::new("autostart").checked(enabled).on_click(cx.listener(|this, on: &bool, _, cx| {
-                this.send(Request::SetAutostart { enabled: *on }, cx);
-            })),
+        SettingEntry::new(
+            "Start at login",
+            "Keep zflow available after you close this window.",
+        )
+        .control(
+            Switch::new("autostart")
+                .checked(enabled)
+                .on_click(cx.listener(|this, on: &bool, _, cx| {
+                    this.send(Request::SetAutostart { enabled: *on }, cx);
+                })),
         ),
     )
 }
@@ -782,7 +762,8 @@ pub fn settings_stacks(
             } else if let Some(tag) = installable.clone() {
                 confirm_install(this, tag, window, cx);
             } else {
-                this.services.update(cx, |services, cx| services.check(false, cx));
+                this.services
+                    .update(cx, |services, cx| services.check(false, cx));
             }
         }));
     let automatic = updates.automatic.unwrap_or(true);
@@ -800,16 +781,25 @@ pub fn settings_stacks(
                     "Check automatically",
                     "Check when you open zflow and every six hours while it is open.",
                 )
-                .control(Switch::new("update-automatic").checked(automatic).disabled(services.installing).on_click(
-                    cx.listener(|this, on: &bool, _, cx| {
-                        this.services.update(cx, |services, cx| services.set_automatic(*on, cx));
-                    }),
-                )),
+                .control(
+                    Switch::new("update-automatic")
+                        .checked(automatic)
+                        .disabled(services.installing)
+                        .on_click(cx.listener(|this, on: &bool, _, cx| {
+                            this.services
+                                .update(cx, |services, cx| services.set_automatic(*on, cx));
+                        })),
+                ),
             ),
     ]
 }
 
-fn confirm_install(this: &mut ZflowWindow, tag: String, window: &mut Window, cx: &mut Context<ZflowWindow>) {
+fn confirm_install(
+    this: &mut ZflowWindow,
+    tag: String,
+    window: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) {
     let services = this.services.clone();
     window.open_alert_dialog(cx, move |alert, _, _| {
         let (services, tag) = (services.clone(), tag.clone());
@@ -835,7 +825,11 @@ pub fn this_computer_entries(
     cx: &mut Context<ZflowWindow>,
 ) -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("Service log", "Follow what the background service is doing.").control(
+        SettingEntry::new(
+            "Service log",
+            "Follow what the background service is doing.",
+        )
+        .control(
             Button::new("open-logs")
                 .small()
                 .label("Open")
@@ -844,4 +838,64 @@ pub fn this_computer_entries(
         ),
         SettingEntry::new("Configuration", snapshot.config_path.display().to_string()),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn facts(state: Option<f64>) -> ExtensionFacts {
+        ExtensionFacts {
+            state,
+            loaded_version: Some("0.7.0".into()),
+            installed: true,
+            installed_version: Some("0.7.0".into()),
+            ..ExtensionFacts::default()
+        }
+    }
+
+    #[test]
+    fn the_setup_step_follows_gnome_and_the_disk() {
+        let missing = ExtensionFacts::default();
+        assert_eq!(setup_step(&missing, false), Some(Setup::Install));
+        let on_disk = ExtensionFacts {
+            installed: true,
+            ..ExtensionFacts::default()
+        };
+        assert_eq!(setup_step(&on_disk, false), Some(Setup::LogOut));
+        assert_eq!(setup_step(&facts(Some(ACTIVE)), false), None);
+        assert_eq!(
+            setup_step(&facts(Some(INACTIVE)), false),
+            Some(Setup::Enable)
+        );
+        assert_eq!(
+            setup_step(&facts(Some(INITIALIZED)), false),
+            Some(Setup::Enable)
+        );
+        assert_eq!(setup_step(&facts(Some(ERROR)), false), Some(Setup::Error));
+        assert_eq!(
+            setup_step(&facts(Some(OUT_OF_DATE)), false),
+            Some(Setup::Outdated)
+        );
+        let updated = ExtensionFacts {
+            installed_version: Some("0.8.0".into()),
+            ..facts(Some(ACTIVE))
+        };
+        assert_eq!(setup_step(&updated, false), Some(Setup::Update));
+        let store = ExtensionFacts {
+            loaded_from_store: true,
+            ..facts(Some(ACTIVE))
+        };
+        assert_eq!(setup_step(&store, true), Some(Setup::StoreOutdated));
+        assert_eq!(setup_step(&store, false), None);
+    }
+
+    #[test]
+    fn gsettings_lists_read_back() {
+        assert_eq!(parse_strv("@as []\n"), Vec::<String>::new());
+        assert_eq!(
+            parse_strv("['a@b', 'zflow@demfabris']\n"),
+            vec!["a@b".to_owned(), "zflow@demfabris".to_owned()]
+        );
+    }
 }

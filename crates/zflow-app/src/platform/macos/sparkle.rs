@@ -8,7 +8,7 @@
 
 use async_channel::Sender;
 use objc2::{
-    AnyThread as _, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+    DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
     rc::Retained,
     runtime::{AnyClass, AnyObject, Bool, NSObject, NSObjectProtocol},
 };
@@ -113,7 +113,7 @@ pub fn configuration_issue(location: &AppLocation) -> Option<String> {
 fn base64_len(text: &str) -> Option<usize> {
     let text = text.trim();
     if text.is_empty()
-        || text.len() % 4 != 0
+        || !text.len().is_multiple_of(4)
         || !text
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'='))
@@ -223,7 +223,10 @@ mod tests {
 
     #[test]
     fn a_sparkle_key_is_32_bytes_of_base64() {
-        assert_eq!(base64_len("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="), Some(32));
+        assert_eq!(
+            base64_len("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
+            Some(32)
+        );
         assert_eq!(base64_len("not base64!"), None);
         assert_eq!(base64_len(""), None);
     }

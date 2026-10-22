@@ -13,15 +13,17 @@ use zflow::app::{
     layout_model::{Monitor, Preview, Seam},
 };
 use zz_gpui::{
-    App, AppContext as _, Bounds, BorderStyle, Context, Corners, DispatchPhase, Edges, Entity,
-    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder,
-    Pixels, Point, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window,
-    canvas, div, point, prelude::FluentBuilder as _, px, quad, size,
+    App, BorderStyle, Bounds, Context, Corners, DispatchPhase, Edges, Entity, FocusHandle,
+    Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point,
+    Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point,
+    prelude::FluentBuilder as _, px, quad, size,
 };
 use zz_gpui_kit::{
     ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, Sizable as _, StyledExt as _,
-    Surface, button::{Button, ButtonVariants as _}, h_flex, rems_from_px, v_flex,
+    Surface,
+    button::{Button, ButtonVariants as _},
+    h_flex, rems_from_px, v_flex,
 };
 
 use self::geometry::{
@@ -258,7 +260,12 @@ impl Board {
     }
 
     /// The islands as this frame draws them.
-    fn islands(&mut self, snapshot: &Snapshot, window: &mut Window, cx: &App) -> (Option<Fit>, Vec<Island>) {
+    fn islands(
+        &mut self,
+        snapshot: &Snapshot,
+        window: &mut Window,
+        cx: &App,
+    ) -> (Option<Fit>, Vec<Island>) {
         let (width, height) = self.size();
         let shown: Vec<&Monitor> = monitors(snapshot).collect();
         let fit = match &self.drag {
@@ -277,27 +284,30 @@ impl Board {
                 .drag
                 .as_ref()
                 .is_some_and(|drag| Self::moves(drag, &owner, monitor));
-            let at = if moving { fit.rect(monitor, shift) } else { home };
-            match islands.iter_mut().find(|island| island.owner == owner) {
-                Some(island) => island.screens.push((monitor.clone(), home, at)),
-                None => {
-                    let peer = monitor
+            let at = if moving {
+                fit.rect(monitor, shift)
+            } else {
+                home
+            };
+            if let Some(island) = islands.iter_mut().find(|island| island.owner == owner) {
+                island.screens.push((monitor.clone(), home, at));
+            } else {
+                let peer = monitor
+                    .peer
+                    .as_ref()
+                    .and_then(|name| snapshot.peers.iter().find(|peer| &peer.name == name));
+                islands.push(Island {
+                    owner,
+                    name: monitor
                         .peer
-                        .as_ref()
-                        .and_then(|name| snapshot.peers.iter().find(|peer| &peer.name == name));
-                    islands.push(Island {
-                        owner,
-                        name: monitor
-                            .peer
-                            .clone()
-                            .unwrap_or_else(|| copy::THIS_COMPUTER.to_owned())
-                            .into(),
-                        state: peer.map(|peer| peer.state),
-                        screens: vec![(monitor.clone(), home, at)],
-                        hull: None,
-                        chip: Rect::default(),
-                    });
-                }
+                        .clone()
+                        .unwrap_or_else(|| copy::THIS_COMPUTER.to_owned())
+                        .into(),
+                    state: peer.map(|peer| peer.state),
+                    screens: vec![(monitor.clone(), home, at)],
+                    hull: None,
+                    chip: Rect::default(),
+                });
             }
         }
         for island in &mut islands {
@@ -308,7 +318,8 @@ impl Board {
         let hulls: Vec<Option<Rect>> = islands.iter().map(|island| island.hull).collect();
         for (index, island) in islands.iter_mut().enumerate() {
             let Some(hull) = island.hull else { continue };
-            let chip_width = chip_width(&island.name, island.state.is_some(), window, cx).min(width - 8.0);
+            let chip_width =
+                chip_width(&island.name, island.state.is_some(), window, cx).min(width - 8.0);
             let done = if self.adjusting.as_deref() == Some(island.owner.as_str()) {
                 geometry::CHIP_GAP + 58.0
             } else {
@@ -322,13 +333,16 @@ impl Board {
                 .filter_map(|(_, hull)| *hull)
                 .chain(taken.iter().copied())
                 .collect();
-            let spot = match (self.drag.is_some(), self.spots.get(&island.owner)) {
-                (true, Some(spot)) => *spot,
-                _ => {
-                    let spot = chip_spot(hull, span, CHIP_HEIGHT, (width, height), &others);
-                    self.spots.insert(island.owner.clone(), spot);
-                    spot
-                }
+            let kept = self
+                .spots
+                .get(&island.owner)
+                .filter(|_| self.drag.is_some());
+            let spot = if let Some(spot) = kept {
+                *spot
+            } else {
+                let spot = chip_spot(hull, span, CHIP_HEIGHT, (width, height), &others);
+                self.spots.insert(island.owner.clone(), spot);
+                spot
             };
             let (x, wanted) = chip_spots(hull, span, CHIP_HEIGHT, width)[spot];
             let y = wanted.min(height - CHIP_HEIGHT - 4.0).max(4.0).round();
@@ -340,10 +354,21 @@ impl Board {
 
     /// What a press at board point (`x`, `y`) picked up: the Done button, a
     /// computer's name, one of its screens, or a found computer.
-    fn hit(&self, islands: &[Island], found: &[(String, Rect, bool)], x: f32, y: f32) -> Option<Hit> {
+    fn hit(
+        &self,
+        islands: &[Island],
+        found: &[(String, Rect, bool)],
+        x: f32,
+        y: f32,
+    ) -> Option<Hit> {
         for island in islands {
             if self.adjusting.as_deref() == Some(island.owner.as_str()) {
-                let done = Rect::new(island.chip.right() + geometry::CHIP_GAP, island.chip.y, 58.0, CHIP_HEIGHT);
+                let done = Rect::new(
+                    island.chip.right() + geometry::CHIP_GAP,
+                    island.chip.y,
+                    58.0,
+                    CHIP_HEIGHT,
+                );
                 if done.contains(x, y) {
                     return Some(Hit::Done(island.owner.clone()));
                 }
@@ -376,7 +401,14 @@ impl Board {
             .map(|(id, _, _)| Hit::Found(id.clone()))
     }
 
-    fn press(&mut self, x: f32, y: f32, clicks: usize, window: &mut Window, cx: &mut Context<Self>) {
+    fn press(
+        &mut self,
+        x: f32,
+        y: f32,
+        clicks: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some(snapshot) = self.model.read(cx).snapshot.clone() else {
             return;
         };
@@ -387,6 +419,15 @@ impl Board {
         if let Some(Hit::Done(owner)) = &hit {
             let owner = owner.clone();
             self.adjust(&owner, false, cx);
+            self.pressed = None;
+            return;
+        }
+        // A double-click on a found computer puts it beside this one, the
+        // way a keyboard does elsewhere; a single click never places one.
+        if clicks == 2
+            && let Some(Hit::Found(id)) = &hit
+        {
+            self.place_beside(id, cx);
             self.pressed = None;
             return;
         }
@@ -558,7 +599,14 @@ impl Board {
     /// A found computer let go with its middle at (`x`, `y`) joins the
     /// layout there, with a new screen's size. Let go on the shelf, it goes
     /// back.
-    fn drop_found(&mut self, id: &str, x: f32, y: f32, window: &mut Window, cx: &mut Context<Self>) {
+    fn drop_found(
+        &mut self,
+        id: &str,
+        x: f32,
+        y: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let _ = window;
         if y >= BOARD_HEIGHT {
             return;
@@ -633,7 +681,9 @@ impl Board {
             "down" => (0, 1),
             _ => return,
         };
-        let Some(owner) = self.selection.clone() else { return };
+        let Some(owner) = self.selection.clone() else {
+            return;
+        };
         let Some(snapshot) = &self.model.read(cx).snapshot else {
             return;
         };
@@ -776,12 +826,17 @@ pub fn computers(snapshot: &Snapshot) -> Vec<Computer> {
 
 /// Where the pointer goes from `computer`'s screens to another's.
 pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Seam> {
-    let mine: Vec<&str> = computer.screens.iter().map(|monitor| monitor.id.as_str()).collect();
+    let mine: Vec<&str> = computer
+        .screens
+        .iter()
+        .map(|monitor| monitor.id.as_str())
+        .collect();
     snapshot
         .seams
         .iter()
         .filter(|seam| {
-            !seam.same_computer && mine.contains(&seam.a.as_str()) != mine.contains(&seam.b.as_str())
+            !seam.same_computer
+                && mine.contains(&seam.a.as_str()) != mine.contains(&seam.b.as_str())
         })
         .collect()
 }
@@ -812,8 +867,8 @@ impl Render for Board {
         };
         let (fit, islands) = self.islands(&snapshot, window, cx);
         let theme = cx.theme().clone();
-        let shelf = self.shelf_height(&snapshot);
-        let total = BOARD_HEIGHT + shelf;
+        let shelf_height = self.shelf_height(&snapshot);
+        let total = BOARD_HEIGHT + shelf_height;
         let refused = self
             .drag
             .as_ref()
@@ -839,10 +894,8 @@ impl Render for Board {
         let entity = cx.entity();
         let carried = self.carried.clone().and_then(|carried| {
             fit.map(|fit| {
-                let (width, height) = (
-                    NEW_TILE.0 as f32 * fit.scale,
-                    NEW_TILE.1 as f32 * fit.scale,
-                );
+                let (width, height) =
+                    (NEW_TILE.0 as f32 * fit.scale, NEW_TILE.1 as f32 * fit.scale);
                 (
                     carried.id,
                     Rect::new(
@@ -885,7 +938,10 @@ impl Render for Board {
                     let mut y = 9.0;
                     while y < BOARD_HEIGHT {
                         window.paint_quad(quad(
-                            Bounds::new(area.origin + point(px(x - 0.8), px(y - 0.8)), size(px(1.6), px(1.6))),
+                            Bounds::new(
+                                area.origin + point(px(x - 0.8), px(y - 0.8)),
+                                size(px(1.6), px(1.6)),
+                            ),
                             px(0.8),
                             dot,
                             Edges::default(),
@@ -901,14 +957,22 @@ impl Render for Board {
                         clippy::disallowed_methods,
                         reason = "a hovered computer's outline is a stroke over the mat"
                     )]
-                    let color = if *selected { mat_theme.accent } else { ink.opacity(0.35) };
+                    let color = if *selected {
+                        mat_theme.accent
+                    } else {
+                        ink.opacity(0.35)
+                    };
                     window.paint_quad(quad(
                         to_bounds(area, *hull),
                         Corners::all(px(14.0)),
                         zz_gpui::transparent_black(),
                         Edges::all(px(if *selected { 2.5 } else { 1.5 })),
                         color,
-                        if *adjusting { BorderStyle::Dashed } else { BorderStyle::Solid },
+                        if *adjusting {
+                            BorderStyle::Dashed
+                        } else {
+                            BorderStyle::Solid
+                        },
                     ));
                 }
                 let origin = area.origin;
@@ -927,7 +991,9 @@ impl Render for Board {
                         return;
                     }
                     let (x, y) = at(event.position);
-                    down.update(cx, |board, cx| board.press(x, y, event.click_count, window, cx));
+                    down.update(cx, |board, cx| {
+                        board.press(x, y, event.click_count, window, cx);
+                    });
                 });
                 let moved = entity.clone();
                 window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
@@ -936,7 +1002,9 @@ impl Render for Board {
                     }
                     let (x, y) = at(event.position);
                     moved.update(cx, |board, cx| {
-                        if event.pressed_button == Some(MouseButton::Left) && board.pressed.is_some() {
+                        if event.pressed_button == Some(MouseButton::Left)
+                            && board.pressed.is_some()
+                        {
                             board.drag_to(x, y, window, cx);
                         } else if area.contains(&event.position) {
                             board.hover(x, y, window, cx);
@@ -985,10 +1053,18 @@ impl Render for Board {
                     stroke(window, from, to, 11.0, glow, None);
                     stroke(window, from, to, 4.0, core, None);
                     if (seam.end - seam.start) as f32 * fit.scale > BADGE_ROOM {
-                        badge(window, (from + to) / 2.0, seam.vertical, core, seam_theme.background);
+                        badge(
+                            window,
+                            (from + to) / 2.0,
+                            seam.vertical,
+                            core,
+                            seam_theme.background,
+                        );
                     }
                 }
-                if let Some(rect) = carried_rect.filter(|rect| rect.y + rect.height / 2.0 < BOARD_HEIGHT) {
+                if let Some(rect) =
+                    carried_rect.filter(|rect| rect.y + rect.height / 2.0 < BOARD_HEIGHT)
+                {
                     window.paint_quad(quad(
                         to_bounds(area, rect),
                         Corners::all(px(6.0)),
@@ -1009,7 +1085,10 @@ impl Render for Board {
             let named = selection.as_deref() == Some(island.owner.as_str())
                 || hovered.as_deref() == Some(island.owner.as_str());
             let away = island.owner != LOCAL
-                && matches!(island.state, None | Some(PeerState::Paired | PeerState::Unreachable));
+                && matches!(
+                    island.state,
+                    None | Some(PeerState::Paired | PeerState::Unreachable)
+                );
             for (monitor, _, at) in &island.screens {
                 let moving = moving_ids.contains(&monitor.id);
                 let state = if moving && refused {
@@ -1030,25 +1109,35 @@ impl Render for Board {
                         .flex()
                         .items_end()
                         .overflow_hidden()
-                        .surface_at(Surface::new(SCREEN).tone(if moving && refused {
-                            zz_gpui_kit::Tone::Danger
-                        } else {
-                            zz_gpui_kit::Tone::Neutral
-                        }), state, cx)
+                        .surface_at(
+                            Surface::new(SCREEN).tone(if moving && refused {
+                                zz_gpui_kit::Tone::Danger
+                            } else {
+                                zz_gpui_kit::Tone::Neutral
+                            }),
+                            state,
+                            cx,
+                        )
                         .when(away, |this| this.opacity(0.62))
-                        .when(monitor.display.is_none() && at.width.min(at.height) >= 24.0, |this| {
-                            this.items_center().justify_center().child(
-                                Icon::new(if island.owner == LOCAL {
-                                    IconName::Laptop
-                                } else {
-                                    IconName::Server
-                                })
-                                .with_size(px(16.0))
-                                .text_color(theme.foreground.muted()),
-                            )
-                        })
                         .when(
-                            named && monitor.display.is_some() && at.width >= 64.0 && at.height >= 30.0,
+                            monitor.display.is_none() && at.width.min(at.height) >= 24.0,
+                            |this| {
+                                this.items_center().justify_center().child(
+                                    Icon::new(if island.owner == LOCAL {
+                                        IconName::Laptop
+                                    } else {
+                                        IconName::Server
+                                    })
+                                    .with_size(px(16.0))
+                                    .text_color(theme.foreground.muted()),
+                                )
+                            },
+                        )
+                        .when(
+                            named
+                                && monitor.display.is_some()
+                                && at.width >= 64.0
+                                && at.height >= 30.0,
                             |this| {
                                 this.child(
                                     div()
@@ -1064,14 +1153,18 @@ impl Render for Board {
                                             monitor
                                                 .display
                                                 .as_ref()
-                                                .map_or(monitor.label.clone(), |display| display.name.clone()),
+                                                .map_or(monitor.label.clone(), |display| {
+                                                    display.name.clone()
+                                                }),
                                         ),
                                 )
                             },
                         )
                         .tooltip({
                             let label = SharedString::from(monitor.label.clone());
-                            move |window, cx| zz_gpui_kit::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                            move |window, cx| {
+                                zz_gpui_kit::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                            }
                         }),
                 );
             }
@@ -1093,7 +1186,11 @@ impl Render for Board {
                     .rounded_full()
                     .surface_at(
                         Surface::new(CHIP),
-                        if selected { PaintState::Selected } else { PaintState::Rest },
+                        if selected {
+                            PaintState::Selected
+                        } else {
+                            PaintState::Rest
+                        },
                         cx,
                     )
                     .child(
@@ -1108,10 +1205,14 @@ impl Render for Board {
                     })
                     .tooltip({
                         let text: SharedString = match island.state {
-                            Some(state) => format!("{} · {}", island.name, copy::peer_state(state)).into(),
+                            Some(state) => {
+                                format!("{} · {}", island.name, copy::peer_state(state)).into()
+                            }
                             None => island.name.clone(),
                         };
-                        move |window, cx| zz_gpui_kit::tooltip::Tooltip::new(text.clone()).build(window, cx)
+                        move |window, cx| {
+                            zz_gpui_kit::tooltip::Tooltip::new(text.clone()).build(window, cx)
+                        }
                     })
                     .into_any_element(),
             );
@@ -1146,27 +1247,38 @@ impl Render for Board {
                 .left(px(SHELF_GAP))
                 .right(px(SHELF_GAP))
                 .top(px(BOARD_HEIGHT))
-                .h(px(shelf - SHELF_GAP))
+                .h(px(shelf_height - SHELF_GAP))
                 .surface(Surface::new(zz_gpui_kit::roles::SETTINGS_PREVIEW), cx)
                 .child(
                     v_flex()
                         .px(px(12.0))
                         .pt(px(8.0))
                         .gap(px(2.0))
-                        .child(div().text_size(rems_from_px(13.0)).font_medium().child("Found on your network"))
-                        .child(widgets::muted("Drag one next to a screen to add it.", 12.0, cx)),
+                        .child(
+                            div()
+                                .text_size(rems_from_px(13.0))
+                                .font_medium()
+                                .child("Found on your network"),
+                        )
+                        .child(widgets::muted(
+                            "Drag one next to a screen to add it.",
+                            12.0,
+                            cx,
+                        )),
                 )
-                .children(snapshot.unplaced.iter().zip(&found).map(|(computer, (id, rect, placeable))| {
-                    let carried = carried_id.as_deref() == Some(id.as_str());
-                    let (x, y) = match carried_middle.filter(|_| carried) {
-                        Some((mx, my)) => (mx - FOUND_SIZE.0 / 2.0, my - FOUND_SIZE.1 / 2.0),
-                        None => (rect.x, rect.y),
-                    };
-                    found_tile(computer, *placeable, carried, cx)
-                        .left(px(x - SHELF_GAP))
-                        .top(px(y - BOARD_HEIGHT))
-                        .into_any_element()
-                }))
+                .children(snapshot.unplaced.iter().zip(&found).map(
+                    |(computer, (id, rect, placeable))| {
+                        let carried = carried_id.as_deref() == Some(id.as_str());
+                        let (x, y) = match carried_middle.filter(|_| carried) {
+                            Some((mx, my)) => (mx - FOUND_SIZE.0 / 2.0, my - FOUND_SIZE.1 / 2.0),
+                            None => (rect.x, rect.y),
+                        };
+                        found_tile(computer, *placeable, carried, cx)
+                            .left(px(x - SHELF_GAP))
+                            .top(px(y - BOARD_HEIGHT))
+                            .into_any_element()
+                    },
+                ))
         });
 
         div()
@@ -1231,21 +1343,34 @@ fn found_tile(
         .when(!placeable, |this| this.opacity(0.6))
         .surface_at(
             Surface::new(SHELF_TILE),
-            if carried { PaintState::Hover } else { PaintState::Rest },
+            if carried {
+                PaintState::Hover
+            } else {
+                PaintState::Rest
+            },
             cx,
         )
         .child(
             h_flex()
                 .justify_between()
-                .child(Icon::new(if computer.os == Some(zflow::wire::Os::Macos) {
-                    IconName::Laptop
-                } else {
-                    IconName::Server
-                }).with_size(px(14.0)))
+                .child(
+                    Icon::new(if computer.os == Some(zflow::wire::Os::Macos) {
+                        IconName::Laptop
+                    } else {
+                        IconName::Server
+                    })
+                    .with_size(px(14.0)),
+                )
                 .children(computer.mark.as_deref().map(widgets::key_mark)),
         )
         .child(div().flex_1())
-        .child(div().text_size(rems_from_px(13.0)).font_medium().truncate().child(computer.name.clone()))
+        .child(
+            div()
+                .text_size(rems_from_px(13.0))
+                .font_medium()
+                .truncate()
+                .child(computer.name.clone()),
+        )
         .child(
             div()
                 .text_size(rems_from_px(11.0))
@@ -1265,7 +1390,14 @@ fn offset(area: Bounds<Pixels>, (x, y): (f32, f32)) -> Point<Pixels> {
     area.origin + point(px(x), px(y))
 }
 
-fn stroke(window: &mut Window, from: Point<Pixels>, to: Point<Pixels>, width: f32, color: Hsla, dash: Option<&[Pixels]>) {
+fn stroke(
+    window: &mut Window,
+    from: Point<Pixels>,
+    to: Point<Pixels>,
+    width: f32,
+    color: Hsla,
+    dash: Option<&[Pixels]>,
+) {
     let mut path = PathBuilder::stroke(px(width));
     if let Some(dash) = dash {
         path = path.dash_array(dash);
@@ -1303,6 +1435,16 @@ fn badge(window: &mut Window, at: Point<Pixels>, vertical: bool, fill: Hsla, ink
         [(-2.5, 0.0), (-4.5, 2.0)],
         [(-4.5, 2.0), (-2.5, 4.0)],
     ] {
-        stroke(window, turn(points[0].0, points[0].1), turn(points[1].0, points[1].1), 1.4, ink, None);
+        stroke(
+            window,
+            turn(points[0].0, points[0].1),
+            turn(points[1].0, points[1].1),
+            1.4,
+            ink,
+            None,
+        );
     }
 }
+
+#[cfg(test)]
+mod tests;

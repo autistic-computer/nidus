@@ -58,12 +58,11 @@ pub fn init(cx: &mut App) {
 }
 
 /// Follows the system's mode, then draws it in the Default theme.
-pub fn apply(window: Option<&mut Window>, cx: &mut App) {
-    let window = window.map(|window| {
+pub fn apply(mut window: Option<&mut Window>, cx: &mut App) {
+    if let Some(window) = window.as_deref_mut() {
         window.set_default_corner_smoothing(CORNER_SMOOTHING);
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
-        window
-    });
+    }
     Theme::sync_system_appearance(window, cx);
     interface_theme::default_theme().apply(Theme::global_mut(cx));
     cx.refresh_windows();

@@ -3,7 +3,6 @@
 
 pub mod api;
 pub mod client;
-pub mod windows_view;
 #[cfg(target_os = "linux")]
 pub(crate) mod desktop;
 #[cfg(target_os = "linux")]
@@ -19,6 +18,7 @@ pub mod model;
 mod native;
 #[cfg(target_os = "linux")]
 pub mod updates;
+pub mod windows_view;
 // On Linux the service finds computers itself.
 #[cfg(target_os = "macos")]
 mod nearby;

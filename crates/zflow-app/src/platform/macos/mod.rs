@@ -27,7 +27,7 @@ use zz_gpui::{
     actions, div, px,
 };
 use zz_gpui_kit::{
-    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
@@ -57,7 +57,16 @@ const SERVICES_TICK: Duration = Duration::from_secs(10);
 /// reads blocked until the person answers macOS.
 const NETWORK_GRACE: Duration = Duration::from_secs(5);
 
-actions!(zflow, [OpenSettings, OpenConfiguration, CheckForUpdates, Quit, HideZflow]);
+actions!(
+    zflow,
+    [
+        OpenSettings,
+        OpenConfiguration,
+        CheckForUpdates,
+        Quit,
+        HideZflow
+    ]
+);
 
 /// Where zflow runs from. Gatekeeper runs a quarantined app from a temporary
 /// read-only copy until Finder moves it, and a disk image goes away when it
@@ -108,8 +117,14 @@ impl AppLocation {
         if self.path.starts_with("/Volumes/") && self.read_only {
             return true;
         }
-        let folders = ["/Applications/".to_owned(), format!("{}/Applications/", self.home)];
-        self.quarantined && !folders.iter().any(|folder| self.path.starts_with(folder.as_str()))
+        let folders = [
+            "/Applications/".to_owned(),
+            format!("{}/Applications/", self.home),
+        ];
+        self.quarantined
+            && !folders
+                .iter()
+                .any(|folder| self.path.starts_with(folder.as_str()))
     }
 }
 
@@ -279,7 +294,10 @@ impl Services {
         if on && status == SMAppServiceStatus::RequiresApproval {
             open_login_items();
         } else if let Err(error) = result {
-            log::warn!("could not change the login item: {}", error.localizedDescription());
+            log::warn!(
+                "could not change the login item: {}",
+                error.localizedDescription()
+            );
         }
         self.login = status == SMAppServiceStatus::Enabled;
         cx.notify();
@@ -441,7 +459,9 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
 }
 
 pub fn default_config() -> PathBuf {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
     home.join("Library/Application Support/zflow/zflow.toml")
 }
 
@@ -462,13 +482,20 @@ pub fn window_shown(_: &mut App) {
 
 pub fn notification_response(response: &SystemNotificationResponse, cx: &mut App) {
     if response.tag.as_ref() == UPDATE_TAG
-        && let Some(services) = cx.try_global::<super::SharedServices>().map(|s| s.0.clone())
+        && let Some(services) = cx
+            .try_global::<super::SharedServices>()
+            .map(|s| s.0.clone())
     {
         services.update(cx, |services, _| services.check_updates());
     }
 }
 
-pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &crate::Arguments, cx: &mut App) {
+pub fn start(
+    model: &Entity<Model>,
+    services: &Entity<Services>,
+    arguments: &crate::Arguments,
+    cx: &mut App,
+) {
     // Without a window, zflow lives in the menu bar only.
     set_policy(false);
     cx.on_window_closed(|cx, _| {
@@ -529,14 +556,17 @@ pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &cra
     cx.spawn(async move |cx| {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            let known =
-                model.read_with(cx, |model, _| model.snapshot.is_some() || model.error.is_some());
+            let known = model.read_with(cx, |model, _| {
+                model.snapshot.is_some() || model.error.is_some()
+            });
             if known {
                 break;
             }
-            cx.background_executor().timer(Duration::from_millis(50)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(50))
+                .await;
         }
-        let _ = cx.update(|cx| {
+        let () = cx.update(|cx| {
             let unpaired = model
                 .read(cx)
                 .snapshot
@@ -557,7 +587,10 @@ fn install_menus(cx: &mut App) {
     });
     cx.on_action(|_: &OpenConfiguration, cx| open_config(cx));
     cx.on_action(|_: &CheckForUpdates, cx| {
-        if let Some(services) = cx.try_global::<super::SharedServices>().map(|s| s.0.clone()) {
+        if let Some(services) = cx
+            .try_global::<super::SharedServices>()
+            .map(|s| s.0.clone())
+        {
             services.update(cx, |services, _| services.check_updates());
         }
     });
@@ -585,7 +618,10 @@ fn install_menus(cx: &mut App) {
 
 /// Opens Sparkle's check, from the menu.
 pub fn check_updates(cx: &mut App) {
-    if let Some(services) = cx.try_global::<super::SharedServices>().map(|s| s.0.clone()) {
+    if let Some(services) = cx
+        .try_global::<super::SharedServices>()
+        .map(|s| s.0.clone())
+    {
         services.update(cx, |services, _| services.check_updates());
     }
 }
@@ -623,18 +659,29 @@ fn watch_accessibility(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
             if !missing {
                 break;
             }
-            let _ = model.read_with(cx, |model, _| model.send(Request::CheckAccessibility));
-            cx.background_executor().timer(Duration::from_millis(500)).await;
+            let () = model.read_with(cx, |model, _| model.send(Request::CheckAccessibility));
+            cx.background_executor()
+                .timer(Duration::from_millis(500))
+                .await;
         }
-        let _ = cx.update(|cx| cx.activate(true));
+        let () = cx.update(|cx| cx.activate(true));
     });
-    this.services.update(cx, |services, _| services.watching_accessibility = Some(task));
+    this.services.update(cx, |services, _| {
+        services.watching_accessibility = Some(task);
+    });
 }
 
 /// Looking for computers is what makes macOS ask; once it has, the switch is
 /// in System Settings.
 fn allow_local_network(this: &ZflowWindow, cx: &App) {
-    if this.model.read(cx).platform().local_network.unwrap_or_default() == LocalNetwork::Unknown {
+    if this
+        .model
+        .read(cx)
+        .platform()
+        .local_network
+        .unwrap_or_default()
+        == LocalNetwork::Unknown
+    {
         this.send(Request::Discover, cx);
     } else {
         open_privacy("Privacy_LocalNetwork", cx);
@@ -658,7 +705,15 @@ fn allow_paste(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
 
 /// "Move zflow to Applications", above every page while it runs from a
 /// disk image or a temporary copy.
-pub fn banner(this: &mut ZflowWindow, _: &mut Window, cx: &mut Context<ZflowWindow>) -> Option<AnyElement> {
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
+pub fn banner(
+    this: &mut ZflowWindow,
+    _: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<AnyElement> {
     if !this.services.read(cx).location.needs_move() {
         return None;
     }
@@ -684,7 +739,12 @@ pub fn banner(this: &mut ZflowWindow, _: &mut Window, cx: &mut Context<ZflowWind
 }
 
 /// The app handles the fixes that open something here.
-pub fn fix(this: &mut ZflowWindow, command: &str, _: &mut Window, cx: &mut Context<ZflowWindow>) -> bool {
+pub fn fix(
+    this: &mut ZflowWindow,
+    command: &str,
+    _: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> bool {
     match command {
         "allow_accessibility" => open_accessibility(this, cx),
         "allow_paste" => allow_paste(this, cx),
@@ -702,7 +762,9 @@ pub fn health_action(row: &Health, cx: &App) -> Option<Action> {
     }
     let paste = cx
         .try_global::<super::SharedServices>()
-        .map_or(PasteAccess::AlwaysAllow, |services| services.0.read(cx).paste);
+        .map_or(PasteAccess::AlwaysAllow, |services| {
+            services.0.read(cx).paste
+        });
     (row.id == "clipboard" && paste != PasteAccess::AlwaysAllow).then(|| Action {
         label: "Allow…".into(),
         command: "allow_paste".into(),
@@ -741,7 +803,8 @@ pub fn first_run_cards(
 ) -> Vec<AnyElement> {
     // Looking for computers is what makes macOS ask for Local Network access.
     if !this.services.read(cx).discovered {
-        this.services.update(cx, |services, _| services.discovered = true);
+        this.services
+            .update(cx, |services, _| services.discovered = true);
         this.send(Request::Discover, cx);
     }
     let platform = snapshot.platform.clone().unwrap_or_default();
@@ -769,6 +832,10 @@ pub fn first_run_cards(
     cards
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
 pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
         SettingEntry::new("Displays", "Arrange this Mac’s own screens.").control(
@@ -783,7 +850,11 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     )
 }
 
-pub fn peer_entries(_: &mut ZflowWindow, peer: &Peer, cx: &mut Context<ZflowWindow>) -> Vec<SettingEntry> {
+pub fn peer_entries(
+    _: &mut ZflowWindow,
+    peer: &Peer,
+    cx: &mut Context<ZflowWindow>,
+) -> Vec<SettingEntry> {
     if !copy::linked(peer.state) {
         return Vec::new();
     }
@@ -806,18 +877,30 @@ pub fn peer_entries(_: &mut ZflowWindow, peer: &Peer, cx: &mut Context<ZflowWind
     ]
 }
 
-pub fn login_entry(this: &mut ZflowWindow, _: &Snapshot, cx: &mut Context<ZflowWindow>) -> Option<SettingEntry> {
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
+pub fn login_entry(
+    this: &mut ZflowWindow,
+    _: &Snapshot,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<SettingEntry> {
     let services = this.services.read(cx);
     let (on, needs_move) = (services.login, services.location.needs_move());
     Some(
-        SettingEntry::new("Start at login", "Open zflow in the menu bar when you log in.")
-            // A login item would point at the disk image or a temporary copy.
-            .disabled(needs_move)
-            .control(Switch::new("login").checked(on).on_click(cx.listener(
-                |this, on: &bool, _, cx| {
-                    this.services.update(cx, |services, cx| services.set_login(*on, cx));
-                },
-            ))),
+        SettingEntry::new(
+            "Start at login",
+            "Open zflow in the menu bar when you log in.",
+        )
+        // A login item would point at the disk image or a temporary copy.
+        .disabled(needs_move)
+        .control(Switch::new("login").checked(on).on_click(cx.listener(
+            |this, on: &bool, _, cx| {
+                this.services
+                    .update(cx, |services, cx| services.set_login(*on, cx));
+            },
+        ))),
     )
 }
 
@@ -851,25 +934,35 @@ pub fn settings_stacks(
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(|this, _, _, cx| {
                     let model = this.model.clone();
-                    this.services.update(cx, |services, cx| services.fix_helper(model, cx));
+                    this.services
+                        .update(cx, |services, cx| services.fix_helper(model, cx));
                 }))
         });
         entry = entry.control(
-            zz_gpui_kit::h_flex()
-                .gap(px(8.0))
-                .children(fix)
-                .child(Switch::new("block-awdl").checked(enabled).on_click(cx.listener(
-                    |this, on: &bool, _, cx| this.send(Request::SetAwdl { enabled: *on }, cx),
-                ))),
+            zz_gpui_kit::h_flex().gap(px(8.0)).children(fix).child(
+                Switch::new("block-awdl")
+                    .checked(enabled)
+                    .on_click(cx.listener(|this, on: &bool, _, cx| {
+                        this.send(Request::SetAwdl { enabled: *on }, cx);
+                    })),
+            ),
         );
         stacks.push(SettingsStack::titled("Wi-Fi").child(entry));
     }
 
-    let allowed = |title: &'static str, allowed: bool, detail: &'static str, id: &'static str, cx: &mut Context<ZflowWindow>, allow: fn(&mut ZflowWindow, &mut Context<ZflowWindow>)| {
+    let allowed = |title: &'static str,
+                   allowed: bool,
+                   detail: &'static str,
+                   id: &'static str,
+                   cx: &mut Context<ZflowWindow>,
+                   allow: fn(&mut ZflowWindow, &mut Context<ZflowWindow>)| {
         SettingEntry::new(title, if allowed { "" } else { detail }).control(if allowed {
             zz_gpui_kit::h_flex()
                 .gap(px(6.0))
-                .child(Icon::new(IconName::CircleCheck).text_color(zz_gpui_kit::ActiveTheme::theme(&**cx).success))
+                .child(
+                    Icon::new(IconName::CircleCheck)
+                        .text_color(zz_gpui_kit::ActiveTheme::theme(&**cx).success),
+                )
                 .child(widgets::muted("Allowed", 12.0, cx))
                 .into_any_element()
         } else {
@@ -884,7 +977,10 @@ pub fn settings_stacks(
     let paste = services.paste;
     stacks.push(
         SettingsStack::titled("Permissions")
-            .description(format!("Take back control from any computer with {}.", copy::RETURN_KEYS))
+            .description(format!(
+                "Take back control from any computer with {}.",
+                copy::RETURN_KEYS
+            ))
             .child(allowed(
                 "Accessibility",
                 platform.accessibility == Some(true),
@@ -926,10 +1022,10 @@ pub fn settings_stacks(
             .child(
                 SettingEntry::new(
                     format!("zflow {}", env!("CARGO_PKG_VERSION")),
-                    updates
-                        .available
-                        .as_ref()
-                        .map_or_else(|| "Check for a new release.".into(), |version| format!("zflow {version} is available.")),
+                    updates.available.as_ref().map_or_else(
+                        || "Check for a new release.".into(),
+                        |version| format!("zflow {version} is available."),
+                    ),
                 )
                 .control(
                     Button::new("check-updates")
@@ -938,14 +1034,16 @@ pub fn settings_stacks(
                         .disabled(updates.checking)
                         .on(settings_card_ground(cx))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.services.update(cx, |services, _| services.check_updates());
+                            this.services
+                                .update(cx, |services, _| services.check_updates());
                         })),
                 ),
             )
             .child(
                 SettingEntry::new("Check for updates automatically", "").control(
-                    Switch::new("updates-check").checked(checks).on_click(cx.listener(
-                        |this, on: &bool, _, cx| {
+                    Switch::new("updates-check")
+                        .checked(checks)
+                        .on_click(cx.listener(|this, on: &bool, _, cx| {
                             this.services.update(cx, |services, cx| {
                                 if let Some(sparkle) = &services.sparkle {
                                     sparkle.set_checks_automatically(*on);
@@ -953,8 +1051,7 @@ pub fn settings_stacks(
                                 services.refresh_updates();
                                 cx.notify();
                             });
-                        },
-                    )),
+                        })),
                 ),
             )
             .child(
@@ -1029,7 +1126,14 @@ mod tests {
 
     #[test]
     fn only_temporary_copies_need_a_move() {
-        assert!(location("/private/var/folders/x/AppTranslocation/y/zflow.app", false, true).needs_move());
+        assert!(
+            location(
+                "/private/var/folders/x/AppTranslocation/y/zflow.app",
+                false,
+                true
+            )
+            .needs_move()
+        );
         assert!(location("/Volumes/zflow/zflow.app", false, true).needs_move());
         assert!(location("/Users/me/Downloads/zflow.app", true, false).needs_move());
         assert!(!location("/Applications/zflow.app", true, false).needs_move());

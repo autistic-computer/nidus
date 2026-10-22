@@ -60,7 +60,11 @@ fn summary(computer: &Computer) -> String {
     }
 }
 
-fn overview(this: &ZflowWindow, computers: &[Computer], cx: &mut Context<ZflowWindow>) -> AnyElement {
+fn overview(
+    this: &ZflowWindow,
+    computers: &[Computer],
+    cx: &mut Context<ZflowWindow>,
+) -> AnyElement {
     let board = this.board.clone();
     let entries = computers.iter().map(|computer| {
         let owner = computer.owner.clone();
@@ -155,7 +159,11 @@ fn computer_page(
         arrange.extend(platform::display_settings_entry(cx));
     }
 
-    let mine: Vec<&str> = computer.screens.iter().map(|monitor| monitor.id.as_str()).collect();
+    let mine: Vec<&str> = computer
+        .screens
+        .iter()
+        .map(|monitor| monitor.id.as_str())
+        .collect();
     let crossings = board::crossings(snapshot, computer);
     let crossing_entries: Vec<SettingEntry> = if crossings.is_empty() {
         vec![SettingEntry::new(
@@ -172,30 +180,38 @@ fn computer_page(
     if local && computer.screens.len() > 1 {
         crossings_stack = crossings_stack.description(platform::OWN_SCREENS_NOTE);
     }
-    let screens = SettingsStack::titled("Screens").children(computer.screens.iter().map(|monitor| {
-        let detail = monitor.display.as_ref().map_or_else(String::new, |display| {
-            copy::screen_size(
-                display.width_mm,
-                display.height_mm,
-                display.bounds.width,
-                display.bounds.height,
-            )
-        });
-        SettingEntry::new(
-            monitor
+    let screens =
+        SettingsStack::titled("Screens").children(computer.screens.iter().map(|monitor| {
+            let detail = monitor
                 .display
                 .as_ref()
-                .map_or_else(|| monitor.label.clone(), |display| display.name.clone()),
-            detail,
-        )
-    }));
+                .map_or_else(String::new, |display| {
+                    copy::screen_size(
+                        display.width_mm,
+                        display.height_mm,
+                        display.bounds.width,
+                        display.bounds.height,
+                    )
+                });
+            SettingEntry::new(
+                monitor
+                    .display
+                    .as_ref()
+                    .map_or_else(|| monitor.label.clone(), |display| display.name.clone()),
+                detail,
+            )
+        }));
 
     v_flex()
         .w_full()
         .gap(px(18.0))
         .child(header)
-        .when(!arrange.is_empty(), |this| this.child(SettingsStack::new().children(arrange)))
-        .when(!computer.screens.is_empty(), |this| this.child(crossings_stack).child(screens))
+        .when(!arrange.is_empty(), |this| {
+            this.child(SettingsStack::new().children(arrange))
+        })
+        .when(!computer.screens.is_empty(), |this| {
+            this.child(crossings_stack).child(screens)
+        })
         .when_some(computer.peer.as_ref(), |column, peer| {
             column.child(peer_settings(this, peer, window, cx))
         })
@@ -259,7 +275,10 @@ fn peer_settings(
     let name = peer.name.clone();
     let set = |name: &str| {
         let name = name.to_owned();
-        move |allow_control: Option<bool>, keyboard: Option<KeyboardMode>, reverse_scroll: Option<bool>, share_screen: Option<bool>| Request::SetPeer {
+        move |allow_control: Option<bool>,
+              keyboard: Option<KeyboardMode>,
+              reverse_scroll: Option<bool>,
+              share_screen: Option<bool>| Request::SetPeer {
             name: name.clone(),
             allow_control,
             keyboard,
@@ -272,11 +291,19 @@ fn peer_settings(
         let (model, set) = (model.clone(), set(&name));
         SettingEntry::new(
             format!("{name} can control {}", copy::THIS_COMPUTER_LOWER),
-            format!("Push the pointer past {name}’s edge to move onto {}. Take it back with {}.", copy::THIS_COMPUTER_LOWER, copy::RETURN_KEYS),
+            format!(
+                "Push the pointer past {name}’s edge to move onto {}. Take it back with {}.",
+                copy::THIS_COMPUTER_LOWER,
+                copy::RETURN_KEYS
+            ),
         )
-        .control(Switch::new("allow-control").checked(peer.allow_control).on_click(move |on: &bool, _, cx| {
-            model.read(cx).send(set(Some(*on), None, None, None));
-        }))
+        .control(
+            Switch::new("allow-control")
+                .checked(peer.allow_control)
+                .on_click(move |on: &bool, _, cx| {
+                    model.read(cx).send(set(Some(*on), None, None, None));
+                }),
+        )
     };
     let keyboard = {
         let (model, set) = (model.clone(), set(&name));
@@ -311,9 +338,11 @@ fn peer_settings(
     let scroll = {
         let (model, set) = (model.clone(), set(&name));
         SettingEntry::new("Reverse scrolling", "Turn its scrolling around here.").control(
-            Switch::new("reverse-scroll").checked(peer.reverse_scroll).on_click(move |on: &bool, _, cx| {
-                model.read(cx).send(set(None, None, Some(*on), None));
-            }),
+            Switch::new("reverse-scroll")
+                .checked(peer.reverse_scroll)
+                .on_click(move |on: &bool, _, cx| {
+                    model.read(cx).send(set(None, None, Some(*on), None));
+                }),
         )
     };
     let mut entries = vec![control, keyboard, scroll];
@@ -321,9 +350,11 @@ fn peer_settings(
         let (model, set) = (model.clone(), set(&name));
         entries.push(
             SettingEntry::new("Can see this screen", "Through a lens around its pointer.").control(
-                Switch::new("share-screen").checked(peer.share_screen).on_click(move |on: &bool, _, cx| {
-                    model.read(cx).send(set(None, None, None, Some(*on)));
-                }),
+                Switch::new("share-screen")
+                    .checked(peer.share_screen)
+                    .on_click(move |on: &bool, _, cx| {
+                        model.read(cx).send(set(None, None, None, Some(*on)));
+                    }),
             ),
         );
     }

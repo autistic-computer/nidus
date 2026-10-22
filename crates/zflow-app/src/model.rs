@@ -9,7 +9,7 @@ use zflow::app::{
     api::{self, Request},
     client::Client,
 };
-use zz_gpui::{App, AppContext as _, AsyncApp, Context, Entity, Task, WeakEntity};
+use zz_gpui::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 
 use crate::platform::Platform;
 
@@ -35,7 +35,10 @@ pub enum Page {
 type Reply = async_channel::Sender<Result<(), String>>;
 
 enum Job {
-    Call { request: Request, reply: Option<Reply> },
+    Call {
+        request: Request,
+        reply: Option<Reply>,
+    },
     /// A question whose answer is not a snapshot, such as where a move
     /// would land.
     Ask {
@@ -45,6 +48,7 @@ enum Job {
     Reconnect,
     /// Drops the line to the engine, which on a Mac stops it and lets go of
     /// input a peer holds, then answers.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Shutdown(async_channel::Sender<()>),
 }
 
@@ -52,7 +56,10 @@ enum Event {
     Snapshot(Box<Snapshot>),
     /// A request failed. A poll failing is quiet: it says why there is no
     /// snapshot instead of popping up.
-    Failed { error: String, quiet: bool },
+    Failed {
+        error: String,
+        quiet: bool,
+    },
     #[cfg(target_os = "macos")]
     Lens(std::sync::Arc<zflow::lens::viewer::Viewer>),
 }
@@ -64,6 +71,7 @@ pub struct Model {
     /// The last request that failed, shown for a few seconds.
     pub failure: Option<String>,
     pub page: Page,
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub config: PathBuf,
     /// The window onto another computer's screen.
     #[cfg(target_os = "macos")]
@@ -106,6 +114,29 @@ impl Model {
             _events: receive,
             _failure: None,
         }
+    }
+
+    /// A model with `snapshot` and no engine, for tests. What the window
+    /// asks for queues on the returned [`Requests`].
+    #[cfg(test)]
+    pub fn fake(snapshot: Snapshot, _: &mut Context<Self>) -> (Self, Requests) {
+        let (jobs, queue) = mpsc::channel();
+        (
+            Self {
+                snapshot: Some(snapshot),
+                error: None,
+                failure: None,
+                page: Page::Computers,
+                config: PathBuf::from("/tmp/zflow.toml"),
+                #[cfg(target_os = "macos")]
+                lens: None,
+                jobs,
+                last_notice: 0,
+                _events: Task::ready(()),
+                _failure: None,
+            },
+            Requests(queue),
+        )
     }
 
     /// Sends `request`, and shows why if it fails.
@@ -152,6 +183,7 @@ impl Model {
     }
 
     /// Shows why something failed, for a few seconds.
+    #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn report(&mut self, message: String, cx: &mut Context<Self>) {
         self.receive(
             Event::Failed {
@@ -163,6 +195,7 @@ impl Model {
     }
 
     /// Stops the engine line; resolves once it is down.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn shutdown(&self) -> async_channel::Receiver<()> {
         let (done, finished) = async_channel::bounded(1);
         if self.jobs.send(Job::Shutdown(done.clone())).is_err() {
@@ -194,6 +227,7 @@ impl Model {
         fresh
     }
 
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn platform(&self) -> Platform {
         self.snapshot
             .as_ref()
@@ -224,7 +258,7 @@ impl Model {
                     self.failure = Some(error);
                     self._failure = Some(cx.spawn(async move |this, cx| {
                         cx.background_executor().timer(FAILURE_SHOWN).await;
-                        let _ = this.update(cx, |model, cx| model.dismiss_failure(cx));
+                        let _ = this.update(cx, Model::dismiss_failure);
                     }));
                 }
                 cx.notify();
@@ -241,7 +275,11 @@ impl Model {
 /// The worker: connects, then runs each queued request and polls between
 /// them. A request whose answer carries no snapshot is followed by a poll,
 /// so the window shows its effect at once.
-fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_channel::Sender<Event>) {
+fn work(
+    config: &std::path::Path,
+    jobs: &mpsc::Receiver<Job>,
+    events: &async_channel::Sender<Event>,
+) {
     let send = |event| events.send_blocking(event).is_ok();
     let mut client: Option<Client> = None;
     // A fresh connection asks for a snapshot at once.
@@ -319,7 +357,9 @@ fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_cha
             }
         });
         let outcome = answer.and_then(|value| {
-            Snapshot::deserialize(value).map_err(|error| anyhow::anyhow!("zflow sent a status this window cannot read: {error}"))
+            Snapshot::deserialize(value).map_err(|error| {
+                anyhow::anyhow!("zflow sent a status this window cannot read: {error}")
+            })
         });
         let ok = match outcome {
             Ok(snapshot) => {
@@ -342,6 +382,35 @@ fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_cha
         if !ok {
             return;
         }
+    }
+}
+
+/// What a fake model was asked, in order.
+#[cfg(test)]
+pub struct Requests(mpsc::Receiver<Job>);
+
+#[cfg(test)]
+impl Requests {
+    /// The next request, and whether it was a question; a question gets
+    /// `answer`.
+    pub fn next(&self, answer: serde_json::Value) -> Option<(Request, bool)> {
+        match self.0.try_recv().ok()? {
+            Job::Call { request, reply } => {
+                if let Some(reply) = reply {
+                    let _ = reply.try_send(Ok(()));
+                }
+                Some((request, false))
+            }
+            Job::Ask { request, reply } => {
+                let _ = reply.try_send(Ok(answer));
+                Some((request, true))
+            }
+            Job::Reconnect | Job::Shutdown(_) => None,
+        }
+    }
+
+    pub fn drain(&self) -> Vec<(Request, bool)> {
+        std::iter::from_fn(|| self.next(serde_json::Value::Null)).collect()
     }
 }
 
