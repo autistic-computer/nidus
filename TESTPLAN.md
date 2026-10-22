@@ -556,6 +556,14 @@ icon and the zflow and Window menus, and its in-process engine wrote the
 layout. macOS showed its Local Network prompt on first use, and the
 Accessibility and Paste rows read Allowed on the runner.
 
+October 22, CI run 39715437218 on a GitHub Windows Server 2025 runner (build
+26100): the built `Zflow.App.exe` showed one window with its drawn caption
+buttons, started `zflow.exe`, and both quit on `--quit`. v0.7.0, the last
+WinUI release, installed with its own Setup.exe; its `Update.exe apply`
+replaced it with this build packed as 0.7.1, and `current\Zflow.App.exe`
+then opened, started the engine, quit the same way, and its Updates row
+checked GitHub through Velopack.
+
 Live checks still to run:
 
 - Mac: launch from Finder at login and from the disk image (Move to
