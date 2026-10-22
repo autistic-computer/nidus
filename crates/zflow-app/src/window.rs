@@ -173,7 +173,14 @@ impl ZflowWindow {
                         ),
                 )
             });
-        let controls = draws_window_controls(window).then(WindowControls::new);
+        // The drawn close button asks the platform too, as the system's does.
+        let controls = draws_window_controls(window).then(|| {
+            WindowControls::new().on_close_window(|_, window, cx| {
+                if platform::may_close(cx) {
+                    window.remove_window();
+                }
+            })
+        });
         window_drag_handle(
             "titlebar-drag",
             app_titlebar_strip("titlebar", leading, div().children(controls), cx),
