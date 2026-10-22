@@ -1,10 +1,12 @@
 [CmdletBinding()]
-param([string]$SignParameters)
+# -PackVersion packs under another version, as CI does to update an
+# installed release to this build.
+param([string]$SignParameters, [string]$PackVersion)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 & (Join-Path $PSScriptRoot 'build-windows.ps1')
 $manifest = Get-Content -LiteralPath (Join-Path $repo 'Cargo.toml') -Raw
-$version = [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value
+$version = if ($PackVersion) { $PackVersion } else { [regex]::Match($manifest, '(?m)^version = "([^"]+)"').Groups[1].Value }
 if (-not $version) { throw 'Cargo version is missing' }
 if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'The tag must match Cargo.toml' }
 $output = Join-Path $repo 'target/windows-release'
