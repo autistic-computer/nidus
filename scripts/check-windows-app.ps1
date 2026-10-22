@@ -11,8 +11,8 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $log = Join-Path $Out 'app.log'
 $config = Join-Path $Out 'config/config.toml'
 $env:RUST_LOG = 'warn,zflow=debug'
-# Velopack's launcher hands the arguments to the installed app and exits, so
-# the app is found by name below rather than by this process.
+# The app is found by name below, which also covers a launcher that hands
+# its arguments over and exits.
 Start-Process -FilePath $App -ArgumentList '--config', "`"$config`"", '--show-settings' -RedirectStandardError $log
 Start-Sleep -Seconds 20
 

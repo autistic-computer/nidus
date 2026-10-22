@@ -74,7 +74,8 @@ jobs:
           $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
           if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'The update did not land' }
           if (-not (Test-Path (Join-Path $root 'current/zflow.exe'))) { throw 'The update left out the engine' }
-          ./scripts/check-windows-app.ps1 -App (Join-Path $root 'Zflow.App.exe') -Out $check
+          # Velopack keeps the app at current\, which updates replace in place.
+          ./scripts/check-windows-app.ps1 -App (Join-Path $root 'current/Zflow.App.exe') -Out $check
       - name: Upload app check
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
