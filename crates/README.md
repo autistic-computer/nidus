@@ -23,8 +23,9 @@ Everything here that is not zflow's goes back to zz. Each item is self-contained
 - `sidebar`: zz-ui's sidebar panel, title strip, footer, resize handle, chrome button and status dot, without the `workspace_` prefix.
 - `shell`: zz-ui's `app_shell_surface`, `app_titlebar_strip` (now with a leading slot) and `chrome_background`, and zz's `window_drag_handle` from `crates/zz/src/window/drag.rs`.
 
-### zz-gpui-platform
+### zz-gpui and zz-gpui-platform
 
+- `Window::activate_window_with_token` and `PlatformWindow::activate_with_token`: raise a window with an activation token another process handed over. Wayland uses it; other platforms fall back to `activate`. zflow uses it when a second launch hands its `XDG_ACTIVATION_TOKEN` to the running copy.
 - `build.rs` writes empty Metal outputs when a non-Mac host checks a Mac build, so `cargo check --target aarch64-apple-darwin` works from Linux. Nothing built that way can run.
 
 ### zz-gpui-tray

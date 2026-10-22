@@ -7249,6 +7249,12 @@ impl Window {
         self.platform_window.activate();
     }
 
+    /// Like [`Window::activate_window`], with an activation token another
+    /// process handed over, which Wayland compositors require to raise it.
+    pub fn activate_window_with_token(&self, token: impl Into<String>) {
+        self.platform_window.activate_with_token(token.into());
+    }
+
     /// Requests that the operating system draw attention to this window.
     pub fn request_attention(&self) {
         self.platform_window.request_attention();
