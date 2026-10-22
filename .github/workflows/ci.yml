@@ -55,7 +55,9 @@ jobs:
           gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern zflow-windows-x86_64-Setup.exe --dir $check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $root = Join-Path $env:LOCALAPPDATA 'Zflow.App'
-          Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -Wait
+          # Start-Process -Wait would also wait for the app Setup starts.
+          $setup = Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
+          if (-not $setup.WaitForExit(300000)) { throw 'The WinUI installer did not finish' }
           if (-not (Test-Path (Join-Path $root 'current/Zflow.App.exe'))) { throw 'The WinUI release did not install' }
           Start-Sleep -Seconds 10
           & (Join-Path $root 'current/Zflow.App.exe') --quit
@@ -63,8 +65,10 @@ jobs:
           Get-Process Zflow.App, zflow -ErrorAction SilentlyContinue | Stop-Process -Force
           ./scripts/package-windows.ps1 -PackVersion 0.7.1
           $package = Resolve-Path target/windows-release/Zflow.App-0.7.1-win-x64-full.nupkg
-          $update = Start-Process (Join-Path $root 'Update.exe') -Wait -PassThru `
+          $update = Start-Process (Join-Path $root 'Update.exe') -PassThru `
             -ArgumentList 'apply', '--silent', '--norestart', '--package', "`"$package`""
+          $null = $update.Handle  # keeps ExitCode readable after it exits
+          if (-not $update.WaitForExit(300000)) { throw 'Update.exe apply did not finish' }
           Get-ChildItem $root -Filter *.log | Copy-Item -Destination $check
           if ($update.ExitCode) { throw "Update.exe apply failed with $($update.ExitCode)" }
           $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
