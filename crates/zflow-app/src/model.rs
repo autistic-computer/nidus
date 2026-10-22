@@ -212,16 +212,15 @@ impl Model {
     }
 
     /// Notices not posted yet, oldest first, about computers still paired.
-    /// Each comes once. The Linux agent outlives the window and keeps its
-    /// earlier notices, so the first snapshot brings only the newest.
+    /// Each comes once. The Linux agent outlives the window, keeps its
+    /// earlier notices and posted them itself, so the first snapshot's are
+    /// taken as seen.
     pub fn take_notices(&mut self) -> Vec<zflow::hello::Notice> {
         let Some(snapshot) = &self.snapshot else {
             return Vec::new();
         };
         let newest = snapshot.notices.iter().map(|notice| notice.id).max();
-        let seen = self
-            .last_notice
-            .unwrap_or_else(|| newest.map_or(0, |id| id.saturating_sub(1)));
+        let seen = self.last_notice.unwrap_or_else(|| newest.unwrap_or(0));
         self.last_notice = Some(newest.unwrap_or(seen).max(seen));
         snapshot
             .notices
@@ -451,9 +450,8 @@ mod tests {
 
     #[zz_gpui::test]
     fn notices_come_once_and_only_about_paired_computers(cx: &mut TestAppContext) {
-        // The agent kept older notices; "box" was forgotten since.
         let mut snapshot = crate::board::tests::snapshot();
-        snapshot.notices = vec![joined(4, "mac", "996615"), joined(5, "box", "a4d876")];
+        snapshot.notices = vec![joined(4, "mac", "996615")];
         let model = cx.new(|cx| Model::fake(snapshot.clone(), cx).0);
         let names = |model: &mut Model| -> Vec<String> {
             model
@@ -463,7 +461,7 @@ mod tests {
                 .collect()
         };
 
-        // The first snapshot brings only the newest, and box is not paired.
+        // The first snapshot's notices were posted before the window opened.
         assert!(model.update(cx, |model, _| names(model)).is_empty());
 
         // A later join is posted once.
@@ -472,8 +470,11 @@ mod tests {
         assert_eq!(model.update(cx, |model, _| names(model)), ["mac"]);
         assert!(model.update(cx, |model, _| names(model)).is_empty());
 
-        // A namesake with another key is not the paired mac.
-        snapshot.notices.push(joined(7, "mac", "123456"));
+        // Not about a paired computer: a namesake with another key, or one
+        // forgotten since.
+        snapshot
+            .notices
+            .extend([joined(7, "mac", "123456"), joined(8, "box", "a4d876")]);
         model.update(cx, |model, _| model.snapshot = Some(snapshot.clone()));
         assert!(model.update(cx, |model, _| names(model)).is_empty());
     }

@@ -511,6 +511,11 @@ pub fn notification_response(_: &zz_gpui::SystemNotificationResponse, _: &mut Ap
 
 /// Starts this window again from the newly installed zflow.
 pub fn restart(cx: &mut App) {
+    // The new copy must find the name free, or it would ask this one to
+    // show its window and end.
+    if let Some((bus, _)) = INSTANCE.get() {
+        let _ = zflow::app::client::on_bus_runtime(|| Ok(bus.release_name(BUS_NAME)?));
+    }
     match Command::new(zflow_executable()).arg("settings").spawn() {
         Ok(_) => cx.quit(),
         Err(error) => log::warn!("zflow could not restart: {error}"),
