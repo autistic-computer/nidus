@@ -3,10 +3,13 @@
 
 mod board;
 mod copy;
+mod lens;
 mod model;
 mod pages;
 mod platform;
 mod theme;
+#[cfg(not(target_os = "linux"))]
+mod tray;
 mod widgets;
 mod window;
 
@@ -36,6 +39,12 @@ pub struct Arguments {
     pub background: bool,
     /// Asks a running copy to quit, then exits.
     pub quit: bool,
+    /// Windows: this copy runs as administrator in place of process
+    /// `replace_process`, for user `replace_user`, and sets the event
+    /// `restart_ready` once it has taken over.
+    pub replace_process: Option<u32>,
+    pub replace_user: Option<String>,
+    pub restart_ready: Option<String>,
 }
 
 impl Arguments {
@@ -49,6 +58,17 @@ impl Arguments {
                 "--show-settings" => parsed.show_settings = true,
                 "--background" => parsed.background = true,
                 "--quit" => parsed.quit = true,
+                "--replace-process" => {
+                    let pid = arguments.next().ok_or("--replace-process takes a process id")?;
+                    parsed.replace_process =
+                        Some(pid.parse().map_err(|_| "--replace-process takes a process id")?);
+                }
+                "--replace-user" => {
+                    parsed.replace_user = Some(arguments.next().ok_or("--replace-user takes an id")?);
+                }
+                "--restart-ready" => {
+                    parsed.restart_ready = Some(arguments.next().ok_or("--restart-ready takes a name")?);
+                }
                 // macOS adds this to apps it launches from Finder.
                 argument if argument.starts_with("-psn_") => {}
                 argument => return Err(format!("unknown argument: {argument}")),
@@ -78,7 +98,11 @@ fn main() {
         return;
     }
     let config = arguments.config.clone().unwrap_or_else(platform::default_config);
-    zz_gpui_platform::application()
+    let application = zz_gpui_platform::application();
+    // Opening zflow again while it runs, as from Applications, shows the window.
+    #[cfg(target_os = "macos")]
+    application.on_reopen(open);
+    application
         .with_assets(zz_gpui_kit::Assets)
         .with_quit_mode(if platform::LIVES_IN_TRAY {
             QuitMode::Explicit

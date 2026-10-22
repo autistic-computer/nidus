@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod client;
+pub mod windows_view;
 #[cfg(target_os = "linux")]
 pub(crate) mod desktop;
 #[cfg(target_os = "linux")]

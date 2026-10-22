@@ -43,6 +43,9 @@ enum Job {
         reply: async_channel::Sender<Result<serde_json::Value, String>>,
     },
     Reconnect,
+    /// Drops the line to the engine, which on a Mac stops it and lets go of
+    /// input a peer holds, then answers.
+    Shutdown(async_channel::Sender<()>),
 }
 
 enum Event {
@@ -148,6 +151,26 @@ impl Model {
         }
     }
 
+    /// Shows why something failed, for a few seconds.
+    pub fn report(&mut self, message: String, cx: &mut Context<Self>) {
+        self.receive(
+            Event::Failed {
+                error: message,
+                quiet: false,
+            },
+            cx,
+        );
+    }
+
+    /// Stops the engine line; resolves once it is down.
+    pub fn shutdown(&self) -> async_channel::Receiver<()> {
+        let (done, finished) = async_channel::bounded(1);
+        if self.jobs.send(Job::Shutdown(done.clone())).is_err() {
+            let _ = done.try_send(());
+        }
+        finished
+    }
+
     pub fn dismiss_failure(&mut self, cx: &mut Context<Self>) {
         self.failure = None;
         self._failure = None;
@@ -250,6 +273,10 @@ fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_cha
                         Ok(Job::Ask { reply, .. }) => {
                             let _ = reply.send_blocking(Err(format!("{error:#}")));
                         }
+                        Ok(Job::Shutdown(done)) => {
+                            let _ = done.send_blocking(());
+                            return;
+                        }
                         Ok(_) => {}
                         Err(_) => return,
                     }
@@ -274,6 +301,11 @@ fn work(config: &std::path::Path, jobs: &mpsc::Receiver<Job>, events: &async_cha
             Ok(Job::Reconnect) => {
                 client = None;
                 continue;
+            }
+            Ok(Job::Shutdown(done)) => {
+                drop(client.take());
+                let _ = done.send_blocking(());
+                return;
             }
             Err(mpsc::RecvTimeoutError::Timeout) => (Request::Snapshot, None),
             Err(mpsc::RecvTimeoutError::Disconnected) => return,

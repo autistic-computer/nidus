@@ -8,6 +8,17 @@ fn main() {
         macos_build::run();
     }
 
+    // Away from a Mac there is no Metal compiler, but `cargo check` still
+    // needs the files the renderer includes. Empty ones type-check; nothing
+    // built this way can run.
+    #[cfg(not(target_os = "macos"))]
+    if target_os == "macos" {
+        let out = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("cargo sets OUT_DIR"));
+        for name in ["shaders.metallib", "stitched_shaders.metal", "scene.h"] {
+            std::fs::write(out.join(name), b"").expect("OUT_DIR is writable");
+        }
+    }
+
     #[cfg(all(target_os = "windows", not(debug_assertions)))]
     if target_os == "windows" {
         compile_shaders();

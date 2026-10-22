@@ -38,6 +38,8 @@ use crate::{
 };
 
 pub use advertise::Advertiser;
+pub use awdl::{helper_ready, signed_by_team};
+pub use keys::mac_keycode_to_hid;
 pub(crate) use inject::{install_exit_handlers, supports_key};
 pub use link::{Crossing, Found, Greeting, Heard, LinkState, Links};
 pub use local_network::{LocalNetwork, local_network_access};
