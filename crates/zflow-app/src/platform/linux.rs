@@ -360,8 +360,19 @@ const BUS_PATH: &str = "/io/zflow/zflow";
 const APPLICATION: &str = "org.freedesktop.Application";
 
 enum Ask {
-    Show,
+    /// With the activation token the other copy's launcher gave it, which
+    /// Wayland needs to raise this window.
+    Show(Option<String>),
     Quit,
+}
+
+/// The token GTK and launchers put in an activation's platform data.
+const ACTIVATION_TOKEN: &str = "activation-token";
+
+fn activation_token(mut platform_data: HashMap<String, OwnedValue>) -> Option<String> {
+    platform_data
+        .remove(ACTIVATION_TOKEN)
+        .and_then(|value| String::try_from(value).ok())
 }
 
 /// The bus connection that owns [`BUS_NAME`], and what other copies ask.
@@ -373,24 +384,24 @@ struct Instance(async_channel::Sender<Ask>);
 
 #[zbus::interface(name = "org.freedesktop.Application")]
 impl Instance {
-    fn activate(&self, _platform_data: HashMap<String, OwnedValue>) {
-        let _ = self.0.try_send(Ask::Show);
+    fn activate(&self, platform_data: HashMap<String, OwnedValue>) {
+        let _ = self.0.try_send(Ask::Show(activation_token(platform_data)));
     }
 
-    fn open(&self, _uris: Vec<String>, _platform_data: HashMap<String, OwnedValue>) {
-        let _ = self.0.try_send(Ask::Show);
+    fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
+        let _ = self.0.try_send(Ask::Show(activation_token(platform_data)));
     }
 
     fn activate_action(
         &self,
         action: &str,
         _parameter: Vec<OwnedValue>,
-        _platform_data: HashMap<String, OwnedValue>,
+        platform_data: HashMap<String, OwnedValue>,
     ) {
         let ask = if action == "quit" {
             Ask::Quit
         } else {
-            Ask::Show
+            Ask::Show(activation_token(platform_data))
         };
         let _ = self.0.try_send(ask);
     }
@@ -435,7 +446,11 @@ fn claim_instance() -> Result<bool> {
 
 fn ask_running(quit: bool) -> Result<()> {
     let bus = zflow::app::client::session_bus()?;
-    let platform_data = HashMap::<&str, zbus::zvariant::Value>::new();
+    let mut platform_data = HashMap::<&str, zbus::zvariant::Value>::new();
+    let token = std::env::var("XDG_ACTIVATION_TOKEN").ok();
+    if let Some(token) = &token {
+        platform_data.insert(ACTIVATION_TOKEN, token.as_str().into());
+    }
     if quit {
         bus.call_method(
             Some(BUS_NAME),
@@ -465,7 +480,18 @@ fn answer_other_copies(cx: &mut App) {
     cx.spawn(async move |cx| {
         while let Ok(ask) = inbox.recv().await {
             let () = cx.update(|cx| match ask {
-                Ask::Show => crate::open(cx),
+                Ask::Show(token) => {
+                    crate::open(cx);
+                    if let Some(token) = token
+                        && let Some(window) = cx
+                            .try_global::<crate::MainWindow>()
+                            .and_then(|window| window.0)
+                    {
+                        let _ = window.update(cx, |_, window, _| {
+                            window.activate_window_with_token(token);
+                        });
+                    }
+                }
                 Ask::Quit => cx.quit(),
             });
         }

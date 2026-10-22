@@ -948,6 +948,11 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
     fn activate(&self);
+    /// Activates with a token another process handed over, such as the
+    /// `XDG_ACTIVATION_TOKEN` a launcher gave a second copy of the app.
+    fn activate_with_token(&self, _token: String) {
+        self.activate();
+    }
     /// Requests that the operating system draw attention to this window.
     fn request_attention(&self) {}
     fn is_active(&self) -> bool;
