@@ -77,7 +77,8 @@ pub struct Model {
     #[cfg(target_os = "macos")]
     pub lens: Option<std::sync::Arc<zflow::lens::viewer::Viewer>>,
     jobs: mpsc::Sender<Job>,
-    last_notice: u64,
+    /// The newest notice seen, once a snapshot came.
+    last_notice: Option<u64>,
     _events: Task<()>,
     _failure: Option<Task<()>>,
 }
@@ -110,7 +111,7 @@ impl Model {
             #[cfg(target_os = "macos")]
             lens: None,
             jobs,
-            last_notice: 0,
+            last_notice: None,
             _events: receive,
             _failure: None,
         }
@@ -131,7 +132,7 @@ impl Model {
                 #[cfg(target_os = "macos")]
                 lens: None,
                 jobs,
-                last_notice: 0,
+                last_notice: None,
                 _events: Task::ready(()),
                 _failure: None,
             },
@@ -210,21 +211,30 @@ impl Model {
         cx.notify();
     }
 
-    /// Notices not posted yet, oldest first. Each comes once.
+    /// Notices not posted yet, oldest first, about computers still paired.
+    /// Each comes once. The Linux agent outlives the window and keeps its
+    /// earlier notices, so the first snapshot brings only the newest.
     pub fn take_notices(&mut self) -> Vec<zflow::hello::Notice> {
         let Some(snapshot) = &self.snapshot else {
             return Vec::new();
         };
-        let fresh: Vec<_> = snapshot
+        let newest = snapshot.notices.iter().map(|notice| notice.id).max();
+        let seen = self
+            .last_notice
+            .unwrap_or_else(|| newest.map_or(0, |id| id.saturating_sub(1)));
+        self.last_notice = Some(newest.unwrap_or(seen).max(seen));
+        snapshot
             .notices
             .iter()
-            .filter(|notice| notice.id > self.last_notice)
+            .filter(|notice| notice.id > seen)
+            .filter(|notice| {
+                snapshot
+                    .peers
+                    .iter()
+                    .any(|peer| peer.name == notice.name && peer.mark == notice.mark)
+            })
             .cloned()
-            .collect();
-        if let Some(last) = fresh.iter().map(|notice| notice.id).max() {
-            self.last_notice = last;
-        }
-        fresh
+            .collect()
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -421,4 +431,50 @@ impl zz_gpui::Global for Shared {}
 
 pub fn model(cx: &App) -> Entity<Model> {
     cx.global::<Shared>().0.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use zflow::hello::{Notice, NoticeKind};
+    use zz_gpui::{AppContext as _, TestAppContext};
+
+    use super::Model;
+
+    fn joined(id: u64, name: &str, mark: &str) -> Notice {
+        Notice {
+            id,
+            kind: NoticeKind::Joined,
+            name: name.into(),
+            mark: mark.into(),
+        }
+    }
+
+    #[zz_gpui::test]
+    fn notices_come_once_and_only_about_paired_computers(cx: &mut TestAppContext) {
+        // The agent kept older notices; "box" was forgotten since.
+        let mut snapshot = crate::board::tests::snapshot();
+        snapshot.notices = vec![joined(4, "mac", "996615"), joined(5, "box", "a4d876")];
+        let model = cx.new(|cx| Model::fake(snapshot.clone(), cx).0);
+        let names = |model: &mut Model| -> Vec<String> {
+            model
+                .take_notices()
+                .into_iter()
+                .map(|notice| notice.name)
+                .collect()
+        };
+
+        // The first snapshot brings only the newest, and box is not paired.
+        assert!(model.update(cx, |model, _| names(model)).is_empty());
+
+        // A later join is posted once.
+        snapshot.notices.push(joined(6, "mac", "996615"));
+        model.update(cx, |model, _| model.snapshot = Some(snapshot.clone()));
+        assert_eq!(model.update(cx, |model, _| names(model)), ["mac"]);
+        assert!(model.update(cx, |model, _| names(model)).is_empty());
+
+        // A namesake with another key is not the paired mac.
+        snapshot.notices.push(joined(7, "mac", "123456"));
+        model.update(cx, |model, _| model.snapshot = Some(snapshot.clone()));
+        assert!(model.update(cx, |model, _| names(model)).is_empty());
+    }
 }

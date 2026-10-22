@@ -178,6 +178,7 @@ pub fn open(cx: &mut App) {
         |window, cx| {
             theme::apply(Some(window), cx);
             window.set_window_title("zflow");
+            window.on_window_should_close(cx, |_, cx| platform::may_close(cx));
             let view = cx.new(|cx| ZflowWindow::new(model, services, window, cx));
             cx.new(|cx| Root::new(view, window, cx).bordered(cfg!(target_os = "linux")))
         },

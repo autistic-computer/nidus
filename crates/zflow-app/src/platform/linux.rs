@@ -353,9 +353,124 @@ pub fn init(cx: &mut App) -> Entity<Services> {
 /// comes from the extension.
 pub const LIVES_IN_TRAY: bool = false;
 
-/// Runs before the app starts. False ends it there.
+/// The session bus name one running copy owns, as GTK apps do: opening zflow
+/// again shows that copy's window, and `--quit` asks it to quit.
+const BUS_NAME: &str = "io.zflow.zflow";
+const BUS_PATH: &str = "/io/zflow/zflow";
+const APPLICATION: &str = "org.freedesktop.Application";
+
+enum Ask {
+    Show,
+    Quit,
+}
+
+/// The bus connection that owns [`BUS_NAME`], and what other copies ask.
+static INSTANCE: std::sync::OnceLock<(zbus::blocking::Connection, async_channel::Receiver<Ask>)> =
+    std::sync::OnceLock::new();
+
+/// freedesktop's application interface, which launchers also call.
+struct Instance(async_channel::Sender<Ask>);
+
+#[zbus::interface(name = "org.freedesktop.Application")]
+impl Instance {
+    fn activate(&self, _platform_data: HashMap<String, OwnedValue>) {
+        let _ = self.0.try_send(Ask::Show);
+    }
+
+    fn open(&self, _uris: Vec<String>, _platform_data: HashMap<String, OwnedValue>) {
+        let _ = self.0.try_send(Ask::Show);
+    }
+
+    fn activate_action(
+        &self,
+        action: &str,
+        _parameter: Vec<OwnedValue>,
+        _platform_data: HashMap<String, OwnedValue>,
+    ) {
+        let ask = if action == "quit" {
+            Ask::Quit
+        } else {
+            Ask::Show
+        };
+        let _ = self.0.try_send(ask);
+    }
+}
+
+/// Runs before the app starts. False ends it there: another copy runs and
+/// was asked to show its window or quit.
 pub fn before_start(arguments: &crate::Arguments) -> bool {
-    !arguments.quit
+    match claim_instance() {
+        Ok(true) => !arguments.quit,
+        Ok(false) => {
+            if let Err(error) = ask_running(arguments.quit) {
+                log::warn!("zflow could not reach the copy already running: {error:#}");
+            }
+            false
+        }
+        // Without a session bus, run alone.
+        Err(error) => {
+            log::warn!("zflow runs without checking for another copy: {error:#}");
+            !arguments.quit
+        }
+    }
+}
+
+/// Serves [`Instance`] and takes [`BUS_NAME`]. False if another copy has it.
+fn claim_instance() -> Result<bool> {
+    zflow::app::client::on_bus_runtime(|| {
+        let bus = zbus::blocking::Connection::session()?;
+        let (asks, inbox) = async_channel::unbounded();
+        bus.object_server().at(BUS_PATH, Instance(asks))?;
+        match bus.request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
+        {
+            Ok(zbus::fdo::RequestNameReply::PrimaryOwner) => {
+                let _ = INSTANCE.set((bus, inbox));
+                Ok(true)
+            }
+            Ok(_) | Err(zbus::Error::NameTaken) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    })
+}
+
+fn ask_running(quit: bool) -> Result<()> {
+    let bus = zflow::app::client::session_bus()?;
+    let platform_data = HashMap::<&str, zbus::zvariant::Value>::new();
+    if quit {
+        bus.call_method(
+            Some(BUS_NAME),
+            BUS_PATH,
+            Some(APPLICATION),
+            "ActivateAction",
+            &("quit", Vec::<zbus::zvariant::Value>::new(), platform_data),
+        )?;
+    } else {
+        bus.call_method(
+            Some(BUS_NAME),
+            BUS_PATH,
+            Some(APPLICATION),
+            "Activate",
+            &(platform_data,),
+        )?;
+    }
+    Ok(())
+}
+
+/// Answers other copies once the app runs.
+fn answer_other_copies(cx: &mut App) {
+    let Some((_, inbox)) = INSTANCE.get() else {
+        return;
+    };
+    let inbox = inbox.clone();
+    cx.spawn(async move |cx| {
+        while let Ok(ask) = inbox.recv().await {
+            let () = cx.update(|cx| match ask {
+                Ask::Show => crate::open(cx),
+                Ask::Quit => cx.quit(),
+            });
+        }
+    })
+    .detach();
 }
 
 /// The agent keeps the configuration; the window only names it.
@@ -377,12 +492,20 @@ pub fn start(
         }
     })
     .detach();
+    answer_other_copies(cx);
     if !arguments.background {
         crate::open(cx);
     }
 }
 
 pub fn window_shown(_: &mut App) {}
+
+/// Closing the window quits, which would cut off an update mid-install and
+/// the restart after it.
+pub fn may_close(cx: &App) -> bool {
+    cx.try_global::<super::SharedServices>()
+        .is_none_or(|services| !services.0.read(cx).installing)
+}
 
 pub fn notification_response(_: &zz_gpui::SystemNotificationResponse, _: &mut App) {}
 
@@ -616,6 +739,8 @@ use crate::{model::Snapshot, widgets, window::ZflowWindow};
 
 /// Linux computers can be looked at through a Mac's lens.
 pub const CAN_SHARE_SCREEN: bool = true;
+/// Each computer's control of this one can be turned off.
+pub const CAN_REFUSE_CONTROL: bool = true;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this computer’s own screens, the pointer follows GNOME’s display settings.";

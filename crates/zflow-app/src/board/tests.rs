@@ -22,7 +22,8 @@ fn screen(id: &str, peer: Option<&str>, x: i32) -> Monitor {
     }
 }
 
-fn snapshot() -> Snapshot {
+/// One paired Mac to the right of this computer.
+pub(crate) fn snapshot() -> Snapshot {
     let peer = api::Peer {
         name: "mac".into(),
         state: PeerState::Connected,

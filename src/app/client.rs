@@ -95,25 +95,28 @@ static BUS_RUNTIME: std::sync::LazyLock<Option<tokio::runtime::Runtime>> =
             .ok()
     });
 
-/// A connection to the session bus that blocking calls can use from any
-/// thread.
+/// Runs `work` inside that runtime, for zbus calls that start tasks there:
+/// making a connection, or serving an object.
 #[cfg(target_os = "linux")]
-pub fn session_bus() -> Result<zbus::blocking::Connection> {
+pub fn on_bus_runtime<T>(work: impl FnOnce() -> Result<T>) -> Result<T> {
     let runtime = BUS_RUNTIME
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("Could not start the D-Bus runtime"))?;
     let _inside = runtime.enter();
-    Ok(zbus::blocking::Connection::session()?)
+    work()
+}
+
+/// A connection to the session bus that blocking calls can use from any
+/// thread.
+#[cfg(target_os = "linux")]
+pub fn session_bus() -> Result<zbus::blocking::Connection> {
+    on_bus_runtime(|| Ok(zbus::blocking::Connection::session()?))
 }
 
 /// The same, on the system bus.
 #[cfg(target_os = "linux")]
 pub fn system_bus() -> Result<zbus::blocking::Connection> {
-    let runtime = BUS_RUNTIME
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Could not start the D-Bus runtime"))?;
-    let _inside = runtime.enter();
-    Ok(zbus::blocking::Connection::system()?)
+    on_bus_runtime(|| Ok(zbus::blocking::Connection::system()?))
 }
 
 /// Whether a request that changes something answers with the snapshot

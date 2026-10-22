@@ -4,10 +4,12 @@
 use zflow::app::api::{Level, Request};
 use zz_gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
 use zz_gpui_kit::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+    button::Button,
+    h_flex,
     kbd::Keycap,
     rems_from_px,
-    settings::{SettingEntry, SettingsStack, settings_scroll_column},
+    settings::{SettingEntry, SettingsStack, settings_card_ground, settings_scroll_column},
     switch::Switch,
 };
 
@@ -106,6 +108,7 @@ pub fn render(
             SettingsStack::titled("This computer")
                 .children(platform::this_computer_entries(this, &snapshot, cx)),
         )
+        .child(SettingsStack::titled("About").children(about(cx)))
         .child(
             div()
                 .text_size(rems_from_px(11.0))
@@ -116,4 +119,60 @@ pub fn render(
                 )),
         )
         .into_any_element()
+}
+
+const REPOSITORY: &str = "https://github.com/demfabris/zflow";
+
+/// The version, the license, and where to read more or report a problem.
+fn about(cx: &mut Context<ZflowWindow>) -> [SettingEntry; 2] {
+    let link =
+        |id: &'static str, label: &'static str, url: String, cx: &mut Context<ZflowWindow>| {
+            Button::new(id)
+                .small()
+                .label(label)
+                .on(settings_card_ground(cx))
+                .on_click(move |_, _, cx| cx.open_url(&url))
+        };
+    [
+        SettingEntry::new(
+            format!("zflow {}", env!("CARGO_PKG_VERSION")),
+            "Free software under the GNU GPL, version 3 or later.",
+        )
+        .control(
+            h_flex()
+                .gap(px(8.0))
+                .child(link(
+                    "release-notes",
+                    "Release notes",
+                    format!("{REPOSITORY}/releases/latest"),
+                    cx,
+                ))
+                .child(link(
+                    "license",
+                    "License",
+                    format!("{REPOSITORY}/blob/main/LICENSE"),
+                    cx,
+                )),
+        ),
+        SettingEntry::new(
+            "Help",
+            "Setup, pairing and shortcuts, the code, and bug reports.",
+        )
+        .control(
+            h_flex()
+                .gap(px(8.0))
+                .child(link(
+                    "docs",
+                    "Documentation",
+                    format!("{REPOSITORY}#readme"),
+                    cx,
+                ))
+                .child(link(
+                    "report",
+                    "Report a problem",
+                    format!("{REPOSITORY}/issues/new"),
+                    cx,
+                )),
+        ),
+    ]
 }
