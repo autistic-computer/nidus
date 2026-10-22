@@ -56,6 +56,8 @@ const SERVICES_TICK: Duration = Duration::from_secs(10);
 /// How long Local Network may read blocked before the window says so: it
 /// reads blocked until the person answers macOS.
 const NETWORK_GRACE: Duration = Duration::from_secs(5);
+/// How long quitting waits for the engine to stop.
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(5);
 
 actions!(
     zflow,
@@ -540,11 +542,17 @@ pub fn start(
     crate::lens::init(model, cx);
     {
         let model = model.clone();
+        // GPUI gives quit handlers 200 ms, too little for the engine to let
+        // go of keys it holds for a peer, so this waits here instead.
         cx.on_app_quit(move |cx| {
             let done = model.read(cx).shutdown();
-            async move {
-                let _ = done.recv().await;
+            let deadline = Instant::now() + SHUTDOWN_WAIT;
+            while matches!(done.try_recv(), Err(async_channel::TryRecvError::Empty))
+                && Instant::now() < deadline
+            {
+                std::thread::sleep(Duration::from_millis(10));
             }
+            async {}
         })
         .detach();
     }

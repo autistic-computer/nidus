@@ -155,14 +155,19 @@ fn checks_for_updates() -> bool {
         != Ok(0)
 }
 
-/// Runs before anything else: Velopack's install hooks, `--quit`, a restart
-/// as administrator taking over, and the one-copy rule. False ends it.
-pub fn before_start(arguments: &crate::Arguments) -> bool {
+/// Velopack's install and uninstall hooks, which end the process when
+/// Velopack started it for them.
+pub fn velopack_hooks() {
     velopack::VelopackApp::build()
         .set_auto_apply_on_startup(false)
         .on_after_install_fast_callback(|_| refresh_startup_path())
         .on_before_uninstall_fast_callback(|_| remove_startup_path())
         .run();
+}
+
+/// Runs before the app: `--quit`, a restart as administrator taking over,
+/// and the one-copy rule. False ends it.
+pub fn before_start(arguments: &crate::Arguments) -> bool {
     if arguments.quit {
         post_to_running(WM_QUIT_APP);
         return false;
@@ -416,6 +421,9 @@ impl Engine {
             }
         }
         if let Some(mut child) = self.child.take() {
+            if !matches!(child.try_wait(), Ok(Some(_))) {
+                let _ = child.kill();
+            }
             let _ = child.wait();
         }
     }
@@ -616,9 +624,9 @@ impl Services {
             Some(Ok(())) => cx.quit(),
             Some(Err(error)) => {
                 self.updates.note = Some(error.to_string());
-                start_engine(cx);
+                start_engine(false, cx);
             }
-            None => start_engine(cx),
+            None => start_engine(false, cx),
         }
         cx.notify();
     }
@@ -649,16 +657,17 @@ pub fn start(
         .name("zflow-engine".into())
         .spawn(move || {
             loop {
+                // Stopped for quitting or an update: waits, since a failed
+                // update starts the engine again.
                 let outcome = {
                     let mut engine = engine
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if engine.quitting {
-                        return;
-                    }
-                    engine.ensure()
+                    (!engine.quitting).then(|| engine.ensure())
                 };
-                if errors.send_blocking(outcome.err()).is_err() {
+                if let Some(outcome) = outcome
+                    && errors.send_blocking(outcome.err()).is_err()
+                {
                     return;
                 }
                 std::thread::sleep(SUPERVISE);
@@ -686,7 +695,7 @@ pub fn start(
         })
         .detach();
     }
-    handshake_window();
+    handshake_window(cx);
     crate::tray::init(model, cx);
     cx.on_app_quit(|cx| {
         stop_engine(cx);
@@ -713,19 +722,29 @@ fn stop_engine(cx: &App) {
     }
 }
 
-fn start_engine(cx: &App) {
+/// Starts the engine, or stops it and starts it again, off the main thread:
+/// waiting for it to answer takes seconds. The supervisor reports failures.
+fn start_engine(restart: bool, cx: &App) {
     if let Some(engine) = engine(cx) {
-        let mut engine = engine
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        engine.quitting = false;
-        let _ = engine.ensure();
+        cx.background_executor()
+            .spawn(async move {
+                let mut engine = engine
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if restart {
+                    engine.stop();
+                }
+                engine.quitting = false;
+                let _ = engine.ensure();
+            })
+            .detach();
     }
 }
 
 /// A hidden window other copies find: `--quit` asks this one to quit, and a
-/// second launch asks it to show the window.
-fn handshake_window() {
+/// second launch asks it to show the window. Listens from the start, so a
+/// copy started in the background answers too.
+fn handshake_window(cx: &mut App) {
     let (events, inbox) = async_channel::unbounded::<u32>();
     std::thread::Builder::new()
         .name("zflow-handshake".into())
@@ -768,14 +787,18 @@ fn handshake_window() {
             }
         })
         .ok();
-    APP_EVENTS.with(|cell| *cell.borrow_mut() = Some(inbox));
+    cx.spawn(async move |cx| {
+        while let Ok(message) = inbox.recv().await {
+            let () = cx.update(|cx| match message {
+                WM_QUIT_APP => quit(cx),
+                _ => crate::open(cx),
+            });
+        }
+    })
+    .detach();
 }
 
 static HANDSHAKE: std::sync::OnceLock<async_channel::Sender<u32>> = std::sync::OnceLock::new();
-
-thread_local! {
-    static APP_EVENTS: std::cell::RefCell<Option<async_channel::Receiver<u32>>> = const { std::cell::RefCell::new(None) };
-}
 
 unsafe extern "system" fn handshake_procedure(
     hwnd: HWND,
@@ -793,21 +816,7 @@ unsafe extern "system" fn handshake_procedure(
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }
 
-/// Listens to the handshake window, once the app runs.
-pub fn window_shown(cx: &mut App) {
-    let Some(inbox) = APP_EVENTS.with(|cell| cell.borrow_mut().take()) else {
-        return;
-    };
-    cx.spawn(async move |cx| {
-        while let Ok(message) = inbox.recv().await {
-            let () = cx.update(|cx| match message {
-                WM_QUIT_APP => quit(cx),
-                _ => crate::open(cx),
-            });
-        }
-    })
-    .detach();
-}
+pub fn window_shown(_: &mut App) {}
 
 pub fn notification_response(_: &SystemNotificationResponse, _: &mut App) {}
 
@@ -856,7 +865,7 @@ pub fn banner(
                     Button::new("restart-engine")
                         .small()
                         .label("Restart")
-                        .on_click(|_, _, cx| start_engine(cx))
+                        .on_click(|_, _, cx| start_engine(false, cx))
                         .into_any_element(),
                 ),
                 cx,
@@ -1115,10 +1124,7 @@ pub fn this_computer_entries(
                 .small()
                 .label("Restart")
                 .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| {
-                    stop_engine(cx);
-                    start_engine(cx);
-                }),
+                .on_click(|_, _, cx| start_engine(true, cx)),
         ),
         SettingEntry::new("Quit zflow", "Stop sharing and close the app.").control(
             Button::new("quit")

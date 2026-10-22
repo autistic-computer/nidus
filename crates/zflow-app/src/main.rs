@@ -1,6 +1,9 @@
 //! zflow's app: one window with the computers and the settings, a menu bar
 //! or tray icon on the Mac and Windows, and on the Mac the engine itself.
 
+// No console window on Windows.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod board;
 mod copy;
 mod lens;
@@ -85,6 +88,10 @@ impl Arguments {
 }
 
 fn main() {
+    // Velopack calls the app with its own arguments around installs and
+    // updates, and ends the process once its hooks ran.
+    #[cfg(target_os = "windows")]
+    platform::velopack_hooks();
     let arguments = match Arguments::parse(std::env::args().skip(1)) {
         Ok(arguments) => arguments,
         Err(error) => {
@@ -128,10 +135,8 @@ fn main() {
             }
             let services = platform::init(cx);
             notify_notices(&model, cx);
+            // Each system decides whether the window opens at start.
             platform::start(&model, &services, &arguments, cx);
-            if !arguments.background {
-                open(cx);
-            }
         });
 }
 

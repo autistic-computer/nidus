@@ -366,7 +366,7 @@ pub fn default_config() -> PathBuf {
 pub fn start(
     model: &Entity<crate::model::Model>,
     services: &Entity<Services>,
-    _: &crate::Arguments,
+    arguments: &crate::Arguments,
     cx: &mut App,
 ) {
     let services = services.clone();
@@ -377,6 +377,9 @@ pub fn start(
         }
     })
     .detach();
+    if !arguments.background {
+        crate::open(cx);
+    }
 }
 
 pub fn window_shown(_: &mut App) {}
