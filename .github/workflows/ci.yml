@@ -39,37 +39,38 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Build Windows app
         run: ./scripts/build-windows.ps1
-      # Opens the built app on a fresh configuration: it must stay up with its
-      # window, start the engine and quit when asked. The picture and the log
-      # are kept with the run.
       - name: Open the app
+        run: ./scripts/check-windows-app.ps1 -App windows/dist/Zflow.App.exe -Out target/app-check/built
+      # vpk, Velopack's packager, is a .NET tool.
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      # Installs v0.7.0, the last WinUI release, and updates it to this build
+      # the way its updater does: quit the app, then Update.exe apply.
+      - name: Update from the WinUI app
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $check = New-Item -ItemType Directory -Force target/app-check
-          $config = Join-Path $check 'config/config.toml'
-          $env:RUST_LOG = 'warn,zflow=debug'
-          $app = Start-Process windows/dist/Zflow.App.exe -PassThru `
-            -ArgumentList '--config', "`"$config`"", '--show-settings' `
-            -RedirectStandardError (Join-Path $check 'app.log')
-          Start-Sleep -Seconds 20
-          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-          $picture = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-          [System.Drawing.Graphics]::FromImage($picture).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-          $picture.Save((Join-Path $check 'windows.png'))
-          $app.Refresh()
-          $alive = -not $app.HasExited
-          $title = if ($alive) { $app.MainWindowTitle }
-          $engine = Get-Process zflow -ErrorAction SilentlyContinue
-          "window: '$title', engine: $($engine.Id)"
-          & windows/dist/Zflow.App.exe --quit
-          $quit = $app.WaitForExit(15000)
-          if (-not $quit) { Stop-Process -Id $app.Id -Force }
-          Get-Content (Join-Path $check 'app.log')
-          if (-not $alive) { throw "zflow-app exited early with $($app.ExitCode)" }
-          if ($title -ne 'zflow') { throw 'zflow-app showed no window' }
-          if (-not $engine) { throw 'zflow-app did not start the engine' }
-          if (-not $quit) { throw 'zflow-app did not quit when asked' }
-          if (Select-String -Quiet panicked (Join-Path $check 'app.log')) { throw 'zflow-app panicked' }
+          $check = New-Item -ItemType Directory -Force target/app-check/updated
+          gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern zflow-windows-x86_64-Setup.exe --dir $check
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $root = Join-Path $env:LOCALAPPDATA 'Zflow.App'
+          Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -Wait
+          if (-not (Test-Path (Join-Path $root 'current/Zflow.App.exe'))) { throw 'The WinUI release did not install' }
+          Start-Sleep -Seconds 10
+          & (Join-Path $root 'current/Zflow.App.exe') --quit
+          Start-Sleep -Seconds 5
+          Get-Process Zflow.App, zflow -ErrorAction SilentlyContinue | Stop-Process -Force
+          ./scripts/package-windows.ps1 -PackVersion 0.7.1
+          $package = Resolve-Path target/windows-release/Zflow.App-0.7.1-win-x64-full.nupkg
+          $update = Start-Process (Join-Path $root 'Update.exe') -Wait -PassThru `
+            -ArgumentList 'apply', '--silent', '--norestart', '--package', "`"$package`""
+          Get-ChildItem $root -Filter *.log | Copy-Item -Destination $check
+          if ($update.ExitCode) { throw "Update.exe apply failed with $($update.ExitCode)" }
+          $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
+          if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'The update did not land' }
+          if (-not (Test-Path (Join-Path $root 'current/zflow.exe'))) { throw 'The update left out the engine' }
+          ./scripts/check-windows-app.ps1 -App (Join-Path $root 'Zflow.App.exe') -Out $check
       - name: Upload app check
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
