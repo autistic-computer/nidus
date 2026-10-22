@@ -547,7 +547,14 @@ captures): the window rendered the live agent's snapshot (status, islands with
 a lit seam, the computer list, Settings with every check). A second launch
 showed the first copy's window and `zflow-app --quit` closed it. The `.deb`,
 built in an Ubuntu 24.04 container, passed `tests/deb_lifecycle.sh`, and its
-`zflow-app` ran there under Xvfb with software Vulkan.
+`zflow-app` ran there under Xvfb with software Vulkan; a second launch handed
+off and `--quit` closed it there too.
+
+October 22, CI run 39712515171 on a GitHub macOS 26 runner: the debug bundle
+opened its 960-point window on Settings in zz's light theme, with the menu bar
+icon and the zflow and Window menus, and its in-process engine wrote the
+layout. macOS showed its Local Network prompt on first use, and the
+Accessibility and Paste rows read Allowed on the runner.
 
 Live checks still to run:
 
