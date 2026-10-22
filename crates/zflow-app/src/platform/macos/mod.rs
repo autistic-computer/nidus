@@ -43,6 +43,8 @@ use crate::{
 
 /// A Mac can look at another computer's screen, not be looked at.
 pub const CAN_SHARE_SCREEN: bool = false;
+/// Each computer's control of this Mac can be turned off.
+pub const CAN_REFUSE_CONTROL: bool = true;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this Mac’s own screens, the pointer follows System Settings › Displays.";
@@ -66,7 +68,9 @@ actions!(
         OpenConfiguration,
         CheckForUpdates,
         Quit,
-        HideZflow
+        HideZflow,
+        About,
+        CloseWindow
     ]
 );
 
@@ -296,10 +300,11 @@ impl Services {
         if on && status == SMAppServiceStatus::RequiresApproval {
             open_login_items();
         } else if let Err(error) = result {
-            log::warn!(
-                "could not change the login item: {}",
+            let message = format!(
+                "zflow could not change its login item: {}",
                 error.localizedDescription()
             );
+            crate::model::model(cx).update(cx, |model, cx| model.report(message, cx));
         }
         self.login = status == SMAppServiceStatus::Enabled;
         cx.notify();
@@ -482,6 +487,11 @@ pub fn window_shown(_: &mut App) {
     set_policy(true);
 }
 
+/// The app stays in the menu bar, so the window always closes.
+pub fn may_close(_: &App) -> bool {
+    true
+}
+
 pub fn notification_response(response: &SystemNotificationResponse, cx: &mut App) {
     if response.tag.as_ref() == UPDATE_TAG
         && let Some(services) = cx
@@ -604,24 +614,44 @@ fn install_menus(cx: &mut App) {
     });
     cx.on_action(|_: &HideZflow, cx| cx.hide());
     cx.on_action(|_: &Quit, cx| cx.quit());
+    cx.on_action(|_: &About, cx| {
+        if let Some(mtm) = MainThreadMarker::new() {
+            cx.activate(true);
+            NSApplication::sharedApplication(mtm).orderFrontStandardAboutPanel(None);
+        }
+    });
+    cx.on_action(|_: &CloseWindow, cx| {
+        if let Some(window) = cx.active_window() {
+            let _ = window.update(cx, |_, window, _| window.remove_window());
+        }
+    });
     cx.bind_keys([
         KeyBinding::new("cmd-,", OpenSettings, None),
         KeyBinding::new("cmd-h", HideZflow, None),
         KeyBinding::new("cmd-q", Quit, None),
+        KeyBinding::new("cmd-w", CloseWindow, None),
     ]);
-    cx.set_menus([Menu {
-        name: "zflow".into(),
-        items: vec![
-            MenuItem::action("Check for Updates…", CheckForUpdates),
-            MenuItem::separator(),
-            MenuItem::action("Settings…", OpenSettings),
-            MenuItem::action("Open Configuration…", OpenConfiguration),
-            MenuItem::separator(),
-            MenuItem::action("Hide zflow", HideZflow),
-            MenuItem::action("Quit zflow", Quit),
-        ],
-        disabled: false,
-    }]);
+    cx.set_menus([
+        Menu {
+            name: "zflow".into(),
+            items: vec![
+                MenuItem::action("About zflow", About),
+                MenuItem::action("Check for Updates…", CheckForUpdates),
+                MenuItem::separator(),
+                MenuItem::action("Settings…", OpenSettings),
+                MenuItem::action("Open Configuration…", OpenConfiguration),
+                MenuItem::separator(),
+                MenuItem::action("Hide zflow", HideZflow),
+                MenuItem::action("Quit zflow", Quit),
+            ],
+            disabled: false,
+        },
+        Menu {
+            name: "Window".into(),
+            items: vec![MenuItem::action("Close Window", CloseWindow)],
+            disabled: false,
+        },
+    ]);
 }
 
 /// Opens Sparkle's check, from the menu.

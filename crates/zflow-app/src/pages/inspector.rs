@@ -13,7 +13,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
@@ -44,7 +44,11 @@ pub fn render(
         .find(|computer| Some(&computer.owner) == selection.as_ref())
     {
         Some(computer) => computer_page(this, snapshot, computer, window, cx),
-        None => overview(this, &computers, cx),
+        None => v_flex()
+            .gap(px(20.0))
+            .child(overview(this, &computers, cx))
+            .children(found(this, snapshot, cx))
+            .into_any_element(),
     }
 }
 
@@ -102,6 +106,43 @@ fn overview(
         )
         .children(entries)
         .into_any_element()
+}
+
+/// The computers found on the network, each with a button that adds it
+/// beside this one: the arrangement's drag, for the keyboard and screen
+/// readers.
+fn found(
+    this: &ZflowWindow,
+    snapshot: &Snapshot,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<AnyElement> {
+    if snapshot.unplaced.is_empty() {
+        return None;
+    }
+    let entries = snapshot.unplaced.iter().map(|computer| {
+        let board = this.board.clone();
+        let id = computer.id.clone();
+        SettingEntry::new(computer.name.clone(), copy::unplaced_detail(computer)).control(
+            h_flex()
+                .gap(px(8.0))
+                .children(computer.mark.as_deref().map(widgets::key_mark))
+                .child(
+                    Button::new(SharedString::from(format!("add-{id}")))
+                        .small()
+                        .label("Add")
+                        .on(settings_card_ground(cx))
+                        .disabled(!copy::placeable(computer))
+                        .tooltip(format!("Put it beside {}", copy::THIS_COMPUTER_LOWER))
+                        .on_click(move |_, _, cx| board.read(cx).place_beside(&id, cx)),
+                ),
+        )
+    });
+    Some(
+        SettingsStack::titled("Found on this network")
+            .description("Drag one onto the arrangement, or add it beside this computer.")
+            .children(entries)
+            .into_any_element(),
+    )
 }
 
 fn computer_page(
@@ -345,7 +386,11 @@ fn peer_settings(
                 }),
         )
     };
-    let mut entries = vec![control, keyboard, scroll];
+    let mut entries = Vec::new();
+    if platform::CAN_REFUSE_CONTROL {
+        entries.push(control);
+    }
+    entries.extend([keyboard, scroll]);
     if platform::CAN_SHARE_SCREEN {
         let (model, set) = (model.clone(), set(&name));
         entries.push(

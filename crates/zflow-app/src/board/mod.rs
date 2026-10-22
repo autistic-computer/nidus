@@ -1447,4 +1447,4 @@ fn badge(window: &mut Window, at: Point<Pixels>, vertical: bool, fill: Hsla, ink
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

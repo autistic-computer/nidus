@@ -61,6 +61,8 @@ use crate::{
 
 /// Windows computers are not looked at through a lens yet.
 pub const CAN_SHARE_SCREEN: bool = false;
+/// The Windows engine lets every trusted computer take control.
+pub const CAN_REFUSE_CONTROL: bool = false;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this PC’s own screens, the pointer follows Windows display settings.";
@@ -817,6 +819,11 @@ unsafe extern "system" fn handshake_procedure(
 }
 
 pub fn window_shown(_: &mut App) {}
+
+/// The app stays in the notification area, so the window always closes.
+pub fn may_close(_: &App) -> bool {
+    true
+}
 
 pub fn notification_response(_: &SystemNotificationResponse, _: &mut App) {}
 
