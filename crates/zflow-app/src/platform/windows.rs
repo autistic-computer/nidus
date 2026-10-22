@@ -45,7 +45,7 @@ use zz_gpui::{
     Styled as _, SystemNotificationResponse, Task, Window, div, px,
 };
 use zz_gpui_kit::{
-    Disableable as _, Sizable as _, WindowExt as _,
+    Disableable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     settings::{SettingEntry, SettingsStack, settings_card_ground},
@@ -870,7 +870,7 @@ pub fn banner(
                 error,
                 Some(
                     Button::new("restart-engine")
-                        .small()
+                        .on(widgets::banner_ground(zflow::app::api::Level::Error, cx))
                         .label("Restart")
                         .on_click(|_, _, cx| start_engine(false, cx))
                         .into_any_element(),
@@ -910,7 +910,6 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
         )
         .control(
             Button::new("display-settings")
-                .small()
                 .label("Open")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| cx.open_url("ms-settings:display")),
@@ -934,7 +933,6 @@ pub fn peer_entries(
         )
         .control(
             Button::new("take-control")
-                .small()
                 .label("Control")
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -991,7 +989,6 @@ pub fn settings_stacks(
     )
     .control(
         Button::new("elevate")
-            .small()
             .label("Restart as administrator")
             .disabled(elevated)
             .on(settings_card_ground(cx))
@@ -1002,7 +999,6 @@ pub fn settings_stacks(
     if let Some(reason) = updates.unavailable {
         stack = stack.child(SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")), reason).control(
             Button::new("get-installer")
-                .small()
                 .label("Get installer")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| {
@@ -1028,7 +1024,6 @@ pub fn settings_stacks(
             .child(
                 SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")), note).control(
                     Button::new("update-action")
-                        .small()
                         .label(label)
                         .disabled(updates.checking)
                         .on(settings_card_ground(cx))
@@ -1100,7 +1095,6 @@ pub fn this_computer_entries(
         )
         .control(
             Button::new("return-here")
-                .small()
                 .label("Return here")
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(|this, _, _, cx| this.send(Request::ReturnHere, cx))),
@@ -1119,7 +1113,6 @@ pub fn this_computer_entries(
         ),
         SettingEntry::new("Configuration", "Open your local settings file.").control(
             Button::new("open-config")
-                .small()
                 .label("Open file")
                 .on(settings_card_ground(cx))
                 .on_click(move |_, _, _| {
@@ -1128,14 +1121,12 @@ pub fn this_computer_entries(
         ),
         SettingEntry::new("Input engine", "Restart after editing the configuration.").control(
             Button::new("restart-engine-settings")
-                .small()
                 .label("Restart")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| start_engine(true, cx)),
         ),
         SettingEntry::new("Quit zflow", "Stop sharing and close the app.").control(
             Button::new("quit")
-                .small()
                 .danger()
                 .label("Quit")
                 .on(settings_card_ground(cx))

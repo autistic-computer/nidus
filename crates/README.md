@@ -38,6 +38,8 @@ The shared code in these modules matches zz-ui at `32ee3ab37`: same constants, r
   - zz already has a different `theme::chrome_background`; one of the two needs another name.
   - Stay in zz-ui: `app_workspace_surface`, `app_connection_state`, `workspace_status_bar`, `empty_workspace*`.
 
+- `title_bar`: `WindowControls` now defaults to `roles::WINDOW_CONTROLS`. Its old private default was `ICON_BUTTON.with(..)`, which replaces the icon button's bare look, so Windows caption buttons drew as filled, outlined boxes. zz sets the role itself in `app_shell.rs`, so it never showed there.
+
 None of these modules mention zflow. zflow's own roles and sizes live in `crates/zflow-app`.
 
 ### zz-gpui and zz-gpui-platform

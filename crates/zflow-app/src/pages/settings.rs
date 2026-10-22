@@ -4,7 +4,7 @@
 use zflow::app::api::{Level, Request};
 use zz_gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
 use zz_gpui_kit::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex,
     kbd::Keycap,
@@ -57,15 +57,11 @@ pub fn render(
         );
     }
 
+    let card = settings_card_ground(cx);
     let shortcuts = snapshot.shortcuts.iter().map(|shortcut| {
-        SettingEntry::new(shortcut.title.clone(), "").control(
-            div().flex().gap(px(4.0)).children(
-                shortcut
-                    .keys
-                    .split('+')
-                    .map(|key| Keycap::new(key.trim().to_owned())),
-            ),
-        )
+        // One cap per shortcut, as zz draws key hints.
+        SettingEntry::new(shortcut.title.clone(), "")
+            .control(Keycap::new(shortcut.keys.clone()).on(card))
     });
 
     let mut column = settings_scroll_column("settings")
@@ -96,7 +92,12 @@ pub fn render(
                 let entry = SettingEntry::new(row.title.clone(), row.detail.clone())
                     .title_icon(Icon::new(icon).text_color(color));
                 match platform::health_action(row, cx) {
-                    Some(action) => entry.control(super::fix_button(&row.id, &action, cx)),
+                    Some(action) => entry.control(super::fix_button(
+                        &row.id,
+                        &action,
+                        settings_card_ground(cx),
+                        cx,
+                    )),
                     None => entry,
                 }
             })
@@ -128,7 +129,6 @@ fn about(cx: &mut Context<ZflowWindow>) -> [SettingEntry; 2] {
     let link =
         |id: &'static str, label: &'static str, url: String, cx: &mut Context<ZflowWindow>| {
             Button::new(id)
-                .small()
                 .label(label)
                 .on(settings_card_ground(cx))
                 .on_click(move |_, _, cx| cx.open_url(&url))

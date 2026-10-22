@@ -7,8 +7,8 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, StyledExt as _, Surface, Tone,
-    h_flex, rems_from_px, sidebar::status_dot, v_flex,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, Sizable as _, StyledExt as _, Surface,
+    Tone, h_flex, rems_from_px, sidebar::status_dot, v_flex,
 };
 
 use crate::theme::BANNER;
@@ -21,17 +21,27 @@ pub fn banner(
     action: Option<AnyElement>,
     cx: &App,
 ) -> zz_gpui::Div {
-    let tone = match level {
-        Level::Error => Tone::Danger,
-        Level::Warning => Tone::Warning,
-        Level::Ok => Tone::Success,
-    };
+    let tone = tone_of(level);
     let icon = match level {
         Level::Error => IconName::CircleX,
         Level::Warning => IconName::TriangleAlert,
         Level::Ok => IconName::CircleCheck,
     };
     callout(tone, icon, title, detail, action, cx)
+}
+
+const fn tone_of(level: Level) -> Tone {
+    match level {
+        Level::Error => Tone::Danger,
+        Level::Warning => Tone::Warning,
+        Level::Ok => Tone::Success,
+    }
+}
+
+/// What a banner's button sits on, so it draws for that ground.
+pub fn banner_ground(level: Level, cx: &App) -> Ground {
+    cx.theme()
+        .ground_of(Surface::new(BANNER).tone(tone_of(level)))
 }
 
 /// Something worth knowing that needs nothing done.
@@ -135,27 +145,13 @@ pub fn key_mark(mark: &str) -> zz_gpui::Div {
 /// hollow while it is not.
 pub fn state_dot(state: Option<PeerState>, cx: &App) -> zz_gpui::Div {
     let theme = cx.theme();
-    let color: Option<Hsla> = match state {
-        None | Some(PeerState::Connected) => Some(theme.success),
-        Some(PeerState::ControllingThis | PeerState::ControlledFromHere) => Some(theme.accent),
-        Some(PeerState::Connecting) => Some(theme.warning),
-        Some(PeerState::Paired | PeerState::Unreachable) => None,
-    };
-    match color {
-        Some(color) => status_dot(color),
-        None => div()
-            .flex_none()
-            .size(rems_from_px(6.0))
-            .rounded_full()
-            .border_color(theme.foreground.muted())
-            .map(|this| {
-                #[allow(
-                    clippy::disallowed_methods,
-                    reason = "a hollow state light is a ring, not a surface's edge"
-                )]
-                this.border_1()
-            }),
-    }
+    status_dot(match state {
+        None | Some(PeerState::Connected) => theme.success,
+        Some(PeerState::ControllingThis | PeerState::ControlledFromHere) => theme.accent,
+        Some(PeerState::Connecting) => theme.warning,
+        // Offline is a faint dot.
+        Some(PeerState::Paired | PeerState::Unreachable) => theme.foreground.faint(),
+    })
 }
 
 /// The status light's color.

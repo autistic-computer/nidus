@@ -149,7 +149,7 @@ desktop agent running during use; it supplies cursor placement, desktop
 dimensions, and the barriers where the pointer leaves.
 
 On Ubuntu, open zflow. Computers running zflow on the same network show up
-under **Found on your network**, below the arrangement.
+under **Found on this network**, below the arrangement.
 
 The Mac app lives in the menu bar. While no computer is added, it opens its
 window at launch; otherwise choose **Open zflow** from the menu-bar icon, or
@@ -183,7 +183,7 @@ Once added, **Computers** shows the arrangement, with the new tile where you
 dropped it. **Start at login** and **Reduce Wi-Fi lag**, which installs the
 AWDL helper described below, are in **Settings** (⌘,).
 
-To add another computer later, drag it in from **Found on your network** on
+To add another computer later, drag it in from **Found on this network** on
 **Computers**; the menu-bar menu lists it with **Place…**. For one zflow
 cannot find on the network, such as a computer across Tailscale, use **+**
 (**Add a Computer by Address**) and type its IP address: it joins the shelf

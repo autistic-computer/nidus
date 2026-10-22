@@ -20,8 +20,6 @@ pub type Snapshot = api::Snapshot<Option<Platform>>;
 const POLL: Duration = Duration::from_millis(500);
 #[cfg(not(target_os = "macos"))]
 const POLL: Duration = Duration::from_secs(1);
-/// How long a failed request stays on screen.
-const FAILURE_SHOWN: Duration = Duration::from_secs(8);
 
 /// What the window shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -68,7 +66,7 @@ pub struct Model {
     pub snapshot: Option<Snapshot>,
     /// Why there is no snapshot.
     pub error: Option<String>,
-    /// The last request that failed, shown for a few seconds.
+    /// The last request that failed, until the window takes it as a toast.
     pub failure: Option<String>,
     pub page: Page,
     #[cfg_attr(target_os = "linux", allow(dead_code))]
@@ -80,7 +78,6 @@ pub struct Model {
     /// The newest notice seen, once a snapshot came.
     last_notice: Option<u64>,
     _events: Task<()>,
-    _failure: Option<Task<()>>,
 }
 
 impl Model {
@@ -113,7 +110,6 @@ impl Model {
             jobs,
             last_notice: None,
             _events: receive,
-            _failure: None,
         }
     }
 
@@ -134,7 +130,6 @@ impl Model {
                 jobs,
                 last_notice: None,
                 _events: Task::ready(()),
-                _failure: None,
             },
             Requests(queue),
         )
@@ -205,10 +200,9 @@ impl Model {
         finished
     }
 
-    pub fn dismiss_failure(&mut self, cx: &mut Context<Self>) {
-        self.failure = None;
-        self._failure = None;
-        cx.notify();
+    /// The failure not shown yet, once.
+    pub fn take_failure(&mut self) -> Option<String> {
+        self.failure.take()
     }
 
     /// Notices not posted yet, oldest first, about computers still paired.
@@ -265,10 +259,6 @@ impl Model {
                     }
                 } else {
                     self.failure = Some(error);
-                    self._failure = Some(cx.spawn(async move |this, cx| {
-                        cx.background_executor().timer(FAILURE_SHOWN).await;
-                        let _ = this.update(cx, Model::dismiss_failure);
-                    }));
                 }
                 cx.notify();
             }

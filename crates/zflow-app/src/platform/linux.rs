@@ -57,8 +57,8 @@ impl Setup {
     pub const fn button(self) -> Option<&'static str> {
         match self {
             Self::Install => Some("Install"),
-            Self::Enable => Some("Turn On"),
-            Self::LogOut | Self::Update | Self::Error => Some("Log Out"),
+            Self::Enable => Some("Turn on"),
+            Self::LogOut | Self::Update | Self::Error => Some("Log out"),
             Self::Outdated | Self::StoreOutdated => None,
         }
     }
@@ -759,7 +759,7 @@ fn parse_strv(text: &str) -> Vec<String> {
 use zflow::app::api::{Action, Health, Peer, Request};
 use zz_gpui::{AnyElement, IntoElement, ParentElement as _, Styled as _, Window, div, px};
 use zz_gpui_kit::{
-    Disableable as _, Sizable as _, WindowExt as _,
+    Disableable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     settings::{SettingEntry, SettingsStack, settings_card_ground},
@@ -791,7 +791,6 @@ pub fn banner(
     let busy = services.setup_busy;
     let action = step.button().map(|label| {
         Button::new("setup-step")
-            .small()
             .primary()
             .label(label)
             .disabled(busy)
@@ -841,7 +840,6 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
         SettingEntry::new("Display settings", "Arrange this computer’s own screens.").control(
             Button::new("display-settings")
-                .small()
                 .label("Open")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, _| {
@@ -911,7 +909,6 @@ pub fn settings_stacks(
         ("Check", updates.note.clone())
     };
     let act = Button::new("update-check")
-        .small()
         .label(label)
         .disabled(busy)
         .on(settings_card_ground(cx))
@@ -990,7 +987,6 @@ pub fn this_computer_entries(
         )
         .control(
             Button::new("open-logs")
-                .small()
                 .label("Open")
                 .on(settings_card_ground(cx))
                 .on_click(cx.listener(|this, _, _, cx| this.send(Request::OpenLogs, cx))),

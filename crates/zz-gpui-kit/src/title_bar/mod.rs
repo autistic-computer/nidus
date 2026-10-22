@@ -12,9 +12,8 @@ use zz_gpui::{
 
 use crate::UiZoom;
 use crate::{
-    ActiveTheme as _, Edge, Highlight, Icon, IconName, InteractiveElementExt as _, Kind, Layer,
-    PaintState, Shape, StylePatch, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle,
-    h_flex,
+    ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Kind, Layer, PaintState,
+    StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
 
 /// Height of the title bar while panes sit flush: one pane header. With a
@@ -155,13 +154,6 @@ const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
 /// The Windows 11 shell's own caption button width.
 #[cfg(target_os = "windows")]
 const CONTROL_ICON_WIDTH: Pixels = px(46.);
-
-const WINDOW_CONTROL: SurfaceRole = SurfaceRole::ICON_BUTTON.with(
-    StylePatch::EMPTY
-        .shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
 
 #[derive(IntoElement)]
 struct WindowControl {
@@ -310,7 +302,9 @@ impl Default for WindowControls {
     fn default() -> Self {
         Self {
             on_close_window: None,
-            surface_role: WINDOW_CONTROL,
+            // A role under the icon button, so the controls keep its bare,
+            // unfilled look; `ICON_BUTTON.with` would replace it.
+            surface_role: crate::roles::WINDOW_CONTROLS,
         }
     }
 }

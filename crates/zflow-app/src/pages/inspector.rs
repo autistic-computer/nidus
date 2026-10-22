@@ -13,7 +13,7 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    Disableable as _, Icon, IconName, Sizable as _, WindowExt as _,
+    Disableable as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
@@ -128,7 +128,6 @@ fn found(
                 .children(computer.mark.as_deref().map(widgets::key_mark))
                 .child(
                     Button::new(SharedString::from(format!("add-{id}")))
-                        .small()
                         .label("Add")
                         .on(settings_card_ground(cx))
                         .disabled(!copy::placeable(computer))
@@ -358,7 +357,6 @@ fn peer_settings(
         )
         .control(
             Button::new("keyboard-mode")
-                .small()
                 .on(settings_card_ground(cx))
                 .label(copy::keyboard_title(current))
                 .dropdown_caret(true)
@@ -409,7 +407,7 @@ fn peer_settings(
         let model = model.clone();
         SettingEntry::new(
             format!("Forget {name}"),
-            "Stops input between the two computers and removes its trusted identity. It goes back to Found on your network.",
+            "Stops input between the two computers and removes its trusted identity. It goes back to Found on this network.",
         )
         .control(
             super::card_danger("forget", "Forget…", cx).on_click(move |_, window, cx| {
@@ -418,7 +416,7 @@ fn peer_settings(
                     let (name, model) = (name.clone(), model.clone());
                     alert
                         .title(format!("Forget {name}?"))
-                        .description("This stops input between the two computers and removes its trusted identity. It goes back to Found on your network.")
+                        .description("This stops input between the two computers and removes its trusted identity. It goes back to Found on this network.")
                         .button_props(
                             DialogButtonProps::default()
                                 .ok_text("Forget")
