@@ -39,6 +39,44 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Build Windows app
         run: ./scripts/build-windows.ps1
+      # Opens the built app on a fresh configuration: it must stay up with its
+      # window, start the engine and quit when asked. The picture and the log
+      # are kept with the run.
+      - name: Open the app
+        run: |
+          $check = New-Item -ItemType Directory -Force target/app-check
+          $config = Join-Path $check 'config/config.toml'
+          $env:RUST_LOG = 'warn,zflow=debug'
+          $app = Start-Process windows/dist/Zflow.App.exe -PassThru `
+            -ArgumentList '--config', "`"$config`"", '--show-settings' `
+            -RedirectStandardError (Join-Path $check 'app.log')
+          Start-Sleep -Seconds 20
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $picture = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          [System.Drawing.Graphics]::FromImage($picture).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          $picture.Save((Join-Path $check 'windows.png'))
+          $app.Refresh()
+          $alive = -not $app.HasExited
+          $title = if ($alive) { $app.MainWindowTitle }
+          $engine = Get-Process zflow -ErrorAction SilentlyContinue
+          "window: '$title', engine: $($engine.Id)"
+          & windows/dist/Zflow.App.exe --quit
+          $quit = $app.WaitForExit(15000)
+          if (-not $quit) { Stop-Process -Id $app.Id -Force }
+          Get-Content (Join-Path $check 'app.log')
+          if (-not $alive) { throw "zflow-app exited early with $($app.ExitCode)" }
+          if ($title -ne 'zflow') { throw 'zflow-app showed no window' }
+          if (-not $engine) { throw 'zflow-app did not start the engine' }
+          if (-not $quit) { throw 'zflow-app did not quit when asked' }
+          if (Select-String -Quiet panicked (Join-Path $check 'app.log')) { throw 'zflow-app panicked' }
+      - name: Upload app check
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zflow-app-check-windows
+          path: target/app-check/
+          if-no-files-found: ignore
       - name: Windows script checks
         run: |
           pwsh -NoProfile -File windows/Zflow.UpdateTests/Install.Tests.ps1
@@ -156,6 +194,39 @@ jobs:
       # The app, the AWDL helper, Sparkle and the icon, in a signed bundle.
       - name: App bundle
         run: ./scripts/build-macos-app.sh --debug
+      # Opens the bundle on a fresh configuration: it must stay up with its
+      # window on screen. The picture and the log are kept with the run.
+      - name: Open the app
+        run: |
+          mkdir -p target/app-check
+          cd target/app-check
+          cat > windows.swift <<'SWIFT'
+          import CoreGraphics
+          let pid = Int(CommandLine.arguments[1])!
+          let all = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+          let mine = all.filter { $0[kCGWindowOwnerPID as String] as? Int == pid }
+          for window in mine { print(window[kCGWindowBounds as String] ?? "") }
+          let big = mine.contains { (($0[kCGWindowBounds as String] as? [String: Any])?["Width"] as? Double ?? 0) >= 700 }
+          if !big { print("no zflow window on screen"); exit(1) }
+          SWIFT
+          RUST_LOG=warn,zflow=debug ../debug/zflow.app/Contents/MacOS/zflow-app \
+            --config "$PWD/config/config.toml" --show-settings 2> app.log &
+          pid=$!
+          sleep 20
+          screencapture -x macos.png || true
+          kill -0 "$pid" || { cat app.log; exit 1; }
+          swift windows.swift "$pid" || { cat app.log; exit 1; }
+          kill "$pid"
+          wait "$pid" || true
+          cat app.log
+          ! grep -q panicked app.log
+      - name: Upload app check
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: zflow-app-check-macos
+          path: target/app-check/
+          if-no-files-found: ignore
       # install.sh also runs on Macs, with their own tar and checksum tools.
       - name: Installer
         run: python3 tests/install_test.py
