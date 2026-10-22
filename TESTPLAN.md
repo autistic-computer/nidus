@@ -534,10 +534,20 @@ drop; a click selects a computer and an arrow key moves it 100 units. Others
 cover the arrangement math, the lens geometry, the pairing note, the GNOME
 setup steps and the Windows status translation.
 
+CI opens the built app on the Mac and Windows runners on a fresh
+configuration and keeps a screen picture: the Mac must show a window, and
+Windows must show one, start the engine and quit with it on `--quit`
+(`scripts/check-windows-app.ps1`). The Windows job also installs v0.7.0, the
+last WinUI release, and updates it to the build with the installed
+`Update.exe`, as the old app's updater does, then checks the result the same
+way.
+
 October 21 verification on Ubuntu 26.10 GNOME (Wayland, Xwayland for
 captures): the window rendered the live agent's snapshot (status, islands with
-a lit seam, the computer list, Settings with every check). macOS and Windows
-were type-checked from Linux only; nothing has run on a Mac or a Windows PC.
+a lit seam, the computer list, Settings with every check). A second launch
+showed the first copy's window and `zflow-app --quit` closed it. The `.deb`,
+built in an Ubuntu 24.04 container, passed `tests/deb_lifecycle.sh`, and its
+`zflow-app` ran there under Xvfb with software Vulkan.
 
 Live checks still to run:
 
