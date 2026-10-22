@@ -18,7 +18,7 @@ ksni = { version = "=0.3.6", default-features = false, features = ["async-io", "
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2.workspace = true
-objc2-app-kit = { workspace = true, features = ["NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView"] }
+objc2-app-kit = { workspace = true, features = ["NSApplication", "NSButton", "NSCell", "NSControl", "NSEvent", "NSImage", "NSMenu", "NSMenuItem", "NSResponder", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "NSView", "objc2-core-foundation"] }
 objc2-foundation = { workspace = true, features = ["NSData", "NSGeometry", "NSString"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]

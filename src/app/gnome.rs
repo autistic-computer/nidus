@@ -169,6 +169,8 @@ impl Service {
             | Request::SetAwdl { .. }
             | Request::HelperReady { .. }
             | Request::Lens { .. }
+            | Request::TakeControl { .. }
+            | Request::ReturnHere
             | Request::AllowAccessibility
             | Request::CheckAccessibility
             | Request::Discover => bail!("Not available on this computer"),

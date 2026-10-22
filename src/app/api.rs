@@ -308,6 +308,12 @@ pub enum Request {
     OpenLogs,
     /// Linux: installs and turns on the GNOME extension.
     InstallExtension,
+    /// Windows: sends this computer's input to computer `name` now.
+    TakeControl {
+        name: String,
+    },
+    /// Windows: brings input back to this computer.
+    ReturnHere,
 }
 
 #[cfg(test)]

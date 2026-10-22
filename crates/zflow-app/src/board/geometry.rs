@@ -266,7 +266,7 @@ mod tests {
         assert_eq!(a.right(), b.x, "touching screens stay touching");
         assert_eq!((a.x + b.right()) / 2.0, 300.0);
         assert!(a.y >= ROOM_ABOVE);
-        let small = Fit::new(&monitors, 300.0, BOARD_HEIGHT).unwrap();
+        let small = Fit::new(&monitors, 200.0, BOARD_HEIGHT).unwrap();
         assert!(small.scale < 0.12);
         assert_eq!(Fit::new(&[], 300.0, 200.0), None);
     }

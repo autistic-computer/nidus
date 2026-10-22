@@ -340,7 +340,9 @@ impl NativeApp {
             Request::SetAutostart { .. }
             | Request::OpenSettings
             | Request::OpenLogs
-            | Request::InstallExtension => bail!("Not available on this computer"),
+            | Request::InstallExtension
+            | Request::TakeControl { .. }
+            | Request::ReturnHere => bail!("Not available on this computer"),
         }
         Ok(serde_json::to_value(self.snapshot())?)
     }
