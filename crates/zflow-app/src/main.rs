@@ -59,15 +59,21 @@ impl Arguments {
                 "--background" => parsed.background = true,
                 "--quit" => parsed.quit = true,
                 "--replace-process" => {
-                    let pid = arguments.next().ok_or("--replace-process takes a process id")?;
-                    parsed.replace_process =
-                        Some(pid.parse().map_err(|_| "--replace-process takes a process id")?);
+                    let pid = arguments
+                        .next()
+                        .ok_or("--replace-process takes a process id")?;
+                    parsed.replace_process = Some(
+                        pid.parse()
+                            .map_err(|_| "--replace-process takes a process id")?,
+                    );
                 }
                 "--replace-user" => {
-                    parsed.replace_user = Some(arguments.next().ok_or("--replace-user takes an id")?);
+                    parsed.replace_user =
+                        Some(arguments.next().ok_or("--replace-user takes an id")?);
                 }
                 "--restart-ready" => {
-                    parsed.restart_ready = Some(arguments.next().ok_or("--restart-ready takes a name")?);
+                    parsed.restart_ready =
+                        Some(arguments.next().ok_or("--restart-ready takes a name")?);
                 }
                 // macOS adds this to apps it launches from Finder.
                 argument if argument.starts_with("-psn_") => {}
@@ -97,7 +103,10 @@ fn main() {
     if !platform::before_start(&arguments) {
         return;
     }
-    let config = arguments.config.clone().unwrap_or_else(platform::default_config);
+    let config = arguments
+        .config
+        .clone()
+        .unwrap_or_else(platform::default_config);
     let application = zz_gpui_platform::application();
     // Opening zflow again while it runs, as from Applications, shows the window.
     #[cfg(target_os = "macos")]
@@ -128,18 +137,20 @@ fn main() {
 
 /// Shows the window, opening it if it is closed.
 pub fn open(cx: &mut App) {
-    if let Some(window) = cx.try_global::<MainWindow>().and_then(|window| window.0) {
-        if window
+    if let Some(window) = cx.try_global::<MainWindow>().and_then(|window| window.0)
+        && window
             .update(cx, |_, window, _| window.activate_window())
             .is_ok()
-        {
-            platform::window_shown(cx);
-            cx.activate(true);
-            return;
-        }
+    {
+        platform::window_shown(cx);
+        cx.activate(true);
+        return;
     }
     let model = model::model(cx);
-    let Some(services) = cx.try_global::<platform::SharedServices>().map(|services| services.0.clone()) else {
+    let Some(services) = cx
+        .try_global::<platform::SharedServices>()
+        .map(|services| services.0.clone())
+    else {
         return;
     };
     let bounds = Bounds::centered(None, size(px(960.0), px(680.0)), cx);
@@ -212,7 +223,9 @@ fn notify_notices(model: &Entity<Model>, cx: &mut App) {
                     name: name.to_owned(),
                 });
             } else {
-                model.update(cx, |model, cx| model.show(Page::Computer(name.to_owned()), cx));
+                model.update(cx, |model, cx| {
+                    model.show(Page::Computer(name.to_owned()), cx);
+                });
                 open(cx);
             }
         } else {

@@ -3,7 +3,7 @@
 
 use zflow::app::api::{Level, PeerState, State};
 use zz_gpui::{
-    AnyElement, App, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, div,
+    AnyElement, App, Hsla, ParentElement as _, SharedString, Styled as _, div,
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
@@ -121,12 +121,14 @@ pub fn mark_indices(mark: &str) -> Vec<usize> {
     reason = "a key's mark is an identity, drawn in the same colors on every computer and in every theme"
 )]
 pub fn key_mark(mark: &str) -> zz_gpui::Div {
-    h_flex().gap(px(2.0)).children(mark_indices(mark).into_iter().map(|index| {
-        div()
-            .size(px(7.0))
-            .rounded(px(2.0))
-            .bg(zz_gpui::rgb(MARK_COLORS[index]))
-    }))
+    h_flex()
+        .gap(px(2.0))
+        .children(mark_indices(mark).into_iter().map(|index| {
+            div()
+                .size(px(7.0))
+                .rounded(px(2.0))
+                .bg(zz_gpui::rgb(MARK_COLORS[index]))
+        }))
 }
 
 /// A paired computer's state as a small light: filled while it is linked,
@@ -174,25 +176,6 @@ pub fn muted(text: impl Into<SharedString>, size: f32, cx: &App) -> zz_gpui::Div
         .text_size(rems_from_px(size))
         .text_color(cx.theme().foreground.muted())
         .child(text.into())
-}
-
-/// A row on a card that only says something: a title and its value.
-pub fn value_row(
-    title: impl Into<SharedString>,
-    value: impl IntoElement,
-    cx: &App,
-) -> zz_gpui::Div {
-    h_flex()
-        .w_full()
-        .justify_between()
-        .gap(px(16.0))
-        .child(div().text_size(rems_from_px(13.0)).child(title.into()))
-        .child(
-            div()
-                .text_size(rems_from_px(12.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(value),
-        )
 }
 
 #[cfg(test)]

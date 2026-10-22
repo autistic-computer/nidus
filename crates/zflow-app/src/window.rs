@@ -3,14 +3,12 @@
 use zflow::app::api::Request;
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, WindowControlArea, div,
-    prelude::FluentBuilder as _, px,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
+    Subscription, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
     ActiveTheme as _, Disableable as _, IconName, Root, Sizable as _, WindowControls,
-    WindowExt as _, draws_window_controls,
-    h_flex,
+    WindowExt as _, draws_window_controls, h_flex,
     input::InputState,
     settings::{settings_navigation_button, settings_navigation_row},
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
@@ -22,8 +20,7 @@ use zz_gpui_kit::{
 use crate::{
     board::Board,
     model::{Model, Page},
-    pages, platform,
-    widgets,
+    pages, platform, widgets,
 };
 
 const SIDEBAR_WIDTH: f32 = 220.0;
@@ -79,14 +76,21 @@ impl ZflowWindow {
     /// Opens the dialog that says hello to a computer mDNS cannot see.
     pub fn open_add_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.address_error = None;
-        self.address.update(cx, |input, cx| input.set_value("", window, cx));
+        self.address
+            .update(cx, |input, cx| input.set_value("", window, cx));
         let this = cx.entity();
-        window.open_dialog(cx, move |dialog, _, cx| pages::add_address(&this, dialog, cx));
+        window.open_dialog(cx, move |dialog, _, cx| {
+            pages::add_address(&this, dialog, cx)
+        });
     }
 
     fn sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let page = self.model.read(cx).page.clone();
-        let row = |id: &'static str, title: &'static str, icon: IconName, target: Page, cx: &mut Context<Self>| {
+        let row = |id: &'static str,
+                   title: &'static str,
+                   icon: IconName,
+                   target: Page,
+                   cx: &mut Context<Self>| {
             let selected = page == target;
             settings_navigation_row(
                 settings_navigation_button(id, title, icon, selected, cx).on_click(cx.listener(
@@ -99,8 +103,20 @@ impl ZflowWindow {
         };
         let navigation = v_flex()
             .px(cx.theme().row_inset)
-            .child(row("nav-computers", "Computers", IconName::LayoutDashboard, Page::Computers, cx))
-            .child(row("nav-settings", "Settings", IconName::Settings, Page::Settings, cx))
+            .child(row(
+                "nav-computers",
+                "Computers",
+                IconName::LayoutDashboard,
+                Page::Computers,
+                cx,
+            ))
+            .child(row(
+                "nav-settings",
+                "Settings",
+                IconName::Settings,
+                Page::Settings,
+                cx,
+            ))
             .child(div().flex_1())
             .child(sidebar_footer(
                 "sidebar-footer",
@@ -110,7 +126,8 @@ impl ZflowWindow {
             ));
         let titlebar = window_drag_handle(
             "sidebar-drag",
-            sidebar_titlebar("sidebar-title", div(), cx).window_control_area(WindowControlArea::Drag),
+            sidebar_titlebar("sidebar-title", div(), cx)
+                .window_control_area(WindowControlArea::Drag),
             window,
             cx,
         );
@@ -129,7 +146,7 @@ impl ZflowWindow {
     fn titlebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let model = self.model.read(cx);
         let tools = (model.page == Page::Computers)
-            .then(|| model.snapshot.as_ref())
+            .then_some(model.snapshot.as_ref())
             .flatten()
             .filter(|snapshot| !snapshot.peers.is_empty())
             .map(|snapshot| snapshot.sharing);
@@ -151,7 +168,9 @@ impl ZflowWindow {
             .when(model.page == Page::Computers, |this| {
                 this.child(
                     chrome_button("add-address", IconName::Plus, "Add a computer by address")
-                        .on_click(cx.listener(|this, _, window, cx| this.open_add_address(window, cx))),
+                        .on_click(
+                            cx.listener(|this, _, window, cx| this.open_add_address(window, cx)),
+                        ),
                 )
             });
         let controls = draws_window_controls(window).then(WindowControls::new);
@@ -182,23 +201,21 @@ impl Render for ZflowWindow {
                 .bottom(px(16.0))
                 .left(px(SIDEBAR_WIDTH + 16.0))
                 .right(px(16.0))
-                .child(
-                    widgets::banner(
-                        zflow::app::api::Level::Warning,
-                        "That didn’t work",
-                        failure,
-                        Some(
-                            zz_gpui_kit::button::Button::new("dismiss-failure")
-                                .small()
-                                .label("Dismiss")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.model.update(cx, |model, cx| model.dismiss_failure(cx));
-                                }))
-                                .into_any_element(),
-                        ),
-                        cx,
+                .child(widgets::banner(
+                    zflow::app::api::Level::Warning,
+                    "That didn’t work",
+                    failure,
+                    Some(
+                        zz_gpui_kit::button::Button::new("dismiss-failure")
+                            .small()
+                            .label("Dismiss")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.model.update(cx, Model::dismiss_failure);
+                            }))
+                            .into_any_element(),
                     ),
-                )
+                    cx,
+                ))
                 .into_any_element()
         });
         let dialogs = Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element);

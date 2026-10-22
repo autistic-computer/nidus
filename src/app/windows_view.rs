@@ -141,7 +141,12 @@ pub fn snapshot(status: Value, config_path: &Path) -> Result<Snapshot<WindowsPla
         )
     });
     if let Some(notice) = &status.notice {
-        health.push(Health::new("notice", Level::Warning, "Connection notice", notice.clone()));
+        health.push(Health::new(
+            "notice",
+            Level::Warning,
+            "Connection notice",
+            notice.clone(),
+        ));
     }
     let connected = peers.iter().any(|peer| {
         matches!(
@@ -201,7 +206,8 @@ pub fn commands(request: &Request, name_of: impl Fn(&str) -> Option<String>) -> 
                 commands.push(json!({"command": "keyboard", "peer": name, "mode": mode}));
             }
             if let Some(enabled) = reverse_scroll {
-                commands.push(json!({"command": "reverse_scroll", "peer": name, "enabled": enabled}));
+                commands
+                    .push(json!({"command": "reverse_scroll", "peer": name, "enabled": enabled}));
             }
             commands.push(status);
             commands
@@ -227,7 +233,12 @@ pub fn commands(request: &Request, name_of: impl Fn(&str) -> Option<String>) -> 
         })],
         // Trusting puts its screen beside this one; the move puts it where
         // it was dropped.
-        Request::Place { id, x, y, tolerance } => {
+        Request::Place {
+            id,
+            x,
+            y,
+            tolerance,
+        } => {
             let key = id.strip_prefix("key:").unwrap_or(id);
             let mut commands = vec![json!({"command": "trust", "key": key})];
             if let Some(name) = name_of(id) {
@@ -310,7 +321,8 @@ impl Pipe {
             serde_json::from_value(json!({"command": "status"})).ok()?;
         self.runtime
             .block_on(async {
-                tokio::time::timeout(wait, crate::windows::ipc::request(&self.config, command)).await
+                tokio::time::timeout(wait, crate::windows::ipc::request(&self.config, command))
+                    .await
             })
             .ok()?
             .ok()
@@ -373,7 +385,12 @@ mod tests {
         let mut locked = status();
         locked["available"] = json!(false);
         let snapshot = snapshot(locked, Path::new("x")).unwrap();
-        assert!(snapshot.health.iter().any(|row| row.level == Level::Warning));
+        assert!(
+            snapshot
+                .health
+                .iter()
+                .any(|row| row.level == Level::Warning)
+        );
     }
 
     #[test]

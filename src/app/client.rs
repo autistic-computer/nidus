@@ -28,9 +28,9 @@ impl Client {
         #[cfg(target_os = "linux")]
         {
             let _ = config;
-            return Ok(Self {
+            Ok(Self {
                 bus: session_bus()?,
-            });
+            })
         }
         #[cfg(windows)]
         return Ok(Self {
@@ -63,7 +63,7 @@ impl Client {
                 .map_err(agent_error)?
                 .body()
                 .deserialize()?;
-            return Ok(serde_json::from_str(&reply)?);
+            Ok(serde_json::from_str(&reply)?)
         }
         #[cfg(windows)]
         return self.pipe.call(request);

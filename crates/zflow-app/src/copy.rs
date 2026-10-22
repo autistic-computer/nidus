@@ -57,6 +57,7 @@ pub const fn peer_state(state: PeerState) -> &'static str {
 }
 
 /// Whether it is linked now: input can cross to it.
+#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const fn linked(state: PeerState) -> bool {
     matches!(
         state,
@@ -171,7 +172,10 @@ pub fn finish_note(
         )),
         WindowState::Closed if window.reason == Some(Reason::Failed) => Some((
             "Drag the new computer into place".into(),
-            format!("{} could not add it by itself.", capitalized(THIS_COMPUTER_LOWER)),
+            format!(
+                "{} could not add it by itself.",
+                capitalized(THIS_COMPUTER_LOWER)
+            ),
         )),
         _ => None,
     }
@@ -214,7 +218,12 @@ mod tests {
             seconds_left: Some(20),
             ..open.clone()
         };
-        assert!(finish_note(&last, None, "laptop").unwrap().1.contains("1 minute "));
+        assert!(
+            finish_note(&last, None, "laptop")
+                .unwrap()
+                .1
+                .contains("1 minute ")
+        );
         let holding = PairingWindow {
             holding: Some(Holding {
                 name: "desk".into(),
@@ -223,7 +232,10 @@ mod tests {
             }),
             ..open
         };
-        assert_eq!(finish_note(&holding, None, "laptop").unwrap().0, "Adding desk…");
+        assert_eq!(
+            finish_note(&holding, None, "laptop").unwrap().0,
+            "Adding desk…"
+        );
         assert_eq!(finish_note(&PairingWindow::default(), None, "laptop"), None);
     }
 

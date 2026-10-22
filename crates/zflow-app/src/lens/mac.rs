@@ -20,8 +20,8 @@ use zflow::{
 };
 use zz_gpui::{
     App, AppContext as _, Bounds, Context, Entity, InteractiveElement as _, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels,
-    Point, Render, RenderImage, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, Window,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
+    Render, RenderImage, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, Window,
     WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, img,
     point, px, size,
 };
@@ -74,7 +74,7 @@ pub fn init(model: &Entity<Model>, cx: &mut App) {
     if register_hot_key(pressed) {
         cx.spawn(async move |cx| {
             while hits.recv().await.is_ok() {
-                let _ = cx.update(toggle);
+                let () = cx.update(toggle);
             }
         })
         .detach();
@@ -213,9 +213,11 @@ impl LensView {
         let monitor = key_monitor(viewer.clone(), notes);
         cx.spawn(async move |this, cx| {
             while let Ok(KeyNote::Close) = inbox.recv().await {
-                let _ = this.update(cx, |_, cx| cx.defer(|cx| {
-                    close(cx);
-                }));
+                let _ = this.update(cx, |_, cx| {
+                    cx.defer(|cx| {
+                        close(cx);
+                    });
+                });
             }
         })
         .detach();
@@ -231,7 +233,10 @@ impl LensView {
         Self {
             name,
             viewer,
-            screen: (f64::from(f32::from(screen.size.width)), f64::from(f32::from(screen.size.height))),
+            screen: (
+                f64::from(f32::from(screen.size.width)),
+                f64::from(f32::from(screen.size.height)),
+            ),
             opened: Instant::now(),
             answered: false,
             failure: None,
@@ -388,7 +393,7 @@ impl LensView {
             });
             return;
         }
-        if let Some(button) = mouse_number(event.button).and_then(button) {
+        if let Some(button) = button(mouse_number(event.button)) {
             self.viewer.send(Input::Button {
                 button,
                 pressed: true,
@@ -397,7 +402,7 @@ impl LensView {
     }
 
     fn released(&mut self, event: &MouseUpEvent) {
-        if let Some(button) = mouse_number(event.button).and_then(button) {
+        if let Some(button) = button(mouse_number(event.button)) {
             self.viewer.send(Input::Button {
                 button,
                 pressed: false,
@@ -419,13 +424,13 @@ impl LensView {
     }
 }
 
-fn mouse_number(button: MouseButton) -> Option<u8> {
+fn mouse_number(button: MouseButton) -> u8 {
     match button {
-        MouseButton::Left => Some(0),
-        MouseButton::Right => Some(1),
-        MouseButton::Middle => Some(2),
-        MouseButton::Navigate(zz_gpui::NavigationDirection::Back) => Some(3),
-        MouseButton::Navigate(zz_gpui::NavigationDirection::Forward) => Some(4),
+        MouseButton::Left => 0,
+        MouseButton::Right => 1,
+        MouseButton::Middle => 2,
+        MouseButton::Navigate(zz_gpui::NavigationDirection::Back) => 3,
+        MouseButton::Navigate(zz_gpui::NavigationDirection::Forward) => 4,
     }
 }
 
@@ -471,12 +476,30 @@ impl Render for LensView {
             .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _, cx| {
                 view.moved(event.position, cx);
             }))
-            .on_mouse_down(MouseButton::Left, cx.listener(|view, event, _, cx| view.pressed(event, cx)))
-            .on_mouse_down(MouseButton::Right, cx.listener(|view, event, _, cx| view.pressed(event, cx)))
-            .on_mouse_down(MouseButton::Middle, cx.listener(|view, event, _, cx| view.pressed(event, cx)))
-            .on_mouse_up(MouseButton::Left, cx.listener(|view, event, _, _| view.released(event)))
-            .on_mouse_up(MouseButton::Right, cx.listener(|view, event, _, _| view.released(event)))
-            .on_mouse_up(MouseButton::Middle, cx.listener(|view, event, _, _| view.released(event)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|view, event, _, cx| view.pressed(event, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|view, event, _, cx| view.pressed(event, cx)),
+            )
+            .on_mouse_down(
+                MouseButton::Middle,
+                cx.listener(|view, event, _, cx| view.pressed(event, cx)),
+            )
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|view, event, _, _| view.released(event)),
+            )
+            .on_mouse_up(
+                MouseButton::Right,
+                cx.listener(|view, event, _, _| view.released(event)),
+            )
+            .on_mouse_up(
+                MouseButton::Middle,
+                cx.listener(|view, event, _, _| view.released(event)),
+            )
             .on_scroll_wheel(cx.listener(|view, event, _, _| view.scrolled(event)))
             .child(
                 div()
@@ -524,7 +547,10 @@ impl Drop for LensView {
 /// Reads keys while the lens is up, before the rest of the app sees them:
 /// Escape closes, Command-C copies the other computer's selection, and every
 /// other key, modifiers by side, goes over.
-fn key_monitor(viewer: Arc<Viewer>, notes: async_channel::Sender<KeyNote>) -> Option<Retained<AnyObject>> {
+fn key_monitor(
+    viewer: Arc<Viewer>,
+    notes: async_channel::Sender<KeyNote>,
+) -> Option<Retained<AnyObject>> {
     let swallowed = std::cell::Cell::new(None::<u16>);
     let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
         // SAFETY: AppKit hands the monitor a live event for this call.
@@ -544,7 +570,9 @@ fn key_monitor(viewer: Arc<Viewer>, notes: async_channel::Sender<KeyNote>) -> Op
                         | NSEventModifierFlags::Option
                         | NSEventModifierFlags::Control,
                 ) == NSEventModifierFlags::Command;
-                let character = event.charactersIgnoringModifiers().map(|text| text.to_string());
+                let character = event
+                    .charactersIgnoringModifiers()
+                    .map(|text| text.to_string());
                 match key_down(code, command_only, character.as_deref()) {
                     KeyAction::Close => {
                         let _ = notes.try_send(KeyNote::Close);
@@ -622,8 +650,8 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-const fn four(code: &[u8; 4]) -> u32 {
-    u32::from_be_bytes(*code)
+const fn four(code: [u8; 4]) -> u32 {
+    u32::from_be_bytes(code)
 }
 
 static PRESSED: OnceLock<async_channel::Sender<()>> = OnceLock::new();
@@ -640,7 +668,7 @@ fn register_hot_key(pressed: async_channel::Sender<()>) -> bool {
     const KEY_L: u32 = 0x25;
     const CONTROL: u32 = 1 << 12;
     const OPTION: u32 = 1 << 11;
-    const KEYBOARD: u32 = four(b"keyb");
+    const KEYBOARD: u32 = four(*b"keyb");
     const HOT_KEY_PRESSED: u32 = 5;
     if PRESSED.set(pressed).is_err() {
         return false;
@@ -655,12 +683,19 @@ fn register_hot_key(pressed: async_channel::Sender<()>) -> bool {
     // registered for the life of the app.
     unsafe {
         let target = GetApplicationEventTarget();
-        InstallEventHandler(target, hot_key_pressed, 1, &raw const spec, std::ptr::null_mut(), &raw mut handler) == 0
+        InstallEventHandler(
+            target,
+            hot_key_pressed,
+            1,
+            &raw const spec,
+            std::ptr::null_mut(),
+            &raw mut handler,
+        ) == 0
             && RegisterEventHotKey(
                 KEY_L,
                 CONTROL | OPTION,
                 EventHotKeyId {
-                    signature: four(b"zflw"),
+                    signature: four(*b"zflw"),
                     id: 1,
                 },
                 target,

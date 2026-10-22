@@ -33,7 +33,7 @@ pub struct Platform {
     pub accessibility: Option<bool>,
     /// Mac: whether zflow may look for computers on the network.
     pub local_network: Option<LocalNetwork>,
-    /// Mac: whether AirDrop's radio pauses while input is shared.
+    /// Mac: whether `AirDrop`'s radio pauses while input is shared.
     pub block_awdl: Option<bool>,
     /// Windows: whether the engine runs as administrator.
     pub elevated: Option<bool>,

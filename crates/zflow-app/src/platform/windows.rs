@@ -17,20 +17,23 @@ use std::{
 
 use windows::{
     Win32::{
-        Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WAIT_OBJECT_0, WPARAM},
+        Foundation::{
+            CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HWND, LPARAM, LRESULT, WAIT_OBJECT_0,
+            WPARAM,
+        },
         System::{
             LibraryLoader::GetModuleHandleW,
             Threading::{
-                CreateEventW, CreateMutexW, OpenEventW, OpenProcess, PROCESS_SYNCHRONIZE, SetEvent,
-                WaitForSingleObject, EVENT_MODIFY_STATE,
+                CreateEventW, CreateMutexW, EVENT_MODIFY_STATE, OpenEventW, OpenProcess,
+                PROCESS_SYNCHRONIZE, SetEvent, WaitForSingleObject,
             },
         },
         UI::{
             Shell::{SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW, ShellExecuteExW},
             WindowsAndMessaging::{
-                CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetMessageW, MSG,
-                MessageBoxW, PostMessageW, RegisterClassW, SW_SHOWNORMAL, TranslateMessage,
-                WINDOW_EX_STYLE, WNDCLASSW, WS_POPUP, MB_ICONERROR,
+                CreateWindowExW, DefWindowProcW, DispatchMessageW, FindWindowW, GetMessageW,
+                MB_ICONERROR, MSG, MessageBoxW, PostMessageW, RegisterClassW, SW_SHOWNORMAL,
+                TranslateMessage, WINDOW_EX_STYLE, WNDCLASSW, WS_POPUP,
             },
         },
     },
@@ -72,7 +75,7 @@ const WM_SHOW_APP: u32 = 0x8003;
 const HANDSHAKE_CLASS: PCWSTR = w!("Zflow.App");
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const PREFERENCES_KEY: &str = r"Software\zflow";
-const UPDATE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+const UPDATE_INTERVAL: Duration = Duration::from_hours(6);
 /// How often the app makes sure the engine runs.
 const SUPERVISE: Duration = Duration::from_secs(5);
 
@@ -149,7 +152,7 @@ fn checks_for_updates() -> bool {
     windows_registry::CURRENT_USER
         .open(PREFERENCES_KEY)
         .and_then(|key| key.get_u32("CheckForUpdates"))
-        .map_or(true, |on| on != 0)
+        != Ok(0)
 }
 
 /// Runs before anything else: Velopack's install hooks, `--quit`, a restart
@@ -186,7 +189,7 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
     true
 }
 
-/// Finds the running app by its handshake window, or the WinUI app that
+/// Finds the running app by its handshake window, or the `WinUI` app that
 /// came before it by its window title.
 fn post_to_running(message: u32) {
     // SAFETY: looking up and posting to another process's top-level window.
@@ -207,7 +210,10 @@ fn wait_for_previous(arguments: &crate::Arguments) -> bool {
     };
     let result = (|| -> Result<(), String> {
         if arguments.replace_user.as_deref() != zflow::windows::user_sid().ok().as_deref() {
-            return Err("Restart using the same Windows account to keep your computers and settings.".into());
+            return Err(
+                "Restart using the same Windows account to keep your computers and settings."
+                    .into(),
+            );
         }
         if !zflow::windows::elevated() || pid == std::process::id() {
             return Err("Could not restart zflow as administrator.".into());
@@ -227,7 +233,9 @@ fn wait_for_previous(arguments: &crate::Arguments) -> bool {
                 let waited = WaitForSingleObject(previous, 20_000);
                 let _ = CloseHandle(previous);
                 if waited != WAIT_OBJECT_0 {
-                    return Err("The previous zflow app did not stop. Quit it and try again.".into());
+                    return Err(
+                        "The previous zflow app did not stop. Quit it and try again.".into(),
+                    );
                 }
             }
         }
@@ -268,7 +276,7 @@ fn restart_as_administrator(cx: &mut App) {
                 nShow: SW_SHOWNORMAL.0,
                 ..Default::default()
             };
-            if ShellExecuteExW(&mut info).is_err() {
+            if ShellExecuteExW(&raw mut info).is_err() {
                 let _ = CloseHandle(event);
                 // Cancelled at the prompt: keep the current app.
                 return Ok(false);
@@ -279,7 +287,10 @@ fn restart_as_administrator(cx: &mut App) {
             let waited = WaitForSingleObject(event, 8_000);
             let _ = CloseHandle(event);
             if waited != WAIT_OBJECT_0 {
-                return Err("The administrator app could not start. Your current zflow is still running.".into());
+                return Err(
+                    "The administrator app could not start. Your current zflow is still running."
+                        .into(),
+                );
             }
             Ok(true)
         }
@@ -355,15 +366,26 @@ impl Engine {
                         break;
                     }
                     text.push_str(&String::from_utf8_lossy(&buffer[..read]));
-                    let mut kept = errors.lock().unwrap_or_else(|e| e.into_inner());
-                    *kept = text.lines().rev().take(12).map(str::to_owned).collect::<Vec<_>>();
+                    let mut kept = errors
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    *kept = text
+                        .lines()
+                        .rev()
+                        .take(12)
+                        .map(str::to_owned)
+                        .collect::<Vec<_>>();
                     kept.reverse();
                 }
             });
         }
         for _ in 0..40 {
             if let Ok(Some(_)) = child.try_wait() {
-                let errors = self.errors.lock().unwrap_or_else(|e| e.into_inner()).join("\n");
+                let errors = self
+                    .errors
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .join("\n");
                 return Err(format!("Input engine could not start. {errors}"));
             }
             if pipe.probe(Duration::from_millis(400)).is_some() {
@@ -421,7 +443,8 @@ pub struct Services {
 }
 
 fn update_manager() -> Option<velopack::UpdateManager> {
-    let source = velopack::sources::GithubSource::new("https://github.com/demfabris/zflow", None, false);
+    let source =
+        velopack::sources::GithubSource::new("https://github.com/demfabris/zflow", None, false);
     let options = velopack::UpdateOptions {
         ExplicitChannel: Some("win-x64".into()),
         ..Default::default()
@@ -440,11 +463,13 @@ impl Services {
             .map_or(Release::None, Release::Downloaded);
         let updates_task = cx.spawn(async move |this, cx| {
             loop {
-                let Ok(automatic) = this.update(cx, |services, _| services.updates.automatic == Some(true)) else {
+                let Ok(automatic) =
+                    this.update(cx, |services, _| services.updates.automatic == Some(true))
+                else {
                     return;
                 };
                 if automatic {
-                    let _ = this.update(cx, |services, cx| services.check(cx));
+                    let _ = this.update(cx, Services::check);
                 }
                 cx.background_executor().timer(UPDATE_INTERVAL).await;
             }
@@ -473,7 +498,10 @@ impl Services {
             Release::None => self.updates.available = None,
             Release::Available(info) => {
                 self.updates.available = Some(info.TargetFullRelease.Version.clone());
-                self.updates.note = Some(format!("zflow {} is available.", info.TargetFullRelease.Version));
+                self.updates.note = Some(format!(
+                    "zflow {} is available.",
+                    info.TargetFullRelease.Version
+                ));
             }
             Release::Downloaded(asset) => {
                 self.updates.available = Some(asset.Version.clone());
@@ -486,7 +514,10 @@ impl Services {
     }
 
     pub fn check(&mut self, cx: &mut Context<Self>) {
-        if self.updates.checking || self.updates.unavailable.is_some() || matches!(self.release, Release::Downloaded(_)) {
+        if self.updates.checking
+            || self.updates.unavailable.is_some()
+            || matches!(self.release, Release::Downloaded(_))
+        {
             return;
         }
         self.updates.checking = true;
@@ -497,18 +528,22 @@ impl Services {
                 .background_executor()
                 .spawn(async {
                     let manager = update_manager().ok_or("Updates are not available here")?;
-                    manager.check_for_updates().map_err(|error| error.to_string())
+                    manager
+                        .check_for_updates()
+                        .map_err(|error| error.to_string())
                 })
                 .await;
             let _ = this.update(cx, |services, cx| {
                 services.updates.checking = false;
                 match result {
-                    Ok(velopack::UpdateCheck::UpdateAvailable(info)) => services.release = Release::Available(info),
+                    Ok(velopack::UpdateCheck::UpdateAvailable(info)) => {
+                        services.release = Release::Available(info);
+                    }
                     Ok(_) => {
                         services.release = Release::None;
                         services.updates.note = Some("You have the latest version.".into());
                     }
-                    Err(error) => services.updates.note = Some(error.to_string()),
+                    Err(error) => services.updates.note = Some(error.clone()),
                 }
                 services.describe();
                 cx.notify();
@@ -518,7 +553,9 @@ impl Services {
     }
 
     fn download(&mut self, cx: &mut Context<Self>) {
-        let Release::Available(info) = &self.release else { return };
+        let Release::Available(info) = &self.release else {
+            return;
+        };
         let info = (**info).clone();
         self.updates.checking = true;
         self.progress = Some(0);
@@ -543,7 +580,8 @@ impl Services {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    let manager = update_manager().ok_or("Updates are not available here".to_owned())?;
+                    let manager =
+                        update_manager().ok_or("Updates are not available here".to_owned())?;
                     manager
                         .download_updates(&info, Some(progress))
                         .map_err(|error| error.to_string())
@@ -567,7 +605,9 @@ impl Services {
     /// Stops the engine first, so the updater can replace it, then hands
     /// over to Velopack, which restarts zflow.
     fn restart_and_update(&mut self, cx: &mut Context<Self>) {
-        let Release::Downloaded(asset) = &self.release else { return };
+        let Release::Downloaded(asset) = &self.release else {
+            return;
+        };
         let asset = asset.clone();
         stop_engine(cx);
         match update_manager().map(|manager| {
@@ -590,7 +630,12 @@ pub fn init(cx: &mut App) -> Entity<Services> {
     services
 }
 
-pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &crate::Arguments, cx: &mut App) {
+pub fn start(
+    model: &Entity<Model>,
+    services: &Entity<Services>,
+    arguments: &crate::Arguments,
+    cx: &mut App,
+) {
     let engine = Arc::new(Mutex::new(Engine {
         config: model.read(cx).config.clone(),
         child: None,
@@ -605,7 +650,9 @@ pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &cra
         .spawn(move || {
             loop {
                 let outcome = {
-                    let mut engine = engine.lock().unwrap_or_else(|e| e.into_inner());
+                    let mut engine = engine
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if engine.quitting {
                         return;
                     }
@@ -633,7 +680,7 @@ pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &cra
                     })
                     .unwrap_or(false);
                 if started && changed {
-                    model.update(cx, |model, cx| model.reconnect(cx));
+                    model.update(cx, super::super::model::Model::reconnect);
                 }
             }
         })
@@ -652,12 +699,15 @@ pub fn start(model: &Entity<Model>, services: &Entity<Services>, arguments: &cra
 }
 
 fn engine(cx: &App) -> Option<Arc<Mutex<Engine>>> {
-    cx.try_global::<EngineHandle>().map(|handle| handle.0.clone())
+    cx.try_global::<EngineHandle>()
+        .map(|handle| handle.0.clone())
 }
 
 fn stop_engine(cx: &App) {
     if let Some(engine) = engine(cx) {
-        let mut engine = engine.lock().unwrap_or_else(|e| e.into_inner());
+        let mut engine = engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         engine.quitting = true;
         engine.stop();
     }
@@ -665,7 +715,9 @@ fn stop_engine(cx: &App) {
 
 fn start_engine(cx: &App) {
     if let Some(engine) = engine(cx) {
-        let mut engine = engine.lock().unwrap_or_else(|e| e.into_inner());
+        let mut engine = engine
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         engine.quitting = false;
         let _ = engine.ensure();
     }
@@ -682,14 +734,16 @@ fn handshake_window() {
             // SAFETY: a plain window class and window on this thread, and its
             // message loop.
             unsafe {
-                let Ok(instance) = GetModuleHandleW(None) else { return };
+                let Ok(instance) = GetModuleHandleW(None) else {
+                    return;
+                };
                 let class = WNDCLASSW {
                     lpfnWndProc: Some(handshake_procedure),
                     hInstance: instance.into(),
                     lpszClassName: HANDSHAKE_CLASS,
                     ..Default::default()
                 };
-                RegisterClassW(&class);
+                RegisterClassW(&raw const class);
                 let Ok(_) = CreateWindowExW(
                     WINDOW_EX_STYLE(0),
                     HANDSHAKE_CLASS,
@@ -707,9 +761,9 @@ fn handshake_window() {
                     return;
                 };
                 let mut message = MSG::default();
-                while GetMessageW(&mut message, None, 0, 0).as_bool() {
-                    let _ = TranslateMessage(&message);
-                    DispatchMessageW(&message);
+                while GetMessageW(&raw mut message, None, 0, 0).as_bool() {
+                    let _ = TranslateMessage(&raw const message);
+                    DispatchMessageW(&raw const message);
                 }
             }
         })
@@ -723,7 +777,12 @@ thread_local! {
     static APP_EVENTS: std::cell::RefCell<Option<async_channel::Receiver<u32>>> = const { std::cell::RefCell::new(None) };
 }
 
-unsafe extern "system" fn handshake_procedure(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn handshake_procedure(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     if (message == WM_QUIT_APP || message == WM_SHOW_APP)
         && let Some(events) = HANDSHAKE.get()
     {
@@ -741,7 +800,7 @@ pub fn window_shown(cx: &mut App) {
     };
     cx.spawn(async move |cx| {
         while let Ok(message) = inbox.recv().await {
-            let _ = cx.update(|cx| match message {
+            let () = cx.update(|cx| match message {
                 WM_QUIT_APP => quit(cx),
                 _ => crate::open(cx),
             });
@@ -754,8 +813,11 @@ pub fn notification_response(_: &SystemNotificationResponse, _: &mut App) {}
 
 pub fn check_updates(cx: &mut App) {
     crate::open(cx);
-    if let Some(services) = cx.try_global::<super::SharedServices>().map(|s| s.0.clone()) {
-        services.update(cx, |services, cx| services.check(cx));
+    if let Some(services) = cx
+        .try_global::<super::SharedServices>()
+        .map(|s| s.0.clone())
+    {
+        services.update(cx, Services::check);
     }
 }
 
@@ -772,7 +834,15 @@ pub fn tray_look(_: bool, _: bool) -> zz_gpui_tray::TrayIcon {
     }
 }
 
-pub fn banner(this: &mut ZflowWindow, _: &mut Window, cx: &mut Context<ZflowWindow>) -> Option<AnyElement> {
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
+pub fn banner(
+    this: &mut ZflowWindow,
+    _: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<AnyElement> {
     let error = this.services.read(cx).engine_error.clone()?;
     Some(
         div()
@@ -803,13 +873,26 @@ pub fn health_action(row: &Health, _: &App) -> Option<Action> {
     row.action.clone()
 }
 
-pub fn first_run_cards(_: &mut ZflowWindow, _: &Snapshot, _: &mut Window, _: &mut Context<ZflowWindow>) -> Vec<AnyElement> {
+pub fn first_run_cards(
+    _: &mut ZflowWindow,
+    _: &Snapshot,
+    _: &mut Window,
+    _: &mut Context<ZflowWindow>,
+) -> Vec<AnyElement> {
     Vec::new()
 }
 
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
 pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
-        SettingEntry::new("Display settings", "Arrange this PC’s own screens in Windows Settings.").control(
+        SettingEntry::new(
+            "Display settings",
+            "Arrange this PC’s own screens in Windows Settings.",
+        )
+        .control(
             Button::new("display-settings")
                 .small()
                 .label("Open")
@@ -819,13 +902,21 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     )
 }
 
-pub fn peer_entries(_: &mut ZflowWindow, peer: &Peer, cx: &mut Context<ZflowWindow>) -> Vec<SettingEntry> {
+pub fn peer_entries(
+    _: &mut ZflowWindow,
+    peer: &Peer,
+    cx: &mut Context<ZflowWindow>,
+) -> Vec<SettingEntry> {
     if !crate::copy::linked(peer.state) {
         return Vec::new();
     }
     let name = peer.name.clone();
     vec![
-        SettingEntry::new("Take control", format!("Send this PC’s keyboard and mouse to {name} now.")).control(
+        SettingEntry::new(
+            "Take control",
+            format!("Send this PC’s keyboard and mouse to {name} now."),
+        )
+        .control(
             Button::new("take-control")
                 .small()
                 .label("Control")
@@ -837,29 +928,49 @@ pub fn peer_entries(_: &mut ZflowWindow, peer: &Peer, cx: &mut Context<ZflowWind
     ]
 }
 
-pub fn login_entry(this: &mut ZflowWindow, _: &Snapshot, cx: &mut Context<ZflowWindow>) -> Option<SettingEntry> {
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every platform answers with the same signature"
+)]
+pub fn login_entry(
+    this: &mut ZflowWindow,
+    _: &Snapshot,
+    cx: &mut Context<ZflowWindow>,
+) -> Option<SettingEntry> {
     let on = this.services.read(cx).login;
     Some(
         SettingEntry::new("Run at startup", "Start zflow when you sign in to Windows.").control(
-            Switch::new("login").checked(on).on_click(cx.listener(|this, on: &bool, _, cx| {
-                let result = set_starts_at_sign_in(*on);
-                this.services.update(cx, |services, cx| {
-                    services.login = starts_at_sign_in();
-                    cx.notify();
-                });
-                if let Err(error) = result {
-                    this.model.update(cx, |model, cx| model.report(format!("{error:#}"), cx));
-                }
-            })),
+            Switch::new("login")
+                .checked(on)
+                .on_click(cx.listener(|this, on: &bool, _, cx| {
+                    let result = set_starts_at_sign_in(*on);
+                    this.services.update(cx, |services, cx| {
+                        services.login = starts_at_sign_in();
+                        cx.notify();
+                    });
+                    if let Err(error) = result {
+                        this.model
+                            .update(cx, |model, cx| model.report(format!("{error:#}"), cx));
+                    }
+                })),
         ),
     )
 }
 
-pub fn settings_stacks(this: &mut ZflowWindow, _: &Snapshot, _: &mut Window, cx: &mut Context<ZflowWindow>) -> Vec<SettingsStack> {
+pub fn settings_stacks(
+    this: &mut ZflowWindow,
+    _: &Snapshot,
+    _: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> Vec<SettingsStack> {
     let services = this.services.read(cx);
     let elevated = services.elevated;
     let administrator = SettingEntry::new(
-        if elevated { "Running as administrator" } else { "Running as user" },
+        if elevated {
+            "Running as administrator"
+        } else {
+            "Running as user"
+        },
         "Administrator windows need zflow to run as administrator too.",
     )
     .control(
@@ -883,18 +994,19 @@ pub fn settings_stacks(this: &mut ZflowWindow, _: &Snapshot, _: &mut Window, cx:
                 }),
         ));
     } else {
-        let (label, action): (&'static str, fn(&mut Services, &mut Context<Services>)) = match services.release {
-            Release::None => ("Check for updates", Services::check),
-            Release::Available(_) => ("Download update", Services::download),
-            Release::Downloaded(_) => ("Restart and update", |_, _| {}),
-        };
+        let (label, action): (&'static str, fn(&mut Services, &mut Context<Services>)) =
+            match services.release {
+                Release::None => ("Check for updates", Services::check),
+                Release::Available(_) => ("Download update", Services::download),
+                Release::Downloaded(_) => ("Restart and update", |_, _| {}),
+            };
         let downloaded = matches!(services.release, Release::Downloaded(_));
         let note = match services.progress {
             Some(progress) => format!("Downloading… {progress}%"),
-            None => updates
-                .note
-                .clone()
-                .unwrap_or_else(|| "Check for new releases automatically. You choose when to download and restart.".into()),
+            None => updates.note.clone().unwrap_or_else(|| {
+                "Check for new releases automatically. You choose when to download and restart."
+                    .into()
+            }),
         };
         stack = stack
             .child(
@@ -918,7 +1030,8 @@ pub fn settings_stacks(this: &mut ZflowWindow, _: &Snapshot, _: &mut Window, cx:
                     Switch::new("updates-automatic")
                         .checked(updates.automatic.unwrap_or(true))
                         .on_click(cx.listener(|this, on: &bool, _, cx| {
-                            if let Ok(key) = windows_registry::CURRENT_USER.create(PREFERENCES_KEY) {
+                            if let Ok(key) = windows_registry::CURRENT_USER.create(PREFERENCES_KEY)
+                            {
                                 let _ = key.set_u32("CheckForUpdates", u32::from(*on));
                             }
                             this.services.update(cx, |services, cx| {
@@ -932,7 +1045,10 @@ pub fn settings_stacks(this: &mut ZflowWindow, _: &Snapshot, _: &mut Window, cx:
                 ),
             );
     }
-    vec![SettingsStack::titled("Administrator").child(administrator), stack]
+    vec![
+        SettingsStack::titled("Administrator").child(administrator),
+        stack,
+    ]
 }
 
 fn confirm_restart(this: &mut ZflowWindow, window: &mut Window, cx: &mut Context<ZflowWindow>) {
@@ -950,12 +1066,23 @@ fn confirm_restart(this: &mut ZflowWindow, window: &mut Window, cx: &mut Context
     });
 }
 
-pub fn this_computer_entries(_: &mut ZflowWindow, snapshot: &Snapshot, cx: &mut Context<ZflowWindow>) -> Vec<SettingEntry> {
+pub fn this_computer_entries(
+    _: &mut ZflowWindow,
+    snapshot: &Snapshot,
+    cx: &mut Context<ZflowWindow>,
+) -> Vec<SettingEntry> {
     let platform = snapshot.platform.clone().unwrap_or_default();
     let addresses = platform.addresses.join(", ");
     let config = snapshot.config_path.clone();
     vec![
-        SettingEntry::new("Return here", format!("Bring input back to this PC. {} also pauses sharing.", "Ctrl+Win+Backspace")).control(
+        SettingEntry::new(
+            "Return here",
+            format!(
+                "Bring input back to this PC. {} also pauses sharing.",
+                "Ctrl+Win+Backspace"
+            ),
+        )
+        .control(
             Button::new("return-here")
                 .small()
                 .label("Return here")
@@ -967,7 +1094,11 @@ pub fn this_computer_entries(_: &mut ZflowWindow, snapshot: &Snapshot, cx: &mut 
             format!(
                 "Listening on {}{}",
                 platform.listen.unwrap_or_default(),
-                if addresses.is_empty() { String::new() } else { format!(" · {addresses}") }
+                if addresses.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {addresses}")
+                }
             ),
         ),
         SettingEntry::new("Configuration", "Open your local settings file.").control(

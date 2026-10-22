@@ -43,12 +43,22 @@ impl Drop for StatusItem {
     }
 }
 
-pub(super) fn spawn(options: TrayOptions, menu: Menu, events: Sender<TrayEvent>) -> Option<StatusItem> {
+pub(super) fn spawn(
+    options: TrayOptions,
+    menu: Menu,
+    events: Sender<TrayEvent>,
+) -> Option<StatusItem> {
     let Some(mtm) = MainThreadMarker::new() else {
         log::warn!(target: "zz::tray", "could not create the status item outside the main thread");
         return None;
     };
-    let image = image(&options.icon)?;
+    let TrayOptions {
+        tooltip,
+        icon,
+        menu_on_click,
+        ..
+    } = options;
+    let image = image(&icon)?;
     let item = NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength);
     let Some(button) = item.button(mtm) else {
         log::warn!(target: "zz::tray", "AppKit gave the status item no button");
@@ -56,10 +66,10 @@ pub(super) fn spawn(options: TrayOptions, menu: Menu, events: Sender<TrayEvent>)
         return None;
     };
     button.setImage(Some(&image));
-    button.setToolTip(Some(&NSString::from_str(&options.tooltip)));
+    button.setToolTip(Some(&NSString::from_str(&tooltip)));
 
     send(&events, TrayEvent::Available(true));
-    let target = TrayTarget::new(events, item.clone(), menu, options.menu_on_click, mtm);
+    let target = TrayTarget::new(events, item.clone(), menu, menu_on_click, mtm);
     let any_target: &AnyObject = &target;
     #[allow(
         unsafe_code,
@@ -128,7 +138,10 @@ define_class!(
 );
 
 impl TrayTarget {
-    #[allow(unsafe_code, reason = "`init` on the superclass has no safe objc2 binding")]
+    #[allow(
+        unsafe_code,
+        reason = "`init` on the superclass has no safe objc2 binding"
+    )]
     fn new(
         events: Sender<TrayEvent>,
         item: Retained<NSStatusItem>,
@@ -153,7 +166,9 @@ impl TrayTarget {
             .currentEvent()
             .is_some_and(|event| {
                 event.r#type() == NSEventType::RightMouseUp
-                    || event.modifierFlags().contains(NSEventModifierFlags::Control)
+                    || event
+                        .modifierFlags()
+                        .contains(NSEventModifierFlags::Control)
             })
     }
 
@@ -206,7 +221,12 @@ impl TrayTarget {
         unsafe_code,
         reason = "target/action wiring has no safe objc2 binding: AppKit cannot type-check either half"
     )]
-    fn menu_item(&self, title: &NSString, action: Sel, mtm: MainThreadMarker) -> Retained<NSMenuItem> {
+    fn menu_item(
+        &self,
+        title: &NSString,
+        action: Sel,
+        mtm: MainThreadMarker,
+    ) -> Retained<NSMenuItem> {
         let target: &AnyObject = self;
         // SAFETY: every `action` passed here is declared on `TrayTarget`, which
         // is what `target` is.

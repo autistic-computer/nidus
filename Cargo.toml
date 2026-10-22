@@ -10,7 +10,6 @@ rust-version = "1.97"
 [lib]
 name = "zflow"
 path = "src/lib.rs"
-crate-type = ["rlib", "staticlib"]
 
 [[bin]]
 name = "zflow"
@@ -76,6 +75,9 @@ strip = "none"
 
 [workspace]
 members = [".", "crates/*"]
+# zflow's own crates and the kit it adds to; the rest of zz-gpui is vendored
+# as is and tested in zz.
+default-members = [".", "crates/zflow-app", "crates/zz-gpui-kit", "crates/zz-gpui-tray"]
 resolver = "3"
 
 [workspace.package]

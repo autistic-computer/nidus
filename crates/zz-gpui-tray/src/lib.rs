@@ -1,4 +1,4 @@
-//! A tray icon with a menu: a StatusNotifierItem on Linux, an `NSStatusItem`
+//! A tray icon with a menu: a `StatusNotifierItem` on Linux, an `NSStatusItem`
 //! in the macOS menu bar, and a notification-area icon on Windows.
 //!
 //! The app keeps a [`Menu`] current and reads [`TrayEvent`]s from a channel,

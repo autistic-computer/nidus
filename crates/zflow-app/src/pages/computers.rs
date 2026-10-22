@@ -8,18 +8,18 @@ use zz_gpui::{
     prelude::FluentBuilder as _, px,
 };
 use zz_gpui_kit::{
-    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    h_flex, rems_from_px,
-    settings::settings_scroll_column,
-    sidebar::status_dot,
-    v_flex,
+    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _, button::Button, h_flex,
+    rems_from_px, settings::settings_scroll_column, sidebar::status_dot, v_flex,
 };
 
 use super::{fix_button, inspector};
 use crate::{copy, model::Snapshot, platform, widgets, window::ZflowWindow};
 
-pub fn render(this: &mut ZflowWindow, window: &mut Window, cx: &mut Context<ZflowWindow>) -> AnyElement {
+pub fn render(
+    this: &mut ZflowWindow,
+    window: &mut Window,
+    cx: &mut Context<ZflowWindow>,
+) -> AnyElement {
     let Some(snapshot) = this.model.read(cx).snapshot.clone() else {
         return div().into_any_element();
     };
@@ -63,14 +63,20 @@ fn status(snapshot: &Snapshot, cx: &mut Context<ZflowWindow>) -> impl IntoElemen
 
 /// A banner for each check that is not fine, with its fix. `skip` leaves
 /// out a row another card stands in for.
-fn problems(snapshot: &Snapshot, skip: Option<&str>, cx: &mut Context<ZflowWindow>) -> Vec<AnyElement> {
+fn problems(
+    snapshot: &Snapshot,
+    skip: Option<&str>,
+    cx: &mut Context<ZflowWindow>,
+) -> Vec<AnyElement> {
     snapshot
         .health
         .iter()
         .filter(|row| row.level != Level::Ok && Some(row.id.as_str()) != skip)
         .map(|row| {
-            let action = platform::health_action(row, cx).map(|action| fix_button(&row.id, &action, cx));
-            widgets::banner(row.level, row.title.clone(), row.detail.clone(), action, cx).into_any_element()
+            let action =
+                platform::health_action(row, cx).map(|action| fix_button(&row.id, &action, cx));
+            widgets::banner(row.level, row.title.clone(), row.detail.clone(), action, cx)
+                .into_any_element()
         })
         .collect()
 }
@@ -99,7 +105,9 @@ fn first_run(
             cx,
         ))
         .child(this.board.clone())
-        .when_some(note, |column, (title, detail)| column.child(widgets::note(title, detail, cx)))
+        .when_some(note, |column, (title, detail)| {
+            column.child(widgets::note(title, detail, cx))
+        })
         .child(
             h_flex()
                 .w_full()
@@ -107,7 +115,10 @@ fn first_run(
                 .pl(px(12.0))
                 .pr(px(6.0))
                 .py(px(6.0))
-                .surface(zz_gpui_kit::Surface::new(zz_gpui_kit::roles::SETTINGS_PREVIEW), cx)
+                .surface(
+                    zz_gpui_kit::Surface::new(zz_gpui_kit::roles::SETTINGS_PREVIEW),
+                    cx,
+                )
                 .child(widgets::muted("Not listed? Run on it:", 12.0, cx).flex_none())
                 .child(
                     div()

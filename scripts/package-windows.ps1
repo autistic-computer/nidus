@@ -14,7 +14,12 @@ $localSdk = Join-Path $env:LOCALAPPDATA 'zflow-dev/dotnet/dotnet.exe'
 $dotnet = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { (Get-Command dotnet -ErrorAction Stop).Source }
 $tools = Join-Path $repo 'target/velopack-tools'
 if (Test-Path -LiteralPath $tools) { Remove-Item -LiteralPath $tools -Recurse -Force }
-& $dotnet tool install vpk --version 1.2.161 --tool-path $tools
+# vpk bundles the Update.exe that the app's velopack crate drives, so both
+# come from the same Velopack release.
+$lock = Get-Content -LiteralPath (Join-Path $repo 'Cargo.lock') -Raw
+$velopack = [regex]::Match($lock, '(?m)^name = "velopack"\r?\nversion = "([^"]+)"').Groups[1].Value
+if (-not $velopack) { throw 'Cargo.lock does not pin the velopack crate' }
+& $dotnet tool install vpk --version $velopack --tool-path $tools
 if ($LASTEXITCODE -ne 0) { throw 'Velopack tool installation failed' }
 $pack = @('pack', '--packId', 'Zflow.App', '--packVersion', $version,
     '--packDir', (Join-Path $repo 'windows/dist'), '--mainExe', 'Zflow.App.exe',
