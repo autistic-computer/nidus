@@ -1,0 +1,20 @@
+[package]
+name = "zflow-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "zflow's window and menu, on zz-gpui"
+publish = false
+
+[[bin]]
+name = "zflow-app"
+path = "src/main.rs"
+
+[dependencies]
+zz-gpui = { workspace = true, features = ["default"] }
+zz-gpui-kit.workspace = true
+zz-gpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+
+[lints]
+workspace = true
