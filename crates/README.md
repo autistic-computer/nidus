@@ -17,11 +17,28 @@ Everything here that is not zflow's goes back to zz. Each item is self-contained
 
 ### zz-gpui-kit
 
-- `roles`: the window chrome's surface roles (window, title bar, sidebar, settings cards and previews, chrome and window-control buttons, the bar, sidebar and list rules), moved out of zz-ui's `roles.rs`, and `register` for an app's own roles. zz-ui keeps its zz roles and registers them; its `all()` becomes the kit's.
-- `interface_theme`: zz-ui's `interface_theme.rs` with the Default theme built in and role checks against the kit's registry. zz-ui keeps Liquid Glass (its roles are zz's) and the appearance settings that live in zz-client.
-- `settings`: zz-ui's settings page pieces (`SettingsStack`, `SettingEntry`, `SettingCopy`, `StackPosition`, the page heading, scroll column and group headers) and navigation rows that take a title and icon instead of zz's `SettingsSection`.
-- `sidebar`: zz-ui's sidebar panel, title strip, footer, resize handle, chrome button and status dot, without the `workspace_` prefix.
-- `shell`: zz-ui's `app_shell_surface`, `app_titlebar_strip` (now with a leading slot) and `chrome_background`, and zz's `window_drag_handle` from `crates/zz/src/window/drag.rs`.
+The shared code in these modules matches zz-ui at `32ee3ab37`: same constants, role ids and style patches. What a backport has to reconcile:
+
+- `roles`: the 12 chrome roles move here from zz-ui's `roles.rs`; zz-ui drops them and re-exports the kit's (zz uses them in 19 places).
+  - `register` keeps the app's roles in a `OnceLock`: zz must register all of its roles in one call, before any theme is parsed, or Liquid Glass's 19 zz role ids are rejected.
+  - Chrome roles now list before app roles, which reorders the Cards and Rules groups in the theme editor.
+  - Descriptions were made generic ("zz draws", "session sidebar", "pane headers" dropped); zz may want its wording back.
+  - `members()` was dropped (unused at `32ee3ab37`), and the test now checks only chrome roles; zz-ui's checks of kinds, labels and groups should move here.
+- `interface_theme`: the Default theme is built in and `BUILTIN_THEMES` is `["default"]`, so `builtin_theme("liquid-glass")` is `None` until the kit can take extra built-in themes from zz-ui.
+  - The kit has its own copies of `ThemeModeSetting` and the accent and tint constants instead of re-exporting `zz_client::appearance`; the backport should make zz-client use the kit's types, or the kit re-export zz-client's. `AccentSetting` is not re-exported.
+  - Two tests swapped zz role ids for kit ones (`pane.chip` became `badge`, the composer suggestion became `preview`); zz-ui keeps the originals.
+- `settings`: `SettingsStack`, `SettingEntry`, `SettingCopy`, `StackPosition`, `settings_page_content`, `settings_page_heading`, `settings_scroll_column`, `SettingsBottomInset`, `settings_card_ground`, `settings_preview`, `settings_provenance_badge`, `settings_reset_button`, `SettingsSelectItem`, and the `settings_list_*` group headers.
+  - Navigation takes plain values: `settings_navigation_button(id, title, icon, selected, cx)` and `settings_navigation_group_label(title, cx)` replace the `SettingsSection` and `SettingsNavigationGroup` forms; `settings_navigation_back_row` is `settings_navigation_row` with its own 32 px height, no longer tied to `WORKSPACE_TREE_ROW_HEIGHT`.
+  - Stay in zz-ui: `SettingsSection`, `SettingsNavigationGroup`, `settings_section_index`, `settings_page_description`, the virtual column, `panes_page` and the section submodules. They need these made `pub` in the kit: `settings_group_header`, `SETTINGS_PAGE_PADDING`, `SETTINGS_STACK_PADDING`, and `StackPosition`'s `rounds_top`, `rounds_bottom` and `rules_above`.
+  - Two doc links point at `settings_virtual_column`, which stayed in zz-ui. The module's tests (scroll tests, stack positions, focused field, bottom inset) stayed behind and should come with it.
+- `sidebar`: the `workspace_sidebar_*` functions are `sidebar_*`, `workspace_controls_leading_inset` is `controls_leading_inset`, and `WORKSPACE_TREE_CONTENT_INSET` is `SIDEBAR_CONTENT_INSET`; zz's tree rows use the same value, so keep one constant.
+  - `chrome_button` is now `pub`; `STATUS_DOT_SIZE`, `SIDEBAR_EDGE_INSET` and `edge_inset` are private, but zz-ui reads them (`flat.rs`, `palette.rs`, `workspace_row_action_gap`), so they need `pub`.
+  - `workspace_sidebar_surface` has no kit version yet.
+- `shell`: `app_shell_surface` (its `workspace` argument is `content`), `chrome_background`, and `app_titlebar_strip`, which takes a new `leading` slot inside the drag area, so zz's callers change. `window_drag_handle` comes from `crates/zz/src/window/drag.rs` and is `pub`; its test `background_drag_yields_to_buttons_and_text_fields` should come along.
+  - zz already has a different `theme::chrome_background`; one of the two needs another name.
+  - Stay in zz-ui: `app_workspace_surface`, `app_connection_state`, `workspace_status_bar`, `empty_workspace*`.
+
+None of these modules mention zflow. zflow's own roles and sizes live in `crates/zflow-app`.
 
 ### zz-gpui and zz-gpui-platform
 
