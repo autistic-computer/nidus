@@ -509,7 +509,7 @@ async fn call(
     result
 }
 
-const EXTENSION_FILES: [(&str, &str); 7] = [
+const EXTENSION_FILES: [(&str, &str); 5] = [
     (
         "metadata.json",
         include_str!("../../packaging/gnome-extension/metadata.json"),
@@ -530,15 +530,8 @@ const EXTENSION_FILES: [(&str, &str); 7] = [
         "client.js",
         include_str!("../../packaging/gnome-extension/client.js"),
     ),
-    (
-        "settings.js",
-        include_str!("../../packaging/gnome-extension/settings.js"),
-    ),
-    (
-        "prefs.js",
-        include_str!("../../packaging/gnome-extension/prefs.js"),
-    ),
 ];
+const RETIRED_FILES: [&str; 2] = ["settings.js", "prefs.js"];
 const SHELL_FILES: [&str; 3] = ["shell.js", "indicator.js", "client.js"];
 
 fn build_name() -> String {
@@ -687,6 +680,9 @@ fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> a
             std::fs::write(user.join(name), contents)?;
         }
     }
+    for name in RETIRED_FILES {
+        super::gnome::remove_if_present(&user.join(name))?;
+    }
     let build = build_name();
     std::fs::create_dir_all(user.join(&build))?;
     for name in SHELL_FILES {
@@ -792,6 +788,7 @@ mod tests {
         write_extension_at(&user, false, true).unwrap();
         std::fs::write(user.join("metadata.json"), r#"{"version-name":"0.0.1"}"#).unwrap();
         std::fs::write(user.join("extension.js"), "older release").unwrap();
+        std::fs::write(user.join("prefs.js"), "older release").unwrap();
         write_extension_at(&user, false, false).unwrap();
         let metadata: serde_json::Value =
             serde_json::from_slice(&std::fs::read(user.join("metadata.json")).unwrap()).unwrap();
@@ -801,6 +798,10 @@ mod tests {
                 assert_eq!(std::fs::read_to_string(user.join(name)).unwrap(), contents);
             }
         }
+        assert!(
+            !user.join("prefs.js").exists(),
+            "the old GTK preferences go"
+        );
     }
 
     #[test]

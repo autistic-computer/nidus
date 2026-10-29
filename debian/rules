@@ -8,6 +8,7 @@ export DEB_BUILD_OPTIONS = nostrip
 override_dh_auto_install:
 	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflow" debian/zflow/usr/bin/zflow
 	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflowd" debian/zflow/usr/bin/zflowd
+	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflow-app" debian/zflow/usr/bin/zflow-app
 	install -D -m 0644 packaging/systemd/zflowd.service debian/zflow/usr/lib/systemd/system/zflowd.service
 	sed -i 's|/usr/local/bin/zflowd|/usr/bin/zflowd|' debian/zflow/usr/lib/systemd/system/zflowd.service
 	install -D -m 0755 packaging/system-sleep/zflow debian/zflow/usr/lib/systemd/system-sleep/zflow
@@ -23,7 +24,7 @@ override_dh_auto_install:
 	install -D -m 0644 packaging/linux/io.zflow.Desktop.service debian/zflow/usr/share/dbus-1/services/io.zflow.Desktop.service
 	install -D -m 0644 packaging/linux/io.zflow.desktop-agent.desktop debian/zflow/etc/xdg/autostart/io.zflow.desktop-agent.desktop
 	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris
-	install -m 0644 $(addprefix packaging/gnome-extension/,metadata.json extension.js shell.js indicator.js client.js settings.js prefs.js) \
+	install -m 0644 $(addprefix packaging/gnome-extension/,metadata.json extension.js shell.js indicator.js client.js) \
 		debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/
 	build=build-$$(cat $(addprefix packaging/gnome-extension/,shell.js indicator.js client.js) | sha256sum | cut -c1-16); \
 	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/$$build && \
