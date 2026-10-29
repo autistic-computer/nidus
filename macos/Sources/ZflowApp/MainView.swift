@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The one window: the computers, on their arrangement, and settings.
 struct MainView: View {
   @Bindable var model: AppModel
 
@@ -31,7 +30,6 @@ struct MainView: View {
         "zflow is running from a disk image or a temporary folder. Drag it into Applications, then open it from there."
       )
     }
-    // Without a window, zflow lives in the menu bar only.
     .onAppear { NSApplication.shared.setActivationPolicy(.regular) }
     .onDisappear { NSApplication.shared.setActivationPolicy(.accessory) }
   }
@@ -78,8 +76,6 @@ private struct Sidebar: View {
     ?? "zflow"
 }
 
-/// A paired computer's state as a small dot: filled while connected, hollow
-/// while it is not.
 struct StateDot: View {
   var state: Peer.State
 
@@ -97,7 +93,6 @@ struct StateDot: View {
 }
 
 extension Peer.State {
-  /// Short enough for a tile or a menu row; the computer's page has the detail.
   var label: String {
     switch self {
     case .paired: "Not connected"
@@ -108,7 +103,6 @@ extension Peer.State {
     case .unreachable: "Offline"
     }
   }
-  /// Nil draws a hollow dot.
   var color: Color? {
     switch self {
     case .connected: .green
@@ -131,7 +125,6 @@ extension Status.State {
   }
 }
 
-/// Something worth a look, with its fix when there is one.
 struct Banner<Actions: View>: View {
   var level: Health.Level
   var title: String
@@ -160,7 +153,6 @@ struct Banner<Actions: View>: View {
   }
 }
 
-/// A health row that is not fine, with its fix.
 struct HealthBanner: View {
   var model: AppModel
   var row: Health

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Assemble an archive from binaries already built on the target platform.
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$root/Cargo.toml" | head -n 1)

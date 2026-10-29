@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Open zflow's UDP port in an active ufw or a running firewalld, or close it.
-# It never turns a firewall on, and closing removes only the rules it added.
-# A firewall that refuses a change gets a warning; installation continues.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -26,9 +23,6 @@ firewalld_running() {
     command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1
 }
 
-# Only a first install opens the port. After that the admin owns the rules,
-# so an upgrade neither re-adds a removed rule nor reloads firewalld, which
-# would drop its runtime-only rules.
 open_ports() {
     if ufw_active && [[ ! -e "$UFW_PROFILE" ]]; then
         [[ ! -L "$UFW_PROFILE" ]] || die "refusing symlink: $UFW_PROFILE"
@@ -54,7 +48,6 @@ open_ports() {
 </service>
 XML
         chmod 0644 "$FIREWALLD_SERVICE"
-        # firewalld reads new service files only on reload.
         if firewall-cmd --reload >/dev/null && firewall-cmd --permanent --add-service=zflow >/dev/null \
             && firewall-cmd --add-service=zflow >/dev/null; then
             printf 'Opened %s in firewalld (service zflow, zone %s).\n' "$PORTS" "$(firewall-cmd --get-default-zone)"
@@ -68,7 +61,6 @@ close_ports() {
     local zone
     local -a tool zones
     if [[ -f "$UFW_PROFILE" ]]; then
-        # ufw keeps rules while it is off, and needs the profile to find this one.
         if ! command -v ufw >/dev/null 2>&1; then
             rm -f -- "$UFW_PROFILE"
         elif ufw delete allow zflow >/dev/null; then
@@ -87,8 +79,6 @@ close_ports() {
         rm -f -- "$FIREWALLD_SERVICE"
         return 0
     fi
-    # A zone that still names a deleted service fails to load, so keep the file
-    # unless every zone let go of it.
     IFS=' ' read -r -a zones <<< "$("${tool[@]}" --get-zones)"
     for zone in "${zones[@]}"; do
         if "${tool[@]}" --zone="$zone" --query-service=zflow >/dev/null 2>&1 \

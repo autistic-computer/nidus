@@ -3,7 +3,6 @@ import Testing
 
 @testable import ZflowApp
 
-/// A snapshot as the engine sends it, with `peers` as name to state.
 private func snapshot(
   peers: [(String, String)] = [], blockAwdl: Bool = false,
   health: String = "", window: String = #"{"state":"never"}"#, unplaced: String = "",
@@ -36,7 +35,6 @@ private func snapshot(
   return try decoder.decode(Snapshot.self, from: Data(json.utf8))
 }
 
-/// A model on its own configuration, which reaches the engine only when a test asks.
 @MainActor
 private func model(_ directory: URL) throws -> AppModel {
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -54,7 +52,6 @@ private func temporary() -> URL {
   func decode<T: Decodable>(_ type: T.Type, _ json: String) throws -> T {
     try JSONDecoder().decode(type, from: Data(json.utf8))
   }
-  // src/app/api.rs, src/core/keymap.rs and src/macos/local_network.rs.
   _ = try decode(
     [Status.State].self,
     #"["ready","controlling","controlled","paused","checking","setup","attention"]"#)
@@ -68,7 +65,6 @@ private func temporary() -> URL {
   #expect(
     try decode([KeyboardMode].self, #"["standard","pc_positions","mac"]"#) == KeyboardMode.allCases)
   _ = try decode([MacPlatform.LocalNetwork].self, #"["allowed","blocked","unknown"]"#)
-  // src/neighbors.rs, src/pairing_window.rs and src/hello.rs.
   _ = try decode(
     [Unplaced.State].self, #"["identifying","ready","different_version","duplicate_name"]"#)
   _ = try decode([Unplaced.Via].self, #"["mdns","address"]"#)
@@ -127,7 +123,6 @@ private func temporary() -> URL {
 }
 
 @Test func aDroppedComputerIsCenteredOnThePointer() {
-  // At a tenth of the layout's size, with the layout's origin at (100, 50).
   let origin = CGPoint(x: 100, y: 50)
   let center = CGPoint(x: 100 + 960 * 0.1, y: 50 + 540 * 0.1)
   #expect(ComputerLayout.corner(at: center, scale: 0.1, origin: origin) == (0, 0))
@@ -152,10 +147,8 @@ private func temporary() -> URL {
     id: "clipboard", level: .warning, title: "Clipboard", detail: "", action: nil)
   model.pasteAccess = .alwaysDeny
   #expect(model.fix(for: clipboard)?.command == "allow_paste")
-  // Then the row is about something else, such as a clip too large.
   model.pasteAccess = .alwaysAllow
   #expect(model.fix(for: clipboard) == nil)
-  // A row the engine gave a fix keeps it.
   let retry = HealthAction(label: "Retry", command: "retry")
   let computers = Health(id: "computers", level: .error, title: "", detail: "", action: retry)
   #expect(model.fix(for: computers) == retry)
@@ -173,7 +166,6 @@ private func temporary() -> URL {
   #expect(model.selection == .peer("desk"))
   model.apply(try snapshot(peers: [("xps", "unreachable")]))
   #expect(model.selection == nil && model.adjusting == nil)
-  // This Mac stays selected whatever is forgotten.
   model.selection = .thisMac
   model.apply(try snapshot())
   #expect(model.selection == .thisMac)
@@ -257,7 +249,6 @@ private func temporary() -> URL {
   var drag = Drag(
     anchor: anchor, owner: .thisMac, computer: true, scale: 0.1, origin: .zero)
   drag.travel = CGSize(width: 2400.4, height: 30)
-  // Until the engine answers, the screens follow the pointer.
   #expect(drag.shown == drag.travel && !drag.refused)
   let move = drag.move(tolerance: ComputerLayout.tolerance(0.1))
   #expect(move == Move(id: "local/a", x: 2400, y: 30, tolerance: 140, computer: true))

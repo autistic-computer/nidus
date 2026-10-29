@@ -11,8 +11,6 @@ pub(super) fn start(shared: Arc<Shared>) -> Result<()> {
     if !metadata.is_dir() || metadata.uid() != daemon_uid || metadata.mode() & 0o022 != 0 {
         bail!("unsafe desktop API directory");
     }
-    // Only this desktop endpoint is reachable by desktop users. The input
-    // control socket and the private config/state directories keep their modes.
     fs::set_permissions(parent, fs::Permissions::from_mode(0o755))?;
     prepare_socket_path(path)?;
     let listener = UnixListener::bind(path)?;
@@ -70,7 +68,6 @@ async fn desktop_command(
     request: crate::peer_view::Request,
 ) -> Result<crate::peer_view::DesktopReply> {
     use crate::peer_view::{DesktopReply, Request};
-    // Sent on every focus change, so it skips the config lock.
     if let Request::Focus { terminal } = request {
         authorize_peer(stream, daemon_uid, shared.active_uid())?;
         shared.desktop.focus(&shared.runtime, terminal).await;
@@ -96,7 +93,6 @@ async fn desktop_command(
         shared.add_address(address)?;
         return Ok(DesktopReply::Ack);
     }
-    // Asked at every step of a drag and only reads, like the status.
     if let Request::Preview {
         id,
         x,
@@ -112,7 +108,6 @@ async fn desktop_command(
             .and_then(|layout| layout.preview(&id, x, y, tolerance, computer));
         return Ok(DesktopReply::Preview { preview });
     }
-    // Asked every second and only reads, so it skips the config lock too.
     if let Request::Status {} = request {
         authorize_peer(stream, daemon_uid, shared.active_uid())?;
         return Ok(DesktopReply::Status(Box::new(status(shared).await)));
@@ -125,7 +120,6 @@ async fn desktop_command(
             let was = config.daemon.sharing;
             config.daemon.sharing = enabled;
             shared.apply_config_locked(config, true).await?;
-            // A pause nobody remembers asking for is hard to trace otherwise.
             let pid = stream.peer_cred().ok().and_then(|caller| caller.pid());
             tracing::info!(
                 sharing = enabled,
@@ -194,9 +188,6 @@ async fn desktop_command(
     }
 }
 
-/// What the settings window shows. Each lock goes before the next wait: on
-/// a fresh install the layout starts here, and keeping it takes the
-/// sessions lock again.
 async fn status(shared: &Shared) -> DesktopStatus {
     let config = shared.config.read().await.clone();
     let receiving_from = shared
@@ -237,9 +228,6 @@ mod tests {
         peer_view::{DesktopReply, Request as DesktopRequest},
     };
 
-    /// A computer called `name` answered the hello this one sent to its
-    /// record. It takes input where nothing listens, so its link dials
-    /// nothing real.
     fn answered(shared: &Shared, spki: &[u8], name: &str) {
         let address: SocketAddr = "127.0.0.1:9".parse().unwrap();
         let hello = crate::hello::make_hello(name, 9, Vec::new(), false);
@@ -258,11 +246,6 @@ mod tests {
         (directory, identity)
     }
 
-    /// A fresh install as a person first sees it: the desktop agent is
-    /// connected, nobody arranged the computers yet, the settings window
-    /// asks for the status every second and the pairing window is open.
-    /// The window takes the lone computer around, and a person adds the
-    /// next one with `zflow trust`.
     #[tokio::test(start_paused = true)]
     async fn a_fresh_install_answers_while_computers_join_and_are_trusted() {
         let (shared, _kept) = test_daemon();

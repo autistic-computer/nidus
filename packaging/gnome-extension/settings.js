@@ -7,31 +7,21 @@ import Gtk from 'gi://Gtk?version=4.0';
 import Pango from 'gi://Pango';
 import {Client, compatible, statusText} from './client.js';
 
-// src/core/keymap.rs KeyboardMode, in dropdown order.
 const KEYBOARD_MODES = ['standard', 'pc_positions', 'mac'];
 const HEALTH_ICONS = {ok: 'object-select-symbolic', warning: 'dialog-warning-symbolic', error: 'dialog-error-symbolic'};
 const NO_LAYOUT = 'Arrange computers in zflow on the other computer.';
 const LAYOUT_HINT = 'Drag a computer until its screens touch another’s; the pointer crosses at the lit edges. Double-click one to move its screens one by one.';
-// As in the Mac app (ComputerLayout.swift): an arrow key moves a computer
-// 100 layout units, about an inch, and snaps within a little less, so a step
-// away from a seam is not pulled back to it. A drag snaps within 14 pixels.
 const KEY_STEP = 100;
 const KEY_TOLERANCE = KEY_STEP - 1;
 const DRAG_TOLERANCE = 14;
-// Enter puts a found computer against this one's right edge.
 const PLACE_TOLERANCE = 150;
 const ARROWS = {[Gdk.KEY_Left]: [-1, 0], [Gdk.KEY_Right]: [1, 0], [Gdk.KEY_Up]: [0, -1], [Gdk.KEY_Down]: [0, 1]};
 const BOARD_HEIGHT = 240;
-// Room on the board around the arrangement: at the sides, above it for the
-// computers' names, and under it.
 const ROOM = {sides: 28, above: 48, below: 24};
-// How far an island's outline stands off its screens, and its name off the outline.
 const HULL = 8;
 const CHIP_GAP = 6;
-// This computer's island, as the layout's own screens have no peer.
 const LOCAL = 'local';
 const THIS_COMPUTER = 'This Computer';
-// src/app/api.rs PeerState: a few words for a name chip, and its dot's color.
 const STATES = {
     paired: ['Not connected', null],
     connecting: ['Connecting…', 'warning'],
@@ -40,23 +30,14 @@ const STATES = {
     controlled_from_here: ['Controlled from here', 'accent'],
     unreachable: ['Offline', null],
 };
-// A paired computer that cannot take input now shows faded.
 const AWAY = new Set([undefined, 'paired', 'unreachable']);
-// The shelf of computers found on the network, under the board.
 const FOUND_SIZE = [132, 64];
 const SHELF_TOP = 48;
 const SHELF_GAP = 8;
-// The size the service gives a placed computer's tile (PEER_TILE_SIZE in
-// src/daemon.rs) until that computer sends its own.
 const NEW_TILE = [1920, 1080];
 const PLACEABLE = new Set(['ready', 'duplicate_name']);
 const OS_NAMES = {linux: 'Linux', macos: 'macOS', windows: 'Windows'};
-// A key's mark is six hex digits; each of the first four picks one of these
-// by its low three bits, as the Mac app does, so a key looks the same on
-// every computer.
 const MARK_COLORS = ['#E5484D', '#F76B15', '#FFC53D', '#30A46C', '#12A594', '#0090FF', '#8E4EC6', '#D6409F'];
-// This theme's buttons are restyled at application priority, so every state
-// is set here. Color on the board means the selection or a crossing.
 const CSS = `
 .zf-shelf { border: 1.5px dashed alpha(currentColor, 0.25); border-radius: 12px; padding: 8px 12px; }
 .zf-mark { min-width: 7px; min-height: 7px; border-radius: 2px; }
@@ -78,7 +59,6 @@ button.zf-done { min-height: 26px; padding: 0 12px; border-radius: 999px; }
 .zf-dot-warning { background: @warning_color; box-shadow: none; }
 .zf-dot-accent { background: @accent_bg_color; box-shadow: none; }
 `;
-// [red, green, blue] from 0 to 1, for cairo.
 const channels = hex => [1, 3, 5].map(at => Number.parseInt(hex.slice(at, at + 2), 16) / 255);
 
 function button(label, action, css = []) {
@@ -96,20 +76,17 @@ function addStyle() {
     Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
 }
 
-// The palette indexes of a mark's four squares, from its six hex digits.
 export function markColors(seed) {
     if (!/^[0-9a-f]{6}$/i.test(seed ?? '')) return [];
     return [...seed.slice(0, 4)].map(digit => Number.parseInt(digit, 16) & 7);
 }
 
-// Draws a mark into `box` as four small squares, or nothing without one.
 function showMark(box, seed) {
     if (box._seed === seed) return;
     box._seed = seed;
     for (let child = box.get_first_child(); child; child = box.get_first_child()) box.remove(child);
     for (const color of markColors(seed)) box.append(new Gtk.Box({css_classes: ['zf-mark', `zf-mark-${color}`], valign: Gtk.Align.CENTER}));
     box.visible = !!box.get_first_child();
-    // The text form a notification or `zflow nearby` gives.
     box.tooltip_text = box.visible ? `Mark ${seed}` : null;
 }
 
@@ -118,7 +95,6 @@ function toggleClass(widget, name, on) {
     else widget.remove_css_class(name);
 }
 
-// Whose screen a layout monitor is: this computer's, or a paired one's.
 const ownerOf = monitor => monitor.peer ? `peer:${monitor.peer}` : LOCAL;
 
 function dotClasses(state) {
@@ -126,7 +102,6 @@ function dotClasses(state) {
     return ['zf-dot', ...color ? [`zf-dot-${color}`] : []];
 }
 
-// The accent libadwaita 1.6 reports, else GNOME's blue.
 function accent() {
     const color = Adw.StyleManager.get_default().get_accent_color_rgba?.();
     return color ? [color.red, color.green, color.blue] : channels('#3584E4');
@@ -142,8 +117,6 @@ function roundedRect(cr, x, y, width, height, radius) {
     cr.closePath();
 }
 
-// A seam's badge: arrows each way across it on an accent dot, ⇄ across an
-// upright seam and ⇅ across one lying flat.
 function drawBadge(cr, x, y, vertical, color, strength) {
     cr.save();
     cr.setSourceRGBA(...color, strength);
@@ -169,7 +142,6 @@ function drawBadge(cr, x, y, vertical, color, strength) {
     cr.restore();
 }
 
-// The badge a crossing's row starts with, as its seam shows it.
 function badge(vertical) {
     const area = new Gtk.DrawingArea({content_width: 20, content_height: 20, valign: Gtk.Align.CENTER});
     area.set_draw_func((_area, cr) => {
@@ -179,7 +151,6 @@ function badge(vertical) {
     return area;
 }
 
-// "27″ · 2560 × 1440", with what the system knows of the two.
 function screenDetail(display) {
     if (!display) return '';
     const parts = [];
@@ -189,7 +160,6 @@ function screenDetail(display) {
     return parts.join(' · ');
 }
 
-// "2 screens · Connected"
 function summary({peer, tiles}) {
     const screens = tiles.length ? `${tiles.length} ${tiles.length === 1 ? 'screen' : 'screens'}` : 'Not on the arrangement';
     return [screens, peer && STATES[peer.state]?.[0]].filter(Boolean).join(' · ');
@@ -208,7 +178,6 @@ export class Settings {
         this._controls = new Map();
         this._scrolls = new Map();
         this._lensRows = new Map();
-        // The rows each inspector group shows.
         this._filled = new Map();
         this._inspectorKey = null;
         this._inspectorRows = [];
@@ -227,7 +196,6 @@ export class Settings {
         this.page.add(sharing);
         this._health = new Adw.PreferencesGroup({title: 'Checks', visible: false});
         this.page.add(this._health);
-        // Requests that failed; checks that fail are in the group above.
         this._errorGroup = new Adw.PreferencesGroup({visible: false});
         this._error = new Adw.ActionRow({title: 'Needs attention', subtitle_lines: 0});
         this._error.add_prefix(new Gtk.Image({icon_name: 'dialog-warning-symbolic'}));
@@ -238,7 +206,6 @@ export class Settings {
         this._computers = new Adw.PreferencesGroup({title: 'Computers', description: NO_LAYOUT});
         this._addButton = button('Add by Address…', () => this._openAddAddress(), ['flat']);
         this._computers.header_suffix = this._addButton;
-        // A fresh install's pairing window, and the computer it took.
         this._windowRow = new Adw.ActionRow({title: '', subtitle_lines: 0, use_markup: false, visible: false});
         this._windowMark = new Gtk.Box({spacing: 2});
         this._windowRow.add_prefix(this._windowMark);
@@ -252,11 +219,6 @@ export class Settings {
         dismiss.connect('clicked', () => this._dismissJoined());
         this._joinedRow.add_suffix(dismiss);
         this._computers.add(this._joinedRow);
-        // The arrangement: each computer's screens as an island with its name
-        // above it, lit seams where the pointer crosses to another computer,
-        // and computers found on the network on a shelf under it until one is
-        // dragged in. Screens and names are buttons, so they take keyboard
-        // focus and have names.
         this._tiles = new Map();
         this._islands = new Map();
         this._found = new Map();
@@ -264,18 +226,14 @@ export class Settings {
         this._foundKey = '';
         this._seams = [];
         this._seamKey = '';
-        // Seams fade while sharing is off, since the pointer crosses none.
         this._crossing = true;
         this._selection = null;
-        // The computer under the pointer, which shows its outline and screen names.
         this._hovered = null;
-        // The computer whose screens move one by one.
         this._adjusting = null;
         this._pressed = null;
         this._lastPress = null;
         this._drag = null;
         this._asking = false;
-        // Where a found computer being carried has its middle.
         this._carried = null;
         this._boardSize = [440, BOARD_HEIGHT];
         this._shelfHeight = 0;
@@ -284,10 +242,6 @@ export class Settings {
         this._shelf.append(new Gtk.Label({label: 'Found on your network', xalign: 0, css_classes: ['heading']}));
         this._shelf.append(new Gtk.Label({label: 'Drag one next to a screen to add it.', xalign: 0, css_classes: ['caption', 'dim-label']}));
         this._board.put(this._shelf, 0, 0);
-        // One drag for the whole box. On a tile, it would measure from the
-        // tile that moves under it. It sees a press before the tile's button
-        // does, as a scrolled window's drag does, and takes it only once the
-        // pointer moves.
         const drag = new Gtk.GestureDrag({propagation_phase: Gtk.PropagationPhase.CAPTURE});
         drag.connect('drag-begin', (_drag, x, y) => this._press(x, y));
         drag.connect('drag-update', (_drag, dx, dy) => this._dragTile(drag, dx, dy));
@@ -297,9 +251,6 @@ export class Settings {
         motion.connect('motion', (_motion, x, y) => this._hover(x, y));
         motion.connect('leave', () => this._hover(null, null));
         this._board.add_controller(motion);
-        // A Gtk.Fixed does not report its width, so the area under it does.
-        // It draws the islands' outlines; the one over the board draws the
-        // seams, which lie along the screens' edges.
         this._area = new Gtk.DrawingArea({content_height: BOARD_HEIGHT, hexpand: true});
         this._area.set_draw_func((area, cr, width) => this._drawIslands(area, cr, width));
         this._area.connect('resize', (_area, width) => {
@@ -315,9 +266,6 @@ export class Settings {
         this._layout = new Adw.PreferencesRow({title: 'Layout', child: canvas, activatable: false, focusable: false, visible: false});
         this._computers.add(this._layout);
         this.page.add(this._computers);
-        // Under the arrangement, as GNOME Settings shows a display's settings
-        // under its arrangement: every computer, or the selected one's
-        // crossings, screens and settings.
         this._inspector = new Adw.PreferencesGroup();
         this._crossings = new Adw.PreferencesGroup({title: 'Crossings', visible: false});
         this._screens = new Adw.PreferencesGroup({title: 'Screens', visible: false});
@@ -346,7 +294,6 @@ export class Settings {
         });
         preferences.add(this._login);
         this.page.add(preferences);
-        // Rows only this computer has, under the shared ones.
         const local = new Adw.PreferencesGroup({title: 'This Computer'});
         const logs = new Adw.ActionRow({title: 'Service Log', subtitle: 'Follow what zflow’s background service is doing.'});
         this._logs = button('Open', () => this._run({command: 'open_logs'}));
@@ -384,7 +331,6 @@ export class Settings {
 
     _update(snapshot) {
         if (this._disposed) return;
-        // An agent from another API level sends a snapshot this window cannot read.
         const known = compatible(snapshot);
         const online = known && snapshot.sharing !== null;
         const state = known ? snapshot.status.state : 'attention';
@@ -396,7 +342,6 @@ export class Settings {
         this._sharing.sensitive = online && !this._busy;
         this._pause.active = (known && snapshot.pause_at_edges) ?? false;
         this._pause.sensitive = online && snapshot.pause_at_edges !== null && !this._busy;
-        // An agent from before clipboard sharing leaves it out.
         const share = known ? (snapshot.share_clipboard ?? null) : null;
         this._clipboard.active = share ?? false;
         this._clipboard.sensitive = online && share !== null && !this._busy;
@@ -409,7 +354,6 @@ export class Settings {
         this._help.description = `Changes save automatically. Advanced settings are in ${known ? snapshot.config_path : '/etc/zflow/zflow.toml'}.`;
         this._updateHealth(known ? snapshot.health : []);
         const peers = this._peers = known ? snapshot.peers : [];
-        // An agent from before the shelf leaves these out.
         this._updateLayout(known ? snapshot.layout : null, known ? snapshot.own_mark ?? null : null, peers);
         this._updateSeams(known ? snapshot.seams ?? [] : [], online && snapshot.sharing);
         this._updateFound(known ? snapshot.unplaced ?? [] : []);
@@ -435,7 +379,6 @@ export class Settings {
         showMark(this._windowMark, holding?.mark ?? null);
     }
 
-    // The newest computer that joined, while it is still here, until dismissed.
     _updateJoined(notices, peers) {
         const names = new Set(peers.map(({name}) => name));
         const joined = notices.findLast(notice => notice.kind === 'joined' && notice.id > this._dismissed && names.has(notice.name));
@@ -477,8 +420,6 @@ export class Settings {
         this._layout.visible = monitors.length > 0;
         this._computers.description = monitors.length ? LAYOUT_HINT : NO_LAYOUT;
         const known = new Map(peers.map(peer => [peer.name, peer]));
-        // Keep tiles, and the focused one, while unchanged snapshots arrive. A
-        // move keeps its tiles too, so arrow keys can move them again.
         const key = JSON.stringify([monitors, ownMark, peers.map(({name, state, mark}) => [name, state, mark])]);
         if (key === this._layoutKey) return;
         this._layoutKey = key;
@@ -488,7 +429,6 @@ export class Settings {
             this._board.remove(tile.button);
             this._tiles.delete(id);
         }
-        // Each computer's screens, in the order the layout first names them.
         const owners = new Map();
         for (const monitor of monitors) {
             const tile = this._tiles.get(monitor.id) ?? this._newTile(monitor);
@@ -509,7 +449,6 @@ export class Settings {
             this._showIsland(this._islands.get(owner) ?? this._newIsland(owner), tiles, peer, name ? peer?.mark ?? null : ownMark);
         }
         this._raiseChips();
-        // A drop ends once a snapshot has its screen somewhere else.
         const drag = this._drag;
         const anchor = drag && this._tiles.get(drag.anchor.id)?.monitor;
         if (drag?.dropped && (anchor?.x !== drag.anchor.x || anchor?.y !== drag.anchor.y)) this._drag = null;
@@ -527,35 +466,26 @@ export class Settings {
 
     _newTile(monitor) {
         const label = new Gtk.Label({ellipsize: Pango.EllipsizeMode.END, xalign: 0, halign: Gtk.Align.START, valign: Gtk.Align.END, hexpand: true, vexpand: true, css_classes: ['zf-screen-name']});
-        // A computer that has not said what screens it has shows an icon.
         const icon = new Gtk.Image({icon_name: 'computer-symbolic', hexpand: true, vexpand: true, css_classes: ['dim-label']});
         const content = new Gtk.Box();
         content.append(icon);
         content.append(label);
         const button = new Gtk.Button({child: content, css_classes: ['zf-screen']});
-        // Where the screen sits on the board, in pixels, and where it shows
-        // while a drag carries it.
         const tile = {button, label, icon, monitor, owner: ownerOf(monitor), x: 0, y: 0, size: [0, 0], shown: [0, 0, 0, 0]};
         button.connect('clicked', () => this._select(tile.owner));
-        // Out of adjusting, a screen carries its whole computer.
         button.add_controller(this._keys(() => tile, () => this._adjusting !== tile.owner));
         this._board.put(button, 0, 0);
         this._tiles.set(monitor.id, tile);
         return tile;
     }
 
-    // A computer's name above its screens. Dragging it moves the computer;
-    // double-clicking it, or one of its screens, adjusts them one by one.
     _newIsland(owner) {
         const name = new Gtk.Label({ellipsize: Pango.EllipsizeMode.END, max_width_chars: 16, css_classes: ['caption-heading']});
-        // Its state is a dot here, in words in its tooltip and the inspector,
-        // and its mark is in the inspector, so names stay small on the board.
         const dot = new Gtk.Box({css_classes: ['zf-dot'], valign: Gtk.Align.CENTER});
         const content = new Gtk.Box({spacing: 6});
         for (const child of [name, dot]) content.append(child);
         const chip = new Gtk.Button({child: content, css_classes: ['zf-chip']});
         const done = new Gtk.Button({label: 'Done', tooltip_text: 'Move its screens together again', css_classes: ['zf-done', 'suggested-action'], visible: false});
-        // Where its name sits on the board, and on which side of its outline.
         const island = {owner, chip, done, name, dot, seed: null, tiles: [], x: 0, y: 0, size: [0, 0], spot: null, doneAt: {x: 0, y: 0, size: [0, 0]}};
         chip.connect('clicked', () => this._select(owner));
         done.connect('clicked', () => this._adjust(owner, false));
@@ -586,7 +516,6 @@ export class Settings {
         }
     }
 
-    // Names draw over the screens, and Done beside its name.
     _raiseChips() {
         for (const island of this._islands.values()) {
             island.chip.insert_before(this._board, null);
@@ -594,8 +523,6 @@ export class Settings {
         }
     }
 
-    // Arrow keys move a computer, or one of its screens while it is being
-    // adjusted. Escape lets go of the selected computer.
     _keys(tile, computer) {
         const keys = new Gtk.EventControllerKey();
         keys.connect('key-pressed', (_keys, keyval) => {
@@ -623,7 +550,6 @@ export class Settings {
         if (focus) this._islands.get(owner)?.chip.grab_focus();
     }
 
-    // Whether a computer's screens move one by one instead of together.
     _adjust(owner, on) {
         this._selection = owner;
         this._adjusting = on ? owner : null;
@@ -636,7 +562,6 @@ export class Settings {
         this._updateInspector();
     }
 
-    // The computer whose outline or name is under the pointer, or none.
     _hover(x, y) {
         const inside = ([left, top, width, height]) => x >= left && x < left + width && y >= top && y < top + height;
         const island = x === null ? null : [...this._islands.values()].find(island => {
@@ -649,8 +574,6 @@ export class Settings {
         this._placeTiles();
     }
 
-    // The scale and origin that center the layout on the board, with room
-    // above it for the computers' names, as the Mac app fits it.
     _fit(monitors, width, height) {
         const left = Math.min(...monitors.map(m => m.x));
         const top = Math.min(...monitors.map(m => m.y));
@@ -667,8 +590,6 @@ export class Settings {
         };
     }
 
-    // A monitor on the board as [x, y, width, height]. Every screen rounds
-    // its edges alike, so touching edges stay touching.
     _rect(monitor, fit, shift) {
         const x = value => Math.round(fit.offsetX + (value - fit.left) * fit.scale + shift[0]);
         const y = value => Math.round(fit.offsetY + (value - fit.top) * fit.scale + shift[1]);
@@ -676,16 +597,12 @@ export class Settings {
         return [left, top, Math.max(1, x(monitor.x + monitor.width) - left), Math.max(1, y(monitor.y + monitor.height) - top)];
     }
 
-    // Scales the layout to fit the board and centers it. A drag keeps the
-    // scale it began with, so nothing rescales under the pointer.
     _placeTiles() {
         const tiles = [...this._tiles.values()];
         if (tiles.length) {
             const [width, height] = this._boardSize;
             const fit = this._fitted = this._drag?.fit ?? this._fit(tiles.map(tile => tile.monitor), width, height);
             this._scale = fit.scale;
-            // Where layout unit (left, top) is on the board, for computers
-            // dropped from the shelf.
             this._origin = {left: fit.left, top: fit.top, offsetX: fit.offsetX, offsetY: fit.offsetY};
             const drag = this._drag;
             const shift = drag ? this._shift(drag) : [0, 0];
@@ -700,8 +617,6 @@ export class Settings {
                 this._board.move(tile.button, shown[0], shown[1]);
                 toggleClass(tile.button, 'zf-moving', moving);
                 toggleClass(tile.button, 'zf-refused', moving && refused);
-                // Only the selected or hovered computer names its screens,
-                // and a screen too small for its name shows none.
                 const named = tile.owner === this._selection || tile.owner === this._hovered;
                 tile.label.visible = named && !!tile.monitor.display && shown[2] >= 64 && shown[3] >= 30;
                 tile.icon.visible = !tile.monitor.display && Math.min(shown[2], shown[3]) >= 24;
@@ -712,7 +627,6 @@ export class Settings {
         this._seamArea.queue_draw();
     }
 
-    // An island's screens as shown, with room around them.
     _hull(island) {
         if (!island.tiles.length) return null;
         const rects = island.tiles.map(tile => tile.shown);
@@ -723,10 +637,6 @@ export class Settings {
         return [left - HULL, top - HULL, right - left + 2 * HULL, bottom - top + 2 * HULL];
     }
 
-    // A computer's name sits over its outline's top left corner, or at
-    // another corner or just inside, wherever it covers the least of the
-    // other computers and names. A drag keeps each name at its spot, so none
-    // jumps under the pointer.
     _placeChips() {
         const [width, height] = this._boardSize;
         const islands = [...this._islands.values()];
@@ -739,8 +649,6 @@ export class Settings {
             island.chip.visible = !!hull;
             island.done.visible = !!hull && this._adjusting === island.owner;
             if (!hull) continue;
-            // A Gtk.Fixed gives a child its minimum size, which an ellipsized
-            // name would shrink to nothing.
             island.chip.set_size_request(-1, -1);
             const [, natural] = island.chip.measure(Gtk.Orientation.HORIZONTAL, -1);
             const [, chipHeight] = island.chip.measure(Gtk.Orientation.VERTICAL, -1);
@@ -753,7 +661,6 @@ export class Settings {
             const [above, below, inside] = [hull[1] - chipHeight - CHIP_GAP, hull[1] + hull[3] + CHIP_GAP, hull[1] + HULL + 4];
             const spots = [[start, above], [end, above], [start, below], [end, below], [start, inside]];
             const others = [...islands.filter(other => other !== island && hulls.get(other)).map(other => hulls.get(other)), ...taken];
-            // Off the board counts as covering everything.
             const cost = ([x, y]) => y < 4 || y + chipHeight > height - 4 ? Infinity
                 : others.reduce((sum, other) => sum + covered([x, y, span, chipHeight], other), 0);
             if (!this._drag || island.spot === null) {
@@ -772,8 +679,6 @@ export class Settings {
         }
     }
 
-    // The selected and hovered computers' outlines, on a faint dotted
-    // backdrop like a desk mat.
     _drawIslands(area, cr, width) {
         const fg = area.get_color();
         cr.setSourceRGBA(fg.red, fg.green, fg.blue, 0.07);
@@ -800,9 +705,6 @@ export class Settings {
         cr.$dispose();
     }
 
-    // Lit seams where the pointer crosses to another computer, and dotted
-    // joints between one computer's own screens. A found computer carried
-    // over the board shows where it would land.
     _drawSeams(area, cr) {
         const fit = this._fitted;
         if (fit && this._layout.visible) {
@@ -831,7 +733,6 @@ export class Settings {
                 cr.setSourceRGBA(...color, strength);
                 cr.setLineWidth(4);
                 cr.stroke();
-                // Arrows across it, where there is room.
                 if ((seam.end - seam.start) * fit.scale > 34) drawBadge(cr, (x0 + x1) / 2, (y0 + y1) / 2, seam.vertical, color, strength);
             }
             const carried = this._carried;
@@ -847,7 +748,6 @@ export class Settings {
         cr.$dispose();
     }
 
-    // While a drag waits for the engine, only the seams it cannot change show.
     _shownSeams() {
         const drag = this._drag;
         if (!drag) return this._seams;
@@ -856,7 +756,6 @@ export class Settings {
         return this._seams.filter(({a, b}) => !moving.has(a) && !moving.has(b));
     }
 
-    // A seam on the board as [x0, y0, x1, y1], short of its ends by `inset`.
     _seamLine(seam, fit, inset) {
         const across = seam.vertical ? fit.offsetX + (seam.at - fit.left) * fit.scale : fit.offsetY + (seam.at - fit.top) * fit.scale;
         const along = seam.vertical ? fit.offsetY - fit.top * fit.scale : fit.offsetX - fit.left * fit.scale;
@@ -866,8 +765,6 @@ export class Settings {
         return seam.vertical ? [line, start, line, end] : [start, line, end, line];
     }
 
-    // What a press on the board picked up. A second press on one computer
-    // soon after the first adjusts its screens, or stops adjusting them.
     _press(x, y) {
         const hit = this._pressed = this._hit(x, y);
         this._pressAt = [x, y];
@@ -890,23 +787,18 @@ export class Settings {
         if (islands.some(island => island.done.visible && inside(island.doneAt))) return {done: true};
         const island = islands.find(island => island.chip.visible && inside(island));
         if (island) return {island, anchor: island.tiles[0], computer: true};
-        // Later screens draw on top.
         const tile = [...this._tiles.values()].findLast(inside);
         if (tile) return {island: this._islands.get(tile.owner), anchor: tile, tile: true, computer: this._adjusting !== tile.owner};
         const found = [...this._found.values()].find(tile => inside(tile) && PLACEABLE.has(tile.found.state));
         return found ? {found} : null;
     }
 
-    // Past a click, what was pressed follows the pointer: a found computer,
-    // or a computer's screens, which the engine says where they would land.
     _dragTile(drag, dx, dy) {
         const pressed = this._pressed;
         if (!pressed || pressed.done) return;
         if (!pressed.dragging) {
             if (Math.hypot(dx, dy) < 3) return;
             pressed.dragging = true;
-            // The button under the pointer lets go of the press, and a press
-            // that dragged is not half a double-click.
             drag.set_state(Gtk.EventSequenceState.CLAIMED);
             this._lastPress = null;
             if (pressed.found) {
@@ -929,12 +821,10 @@ export class Settings {
         this._ask();
     }
 
-    // Sends where the screens were dropped, in layout units.
     _dropTile(dx, dy) {
         const pressed = this._pressed;
         this._pressed = null;
         if (!pressed?.dragging) {
-            // A click beside the computers lets go of the selected one.
             if (!pressed && this._pressAt?.[1] < this._boardSize[1]) this._select(null);
             return;
         }
@@ -955,13 +845,9 @@ export class Settings {
     _startMove({island, anchor, computer}) {
         const drag = this._drag = {
             owner: island.owner, anchor: {...anchor.monitor}, computer, fit: this._fitted,
-            // How far the pointer went, in pixels.
             pixels: [0, 0],
-            // The move the engine last answered for, and its answer: where
-            // the screens land, or null where they cannot go.
             asked: null, landing: undefined, dropped: false,
         };
-        // The moving screens draw over the others, under the names.
         for (const tile of this._tiles.values()) {
             if (this._moves(drag, tile)) tile.button.insert_before(this._board, null);
         }
@@ -973,7 +859,6 @@ export class Settings {
         return drag.computer ? tile.owner === drag.owner : tile.monitor.id === drag.anchor.id;
     }
 
-    // As far as the pointer went, but with the screens kept on the board.
     _travel(drag, dx, dy) {
         const moving = [...this._tiles.values()].filter(tile => this._moves(drag, tile));
         if (!moving.length) return [dx, dy];
@@ -995,15 +880,11 @@ export class Settings {
         };
     }
 
-    // How far the moving screens show from their spot, in pixels: where
-    // the engine says they land, else under the pointer.
     _shift(drag) {
         const {landing, anchor, fit: {scale}} = drag;
         return landing ? [(landing.x - anchor.x) * scale, (landing.y - anchor.y) * scale] : drag.pixels;
     }
 
-    // Asks the engine where the drag lands, one question at a time, the
-    // newest travel next.
     async _ask() {
         const drag = this._drag;
         if (!drag || drag.dropped || this._asking) return;
@@ -1013,7 +894,6 @@ export class Settings {
         this._asking = true;
         let landing;
         try { landing = await this.client.call(request); }
-        // Without an answer, the screens follow the pointer.
         catch { landing = undefined; }
         finally { this._asking = false; }
         if (this._disposed) return;
@@ -1025,8 +905,6 @@ export class Settings {
         if (landing !== undefined) this._ask();
     }
 
-    // The screens stay where they show until the snapshot moves them, or
-    // go back if the engine refuses.
     async _finishMove(drag) {
         drag.dropped = true;
         this._placeTiles();
@@ -1035,17 +913,12 @@ export class Settings {
         if (!this._disposed) this._placeTiles();
     }
 
-    // Where a carried found computer shows: it follows the pointer from the
-    // shelf onto the board, but stays in the box.
     _dragged(tile, dx, dy) {
         const [width, height] = this._boardSize;
         const clamp = (value, max) => Math.min(Math.max(value, 0), Math.max(max, 0));
         return [clamp(tile.x + dx, width - tile.size[0]), clamp(tile.y + dy, height + this._shelfHeight - tile.size[1])];
     }
 
-    // A found computer let go with its middle at (x, y) on the board joins
-    // the layout there, with a new tile's size. Let go on the shelf, it
-    // goes back.
     async _dropFound(tile, x, y) {
         if (y >= this._boardSize[1] || !this._origin) {
             this._placeShelf();
@@ -1057,7 +930,6 @@ export class Settings {
         await this._place(tile, Math.round(middle[0] - NEW_TILE[0] / 2), Math.round(middle[1] - NEW_TILE[1] / 2), Math.round(DRAG_TOLERANCE / scale));
     }
 
-    // Keyboard people put a found computer beside this one.
     _placeBeside(tile) {
         const local = [...this._tiles.values()].find(({monitor}) => !monitor.peer)?.monitor;
         if (!local || !PLACEABLE.has(tile.found.state)) return;
@@ -1066,8 +938,6 @@ export class Settings {
 
     async _place(tile, x, y, tolerance) {
         const placed = await this._run({command: 'place', id: tile.found.id, x, y, tolerance});
-        // A refused one goes back to the shelf; a placed one leaves it with
-        // the next snapshot.
         if (!this._disposed) this._placeShelf();
         return placed;
     }
@@ -1115,7 +985,6 @@ export class Settings {
         content.append(detail);
         const button = new Gtk.Button({child: content});
         const tile = {button, name, detail, mark, found: computer, x: 0, y: 0, size: FOUND_SIZE, dragging: false};
-        // Only a drag or a key places it, never a stray click.
         const keys = new Gtk.EventControllerKey();
         keys.connect('key-pressed', (_keys, keyval) => {
             if (![Gdk.KEY_Return, Gdk.KEY_KP_Enter, Gdk.KEY_space].includes(keyval)) return false;
@@ -1128,7 +997,6 @@ export class Settings {
         return tile;
     }
 
-    // Lays the found computers out in rows under the board.
     _placeShelf() {
         const [width, height] = this._boardSize;
         const tiles = [...this._found.values()];
@@ -1150,16 +1018,12 @@ export class Settings {
         });
     }
 
-    // Screens stay sensitive during a request, so the focused one keeps
-    // focus; a move while another runs is dropped.
     async _moveTile(id, x, y, tolerance, computer) {
         const moved = await this._run({command: 'move_tile', id, x, y, tolerance, computer});
         if (!this._disposed) this._placeTiles();
         return moved;
     }
 
-    // The computers on the arrangement, in its order, then any paired one
-    // with no screen there.
     _computerList() {
         const peers = new Map(this._peers.map(peer => [peer.name, peer]));
         const computers = [...this._islands.values()].map(({owner, name, tiles, seed}) => {
@@ -1173,18 +1037,14 @@ export class Settings {
         return computers;
     }
 
-    // Where the pointer goes from this computer's screens to another's.
     _crossingsOf({tiles}) {
         const mine = new Set(tiles.map(({monitor}) => monitor.id));
         return this._seams.filter(seam => !seam.same_computer && mine.has(seam.a) !== mine.has(seam.b));
     }
 
-    // Rows are rebuilt only when what they say changes, so keyboard focus
-    // stays. A setting's change only moves its control, below.
     _updateInspector() {
         const computers = this._computerList();
         const owners = new Set(computers.map(({owner}) => owner));
-        // A forgotten computer lets go of the selection.
         if (!owners.has(this._selection)) this._selection = null;
         if (!owners.has(this._adjusting)) this._adjusting = null;
         const selected = computers.find(({owner}) => owner === this._selection) ?? null;
@@ -1215,7 +1075,6 @@ export class Settings {
         this._updating = false;
     }
 
-    // Replaces the rows `group` shows.
     _fill(group, rows) {
         for (const row of this._filled.get(group) ?? []) group.remove(row);
         for (const row of rows) group.add(row);
@@ -1256,12 +1115,10 @@ export class Settings {
         this._inspector.title = name;
         this._inspector.description = peer ? peer.detail : null;
         const header = new Gtk.Box({spacing: 6, valign: Gtk.Align.CENTER});
-        // Its mark shows here rather than on the board.
         const mark = new Gtk.Box({spacing: 2, valign: Gtk.Align.CENTER, margin_end: 6});
         showMark(mark, seed);
         header.append(mark);
         if (peer) {
-            // Forgetting puts it back on the shelf, so it takes no asking.
             const forget = new Gtk.Button({icon_name: 'user-trash-symbolic', tooltip_text: `Forget ${name}`, valign: Gtk.Align.CENTER, css_classes: ['flat']});
             forget.connect('clicked', () => this._run({command: 'forget', name}));
             header.append(forget);
@@ -1367,8 +1224,6 @@ export class Settings {
         this._shortcuts.visible = shortcuts.length > 0;
     }
 
-    // For a computer mDNS cannot see, such as one on Tailscale. What answers
-    // shows up on the shelf.
     _openAddAddress() {
         const dialog = new Adw.AlertDialog({heading: 'Add a Computer by Address', body: 'For a computer zflow can’t find on this network, like one on Tailscale. It shows up in Found on your network; drag it into place to add it.'});
         const entry = new Gtk.Entry({placeholder_text: 'IP address, like 100.64.0.7', activates_default: true, input_purpose: Gtk.InputPurpose.URL});

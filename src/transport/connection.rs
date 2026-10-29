@@ -33,8 +33,6 @@ const CONTROL_STREAM_PREFACE: &[u8] = b"zflow-control\0";
 const HELLO_STREAM_PREFACE: &[u8] = b"zflow-hello\0";
 const HELLO_EXPORTER_LABEL: &[u8] = b"EXPORTER-zflow-hello-v1";
 const MAX_HELLO_FRAME_BYTES: usize = MAX_HELLO_PAYLOAD_BYTES + 64;
-/// How long a listener keeps a hello open for the initiator to read the
-/// answer and close.
 const HELLO_LINGER: Duration = Duration::from_secs(3);
 const MAX_CONTROL_FRAME_BYTES: usize = MAX_RELIABLE_PAYLOAD_BYTES + 64;
 const CRITICAL_STREAM_ERROR: VarInt = VarInt::from_u32(0x100);
@@ -55,10 +53,6 @@ pub enum InputDatagram {
     Probe(ProbeMessage),
 }
 
-/// A mutually authenticated input connection with exactly one critical stream.
-///
-/// The underlying Quinn connection is intentionally not exposed: input code can
-/// only access the protocol's control, motion, and probe channels.
 pub struct InputConnection {
     peer_spki: Arc<[u8]>,
     control_send: ControlSender,
@@ -117,25 +111,19 @@ pub struct InputChannels {
     pub lens: LensChannel,
 }
 
-/// The two-way streams that carry a lens: tiles one way, the viewer's pointer, keys and
-/// acknowledgements the other. One may be open in each direction. They send below the control
-/// stream's priority, so tiles never hold up input.
 #[derive(Clone)]
 pub struct LensChannel {
     connection: Connection,
 }
 
-/// Both halves of one lens stream, after the preface.
 pub struct LensStream {
     pub send: quinn::SendStream,
     pub receive: quinn::RecvStream,
 }
 
-/// Why a lens stream was stopped, for the other end's diagnostics.
 const LENS_REFUSED: u32 = 1;
 
 impl LensChannel {
-    /// Opens a lens onto the peer's screen.
     pub async fn open(&self) -> Result<LensStream, TransportError> {
         let failed = |error: &dyn fmt::Display| TransportError::Lens(error.to_string());
         let (mut send, receive) = self.connection.open_bi().await?;
@@ -146,8 +134,6 @@ impl LensChannel {
         Ok(LensStream { send, receive })
     }
 
-    /// Waits for the peer to open a lens onto this computer's screen. A stream without the
-    /// lens preface is stopped, and the connection stays up.
     pub async fn accept(&self) -> Result<LensStream, TransportError> {
         let failed = |error: &dyn fmt::Display| TransportError::Lens(error.to_string());
         let (mut send, mut receive) = self.connection.accept_bi().await?;
@@ -166,7 +152,6 @@ impl LensChannel {
     }
 }
 
-/// The kind and length a clipboard stream announces, if it may be read.
 fn clip_header(header: &[u8; 7]) -> Option<(crate::clipboard::ClipKind, usize)> {
     let length = u32::from_be_bytes(header[3..].try_into().expect("four bytes")) as usize;
     let kind = crate::clipboard::ClipKind::from_code(header[2])?;
@@ -174,23 +159,15 @@ fn clip_header(header: &[u8; 7]) -> Option<(crate::clipboard::ClipKind, usize)> 
         .then_some((kind, length))
 }
 
-/// Starts every clipboard stream, so a stray stream is refused at once.
 const CLIPBOARD_PREFACE: &[u8; 2] = b"ZC";
-/// Why a clipboard stream was stopped, for the other end's diagnostics.
 const CLIPBOARD_REFUSED: u32 = 1;
 
-/// The one-way streams that carry clipboard contents, one transfer each.
-/// They send at a lower priority than the control stream, and QUIC puts
-/// datagrams ahead of stream data in every packet, so a large clip does
-/// not hold up input.
 #[derive(Clone)]
 pub struct ClipboardChannel {
     connection: Connection,
 }
 
 impl ClipboardChannel {
-    /// Sends one clip and finishes its stream. Dropping the future part way
-    /// ends the stream early, and the other end discards what it got.
     pub async fn send(&self, clip: &crate::clipboard::Clip) -> Result<(), TransportError> {
         let failed = |error: &dyn fmt::Display| TransportError::Clipboard(error.to_string());
         let mut stream = self.connection.open_uni().await?;
@@ -211,8 +188,6 @@ impl ClipboardChannel {
         Ok(())
     }
 
-    /// Waits for the next clip from the peer. A bad or oversized clip is an
-    /// error for that stream only; the connection stays up.
     pub async fn receive(&self) -> Result<crate::clipboard::Clip, TransportError> {
         use crate::clipboard::Clip;
         let failed = |error: &dyn fmt::Display| TransportError::Clipboard(error.to_string());
@@ -251,9 +226,6 @@ impl fmt::Debug for ControlSender {
 }
 
 impl ControlSender {
-    /// Send the authenticated session offer on the critical ordered stream.
-    ///
-    /// Like Quinn's `write_all`, this future must not be cancelled mid-write.
     pub async fn send_negotiation_offer(
         &mut self,
         offer: &NegotiationOffer,
@@ -262,9 +234,6 @@ impl ControlSender {
             .await
     }
 
-    /// Send the selected authenticated session schema.
-    ///
-    /// Like Quinn's `write_all`, this future must not be cancelled mid-write.
     pub async fn send_negotiated_session(
         &mut self,
         session: &NegotiatedSession,
@@ -273,9 +242,6 @@ impl ControlSender {
             .await
     }
 
-    /// Send one reliable input-control transition.
-    ///
-    /// Like Quinn's `write_all`, this future must not be cancelled mid-write.
     pub async fn send_control(
         &mut self,
         message: &ReliableControlMessage,
@@ -310,9 +276,6 @@ impl ControlSender {
                 return Err(error.into());
             }
             Err(_) => {
-                // write_all is not cancellation-safe. Closing the whole
-                // connection makes a partially written frame unobservable and
-                // drives the session actor through its receiver cleanup path.
                 close_critical(&self.connection, b"critical stream write timed out");
                 return Err(TransportError::ControlWriteTimedOut);
             }
@@ -350,11 +313,6 @@ impl fmt::Debug for ControlReceiver {
 }
 
 impl ControlReceiver {
-    /// Receive one complete control message.
-    ///
-    /// This future is cancellation-safe. Partial length and payload reads stay
-    /// in the receiver, so polling it from `tokio::select!` cannot discard
-    /// bytes when another branch wins.
     pub async fn receive(&mut self) -> Result<InputControlMessage, TransportError> {
         let frame = loop {
             match &mut self.state {
@@ -452,7 +410,6 @@ impl fmt::Debug for DatagramChannel {
 }
 
 impl DatagramChannel {
-    /// Fix the immutable application datagram limit selected during negotiation.
     pub fn configure_maximum(&self, maximum: u32) -> Result<(), TransportError> {
         let requested = maximum as usize;
         let path_maximum = self.connection.max_datagram_size();
@@ -483,8 +440,6 @@ impl DatagramChannel {
         }
     }
 
-    /// Latest-wins cumulative motion. New motion replaces only older pending
-    /// motion and is drained before pending probes.
     pub fn send_motion(&self, frame: &MotionFrame) -> Result<(), TransportError> {
         self.send_wire(
             WireMessage::Motion(frame.clone()),
@@ -492,12 +447,10 @@ impl DatagramChannel {
         )
     }
 
-    /// Latest-wins application probe or echo.
     pub fn send_probe(&self, probe: &ProbeMessage) -> Result<(), TransportError> {
         self.send_wire(WireMessage::Probe(*probe), PendingDatagramClass::Probe)
     }
 
-    /// Exact number of pending application datagrams replaced by fresher data.
     pub fn dropped_datagrams(&self) -> u64 {
         self.outgoing.dropped()
     }
@@ -517,7 +470,6 @@ impl DatagramChannel {
 
     pub async fn receive(&self) -> Result<InputDatagram, TransportError> {
         let bytes = self.connection.read_datagram().await?;
-        // Our own path MTU says nothing about what the peer may send us.
         if let Err(error) = self.check_negotiated(bytes.len()) {
             close_protocol(&self.connection, b"datagram exceeded negotiated maximum");
             return Err(error);
@@ -582,9 +534,6 @@ struct PendingDatagrams {
     probe: Option<Bytes>,
 }
 
-/// One latest-wins slot per datagram class. Motion is always drained before
-/// probes, and each class can replace only its own pending payload. The pump
-/// uses Quinn's waiting API, so Quinn never evicts an uncounted datagram.
 struct LatestDatagramQueue {
     pending: Mutex<PendingDatagrams>,
     notify: Notify,
@@ -674,7 +623,6 @@ pub async fn connect_input(
     remote: SocketAddr,
     config: &InputClientConfig,
 ) -> Result<InputConnection, TransportError> {
-    // Full handshake only. The early-data conversion path is intentionally absent.
     let connection = endpoint
         .connect_with(config.quinn.clone(), remote, SERVER_NAME_PLACEHOLDER)?
         .await?;
@@ -696,24 +644,16 @@ pub async fn connect_input(
     ))
 }
 
-/// What arrived on the input port.
 #[derive(Debug)]
 pub enum Accepted {
-    /// A trusted computer's input connection.
     Input(InputConnection),
-    /// Any computer saying hello, trusted or not.
     Hello(HelloConnection),
-    /// A key off the allowlist asked for input. Its connection is already
-    /// closed with a code that tells the other computer why.
     NotTrusted {
         peer_spki: Vec<u8>,
         remote_address: SocketAddr,
     },
 }
 
-/// Finishes one handshake on the input port and sorts it by protocol and key.
-/// Pass the configuration the endpoint uses now: a peer revoked while its
-/// handshake was in flight is refused too.
 pub async fn accept(
     incoming: Incoming,
     config: &InputServerConfig,
@@ -762,8 +702,6 @@ pub async fn accept(
     )))
 }
 
-/// [`accept`] for a caller that takes only input: a hello is closed, and a
-/// key off the allowlist is an error.
 pub async fn accept_input(
     incoming: Incoming,
     config: &InputServerConfig,
@@ -822,9 +760,6 @@ fn monitor_send_half(
     });
 }
 
-/// A connection between computers that may not trust each other yet. TLS
-/// proved each side holds the key it presented; the two trade one [`Hello`]
-/// and close. It has no input, clipboard or desktop surface.
 pub struct HelloConnection {
     connection: Connection,
     peer_spki: Arc<[u8]>,
@@ -852,8 +787,6 @@ impl HelloConnection {
         self.connection.remote_address()
     }
 
-    /// A value both ends derive from this TLS session and no other, for
-    /// vouching for a third computer inside this hello alone.
     pub fn binding(&self) -> Result<[u8; 32], TransportError> {
         let mut binding = [0_u8; 32];
         self.connection
@@ -862,9 +795,6 @@ impl HelloConnection {
         Ok(binding)
     }
 
-    /// Sends this computer's hello and returns the other's. The initiator
-    /// closes once it has the answer. The listener keeps the connection a
-    /// moment longer in the background, so its own hello is not cut off.
     pub async fn exchange(mut self, local: &Hello) -> Result<Hello, TransportError> {
         let frame = encode_wire(&WireMessage::Hello(local.clone()))?;
         if frame.len() > MAX_HELLO_FRAME_BYTES {
@@ -909,7 +839,6 @@ impl HelloConnection {
         }
         let mut frame = vec![0_u8; length];
         self.receive.read_exact(&mut frame).await.map_err(failed)?;
-        // Only the hello decoder is reachable before trust exists.
         match decode_family(&frame, Family::Hello) {
             Ok(WireMessage::Hello(hello)) => Ok(hello),
             Ok(_) => unreachable!("decode_family returns only the family asked for"),
@@ -925,7 +854,6 @@ impl HelloConnection {
     }
 }
 
-/// Says hello to whatever answers at `remote`, whatever its key.
 pub async fn connect_hello(
     endpoint: &Endpoint,
     remote: SocketAddr,

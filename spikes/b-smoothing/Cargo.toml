@@ -3,7 +3,6 @@ name = "spike-b-smoothing"
 version = "0.1.0"
 edition = "2021"
 
-# throwaway spike code, detached from any future root workspace
 [workspace]
 
 [dependencies]

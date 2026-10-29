@@ -1,4 +1,3 @@
-//! Owned JSON messages at the Swift/Rust boundary. All engine work runs off the UI thread.
 use crate::{
     app::NativeApp,
     lens::viewer::{Input, Viewer},
@@ -15,7 +14,6 @@ type Reply = mpsc::Sender<String>;
 pub struct ZflowApp {
     commands: mpsc::Sender<(String, Reply)>,
     thread: Option<JoinHandle<()>>,
-    /// Read and written straight from the UI thread, so a frame never waits for the app thread.
     lens: Arc<Viewer>,
 }
 
@@ -32,8 +30,6 @@ fn string(value: String) -> *mut c_char {
         .into_raw()
 }
 
-/// # Safety
-/// `path` must be a valid UTF-8 C string; `error` must point to writable pointer storage.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_app_create(
     path: *const c_char,
@@ -42,12 +38,10 @@ pub unsafe extern "C" fn zflow_app_create(
     if path.is_null() || error.is_null() {
         return std::ptr::null_mut();
     }
-    // SAFETY: the caller supplies a C string and writable error output.
     unsafe {
         *error = std::ptr::null_mut();
     }
     let result = std::panic::catch_unwind(|| -> anyhow::Result<ZflowApp> {
-        // SAFETY: checked nonnull; validity is the caller's contract.
         let path = PathBuf::from(unsafe { CStr::from_ptr(path) }.to_str()?);
         let _ = tracing_subscriber::fmt()
             .with_env_filter(
@@ -57,7 +51,6 @@ pub unsafe extern "C" fn zflow_app_create(
             .with_writer(std::io::stderr)
             .with_ansi(false)
             .try_init();
-        // Input a peer holds is let go if the app is told to quit by a signal.
         crate::macos::install_exit_handlers();
         let mut app = NativeApp::open(path)?;
         let lens = app.lens();
@@ -89,7 +82,6 @@ pub unsafe extern "C" fn zflow_app_create(
     match result {
         Ok(app) => Box::into_raw(Box::new(app)),
         Err(problem) => {
-            // SAFETY: writable output supplied by the caller.
             unsafe {
                 *error = string(format!("{problem:#}"));
             }
@@ -98,8 +90,6 @@ pub unsafe extern "C" fn zflow_app_create(
     }
 }
 
-/// # Safety
-/// `app` must be a live handle and `request` a valid UTF-8 C string. Calls must be serialized.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_app_request(
     app: *mut ZflowApp,
@@ -110,7 +100,6 @@ pub unsafe extern "C" fn zflow_app_request(
     }
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
         || -> anyhow::Result<String> {
-            // SAFETY: live handle and C string are required by the caller contract.
             let (app, request) = unsafe { (&*app, CStr::from_ptr(request).to_str()?) };
             let (send, receive) = mpsc::channel();
             app.commands.send((request.to_owned(), send))?;
@@ -121,8 +110,6 @@ pub unsafe extern "C" fn zflow_app_request(
     string(result.unwrap_or_else(|error| response(Err(error))))
 }
 
-/// # Safety
-/// Free each string returned by this API exactly once, or pass null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_string_free(value: *mut c_char) {
     if !value.is_null() {
@@ -132,14 +119,11 @@ pub unsafe extern "C" fn zflow_string_free(value: *mut c_char) {
     }
 }
 
-/// # Safety
-/// Destroy a live handle exactly once after all requests finish, or pass null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_app_destroy(app: *mut ZflowApp) {
     if app.is_null() {
         return;
     }
-    // SAFETY: caller transfers its handle back and guarantees no outstanding calls.
     let mut app = unsafe { Box::from_raw(app) };
     let thread = app.thread.take();
     drop(app);
@@ -148,7 +132,6 @@ pub unsafe extern "C" fn zflow_app_destroy(app: *mut ZflowApp) {
     }
 }
 
-/// The lens as the UI sees it. `state` is 0 closed, 1 opening, 2 open, 3 failed.
 #[repr(C)]
 pub struct ZflowLensStatus {
     pub state: u32,
@@ -158,12 +141,9 @@ pub struct ZflowLensStatus {
 }
 
 fn lens<'a>(app: *const ZflowApp) -> Option<&'a Viewer> {
-    // SAFETY: a nonnull handle is live for the call, by the caller contract.
     (!app.is_null()).then(|| unsafe { &*(*app).lens })
 }
 
-/// # Safety
-/// `app` must be a live handle or null. Lens calls may come from any thread.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_status(app: *const ZflowApp) -> ZflowLensStatus {
     let status = lens(app).map(Viewer::status).unwrap_or_default();
@@ -175,10 +155,6 @@ pub unsafe extern "C" fn zflow_lens_status(app: *const ZflowApp) -> ZflowLensSta
     }
 }
 
-/// Why the lens failed, or null. Free the string with `zflow_string_free`.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_error(app: *const ZflowApp) -> *mut c_char {
     lens(app)
@@ -188,11 +164,6 @@ pub unsafe extern "C" fn zflow_lens_error(app: *const ZflowApp) -> *mut c_char {
         })
 }
 
-/// Writes up to `capacity` ids of chunks under the circle that changed since they were last
-/// copied, and returns how many it wrote.
-///
-/// # Safety
-/// `app` must be a live handle or null; `ids` must hold `capacity` writable values.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_dirty(
     app: *const ZflowApp,
@@ -206,17 +177,10 @@ pub unsafe extern "C" fn zflow_lens_dirty(
     if ids.is_null() || capacity == 0 {
         return 0;
     }
-    // SAFETY: the caller supplies `capacity` writable values.
     let ids = unsafe { std::slice::from_raw_parts_mut(ids, capacity) };
     viewer.dirty(x, y, radius, ids)
 }
 
-/// Copies chunk `id` as BGRx rows `stride` bytes apart into `pixels`, which holds `length`
-/// bytes, and writes its size. False if there is no such chunk or the buffer is too small.
-///
-/// # Safety
-/// `app` must be a live handle or null; `pixels` must hold `length` writable bytes; `width` and
-/// `height` must be writable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_chunk(
     app: *const ZflowApp,
@@ -233,12 +197,10 @@ pub unsafe extern "C" fn zflow_lens_chunk(
     if pixels.is_null() || width.is_null() || height.is_null() {
         return false;
     }
-    // SAFETY: the caller supplies `length` writable bytes.
     let pixels = unsafe { std::slice::from_raw_parts_mut(pixels, length) };
     let Some((w, h)) = viewer.chunk(id as usize, pixels, stride) else {
         return false;
     };
-    // SAFETY: writable outputs supplied by the caller.
     unsafe {
         *width = w as u32;
         *height = h as u32;
@@ -246,10 +208,6 @@ pub unsafe extern "C" fn zflow_lens_chunk(
     true
 }
 
-/// Moves the lens, and the other computer's pointer, to `x`, `y` in its capture pixels.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_move(app: *const ZflowApp, x: f64, y: f64, radius: f64) {
     if let Some(viewer) = lens(app)
@@ -261,13 +219,8 @@ pub unsafe extern "C" fn zflow_lens_move(app: *const ZflowApp, x: f64, y: f64, r
     }
 }
 
-/// `button` is 1 left, 2 middle, 3 right, 4 back, 5 forward.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_button(app: *const ZflowApp, button: u32, pressed: bool) {
-    // zflow numbers buttons the HID way: primary, secondary, middle.
     let button = match button {
         1 => 1,
         2 => 3,
@@ -280,10 +233,6 @@ pub unsafe extern "C" fn zflow_lens_button(app: *const ZflowApp, button: u32, pr
     }
 }
 
-/// `keycode` is a macOS virtual key code; keys zflow does not know are dropped.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_key(app: *const ZflowApp, keycode: u16, pressed: bool) {
     if let Some(viewer) = lens(app)
@@ -293,10 +242,6 @@ pub unsafe extern "C" fn zflow_lens_key(app: *const ZflowApp, keycode: u16, pres
     }
 }
 
-/// Scrolls by pixels; positive `dy` scrolls content up, as a trackpad swipe down does.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_scroll(app: *const ZflowApp, dx: f64, dy: f64) {
     if let Some(viewer) = lens(app)
@@ -307,10 +252,6 @@ pub unsafe extern "C" fn zflow_lens_scroll(app: *const ZflowApp, dx: f64, dy: f6
     }
 }
 
-/// Copies the other computer's selection to this Mac's clipboard.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_copy(app: *const ZflowApp) {
     if let Some(viewer) = lens(app) {
@@ -318,10 +259,6 @@ pub unsafe extern "C" fn zflow_lens_copy(app: *const ZflowApp) {
     }
 }
 
-/// Closes the lens. Opening goes through `zflow_app_request` with `{"command":"lens","name":…}`.
-///
-/// # Safety
-/// `app` must be a live handle or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn zflow_lens_close(app: *const ZflowApp) {
     if let Some(viewer) = lens(app) {

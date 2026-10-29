@@ -20,9 +20,6 @@ struct Job {
     queued_at: Instant,
 }
 
-/// How long the agent has to answer. GNOME waits up to a second for the
-/// app that copied to hand the clipboard over, and the agent a little
-/// longer (src/app/desktop.rs), so clipboard requests get more time.
 fn reply_limit(request: &AgentRequest) -> Duration {
     match request {
         AgentRequest::Local(LocalRequest::ReadClipboard | LocalRequest::WriteClipboard { .. }) => {
@@ -48,19 +45,15 @@ impl Lease {
     }
 }
 
-/// What GNOME Shell shows for this computer's own input.
 #[derive(Default)]
 pub(super) struct LocalState {
-    /// Edges that lead to another computer, with that computer's name.
     edges: Vec<(OutboundEdge, String)>,
-    /// Whether the pointer has to rest against an edge before it crosses.
     pause: bool,
     sending: bool,
 }
 
 #[derive(Default)]
 pub(super) struct Hub {
-    /// One task sends every change to the agent, in order.
     local: watch::Sender<LocalState>,
     broker: Mutex<Option<(u64, mpsc::Sender<Job>)>>,
     lease: Mutex<Option<Lease>>,
@@ -81,9 +74,6 @@ impl Hub {
             }
             let lease = self.lease.lock().await.take();
             *broker = None;
-            // No agent is left to correct a lost reset, so it waits out a full
-            // queue. Sending it before the broker slot frees up keeps it ahead
-            // of the next agent's first report.
             if let Err(error) = runtime
                 .send_critical(
                     RuntimeCommand::DesktopFocus { terminal: false },
@@ -106,13 +96,8 @@ impl Hub {
         }
     }
 
-    /// Passes the desktop's terminal focus to the input runtime while a
-    /// desktop agent is connected.
     pub async fn focus(&self, runtime: &LinuxRuntimeControl, terminal: bool) {
-        // Holding the lock keeps a late report from landing after the reset
-        // in `disconnected`.
         let broker = self.broker.lock().await;
-        // A dropped update only affects shortcuts pressed until the next one.
         if broker.is_some()
             && let Err(error) = runtime.send(RuntimeCommand::DesktopFocus { terminal })
         {
@@ -132,18 +117,15 @@ impl Hub {
         self.call_scoped(AgentRequest::Handoff(request), None).await
     }
 
-    /// This desktop's monitors and pointer, from GNOME.
     pub(super) async fn snapshot(&self) -> DesktopResponse {
         self.call(DesktopRequest::Snapshot).await
     }
 
-    /// Puts the pointer at `position` on this desktop.
     pub(super) async fn warp(&self, position: crate::desktop::Point) -> DesktopResponse {
         self.call_scoped(AgentRequest::Local(LocalRequest::Warp { position }), None)
             .await
     }
 
-    /// The computer whose edge the pointer pushed against, if any.
     pub(super) fn edge_peer(
         &self,
         monitor: Option<&str>,
@@ -162,7 +144,6 @@ impl Hub {
             .map(|(_, peer)| peer.clone())
     }
 
-    /// What this desktop's clipboard holds, read through GNOME.
     pub(super) async fn read_clipboard(&self) -> Result<ClipboardContents> {
         match self
             .ask(AgentRequest::Local(LocalRequest::ReadClipboard), None)
@@ -174,7 +155,6 @@ impl Hub {
         }
     }
 
-    /// Puts a clip from another computer on this desktop's clipboard.
     pub(super) async fn write_clipboard(&self, clip: Clip) -> Result<()> {
         let request = LocalRequest::WriteClipboard {
             kind: clip.kind(),
@@ -187,7 +167,6 @@ impl Hub {
         }
     }
 
-    /// Shows the person here a short notice.
     pub(super) async fn notify(&self, message: String) {
         let request = AgentRequest::Local(LocalRequest::Notify { message });
         if let DesktopResponse::Unavailable { reason } = self.call_scoped(request, None).await {
@@ -195,8 +174,6 @@ impl Hub {
         }
     }
 
-    /// Asks the agent for anything but the clipboard. A clip is never an
-    /// answer to these, so one never reaches a peer as a handoff reply.
     async fn call_scoped(
         &self,
         request: AgentRequest,
@@ -262,7 +239,6 @@ impl Hub {
         }
     }
 
-    /// When the handoff lease runs out unless a Poll renews it first.
     async fn lease_deadline(&self) -> Option<Instant> {
         self.lease
             .lock()
@@ -290,8 +266,6 @@ impl Hub {
     }
 }
 
-/// The local tile's edges that touch another computer's tile, as barrier
-/// ranges along this desktop.
 pub(super) fn outbound_edges(layout: &Layout) -> Vec<(OutboundEdge, String)> {
     let fraction = |value: f64| (value.clamp(0.0, 1.0) * f64::from(FRACTION_MAX)).round() as u32;
     layout
@@ -314,8 +288,6 @@ pub(super) fn outbound_edges(layout: &Layout) -> Vec<(OutboundEdge, String)> {
         .collect()
 }
 
-/// How long the pointer rests against an edge when crossings pause there,
-/// as Deskflow's switch delay does.
 const PAUSE_MS: u32 = 250;
 
 pub(super) fn set_edges(shared: &Shared, edges: Vec<(OutboundEdge, String)>, pause: bool) {
@@ -332,8 +304,6 @@ pub(super) fn set_sending(shared: &Shared, sending: bool) {
         .send_modify(|state| state.sending = sending);
 }
 
-/// Sends the agent each change to the edges and sending state, in order,
-/// and everything again when an agent connects.
 pub(super) fn start_local_sync(shared: Arc<Shared>) {
     let mut changes = shared.desktop.local.subscribe();
     tokio::spawn(async move {
@@ -346,7 +316,6 @@ pub(super) fn start_local_sync(shared: Arc<Shared>) {
                     state.sending,
                 )
             };
-            // Showing the pointer again matters more than the barriers.
             for request in [
                 LocalRequest::Sending { active },
                 LocalRequest::Edges { edges, pause_ms },
@@ -395,7 +364,6 @@ pub(super) async fn request(
                 "Desktop control requires the active unlocked local session and an authorized paired peer",
             );
         }
-        // Arming or sending, this computer's own input goes elsewhere.
         if shared.runtime.status().ownership != OwnershipPhase::Idle {
             return DesktopResponse::unavailable("This computer is sending its own input");
         }
@@ -454,8 +422,6 @@ pub(super) async fn request(
     if let DesktopResponse::Unavailable { reason } = &response {
         tracing::warn!(%peer, session_id, operation, %reason, "desktop receiver operation unavailable");
     }
-    // A computer crossing into this one checks this desktop against its
-    // layout, so keep this computer's tile the right size.
     if let DesktopResponse::Snapshot { geometry, .. } | DesktopResponse::Prepared { geometry, .. } =
         &response
     {
@@ -465,8 +431,6 @@ pub(super) async fn request(
     if let DesktopRequest::Prepare { token, .. } = request
         && !matches!(response, DesktopResponse::Prepared { .. })
     {
-        // A timed-out compositor call may still complete. Queue cleanup after it
-        // on the same local stream before releasing this reservation.
         tracing::debug!(%peer, session_id, operation, "failed desktop prepare waiting for ordered cleanup");
         let _ = shared.desktop.call(DesktopRequest::Finish { token }).await;
         tracing::debug!(%peer, session_id, elapsed_ms = started.elapsed().as_millis() as u64, "failed desktop prepare cleanup completed");
@@ -485,9 +449,6 @@ pub(super) async fn request(
     response
 }
 
-/// A desktop agent opts in by keeping this credential-checked stream open.
-/// Every seat change rechecks it. The compositor barrier and daemon
-/// reservation both expire after two seconds without a source Poll.
 pub(super) async fn serve(
     shared: Arc<Shared>,
     mut stream: UnixStream,
@@ -501,9 +462,7 @@ pub(super) async fn serve(
         *broker = Some((id, sender));
     }
     tracing::info!(broker_id = id, "desktop agent connected");
-    // A new agent starts from a clean Shell: no barriers, pointer shown.
     shared.desktop.local.send_modify(|_| {});
-    // The desktop may have changed size while no agent was connected.
     tokio::spawn({
         let shared = shared.clone();
         async move {
@@ -533,8 +492,6 @@ pub(super) async fn serve(
         write_message(&mut stream, &DesktopResponse::Finished).await?;
         loop {
             authorize_peer(&stream, daemon_uid, seat.state.active_authenticated_uid())?;
-            // Someone is at this unlocked desktop, so a fresh install's
-            // pairing window may open. An ssh install alone never opens it.
             if !window_asked && matches!(seat.state, SeatState::Unlocked(_)) {
                 window_asked = true;
                 shared.open_pairing_window().await;
@@ -578,8 +535,6 @@ pub(super) async fn serve(
                         }
                     }
                 }
-                // Between jobs the agent sends nothing, so readiness means it
-                // closed. No second reader can consume a response frame.
                 ready = stream.readable() => {
                     ready?;
                     let mut byte = [0u8; 1];
@@ -597,7 +552,6 @@ pub(super) async fn serve(
     .await;
     match &result {
         Ok(()) => tracing::info!(broker_id = id, "desktop agent stopped"),
-        // Logout and user switches hand the seat to a greeter or another uid.
         Err(error)
             if matches!(
                 error.downcast_ref::<ControlError>(),
@@ -617,8 +571,6 @@ pub(super) async fn serve(
     result
 }
 
-/// Runs one compositor call for a peer or for local cleanup, checking the
-/// seat and the peer's authorization right before and after it.
 async fn broker_job(
     shared: &Shared,
     stream: &mut UnixStream,
@@ -702,8 +654,6 @@ async fn broker_job(
     Ok(())
 }
 
-/// Sends the agent one request and reads its answer. Clips cross only this
-/// stream, so only it takes messages up to [`MAX_AGENT_MESSAGE`].
 async fn exchange(stream: &mut UnixStream, request: &AgentRequest) -> Result<AgentReply> {
     write_message_within(stream, request, MAX_AGENT_MESSAGE).await?;
     let reply: AgentReply = tokio::time::timeout(
@@ -718,8 +668,6 @@ async fn exchange(stream: &mut UnixStream, request: &AgentRequest) -> Result<Age
 
 #[cfg(test)]
 impl Hub {
-    /// Stands in for a connected desktop agent on one 2560 by 1440
-    /// monitor, which answers every request at once.
     pub(super) async fn answer_everything(&self) -> tokio::task::JoinHandle<()> {
         let (sender, mut jobs) = mpsc::channel::<Job>(4);
         *self.broker.lock().await = Some((0, sender));
@@ -783,8 +731,6 @@ mod tests {
             )
             .await
             .unwrap();
-            // Every other local stream refuses a frame this size, and hangs up
-            // before reading all of it.
             let _ = write_message_within(&mut agent, &answer, MAX_AGENT_MESSAGE).await;
         });
         let reply = exchange(
@@ -828,7 +774,6 @@ mod tests {
                         DesktopResponse::unavailable("GNOME integration unavailable"),
                     ),
                     AgentRequest::Local(_) => AgentReply::Desktop(DesktopResponse::Finished),
-                    // An agent that answers a handoff with a clip.
                     AgentRequest::Handoff(_) => AgentReply::Clipboard(ClipboardContents::Empty),
                 };
                 seen.push(job.request.clone());
@@ -938,8 +883,6 @@ mod tests {
         let sessions = Mutex::new(BTreeMap::new());
         let cleanup = hub.disconnected(1, &sessions, &runtime);
         tokio::pin!(cleanup);
-        // The reset waits out the full queue instead of being dropped, and
-        // keeps the broker slot until it is queued.
         assert!(
             tokio::time::timeout(Duration::from_millis(10), &mut cleanup)
                 .await
@@ -978,9 +921,7 @@ mod tests {
         let layout = Layout {
             monitors: vec![
                 tile("local", 0, 0, 2000, 1000),
-                // Touches the lower half of the right edge.
                 tile("mac", 2000, 500, 1000, 1000),
-                // Touches nothing.
                 tile("far", 5000, 0, 100, 100),
             ],
         };

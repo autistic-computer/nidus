@@ -1,9 +1,6 @@
 import AppKit
 import QuartzCore
 
-/// The borderless panel the lens draws in, over everything on one screen. It
-/// takes keys without bringing zflow to the front, so the app the person was
-/// in keeps its place.
 final class LensPanel: NSPanel {
   init(screen: NSScreen) {
     super.init(
@@ -12,7 +9,6 @@ final class LensPanel: NSPanel {
     isOpaque = false
     backgroundColor = .clear
     hasShadow = false
-    // Above the menu bar and the Dock.
     level = .screenSaver
     collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
     hidesOnDeactivate = false
@@ -24,10 +20,6 @@ final class LensPanel: NSPanel {
   override var canBecomeMain: Bool { false }
 }
 
-/// Draws the lens with Core Animation and hands the pointer to the controller.
-/// The desktop layer holds the other computer's desktop in its own pixels,
-/// one sublayer per chunk, scaled to fit the screen; a circle around the
-/// pointer masks it, over a dark fill for chunks not there yet.
 final class LensView: NSView {
   weak var controller: LensController?
   let radius: CGFloat
@@ -43,7 +35,6 @@ final class LensView: NSView {
   init(frame: CGRect, radius: CGFloat, backingScale: CGFloat) {
     self.radius = radius
     super.init(frame: frame)
-    // Hosts its own layers, so AppKit leaves their geometry alone: y is up.
     let root = CALayer()
     layer = root
     wantsLayer = true
@@ -74,7 +65,6 @@ final class LensView: NSView {
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-  /// The lens centre: where the pointer was last seen.
   var center: CGPoint { circle.position }
   func contains(_ point: CGPoint) -> Bool {
     hypot(point.x - center.x, point.y - center.y) <= radius
@@ -87,7 +77,6 @@ final class LensView: NSView {
     CATransaction.commit()
   }
 
-  /// Lays the desktop out for `fit`, dropping the chunks of an earlier size.
   func fit(_ fit: LensFit, grid: LensGrid) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -99,8 +88,6 @@ final class LensView: NSView {
     desktop.transform = CATransform3DMakeScale(fit.scale, fit.scale, 1)
     CATransaction.commit()
   }
-  /// Shows chunk `id`'s pixels. The caller wraps a frame's chunks in one
-  /// transaction with actions off, so nothing fades in.
   func draw(_ image: CGImage, chunk id: Int) {
     if let layer = chunks[id] {
       layer.contents = image
@@ -111,7 +98,6 @@ final class LensView: NSView {
     layer.frame = frame
     layer.contents = image
     layer.contentsGravity = .resize
-    // One image pixel per desktop pixel; the desktop layer does the scaling.
     layer.contentsScale = 1
     layer.magnificationFilter = .linear
     layer.minificationFilter = .linear
@@ -121,7 +107,6 @@ final class LensView: NSView {
     desktop.addSublayer(layer)
   }
 
-  /// A line under the pointer, inside the circle; nil hides it.
   func show(_ message: String?) {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
@@ -151,7 +136,6 @@ final class LensView: NSView {
 
   override var acceptsFirstResponder: Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-  // The pointer is followed even while zflow is not the active app.
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     guard trackingAreas.isEmpty else { return }

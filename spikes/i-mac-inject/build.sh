@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# Builds build/zflow-inject-probe.app from probe.swift. It never runs it.
-# A separate app so the owner grants Accessibility to the probe alone.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 app="$here/build/zflow-inject-probe.app"
-# Ad-hoc by default. Set SIGN_IDENTITY to an "Apple Development" identity to
-# keep the Accessibility grant across rebuilds.
 identity="${SIGN_IDENTITY:--}"
 
 [[ "$(uname -s)" == Darwin ]] || { echo 'macOS only' >&2; exit 1; }

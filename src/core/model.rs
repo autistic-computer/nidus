@@ -1,8 +1,3 @@
-//! Pure domain types shared by protocol and platform adapters.
-//!
-//! The serde impls here are the postcard payload encoding. The wire module
-//! adds the header and the limits a peer's message must respect.
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     time::Duration,
@@ -31,7 +26,6 @@ pub struct ProbeSequence(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ContactId(pub u32);
 
-/// A timestamp from one process's monotonic clock, with no shared origin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct MonotonicTimeMicros(pub u64);
 
@@ -62,7 +56,6 @@ impl HidUsagePage {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct HidUsageId(pub u16);
 
-/// A physical key or control expressed in USB HID vocabulary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct HidUsage {
     pub page: HidUsagePage,
@@ -138,9 +131,7 @@ impl<const N: usize> From<[InputCapability; N]> for InputCapabilities {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum PointerUnit {
-    /// Device-like motion which the target input stack accelerates.
     DeviceUnaccelerated,
-    /// Motion already accelerated by the source desktop.
     DesktopAccelerated,
 }
 
@@ -174,16 +165,12 @@ pub enum TouchTool {
     Unknown,
 }
 
-/// The physical size of the touch surface, in hundredths of a millimetre.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceDimensions {
     pub width: u32,
     pub height: u32,
 }
 
-/// Integer source coordinates keep the logical model exact and codec-neutral.
-/// `x` and `y` are hundredths of a millimetre from the top-left corner of the
-/// source surface, so the target can reproduce real finger travel.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TouchContact {
     pub id: ContactId,
@@ -197,8 +184,6 @@ pub struct TouchContact {
     pub source_dimensions: Option<SourceDimensions>,
 }
 
-/// A complete touch state at one capture point. It is encoded as a sequence of
-/// contacts, and decoding rejects a repeated contact id.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TouchState(BTreeMap<ContactId, TouchContact>);
 
@@ -219,7 +204,6 @@ impl<'de> Deserialize<'de> for TouchState {
                 formatter.write_str("touch contacts with distinct ids")
             }
 
-            // One insert per decoded contact: a forged length allocates nothing.
             fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<TouchState, A::Error> {
                 let mut state = TouchState::default();
                 while let Some(contact) = seq.next_element::<TouchContact>()? {
@@ -370,7 +354,6 @@ impl CumulativeMotion {
         })
     }
 
-    /// Computes the displacement needed to reconcile `previous` to `self`.
     pub fn checked_delta_from(self, previous: Self) -> Result<MotionDelta, MotionOverflow> {
         Ok(MotionDelta {
             dx: checked_sub(self.total_dx, previous.total_dx, MotionAxis::PointerX)?,
@@ -458,7 +441,6 @@ pub enum SessionCloseReason {
     Suspend,
 }
 
-/// Payloads for the one reliable, ordered input-control stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ReliableControl {
     Enter,
@@ -517,7 +499,6 @@ pub struct ReliableControlMessage {
     pub payload: ReliableControl,
 }
 
-/// Latest-wins datagram carrying cumulative state from activation start.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MotionFrame {
     pub session: SessionContext,
@@ -548,7 +529,6 @@ pub struct ProbeMessage {
     pub payload: ProbePayload,
 }
 
-/// Values one peer is willing to negotiate for an authenticated input session.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NegotiationOffer {
     pub maximum_datagram_size: u32,
@@ -561,7 +541,6 @@ pub struct NegotiationOffer {
     pub maximum_checkpoint_bound_ms: u32,
 }
 
-/// The single schema selected after authenticated negotiation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NegotiatedSession {
     pub maximum_datagram_size: u32,

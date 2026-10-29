@@ -1,9 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The home page: sharing, and the arrangement of the desk with the
-/// computers found nearby on a shelf. Until a computer is paired, it shows
-/// how to add the first one instead.
 struct ComputersView: View {
   var model: AppModel
   var snapshot: Snapshot
@@ -92,7 +89,6 @@ struct ComputersView: View {
   }
 }
 
-/// The canvas with the engine's layout and shelf, sending moves and drops.
 private struct Arrangement: View {
   @Bindable var model: AppModel
   var snapshot: Snapshot
@@ -115,7 +111,6 @@ private struct Arrangement: View {
   }
 }
 
-/// The first computer, on the Computers page while nothing is paired.
 private struct FirstRun: View {
   var model: AppModel
   var snapshot: Snapshot
@@ -144,7 +139,6 @@ private struct FirstRun: View {
           Button("Allow…") { model.allowLocalNetwork() }
         }
       }
-      // The card above stands in for the sharing row.
       ForEach(snapshot.problems.filter { $0.id != "sharing" }) {
         HealthBanner(model: model, row: $0)
       }
@@ -176,12 +170,10 @@ private struct FirstRun: View {
       .padding(.vertical, 6).padding(.leading, 12).padding(.trailing, 6)
       .background(.quinary, in: .rect(cornerRadius: 10))
     }
-    // Looking for computers is what makes macOS ask for Local Network access.
     .task { model.send(CoreRequest(command: "discover")) }
     .task(id: snapshot.platform.localNetwork) {
       networkBlocked = false
       guard snapshot.platform.localNetwork == .blocked else { return }
-      // It reads blocked until the person answers macOS, so wait before saying so.
       try? await Task.sleep(for: .seconds(5))
       if !Task.isCancelled { networkBlocked = true }
     }
@@ -189,8 +181,6 @@ private struct FirstRun: View {
 }
 
 extension Snapshot {
-  /// What a fresh Mac's pairing window means for the person: while it is
-  /// open, the other computer can finish on its own.
   var finishNote: (title: String, detail: String)? {
     switch pairingWindow.state {
     case .open:
@@ -222,7 +212,6 @@ extension Snapshot {
   }
 }
 
-/// Something worth knowing that needs nothing done.
 private struct Note: View {
   var title: String
   var detail: String
@@ -243,7 +232,6 @@ private struct Note: View {
   }
 }
 
-/// A step that still needs the person, with the button that does it.
 private struct Card<Action: View>: View {
   var symbol: String
   var title: String

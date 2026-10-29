@@ -1,5 +1,3 @@
-"""Exercise release pushes against a disposable bare repo, with GitHub mocked."""
-
 import json
 import os
 from pathlib import Path

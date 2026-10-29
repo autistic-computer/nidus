@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Keep the Sparkle signing key locally and configure release credentials.
 set +x
 set -Eeuo pipefail
 IFS=$'\n\t'

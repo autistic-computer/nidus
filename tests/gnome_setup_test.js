@@ -1,5 +1,3 @@
-// Run on a private bus with in-memory settings:
-// GSETTINGS_BACKEND=memory dbus-run-session --config-file=tests/gtk-session.conf -- gjs -m tests/gnome_setup_test.js
 import Adw from 'gi://Adw?version=1';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -18,7 +16,6 @@ function waitFor(predicate) {
     });
 }
 
-// The Log Out step writes GNOME settings; never let that reach the real account.
 assert(GLib.getenv('GSETTINGS_BACKEND') === 'memory', 'run with GSETTINGS_BACKEND=memory');
 
 const shell = {state: undefined, calls: [], version: null, generated: false};
@@ -72,7 +69,6 @@ app.connect('activate', () => {
     const toolbar = new Adw.ToolbarView();
     const client = new Client(() => {});
     const setup = new Setup(client);
-    // Whether the extension's files are on disk, without reading this account's folders.
     let files = false;
     let metadata = null;
     setup._installed = () => files;

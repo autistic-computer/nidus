@@ -36,7 +36,7 @@ internal static class Installation
                     string? path;
                     try { path = process.MainModule?.FileName; }
                     catch (InvalidOperationException) { continue; }
-                    catch (Win32Exception) { continue; } // The instance mutex still prevents a second settings app.
+                    catch (Win32Exception) { continue; }
                     if (!string.Equals(path, Path.Combine(oldDirectory, name + ".exe"), StringComparison.OrdinalIgnoreCase)) continue;
                     if (name == "Zflow.App") NativeWindow.QuitExisting();
                     else await new EngineClient().StopAsync();

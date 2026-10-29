@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// What applies to this Mac as a whole. Each paired computer has its own page.
 struct SettingsView: View {
   var model: AppModel
   var snapshot: Snapshot
@@ -14,7 +13,6 @@ struct SettingsView: View {
           "Start at login",
           isOn: Binding(get: { model.services.loginEnabled }, set: { model.setLogin($0) })
         )
-        // A login item would point at the disk image or a temporary copy.
         .disabled(AppLocation.main.needsMove)
         if let share = snapshot.shareClipboard {
           Toggle(
@@ -37,7 +35,6 @@ struct SettingsView: View {
           }
         }
       }
-      // Only a signed build can install the helper this needs.
       if model.services.hasSigningTeam {
         Section("Wi-Fi") {
           WiFiRow(model: model, enabled: platform.blockAwdl)
@@ -96,7 +93,6 @@ struct SettingsView: View {
   }
 }
 
-/// Reduce Wi-Fi lag, with what its helper still needs while it is on.
 private struct WiFiRow: View {
   var model: AppModel
   var enabled: Bool
@@ -125,11 +121,9 @@ private struct WiFiRow: View {
   }
 }
 
-/// A permission macOS keeps, and the button that asks for it.
 private struct PermissionRow: View {
   var title: String
   var allowed: Bool
-  /// Said only while it is not allowed.
   var detail: String?
   var allow: () -> Void
 

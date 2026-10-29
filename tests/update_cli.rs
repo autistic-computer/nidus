@@ -22,7 +22,6 @@ fn check_is_read_only_and_reports_the_running_version() {
         "curl",
         "printf https://github.com/autistic-computer/zflow/releases/tag/v999.0.0",
     );
-    // No bash, sudo, pkexec or package manager exists on this command's PATH.
     let output = command(directory.path()).arg("check").output().unwrap();
     assert!(
         output.status.success(),

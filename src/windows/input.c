@@ -1,5 +1,3 @@
-// Windows desktop adapter. Hooks do no I/O, allocation or waiting. A separate
-// Raw Input window supplies device motion even while the local cursor is held.
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <wtsapi32.h>
@@ -13,17 +11,12 @@ static event_fn emit;
 static volatile LONG remote_input;
 static volatile LONG64 heartbeat;
 static BOOL keys[256];
-// Keys whose last press this hook swallowed. Windows never saw them go down,
-// so only their own key-up can say they are released.
 static BOOL swallowed[256];
 static HHOOK keyboard_hook, mouse_hook;
 static HWND clipboard_window;
 #define ZFLOW_TAG ((ULONG_PTR)0x5a464c4f)
 int zflow_input_clean(void);
 
-// Configured cross-computer edges only; other local monitor seams stay native.
-// The hook never waits for the engine: publishing briefly holds the write lock,
-// while a contended reader simply lets this motion through.
 typedef struct { int left, top, right, bottom, edge, start, end, returning; } zflow_boundary;
 static SRWLOCK boundary_lock = SRWLOCK_INIT;
 static zflow_boundary boundaries[128];
@@ -39,8 +32,6 @@ void zflow_input_boundaries(const zflow_boundary *items, int count) {
     ReleaseSRWLockExclusive(&boundary_lock);
 }
 
-// Pure segment intersection, also exercised by Rust tests against this C code.
-// Stop at the last source pixel, including large moves that skip over a seam.
 int zflow_boundary_hit(const zflow_boundary *b, int x, int y, int nx, int ny, int *hx, int *hy) {
     if (x < b->left || x >= b->right || y < b->top || y >= b->bottom) return 0;
     int vertical = b->edge < 2;
@@ -52,7 +43,6 @@ int zflow_boundary_hit(const zflow_boundary *b, int x, int y, int nx, int ny, in
     double t = from == plane ? 1.0 : (double)(plane - from) / (to - from);
     double along = vertical ? y + t * (ny - y) : x + t * (nx - x);
     if (along < b->start || along >= b->end) return 0;
-    // Round to the closest pixel, including negative desktop coordinates.
     int pixel = (int)(along >= 0 ? along + 0.5 : along - 0.5);
     if (pixel < b->start) pixel = b->start;
     if (pixel >= b->end) pixel = b->end - 1;
@@ -66,15 +56,10 @@ static BOOL stop_at_boundary(const MSLLHOOKSTRUCT *m) {
         GetTickCount64() - (ULONGLONG)InterlockedCompareExchange64(&heartbeat, 0, 0) > 1000)
         return FALSE;
     POINT from, hit;
-    // Low-level callbacks can run in a DPI-unaware context even though the
-    // hook thread was set per-monitor aware. MSLLHOOKSTRUCT and our boundaries
-    // use physical pixels; Get/SetCursorPos would scale them a second time.
     if (!GetPhysicalCursorPos(&from) || !TryAcquireSRWLockShared(&boundary_lock)) return FALSE;
     int edge = -1, returning = 0;
     for (int i = 0; i < boundary_count; ++i) {
         const zflow_boundary *b = &boundaries[i];
-        // Remote return guards see our injected motion too. Outbound guards
-        // only see the user's mouse, never accessibility tools or our warps.
         if ((m->flags & LLMHF_INJECTED) && (!b->returning || m->dwExtraInfo != ZFLOW_TAG)) continue;
         int x, y;
         if (zflow_boundary_hit(b, from.x, from.y, m->pt.x, m->pt.y, &x, &y)) {
@@ -142,8 +127,6 @@ static LRESULT handle_mouse(int n, WPARAM w, LPARAM l) {
 }
 
 static LRESULT CALLBACK mouse(int n, WPARAM w, LPARAM l) {
-    // Windows invokes low-level hooks with a callback-specific DPI context;
-    // setting it once in zflow_input_run does not cover these calls.
     DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     LRESULT result = handle_mouse(n, w, l);
     SetThreadDpiAwarenessContext(previous);
@@ -160,11 +143,6 @@ static BOOL input_desktop_is_default(void) {
     return ok && wcscmp(name, L"Default") == 0;
 }
 
-// A key-up can bypass this hook: the lock screen, UAC and Ctrl+Alt+Del take
-// input on their own desktop, and a focused administrator window takes it
-// from a normal process's hooks. A key left down here would block every
-// crossing and edge guard. Keys the hook let through also show in the async
-// key state, so one that reads up on two ticks in a row was released unseen.
 static void forget_unseen_releases(void) {
     static BOOL up_before[256];
     BOOL elsewhere = !input_desktop_is_default();
@@ -181,8 +159,6 @@ static void forget_unseen_releases(void) {
 
 static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_APP + 1) {
-        // Check and grab on the hook thread so a key cannot go down between
-        // the neutral-state check and the suppression switch.
         if (!zflow_input_clean()) return 0;
         for (int i = 0; i < 256; ++i) if (keys[i]) return 0;
         InterlockedExchange64(&heartbeat, (LONG64)GetTickCount64());
@@ -200,7 +176,6 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM 
     } else if (message == WM_TIMER) {
         if (InterlockedCompareExchange(&remote_input, 0, 0) &&
             GetTickCount64() - (ULONGLONG)InterlockedCompareExchange64(&heartbeat, 0, 0) > 1000) {
-            // A stalled engine is not the escape chord: return input, keep sharing on.
             InterlockedExchange(&remote_input, 0);
             event(8, 0, 0, 0);
         }
@@ -291,7 +266,6 @@ int zflow_input_elevated(void) {
     return ok && elevation.TokenIsElevated;
 }
 
-// kind: 1 scan key, 2 virtual key, 3 button, 4 relative motion, 5 wheel.
 int zflow_input_post(int kind, int code, int value, int extra) {
     INPUT input = {0};
     if (kind <= 2) {
@@ -329,7 +303,6 @@ typedef void (*monitor_fn)(int x, int y, int width, int height, const char *id,
     const char *name, unsigned int width_mm, unsigned int height_mm, void *context);
 typedef struct { monitor_fn callback; void *context; } monitor_context;
 
-// EDID physical dimensions follow the panel through resolution and DPI changes.
 static void monitor_size(const WCHAR *device_path, UINT *width, UINT *height) {
     WCHAR key[512] = L"SYSTEM\\CurrentControlSet\\Enum\\";
     const WCHAR *start = device_path;

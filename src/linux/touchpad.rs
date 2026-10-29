@@ -1,7 +1,3 @@
-//! A touchpad as an ordinary pointer, for a target that cannot post raw
-//! contacts: one finger moves the pointer, two scroll, and taps and clickpad
-//! presses click. Thresholds follow libinput where it has one.
-
 use std::time::Duration;
 
 use crate::{
@@ -9,43 +5,22 @@ use crate::{
     core::{ContactId, MotionDelta, PointerButton},
 };
 
-/// Pointer counts per millimetre of finger travel at slow speeds. A receiver
-/// treats a count like one from a mouse; the Mac moves one point.
 const SLOW_COUNTS_PER_MM: f64 = 8.0;
-/// Counts per millimetre for a fast finger.
 const FAST_COUNTS_PER_MM: f64 = 24.0;
-/// Up to this speed motion uses the slow gain, from `FAST_MM_PER_S` the fast
-/// one, and the gain grows in a straight line between them.
 const SLOW_MM_PER_S: f64 = 25.0;
 const FAST_MM_PER_S: f64 = 250.0;
-/// Speed is measured over at least this long, so two reports read together
-/// do not look infinitely fast.
 const MIN_INTERVAL: Duration = Duration::from_millis(4);
-/// A finger moves the pointer once it travels this far, so a tap, a press
-/// or the finger left after a scroll does not nudge it.
 const MOTION_START_MM: f64 = 0.5;
-/// High-resolution scroll units per millimetre: one 120-unit wheel detent
-/// every 5 mm.
 const SCROLL_UNITS_PER_MM: f64 = 24.0;
-/// Two fingers scroll once their midpoint travels this far.
 const SCROLL_START_MM: f64 = 1.0;
-/// A scroll that starts this many times further along one axis than the
-/// other stays on that axis until the fingers change.
 const SCROLL_AXIS_LOCK: f64 = 2.0;
-/// A tap lifts every finger within this long of the first landing, and no
-/// finger travels further than `TAP_TRAVEL_MM`.
 const TAP_TIME: Duration = Duration::from_millis(180);
 const TAP_TRAVEL_MM: f64 = 1.3;
-/// Two fingers further apart than this, across and down, when the pad is
-/// pressed are a finger and a resting thumb, so the press stays a left click.
 const CLICK_SPREAD_MM: [f64; 2] = [40.0, 30.0];
 
-/// GNOME's touchpad settings that matter here. The daemon has no session
-/// bus to read the user's, so it uses GNOME's defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TouchpadSettings {
     pub tap_to_click: bool,
-    /// Content follows the fingers.
     pub natural_scroll: bool,
 }
 
@@ -58,8 +33,6 @@ impl Default for TouchpadSettings {
     }
 }
 
-/// A finger on the pad, in hundredths of a millimetre from its top-left
-/// corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Finger {
     pub id: ContactId,
@@ -68,7 +41,6 @@ pub struct Finger {
 }
 
 impl Finger {
-    /// Where this finger is from `other`, in millimetres.
     fn offset_from(self, other: Finger) -> [f64; 2] {
         [
             f64::from(self.x - other.x) / 100.0,
@@ -85,21 +57,16 @@ enum Kind {
     Scroll,
 }
 
-/// What the fingers do while the same ones touch the pad.
 #[derive(Debug, Default)]
 struct Gesture {
     kind: Kind,
-    /// Travel so far, until it passes the start distance.
     travel: [f64; 2],
     started: bool,
-    /// The one scroll axis, 0 across and 1 down, if the scroll locked.
     axis: Option<usize>,
-    /// What rounding left over, in counts or scroll units.
     remainder: [f64; 2],
 }
 
 impl Gesture {
-    /// Adds travel until it passes `distance`, then says the gesture moves.
     fn starts(&mut self, delta: [f64; 2], distance: f64) -> bool {
         if !self.started {
             self.travel = [self.travel[0] + delta[0], self.travel[1] + delta[1]];
@@ -108,7 +75,6 @@ impl Gesture {
         self.started
     }
 
-    /// Adds `amount` to what rounding left and takes out the whole part.
     fn whole(&mut self, amount: [f64; 2]) -> [i64; 2] {
         std::array::from_fn(|axis| {
             let total = self.remainder[axis] + amount[axis];
@@ -119,29 +85,22 @@ impl Gesture {
     }
 }
 
-/// A touch that may still be a tap.
 #[derive(Debug)]
 struct Tap {
     landed: Duration,
-    /// The most fingers down at once.
     most: usize,
-    /// Where each finger landed.
     origins: Vec<Finger>,
 }
 
-/// Turns one touchpad's reports into pointer input.
 #[derive(Debug)]
 pub struct TouchpadPointer {
     settings: TouchpadSettings,
-    /// One button under the whole pad, which clicks by how many fingers
-    /// press it.
     clickpad: bool,
     fingers: Vec<Finger>,
     count: usize,
     at: Duration,
     gesture: Gesture,
     tap: Option<Tap>,
-    /// The button a clickpad press became, until the pad comes back up.
     pressed: Option<PointerButton>,
 }
 
@@ -159,9 +118,6 @@ impl TouchpadPointer {
         }
     }
 
-    /// Turns one report into pointer input. `fingers` and `count` describe
-    /// the pad after it, `buttons` are its key and button changes, and `at`
-    /// is when the kernel made it.
     pub fn report(
         &mut self,
         fingers: &[Finger],
@@ -171,8 +127,6 @@ impl TouchpadPointer {
     ) -> PointerFrame {
         let mut frame = PointerFrame::default();
         if self.buttons(fingers, count, buttons, &mut frame.transitions) {
-            // A press is not a tap, and rolls the finger: start over so the
-            // roll moves nothing.
             self.tap = None;
             self.gesture = Gesture::default();
         }
@@ -185,8 +139,6 @@ impl TouchpadPointer {
         frame
     }
 
-    /// Passes key and button changes on, with a clickpad press as the button
-    /// for how many fingers press it. Returns whether a button changed.
     fn buttons(
         &mut self,
         fingers: &[Finger],
@@ -215,8 +167,6 @@ impl TouchpadPointer {
         changed
     }
 
-    /// Clicks when every finger lifts soon after landing without moving: one
-    /// finger is a left click, two a right click and three a middle click.
     fn tap(
         &mut self,
         fingers: &[Finger],
@@ -259,9 +209,6 @@ impl TouchpadPointer {
         }
     }
 
-    /// One finger moves the pointer, and so does the finger that moves while
-    /// another presses a clickpad. Two fingers scroll. Whenever the fingers
-    /// change, the next report starts over from where they are.
     fn motion(&mut self, fingers: &[Finger], count: usize, at: Duration) -> MotionDelta {
         let kind = match (count, fingers.len()) {
             (1, 1) => Kind::Pointer,
@@ -319,8 +266,6 @@ impl TouchpadPointer {
                 if let Some(axis) = self.gesture.axis {
                     delta[1 - axis] = 0.0;
                 }
-                // Positive wheel units scroll up and right, which moves
-                // content down and left.
                 let direction = if self.settings.natural_scroll {
                     1.0
                 } else {
@@ -340,8 +285,6 @@ impl TouchpadPointer {
     }
 }
 
-/// The button a clickpad press makes, by how many fingers are down, as
-/// libinput's clickfinger method decides.
 fn clickfinger(fingers: &[Finger], count: usize) -> PointerButton {
     let thumb = matches!(fingers, [left, right]
         if left.offset_from(*right)
@@ -382,7 +325,6 @@ mod tests {
     use super::*;
     use crate::linux::{FrameAccumulator, TouchAccumulator, TouchAxisRange};
 
-    /// A pad read the way capture reads one.
     struct Pad {
         contacts: TouchAccumulator,
         frames: FrameAccumulator,
@@ -390,7 +332,6 @@ mod tests {
     }
 
     impl Pad {
-        /// 100 x 70 mm at 10 units per millimetre.
         fn new(clickpad: bool, settings: TouchpadSettings) -> Self {
             Self::with_axes(
                 TouchAxisRange::new(0, 1_000, 10).unwrap(),
@@ -413,7 +354,6 @@ mod tests {
             }
         }
 
-        /// Sends `events` and the SYN_REPORT the kernel made at `ms`.
         fn report(&mut self, ms: u64, events: &[InputEvent]) -> PointerFrame {
             let mut frame = None;
             for &event in events.iter().chain([&syn()]) {
@@ -445,7 +385,6 @@ mod tests {
         InputEvent::new(EventType::KEY.0, key.code(), value)
     }
 
-    /// The BTN_TOOL_* key for `fingers`, down or up.
     fn tool(fingers: usize, down: bool) -> InputEvent {
         let keys = [
             KeyCode::BTN_TOOL_FINGER,
@@ -455,7 +394,6 @@ mod tests {
         key(keys[fingers - 1], i32::from(down))
     }
 
-    /// A finger landing in `slot` at (`x`, `y`) device units.
     fn land(slot: i32, x: i32, y: i32) -> Vec<InputEvent> {
         vec![
             abs(AbsoluteAxisCode::ABS_MT_SLOT, slot),
@@ -493,7 +431,6 @@ mod tests {
         pad.report(ms, &events)
     }
 
-    /// Lifts the fingers in `slots`, the last `fingers` the pad counted.
     fn all_up(pad: &mut Pad, ms: u64, slots: &[i32], fingers: usize) -> PointerFrame {
         let mut events = slots
             .iter()
@@ -503,7 +440,6 @@ mod tests {
         pad.report(ms, &events)
     }
 
-    /// The second finger of two lifts.
     fn one_up(pad: &mut Pad, ms: u64) -> PointerFrame {
         let mut events = lift(1);
         events.extend([tool(2, false), tool(1, true)]);
@@ -534,7 +470,6 @@ mod tests {
             one_finger_down(&mut pad, 0, 300, 300),
             PointerFrame::default()
         );
-        // 1 mm across and 0.5 mm down every 50 ms is slow: 8 counts per mm.
         let slow = (1..=10).map(|step| {
             let step_units = step as i32;
             pad.report(
@@ -550,7 +485,6 @@ mod tests {
                 ..MotionDelta::default()
             }
         );
-        // 3 mm every 10 ms is fast: 24 counts per mm.
         let fast =
             (1..=5).map(|step| pad.report(500 + step * 10, &slide(0, 400 - 30 * step as i32, 350)));
         assert_eq!(
@@ -572,7 +506,6 @@ mod tests {
             TouchpadSettings::default(),
         );
         one_finger_down(&mut pad, 0, 1_000, 600);
-        // 20 units are a millimetre on both axes.
         let moved =
             (1..=5).map(|step| pad.report(step * 50, &slide(0, 1_000, 600 + 20 * step as i32)));
         assert_eq!(
@@ -627,7 +560,6 @@ mod tests {
     #[test]
     fn a_two_finger_tap_is_a_right_click() {
         let mut pad = Pad::new(true, TouchpadSettings::default());
-        // The second finger lands a report after the first.
         one_finger_down(&mut pad, 0, 400, 300);
         let mut second = land(1, 600, 300);
         second.extend([tool(1, false), tool(2, true)]);
@@ -653,7 +585,6 @@ mod tests {
             press(&mut pad, 300, 0).transitions,
             button(PointerButton::PRIMARY, KeyState::Released)
         );
-        // Not a tap as well: the pad was pressed.
         assert!(all_up(&mut pad, 320, &[0], 1).transitions.is_empty());
 
         two_fingers_down(&mut pad, 1_000, 300);
@@ -661,7 +592,6 @@ mod tests {
             press(&mut pad, 1_050, 1).transitions,
             button(PointerButton::SECONDARY, KeyState::Pressed)
         );
-        // A finger lifts first, and the right button still comes up.
         one_up(&mut pad, 1_100);
         assert_eq!(
             press(&mut pad, 1_150, 0).transitions,
@@ -669,7 +599,6 @@ mod tests {
         );
         all_up(&mut pad, 1_200, &[0], 1);
 
-        // A thumb resting 40 mm below the finger is not a second finger.
         let mut thumb = land(0, 400, 200);
         thumb.extend(land(1, 420, 600));
         thumb.extend([key(KeyCode::BTN_TOUCH, 1), tool(2, true)]);
@@ -688,7 +617,6 @@ mod tests {
         thumb.extend([key(KeyCode::BTN_TOUCH, 1), tool(2, true)]);
         pad.report(0, &thumb);
         pad.report(50, &[key(KeyCode::BTN_LEFT, 1)]);
-        // The thumb holds the press while the other finger drags.
         let dragged =
             (1..=5).map(|step| pad.report(50 + step * 50, &slide(0, 400 + 10 * step as i32, 200)));
         assert_eq!(
@@ -742,8 +670,6 @@ mod tests {
                 pad.report(step as u64 * 20, &events)
             }))
         };
-        // 1 mm down per report with a little drift across. The first
-        // millimetre starts the scroll; then 24 units per millimetre.
         let natural = TouchpadSettings::default();
         assert_eq!(
             scroll(natural, 1, 10),
@@ -752,7 +678,6 @@ mod tests {
                 ..MotionDelta::default()
             }
         );
-        // Content follows the fingers left, which is scrolling right.
         assert_eq!(
             scroll(natural, -10, 0),
             MotionDelta {
@@ -790,8 +715,6 @@ mod tests {
             pad.report(step as u64 * 20, &events);
         }
         assert_eq!(one_up(&mut pad, 80).motion, MotionDelta::default());
-        // The finger left behind moves the pointer from where it is, after
-        // the same half millimetre a landing finger needs.
         let frames = [
             pad.report(130, &slide(0, 403, 330)),
             pad.report(180, &slide(0, 413, 330)),
@@ -803,13 +726,11 @@ mod tests {
                 ..MotionDelta::default()
             }
         );
-        // Lifting the last finger after a scroll is no tap.
         assert!(all_up(&mut pad, 200, &[0], 1).transitions.is_empty());
     }
 
     #[test]
     fn palms_are_ignored() {
-        // ABS_MT_TOOL_TYPE MT_TOOL_PALM.
         let palm = abs(AbsoluteAxisCode::ABS_MT_TOOL_TYPE, 2);
         let mut pad = Pad::new(true, TouchpadSettings::default());
         let mut events = land(0, 300, 300);
@@ -819,7 +740,6 @@ mod tests {
             (1..=5).map(|step| pad.report(step * 50, &slide(0, 300 + 10 * step as i32, 300)));
         assert_eq!(total(moved), MotionDelta::default());
 
-        // A finger beside the palm points instead of scrolling with it.
         let mut finger = land(1, 700, 300);
         finger.extend([tool(1, false), tool(2, true)]);
         pad.report(300, &finger);
@@ -833,7 +753,6 @@ mod tests {
             }
         );
 
-        // A palm that touches briefly is no tap.
         let mut pad = Pad::new(true, TouchpadSettings::default());
         let mut events = land(0, 300, 300);
         events.extend([palm, key(KeyCode::BTN_TOUCH, 1), tool(1, true)]);
@@ -854,7 +773,6 @@ mod tests {
             click(PointerButton::MIDDLE)
         );
 
-        // The kernel counts a third finger the pad has no slot for.
         let mut pad = Pad::new(true, TouchpadSettings::default());
         two_fingers_down(&mut pad, 0, 300);
         pad.report(20, &[tool(2, false), tool(3, true)]);

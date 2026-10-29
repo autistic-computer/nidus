@@ -77,7 +77,6 @@ enum Network {
         session: u64,
         result: Result<DesktopResponse>,
     },
-    /// What the clipboard held when the pointer left for `peer`.
     Copied {
         peer: String,
         result: Result<Option<crate::clipboard::Clip>>,
@@ -89,21 +88,13 @@ struct Link {
     handle: SessionHandle,
     dialed: bool,
 }
-/// A crossing waiting for the other computer to prepare its desktop.
 struct Arming {
     peer: String,
     session: u64,
     token: u64,
 }
-/// Peers refuse a crossing with exactly this while they send their own input,
-/// and treat it as a cancelled crossing rather than a failed one.
 const SENDING: &str = "This computer is sending its own input";
-/// How long after a crossing to or from a peer ends without going through,
-/// or after it hands the pointer back, Windows waits before crossing to it
-/// again. The peer is still finishing its side and would refuse.
 const HOLD_OFF: Duration = Duration::from_millis(500);
-/// Clipboard reads wait for the app that copied to render its data, so they
-/// run off the engine loop: a crossing never waits for the clipboard.
 enum ClipJob {
     Read(String),
     Write(crate::clipboard::Clip),
@@ -164,9 +155,6 @@ pub async fn run(path: PathBuf) -> Result<()> {
     );
     let identity = Identity::load_or_create(&config.daemon.state_dir)?;
     let server = server_config(&identity, &config)?;
-    // Quinn's server helper uses the OS's IPv6-only default on Windows.
-    // Its client helper explicitly enables dual stack; install our listener
-    // on that same socket so Tailscale's IPv4 addresses work in both directions.
     let endpoint = quinn::Endpoint::client(config.transport.listen)
         .context("Cannot listen on the zflow UDP port")?;
     endpoint.set_server_config(Some(server.quinn_config()));
@@ -254,7 +242,6 @@ pub async fn run(path: PathBuf) -> Result<()> {
             capture=captured.recv()=>match capture {
                 Some(input::Event::Escape)=>{
                     engine.local();engine.config.daemon.sharing=false;
-                    // The chord must never stop the engine, even when the file changed outside the app.
                     if let Err(error)=engine.save_config(){engine.config.daemon.sharing=false;engine.notice=Some(format!("{error:#}"));}
                 },
                 Some(input::Event::Stalled)=>if engine.outbound.is_some(){engine.local();engine.notice=Some("Input returned to Windows because zflow stopped responding".into());},
@@ -276,7 +263,6 @@ pub async fn run(path: PathBuf) -> Result<()> {
     if let Some(task) = discovery {
         task.abort();
     }
-    // Give the Quit reply and final releases a chance to leave before the runtime stops.
     tokio::time::sleep(Duration::from_millis(100)).await;
     ipc_task.abort();
     Ok(())
@@ -338,8 +324,6 @@ impl Engine {
         }
         Ok(())
     }
-    /// Keeps `layout`, this computer's view, as the next version of the
-    /// shared one, and tells the other computers.
     fn arrange(&mut self, layout: Layout) -> Result<()> {
         layout.validate()?;
         ensure!(
@@ -511,7 +495,6 @@ impl Engine {
                     let moved = self.local_layout().moved(&id, x, y, tolerance, computer)?;
                     self.arrange(moved)?;
                 }
-                // Asked at every step of a drag, so it answers alone.
                 ipc::Command::Preview {
                     id,
                     x,
@@ -871,7 +854,6 @@ impl Engine {
                 let h = handle.clone();
                 let tx = self.network.clone();
                 let name = peer.clone();
-                // A snapshot learns the receiver's actual dimensions before any crossing.
                 tokio::spawn(async move {
                     let result = h.desktop_request(DesktopRequest::Snapshot).await;
                     let _ = tx
@@ -959,16 +941,12 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|a| a.peer == peer && a.session == session && a.token == token)
                 {
-                    // Cancelled while the other computer prepared.
                     if prepared {
                         self.finish(&peer, session, token);
                     }
                     return Ok(());
                 }
                 self.arming = None;
-                // A refused or failed crossing keeps the session. The other
-                // computer reserved nothing unless it prepared, and Finish
-                // gives that back; only a Finish that fails closes the session.
                 let response = match result {
                     Ok(response @ DesktopResponse::Prepared { .. }) => response,
                     Ok(DesktopResponse::Unavailable { reason }) => {
@@ -984,7 +962,6 @@ impl Engine {
                             .close(SessionCloseReason::BackendUnavailable);
                         bail!("{peer} did not prepare its desktop: {response:?}");
                     }
-                    // The request already closed the session.
                     Err(error) => {
                         self.hold_off(&peer);
                         return Err(error);
@@ -1027,7 +1004,6 @@ impl Engine {
                     next_poll: Instant::now(),
                 });
                 if let Err(error) = input::grab() {
-                    // Ends the activation and finishes the handoff.
                     self.hold_off(&peer);
                     self.local();
                     return Err(error);
@@ -1049,8 +1025,6 @@ impl Engine {
                     match result {
                         Ok(DesktopResponse::Active) => {}
                         Ok(DesktopResponse::Exited { exit, position }) => {
-                            // Windows lists only the ways home, so every exit
-                            // brings input back here.
                             let back = out
                                 .handoff
                                 .as_ref()
@@ -1061,7 +1035,6 @@ impl Engine {
                                     }
                                 })
                                 .transpose();
-                            // Motion from the hand-back must not cross straight back.
                             self.hold_off(&peer);
                             self.local();
                             if let Some(back) = back? {
@@ -1084,8 +1057,6 @@ impl Engine {
         self.boundaries.clear();
         input::remote(false);
         self.pending_activation = None;
-        // Returning locally must also stop the remote sender. Releasing only
-        // the injected state would let its next frame take control again.
         let incoming = self
             .inbound
             .take()
@@ -1096,8 +1067,6 @@ impl Engine {
         {
             link.handle.close(SessionCloseReason::LocalRelease);
         }
-        // A crossing still preparing finishes the other computer's handoff
-        // when its answer arrives.
         self.arming = None;
         if let Some(out) = self.outbound.take()
             && let Some(link) = self.links.get(&out.peer)
@@ -1120,12 +1089,9 @@ impl Engine {
             self.previous = p;
         }
     }
-    /// Keeps Windows from crossing to `peer` for [`HOLD_OFF`].
     fn hold_off(&mut self, peer: &str) {
         self.hold_off = Some((peer.to_owned(), Instant::now() + HOLD_OFF));
     }
-    /// Gives back a desktop `peer` prepared in `session` for a crossing that
-    /// did not start. Only a Finish that fails needs the session closed.
     fn finish(&self, peer: &str, session: u64, token: u64) {
         let Some(link) = self.links.get(peer).filter(|l| l.handle.id() == session) else {
             return;
@@ -1165,8 +1131,6 @@ impl Engine {
         {
             return;
         }
-        // The hooks cannot hold back input meant for a more privileged window,
-        // so a crossing from it would move both pointers.
         if let Err(error) = input::unblocked() {
             self.hold_off(&peer);
             self.notice = Some(format!("{error:#}"));
@@ -1182,8 +1146,6 @@ impl Engine {
             session,
             token,
         });
-        // Input comes back from the other computer, but Windows does not
-        // route it on to a third one.
         let handoff = handoff.map(|mut h| {
             h.keep_routes(|_| false);
             h
@@ -1294,10 +1256,6 @@ impl Engine {
                     let closed = effects
                         .iter()
                         .any(|e| matches!(e, ReceiverEffect::ActivationClosed { .. }));
-                    // The sender learns about an exit on its next Poll, and
-                    // may keep the pointer here. Until then the pointer stays
-                    // put, but keys and clicks still apply; rejecting them
-                    // would close the session before it hears of the exit.
                     if self.lease.as_ref().is_some_and(|l| l.exited()) {
                         desktop::hold_pointer(&mut effects);
                     }
@@ -1336,7 +1294,6 @@ impl Engine {
                     self.local();
                 }
             }
-            // Windows does not share its screen yet; dropping the stream refuses it.
             SessionEventKind::Lens { .. } => {}
             SessionEventKind::Clipboard { clip } => {
                 if self.config.daemon.sharing && self.config.clipboard.share && input::available() {
@@ -1386,8 +1343,6 @@ impl Engine {
         }
         if matches!(request, DesktopRequest::Prepare { .. }) {
             ensure!(self.lease.is_none(), "A desktop handoff is already active");
-            // Refuse before moving the pointer: a crossing Windows cannot
-            // inject into would leave it stuck at the entry point.
             self.injector.ready()?;
             input::boundaries(&[]);
             self.boundaries.clear();
@@ -1406,8 +1361,6 @@ impl Engine {
             self.injector.release();
             self.inbound = None;
             self.lease = None;
-            // The pointer rests on the edge it just left by; the peer is
-            // still finishing its crossing.
             self.hold_off(peer);
         }
         Ok(response)
@@ -1619,7 +1572,6 @@ impl Engine {
             self.boundaries = boundaries;
         }
     }
-    /// Sends what this computer copied to `peer`, which the pointer just went to.
     fn send_clip(&mut self, peer: &str) {
         if self.config.clipboard.share
             && self
@@ -1645,9 +1597,6 @@ impl Engine {
     }
 }
 
-/// Runs clipboard jobs in order on a blocking thread. Reading waits for the
-/// app that copied to render its data, which can take as long as that app
-/// likes; the engine loop keeps pulsing the input watchdog meanwhile.
 fn clipboard_worker(network: mpsc::Sender<Network>) -> mpsc::Sender<ClipJob> {
     let (jobs, mut queue) = mpsc::channel(8);
     tokio::spawn(async move {

@@ -1,5 +1,3 @@
-//! Desktop handoff requests carried on the input control stream.
-
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -16,8 +14,6 @@ use crate::{
 };
 
 impl SessionHandle {
-    /// Sends a clip to the peer in the background, cancelling one still on
-    /// its way. Input never waits for it.
     pub fn send_clipboard(&self, clip: crate::clipboard::Clip) {
         let clipboard = self.clipboard.clone();
         let (peer, id) = (self.peer.clone(), self.id);
@@ -36,7 +32,6 @@ impl SessionHandle {
         }
     }
 
-    /// Sends this computer's layout to the peer. Nothing answers it.
     pub fn send_layout(&self, layout: crate::desktop::SharedLayout) -> Result<()> {
         layout.validate()?;
         self.commands
@@ -44,8 +39,6 @@ impl SessionHandle {
             .map_err(|error| anyhow::anyhow!("layout not queued: {error}"))
     }
 
-    /// One scoped desktop operation. A timeout closes transport so a late warp cannot
-    /// leave the source believing that a cancelled handoff completed.
     pub async fn desktop_request(
         &self,
         request: crate::desktop::DesktopRequest,
@@ -138,8 +131,6 @@ impl SessionHandle {
     }
 }
 
-/// At most one request in each direction: ours waiting on the peer, and the
-/// peer's waiting to reach or hear back from the local desktop.
 #[derive(Default)]
 pub(super) struct DesktopRelay {
     waiter: Option<(u64, oneshot::Sender<DesktopResponse>)>,
@@ -148,7 +139,6 @@ pub(super) struct DesktopRelay {
 }
 
 impl DesktopRelay {
-    /// Sends a local request to the peer.
     pub(super) async fn request(
         &mut self,
         reporter: &Reporter,
@@ -197,7 +187,6 @@ impl DesktopRelay {
         Ok(())
     }
 
-    /// Hands the peer's request to the local desktop once it may run.
     pub(super) fn dispatch(
         &mut self,
         reporter: &Reporter,
@@ -211,9 +200,6 @@ impl DesktopRelay {
             started.elapsed() < Duration::from_millis(crate::desktop::REQUEST_TIMEOUT_MS),
             "Desktop operation ordering timed out"
         );
-        // Finish follows the sender's SessionClose on this stream. Wait through
-        // playout and the daemon's backend receipt before acknowledging desktop
-        // cleanup.
         let ready = !controls_pending
             && (!matches!(request, DesktopRequest::Finish { .. }) || !activation_open);
         if ready && self.reply.is_none() {
@@ -226,7 +212,6 @@ impl DesktopRelay {
         Ok(())
     }
 
-    /// Waits for the local desktop's answer to the peer's request.
     pub(super) async fn next_reply(&mut self) -> Result<(u64, DesktopResponse)> {
         let Some((id, receipt, started)) = self.reply.as_mut() else {
             return std::future::pending().await;

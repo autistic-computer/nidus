@@ -1,5 +1,3 @@
-"""Exercise update publication and nested signing without Apple services."""
-
 import base64
 import json
 import os
@@ -13,7 +11,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = base64.b64encode(bytes(range(32))).decode()
 PRIVATE = "private-key-fixture-never-print"
-# Public RFC 8032 test vector; tests never create a release signing identity.
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 SEED_PUBLIC = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
 CRYPTO = r'''

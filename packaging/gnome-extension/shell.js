@@ -10,30 +10,19 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 const BUS = 'org.gnome.Shell.Extensions.Zflow';
 const PATH = '/org/gnome/Shell/Extensions/Zflow';
-// src/app/gnome.rs owns this name on the connection that calls us.
 const AGENT = 'io.zflow.Desktop';
 const MAX = 1000000;
 const LEASE_US = 2000000;
 const WARP_US = 100000;
-// src/desktop.rs mirrors this hold duration.
 const POLL_HOLD_MS = 200;
-// ReadClipboard answers one kind: "text", "png", "empty", or
-// "too_large:<bytes>" for a clip over MAX_CLIP_BYTES, whose data stays here.
 const XML = `<node><interface name="${BUS}"><method name="Call"><arg type="s" direction="in"/><arg type="s" direction="out"/></method><method name="ReadClipboard"><arg name="kind" type="s" direction="out"/><arg name="data" type="ay" direction="out"/></method><method name="WriteClipboard"><arg name="kind" type="s" direction="in"/><arg name="data" type="ay" direction="in"/></method><signal name="FocusChanged"><arg type="b"/></signal><signal name="EdgeHit"><arg type="s"/><arg type="s"/><arg type="u"/></signal></interface></node>`;
-// src/clipboard.rs mirrors this limit.
 const MAX_CLIP_BYTES = 3 * 1024 * 1024;
-// The app that copied hands the clipboard over, and a stuck one never does.
 const CLIP_WAIT_MS = 1000;
-// One kind per clip: text if the clipboard has any, else a PNG.
 const CLIP_TYPES = [['text/plain;charset=utf-8', 'text'], ['text/plain', 'text'], ['image/png', 'png']];
 const NO_BYTES = new Uint8Array();
 const EDGES = ['left', 'right', 'top', 'bottom'];
-// Outbound barriers stop this far from the desktop's corners, so a push into
-// a corner, such as GNOME's hot corner, never crosses.
 const DEAD_CORNER = 8;
 
-// The monitors along one outer edge of the desktop, cut to a range given as
-// fractions of MAX along that edge.
 function edgeGeometry(ms, edge, start, end) {
     const left = Math.min(...ms.map(m => m.x));
     const top = Math.min(...ms.map(m => m.y));
@@ -52,8 +41,6 @@ function edgeGeometry(ms, edge, start, end) {
     return {left, top, right, bottom, vertical, origin, span, boundary, segments};
 }
 
-// A barrier on an outer edge that lets the pointer back in but not out, so
-// Shell reports each push against it.
 function edgeBarrier(edge, g, segment) {
     const directions = {left: Meta.BarrierDirection.POSITIVE_X, right: Meta.BarrierDirection.NEGATIVE_X,
         top: Meta.BarrierDirection.POSITIVE_Y, bottom: Meta.BarrierDirection.NEGATIVE_Y};
@@ -66,8 +53,6 @@ function validRange(start, end) {
     return [start, end].every(Number.isSafeInteger) && start >= 0 && start < end && end <= MAX;
 }
 
-// zflow inside GNOME Shell. extension.js loads this file from the folder of the build that is
-// installed, so an update runs without a new login.
 export class Zflow {
     enable() {
         this._displayInfo = null;
@@ -76,21 +61,14 @@ export class Zflow {
         this._indicator = new Indicator();
         this._lease = null;
         this._barriers = [];
-        // Edges that lead to another computer, and their barriers.
         this._edges = [];
         this._pauseMs = 0;
         this._outbound = [];
-        // Pushes waiting out the pause before they cross.
         this._waits = new Set();
         this._hidden = false;
         this._idles = new Set();
-        // Clipboard reads waiting for the app that copied.
         this._reads = new Set();
-        // Only the desktop agent may read the pointer or move it. This skips GNOME's
-        // DBusSenderChecker, whose destroy() passes array indexes to unwatch_name.
         this._agent = null;
-        // Whether the focused window is a terminal, so Mac shortcuts can use
-        // Ctrl+Shift there. Only the agent hears about it.
         this._terminal = this._focusedTerminal();
         this._focusId = global.display.connect('notify::focus-window', () => {
             const terminal = this._focusedTerminal();
@@ -101,7 +79,6 @@ export class Zflow {
         this._agentWatch = Gio.bus_watch_name_on_connection(Gio.DBus.session, AGENT, Gio.BusNameWatcherFlags.NONE,
             (_connection, _name, owner) => { this._agent = owner; this._sendFocus(); },
             () => {
-                // Nobody is left to hear a push or to show the pointer again.
                 this._agent = null;
                 this._edges = [];
                 this._placeEdges();
@@ -133,7 +110,6 @@ export class Zflow {
         this._clear();
         this._placeEdges();
         this._setHidden(false);
-        // An entry still waiting for the cursor stops here and never answers.
         for (const id of this._idles) GLib.Source.remove(id);
         this._idles.clear();
         for (const read of [...this._reads]) read.finish(null, new Error('The zflow extension turned off'));
@@ -155,7 +131,6 @@ export class Zflow {
         for (const barrier of this._barriers) barrier.destroy();
         this._barriers = [];
         this._lease = null;
-        // This computer's own edges come back once nobody controls it.
         if (leased) this._placeEdges();
     }
 
@@ -165,14 +140,13 @@ export class Zflow {
         for (const id of this._waits) GLib.Source.remove(id);
         this._waits.clear();
         const ms = Main.layoutManager.monitors;
-        // While another computer controls this one, it has no edges of its own.
         if (this._lease || !this._edges.length || !ms.length || !this._displayInfo
             || (global.backend.capabilities & Meta.BackendCapabilities.BARRIERS) === 0)
             return;
         for (const {monitor, edge, start, end} of this._edges) {
             let selected;
             try { selected = this._selected(this._snapshot().geometry, monitor); }
-            catch { continue; } // A disconnected monitor has no barrier.
+            catch { continue; }
             const g = edgeGeometry(selected, edge, start, end);
             const [low, high] = g.vertical ? [g.top, g.bottom] : [g.left, g.right];
             const segments = g.segments.map(s => ({...s,
@@ -181,8 +155,6 @@ export class Zflow {
             })).filter(s => s.end > s.start);
             for (const segment of segments) {
                 const barrier = edgeBarrier(edge, g, segment);
-                // Shell sends a hit for every motion against the barrier; report
-                // each push once.
                 let push = null;
                 let latest = 0;
                 let waiting = 0;
@@ -200,7 +172,6 @@ export class Zflow {
                         report(latest);
                         return;
                     }
-                    // The pointer has to rest here a moment; leaving cancels it.
                     waiting = GLib.timeout_add(GLib.PRIORITY_DEFAULT, this._pauseMs, () => {
                         this._waits.delete(waiting);
                         waiting = 0;
@@ -220,7 +191,6 @@ export class Zflow {
         }
     }
 
-    // Balanced with the Shell's cursor tracker, which counts inhibitions.
     _setHidden(hidden) {
         if (hidden === this._hidden) return;
         const tracker = global.backend.get_cursor_tracker();
@@ -248,8 +218,6 @@ export class Zflow {
         this._placeEdges();
         const cancellable = new Gio.Cancellable();
         this._displayCall = cancellable;
-        // This service runs inside Shell too. An asynchronous call avoids
-        // blocking the compositor while it answers its own display query.
         const readCurrentState = resources => Gio.DBus.session.call('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig',
             'org.gnome.Mutter.DisplayConfig', 'GetCurrentState', null, null,
             Gio.DBusCallFlags.NONE, 2000, cancellable, (connection, result) => {
@@ -260,13 +228,9 @@ export class Zflow {
                     if (resources && resources[0] !== serial) return;
                     const unpack = value => value?.deep_unpack ? value.deep_unpack() : value;
                     this._displayInfo = logical.map(([x, y, , transform, , specs]) => {
-                        // Mirrors are one logical surface. Pick a stable member.
                         const spec = [...specs].sort((a,b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))[0];
                         const properties = physical.find(([candidate]) => JSON.stringify(candidate) === JSON.stringify(spec))?.[2] ?? {};
                         const index = global.backend.get_monitor_manager?.().get_monitor_for_connector(spec[0]);
-                        // GetCurrentState omits physical dimensions on some Mutter
-                        // versions. GetResources exposes the same connector's EDID
-                        // dimensions; match its complete identity before using them.
                         const output = resources?.[2].find(o => o[4] === spec[0]
                             && ['vendor', 'product', 'serial'].every((key, i) => unpack(o[7][key]) === spec[i + 1]));
                         let width = unpack(properties['width-mm']) ?? unpack(output?.[7]['width-mm']) ?? 0;
@@ -286,7 +250,7 @@ export class Zflow {
                 if (generation !== this._displayGeneration) return;
                 let resources = null;
                 try { resources = connection.call_finish(result).deep_unpack(); }
-                catch { /* Logical geometry still works when EDID data is unavailable. */ }
+                catch { }
                 readCurrentState(resources);
             });
     }
@@ -299,7 +263,6 @@ export class Zflow {
     }
 
     _snapshot() {
-        // Shell disables this extension while locked, so only the monitors need checking.
         if (!Main.layoutManager.monitors.length) throw new Error('GNOME has no active monitors');
         const monitors = Main.layoutManager.monitors.map(m => ({x: m.x, y: m.y, width: m.width, height: m.height}));
         if (monitors.length > 16) throw new Error('At most 16 monitors are supported');
@@ -317,7 +280,6 @@ export class Zflow {
         return {geometry: {monitors, displays}, position: {x, y}};
     }
 
-    // Only the desktop agent may call in.
     _fromAgent(invocation) {
         if (invocation.get_sender() === this._agent) return true;
         invocation.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only the zflow desktop agent may call this');
@@ -353,8 +315,6 @@ export class Zflow {
         return [kind, data];
     }
 
-    // St hands the bytes over once the app that copied sends them all, and
-    // frees them as soon as the callback returns, so they are copied out there.
     _clipboardContent(mimetype) {
         return new Promise((resolve, reject) => {
             const read = {
@@ -395,7 +355,6 @@ export class Zflow {
         try {
             if (json.length > 32768) throw new Error('Desktop request exceeds limit');
             const request = JSON.parse(json);
-            // Agents older than API 1 did not send it and speak API 1.
             const api = request.api ?? 1;
             if (api > API) throw new Error('Update zflow: its GNOME extension is older than the app');
             if (api < API) throw new Error('Update zflow: the app is older than its GNOME extension');
@@ -407,9 +366,7 @@ export class Zflow {
     }
 
     async _request(r) {
-        // The agent asks for this when it subscribes; it needs no monitors.
         if (r.command === 'focus') return {status: 'focus', terminal: this._terminal};
-        // This computer's own input; only the service sends these.
         if (r.command === 'sending') {
             if (typeof r.active !== 'boolean') throw new Error('Invalid sending state');
             this._setHidden(r.active);
@@ -423,8 +380,6 @@ export class Zflow {
                 || !Number.isSafeInteger(pauseMs) || pauseMs < 0 || pauseMs > 2000)
                 throw new Error('Invalid outbound edges');
             const edges = r.edges.map(({monitor, edge, start, end}) => ({monitor, edge, start, end}));
-            // Rebuilding would forget the push in progress, so a pointer still
-            // resting on the barrier after a return would cross again.
             if (JSON.stringify(edges) !== JSON.stringify(this._edges) || pauseMs !== this._pauseMs) {
                 this._edges = edges;
                 this._pauseMs = pauseMs;
@@ -466,9 +421,6 @@ export class Zflow {
         };
         if (lease.exited !== null) {
             if (!lease.delivered) return exited();
-            // Another Poll after the exit means the pointer stays here, as
-            // when a key is held on the way to a third computer. The next
-            // push out reports again.
             lease.exited = null;
         }
         return new Promise((resolve, reject) => {
@@ -499,9 +451,6 @@ export class Zflow {
             throw new Error('This GNOME session does not provide pointer barriers');
         const g = edgeGeometry(this._selected(snapshot.geometry, r.monitor), r.edge, r.start, r.end);
         const {left, top, right, bottom, vertical, origin, span, segments} = g;
-        // The Mac tile is this desktop's bounding box, so the entry can fall where no
-        // monitor touches the edge, or a rounding pixel outside the range. Enter at
-        // the nearest pixel that has a monitor behind it.
         const wanted = origin + Math.floor(r.position * span / MAX);
         const along = s => Math.max(s.start, Math.min(s.end - 1, wanted));
         const segment = segments.reduce((best, s) =>
@@ -512,21 +461,12 @@ export class Zflow {
         if (m.width < 8 || m.height < 8) throw new Error('The entry monitor is too small');
         const point = vertical ? {x: r.edge === 'left' ? left + 3 : right - 4, y: coordinate}
             : {x: coordinate, y: r.edge === 'top' ? top + 3 : bottom - 4};
-        // Where the pointer left and whether a Poll has answered it yet.
         const lease = {token: r.token, renewed: GLib.get_monotonic_time(), exited: null, delivered: false, polls: new Set()};
         this._lease = lease;
         try {
-            // Mutter runs a warp through the pointer barriers like any motion,
-            // and a barrier the pointer rests on pins it to the edge when the
-            // warp also moves along it, as after a return through this edge.
-            // So this computer's own barriers go first, and the exit barriers
-            // go up only once the pointer is in.
             this._placeEdges();
-            // GNOME 51 removed Clutter.get_default_backend().
             const backend = global.stage.get_context?.().get_backend() ?? Clutter.get_default_backend();
             backend.get_default_seat().warp_pointer(point.x, point.y);
-            // Mutter applies the warp on its input thread, and a slow frame can
-            // delay it past the next main-loop turn. Keep checking for a while.
             const deadline = GLib.get_monotonic_time() + WARP_US;
             for (;;) {
                 await new Promise(resolve => {
@@ -540,12 +480,10 @@ export class Zflow {
                 if (this._lease !== lease) throw new Error('Desktop changed during entry');
                 const actual = this._snapshot();
                 if (Math.abs(actual.position.x - point.x) <= 2 && Math.abs(actual.position.y - point.y) <= 2) {
-                    // Every way off this desktop: home to the computer that
-                    // sends, or on to another one it routes to.
                     r.exits.forEach((exit, index) => {
                         let e;
                         try { e = edgeGeometry(this._selected(actual.geometry, exit.monitor), exit.edge, exit.start, exit.end); }
-                        catch { return; } // A disconnected monitor has no exit.
+                        catch { return; }
                         for (const s of e.segments) {
                             const barrier = edgeBarrier(exit.edge, e, s);
                             barrier.connect('hit', (_barrier, event) => {

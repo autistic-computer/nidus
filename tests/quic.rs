@@ -36,7 +36,6 @@ async fn one_listener_takes_every_allowed_key_and_tells_an_unknown_one_why() {
     let (_second_directory, second_identity) = identity();
     let (_unknown_directory, unknown_identity) = identity();
 
-    // A computer that trusts nobody yet still listens, for hellos.
     assert!(
         input_server_config_for_peers(&server_identity, std::iter::empty::<&'static [u8]>())
             .is_ok()
@@ -98,8 +97,6 @@ async fn one_listener_takes_every_allowed_key_and_tells_an_unknown_one_why() {
     ];
     expected.sort();
     assert_eq!(accepted_spkis, expected);
-    // The listener learns who asked, and the asker learns why it was turned
-    // away, wherever it notices: the handshake, the stream, or the close.
     assert_eq!(refused, [unknown_identity.spki().to_vec()]);
     let why = match unknown {
         Err(error) => error,
@@ -113,7 +110,6 @@ async fn one_listener_takes_every_allowed_key_and_tells_an_unknown_one_why() {
     };
     assert!(matches!(why, TransportError::NotTrusted), "{why:?}");
 
-    // The trusted keys still have working input on the same port.
     let mut first = first.into_channels();
     let mut server_side = server_connections
         .into_iter()
@@ -157,7 +153,6 @@ async fn an_unknown_key_says_hello_on_the_input_port_and_both_sides_learn_each_o
     let (_server_directory, server_identity) = identity();
     let (_client_directory, client_identity) = identity();
     let (_known_directory, known_identity) = identity();
-    // The listener trusts someone else, and never this client.
     let server_config =
         input_server_config_for_peers(&server_identity, [known_identity.spki()]).unwrap();
     let server_endpoint = quinn::Endpoint::server(server_config.quinn_config(), LOOPBACK).unwrap();
@@ -179,7 +174,6 @@ async fn an_unknown_key_says_hello_on_the_input_port_and_both_sides_learn_each_o
     let server = accepting.await.unwrap();
     assert_eq!(client.peer_spki(), server_identity.spki());
     assert_eq!(server.peer_spki(), client_identity.spki());
-    // Both ends derive the same value from this session, for vouches.
     assert_eq!(client.binding().unwrap(), server.binding().unwrap());
 
     let (from_client, from_server) = (hello("client", 43119, false), hello("server", 43121, true));
@@ -236,8 +230,6 @@ async fn mutual_rpk_pinning_delivers_control_and_datagram() {
         InputControlMessage::Reliable(control)
     );
 
-    // The negotiated application limit is checked independently of Quinn's
-    // path limit on both send and receive.
     let motion = MotionFrame {
         session: session(),
         motion_sequence: MotionSequence(1),
@@ -281,8 +273,6 @@ async fn cancelling_fragmented_control_reads_preserves_framing_progress() {
     let server_endpoint = quinn::Endpoint::server(server_config.quinn_config(), LOOPBACK).unwrap();
     let server_address = server_endpoint.local_addr().unwrap();
     let client_endpoint = quinn::Endpoint::client(LOOPBACK).unwrap();
-    // Accept the stream directly so the server controls fragment boundaries
-    // that the typed sender deliberately hides.
     let accept_endpoint = server_endpoint.clone();
     let accept = tokio::spawn(async move {
         let raw_connection = accept_endpoint.accept().await.unwrap().await.unwrap();
@@ -292,7 +282,6 @@ async fn cancelling_fragmented_control_reads_preserves_framing_progress() {
     let client = connect_input(&client_endpoint, server_address, &client_config)
         .await
         .unwrap();
-    // Dropping the receive half would stop the client's critical stream.
     let (raw_connection, mut raw_send, _raw_receive) = accept.await.unwrap();
     let mut client_channels = client.into_channels();
 
@@ -349,9 +338,6 @@ async fn unread_control_stream_hits_the_bounded_fail_closed_write_timeout() {
     let client_config = input_client_config(&client_identity, server_identity.spki()).unwrap();
     let server_config = input_server_config(&server_identity, client_identity.spki()).unwrap();
 
-    // Keep the peer's advertised stream and connection credit tiny. Once the
-    // server stops reading, the typed sender must block and enforce its own
-    // safety deadline.
     let mut server_quinn_config = server_config.quinn_config();
     let mut server_transport = quinn::TransportConfig::default();
     server_transport
@@ -415,8 +401,6 @@ async fn a_peer_on_another_protocol_version_gets_a_clear_error() {
         accept(accept_endpoint.accept().await.unwrap(), &server_config).await
     });
 
-    // A build from another version offers only its own protocol. The listener
-    // turns it away before any key is shown, so this client needs none.
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let mut tls = rustls::ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13])
@@ -462,7 +446,6 @@ async fn wrong_server_spki_pin_rejects_the_handshake() {
         accept_input(incoming, &accept_config).await
     });
 
-    // A pinned key that no longer matches is how a reinstalled peer looks.
     assert!(matches!(
         connect_input(&client_endpoint, server_address, &client_config).await,
         Err(TransportError::PeerIdentityMismatch)
@@ -542,7 +525,6 @@ async fn a_clip_crosses_on_its_own_stream_beside_control() {
     let (sent, received) = tokio::join!(client.clipboard.send(&text), server.clipboard.receive());
     sent.unwrap();
     assert_eq!(received.unwrap(), text);
-    // The other way round, and control still flows.
     let png = Clip::new(ClipKind::Png, b"\x89PNG\r\n\x1a\nrest".to_vec()).unwrap();
     let (sent, received) = tokio::join!(server.clipboard.send(&png), client.clipboard.receive());
     sent.unwrap();
@@ -559,9 +541,6 @@ async fn a_clip_crosses_on_its_own_stream_beside_control() {
     );
 }
 
-/// A full clip must not delay pointer motion: QUIC writes datagrams ahead of
-/// stream data in each packet, and the clip's stream has a low priority.
-/// Loopback has no Wi-Fi queue, so this guards the ordering, not radio lag.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn motion_stays_prompt_while_a_full_clip_transfers() {
     let (client, server, _client_endpoint, _server_endpoint) = input_pair().await;
@@ -594,7 +573,6 @@ async fn motion_stays_prompt_while_a_full_clip_transfers() {
             tokio::time::sleep(Duration::from_millis(2)).await;
         }
     });
-    // Motion is read while the clip is still on its way.
     let mut worst = Duration::ZERO;
     let mut during = 0;
     while let Ok(Ok(InputDatagram::Motion(frame))) =
@@ -612,10 +590,6 @@ async fn motion_stays_prompt_while_a_full_clip_transfers() {
     transfer.await.unwrap().unwrap();
     sender.await.unwrap();
     assert!(during > 0, "no motion arrived while the clip was in flight");
-    // In a debug build the wait is mostly how fast the machine encrypts and
-    // decrypts the clip: a shared macOS runner waited 66 ms with motion still
-    // arriving mid-clip. So only optimized builds are held to a number. The
-    // check above fails any build where motion waits for the whole clip.
     if !cfg!(debug_assertions) {
         assert!(
             worst < Duration::from_millis(20),

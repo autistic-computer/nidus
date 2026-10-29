@@ -62,14 +62,11 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 [dev-dependencies]
 proptest = "1.11.0"
 tempfile = "3.23"
-# Paused time for handoff server tests.
 tokio = { version = "1.53.1", features = ["test-util"] }
 
 [profile.release]
 lto = "thin"
 strip = "symbols"
 
-# macOS 27 rejects malformed proc-macro dylibs produced by Rust's stripping pass.
-# https://github.com/rust-lang/rust/issues/157750
 [profile.release.build-override]
 strip = "none"

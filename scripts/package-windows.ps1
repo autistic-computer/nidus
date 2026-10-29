@@ -36,7 +36,6 @@ Move-Item -LiteralPath $setup[0].FullName -Destination (Join-Path $output 'zflow
 $feed = Get-Content -LiteralPath (Join-Path $output 'releases.win-x64.json') -Raw | ConvertFrom-Json
 $full = @($feed.Assets | Where-Object { $_.PackageId -eq 'Zflow.App' -and $_.Version -eq $version -and $_.Type -eq 'Full' })
 if ($full.Count -ne 1 -or -not (Test-Path -LiteralPath (Join-Path $output $full[0].FileName))) { throw 'The Windows update feed must reference the packaged full release' }
-# Publication uses the feed and full package directly, not Velopack upload commands.
 Get-ChildItem -LiteralPath $output -Filter 'assets.*.json' | Remove-Item
 Remove-Item -LiteralPath (Join-Path $output 'RELEASES') -ErrorAction SilentlyContinue
 $archive = Join-Path $output "zflow-v$version-windows-x86_64.zip"

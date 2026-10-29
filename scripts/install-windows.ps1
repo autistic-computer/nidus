@@ -14,7 +14,6 @@ try {
         $installerAsset = @($release.assets | Where-Object { $_.name -eq $assetName })
         $checksumsAsset = @($release.assets | Where-Object { $_.name -eq 'SHA256SUMS' })
         if ($installerAsset.Count -ne 1 -or $checksumsAsset.Count -ne 1) { throw 'The latest release has no complete Windows installer. Try again after the release finishes.' }
-        # Resolve both files from one release so publication cannot mix versions.
         $setup = Join-Path $temporary $assetName
         Invoke-WebRequest -UseBasicParsing -Uri $installerAsset[0].browser_download_url -OutFile $setup
         $checksumsPath = Join-Path $temporary 'SHA256SUMS'

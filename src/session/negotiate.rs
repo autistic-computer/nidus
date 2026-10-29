@@ -1,5 +1,3 @@
-//! Session negotiation and the checks that keep a peer inside what it negotiated.
-
 use anyhow::{Result, bail};
 
 use crate::{

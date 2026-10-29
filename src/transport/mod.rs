@@ -1,5 +1,3 @@
-//! Authenticated QUIC transport for input control, cumulative motion, and probes.
-
 mod connection;
 mod error;
 mod tls;

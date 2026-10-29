@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Sign the final notarized DMG and describe it in Sparkle's appcast.
 set +x
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -30,7 +29,6 @@ trap 'rm -rf -- "$work"' EXIT
 mkdir "$work/archives"
 cp "$dmg" "$work/archives/"
 prefix="https://github.com/autistic-computer/zflow/releases/download/v$version/"
-# Sparkle reads the private key from stdin, never from command-line arguments.
 printf '%s\n' "$SPARKLE_PRIVATE_ED_KEY" | "$generator" --ed-key-file - \
     --download-url-prefix "$prefix" --maximum-deltas 0 \
     --link "https://github.com/autistic-computer/zflow/releases/tag/v$version" \

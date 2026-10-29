@@ -1,17 +1,13 @@
 import SwiftUI
 
-/// One display on the board, at the spot the layout gives it.
 struct LayoutTile: Identifiable, Equatable {
   var computer: Computer
-  /// A paired computer's state; nil for this Mac.
   var state: Peer.State?
-  /// Its key's mark.
   var mark: String?
   var placed = true
   var id: String { computer.id }
   var owner: Owner { Owner(computer.peer) }
 
-  /// The layout's computers, each paired one with its state and mark.
   static func tiles(_ layout: Layout, peers: [Peer], ownMark: String? = nil) -> [LayoutTile] {
     layout.monitors.filter { $0.display?.active != false }.map { computer in
       guard let name = computer.peer else {
@@ -23,8 +19,6 @@ struct LayoutTile: Identifiable, Equatable {
   }
 }
 
-/// A computer's screens. They move together, as an island, unless the
-/// computer is being adjusted screen by screen.
 struct Island: Identifiable, Equatable {
   var owner: Owner
   var tiles: [LayoutTile]
@@ -34,7 +28,6 @@ struct Island: Identifiable, Equatable {
   var mark: String? { tiles.first?.mark }
   var symbol: String { owner == .thisMac ? "laptopcomputer" : "desktopcomputer" }
 
-  /// Each computer's screens, in the order the layout first names them.
   static func islands(_ tiles: [LayoutTile]) -> [Island] {
     var islands: [Island] = []
     for tile in tiles {
@@ -48,9 +41,6 @@ struct Island: Identifiable, Equatable {
   }
 }
 
-/// A move the board asks for: screen `id` to `x`, `y`, or against an edge
-/// within `tolerance` of there. With `computer`, every screen of its
-/// computer moves alike.
 struct Move: Equatable, Sendable {
   var id: String
   var x: Int
@@ -65,31 +55,20 @@ struct Move: Equatable, Sendable {
   }
 }
 
-/// A drag on the board.
 struct Drag: Equatable {
-  /// The screen the move names, where the layout has it.
   var anchor: Computer
   var owner: Owner
-  /// Whether the whole computer moves, or only `anchor`.
   var computer: Bool
-  /// The board's scale and origin when the drag began. The board keeps them
-  /// until it ends, so nothing rescales under the pointer.
   var scale: CGFloat
   var origin: CGPoint
-  /// How far the pointer went, in layout units.
   var travel = CGSize.zero
-  /// The travel the engine last answered for, and its answer: where the
-  /// screens land, or nil where they cannot go.
   var asked: CGSize?
   var landing: Preview?
 
   func moves(_ tile: LayoutTile) -> Bool {
     computer ? tile.owner == owner : tile.id == anchor.id
   }
-  /// The engine said nothing fits where it was last asked about.
   var refused: Bool { asked != nil && landing == nil }
-  /// How far the moving screens show from their spot: where the engine
-  /// says they land, else under the pointer.
   var shown: CGSize {
     guard let landing else { return travel }
     return CGSize(width: landing.x - anchor.x, height: landing.y - anchor.y)
@@ -102,62 +81,41 @@ struct Drag: Equatable {
 }
 
 extension Computer {
-  /// Where it is, in layout units.
   var rect: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 }
 
-/// Where the shelf of found computers sits on the canvas.
 enum ShelfEdge {
   case bottom
   case trailing
 }
 
-/// The arrangement: each computer's screens as an island with its name
-/// above it, lit seams where the pointer crosses to another computer, and
-/// the computers found nearby on a shelf.
 struct ComputerLayout: View {
   var tiles: [LayoutTile]
-  /// Where the screens touch.
   var seams: [Seam] = []
-  /// Seams fade while sharing is off, since the pointer crosses none.
   var sharing = true
-  /// Found computers, on a shelf until one is dragged onto the board.
   var unplaced: [Unplaced] = []
   var shelf = ShelfEdge.bottom
-  /// Shows the shelf while it is empty, saying more may show up.
   var searching = false
   @Binding var selection: Owner?
   @Binding var adjusting: Owner?
-  /// Returns once the snapshot with the move in it is shown.
   var move: @MainActor (Move) async -> Void
   var preview: @MainActor (Move) async -> Preview? = { _ in nil }
-  /// A shelf computer dropped with its tile's corner at a layout point.
   var place: (Unplaced, Int, Int, Int) -> Void = { _, _, _, _ in }
   @State private var drag: Drag?
-  /// Whether a preview is on its way, so only one is asked at a time.
   @State private var asking = false
-  /// The shelf computer being carried, and where the pointer is.
   @State private var carried: String?
   @State private var carriedAt = CGPoint.zero
-  /// The screen, and the computer's name, under the pointer. Screens go by
-  /// id, so crossing from one of a computer's screens to the next keeps it
-  /// hovered whether the leave or the enter comes first.
   @State private var hoveredScreen: String?
   @State private var hoveredChip: Owner?
   @FocusState private var focused: Bool
 
-  /// The size the engine gives a new computer's tile until it says its own.
   nonisolated static let newTile = CGSize(width: 1920, height: 1080)
-  /// Arrow keys move a computer about an inch, and snap within a little
-  /// less, so a step away from a seam is not pulled back to it.
   nonisolated static let step = 100
   private static let space = "canvas"
 
   private var placed: [LayoutTile] { tiles.filter(\.placed) }
   private var islands: [Island] { Island.islands(placed) }
   private var showsShelf: Bool { !unplaced.isEmpty || searching }
-  /// The computer the pointer is over, by one of its screens or its name.
-  /// It shows its outline and its screens' names, as a selected one does.
   private var hovered: Owner? {
     hoveredChip ?? placed.first { $0.id == hoveredScreen }?.owner
   }
@@ -195,7 +153,6 @@ struct ComputerLayout: View {
         }
         if let computer = unplaced.first(where: { $0.id == carried }) {
           if board.contains(carriedAt) && !(shelfFrame?.contains(carriedAt) ?? false) {
-            // Where it lands, at the board's scale.
             RoundedRectangle(cornerRadius: 10)
               .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
               .frame(width: Self.newTile.width * scale, height: Self.newTile.height * scale)
@@ -208,7 +165,6 @@ struct ComputerLayout: View {
       }
       .coordinateSpace(.named(Self.space))
       .clipShape(.rect(cornerRadius: 16))
-      // A drop, or a peer's edit, glides the screens to their new spots.
       .animation(.smooth(duration: 0.3), value: tiles)
     }
     .focusable()
@@ -228,8 +184,6 @@ struct ComputerLayout: View {
     }
   }
 
-  /// The scale and origin that center the layout on the board, with room
-  /// above for the computers' names.
   nonisolated static func fit(_ bounds: CGRect, in board: CGRect) -> (CGFloat, CGPoint) {
     let (sides, above, below): (CGFloat, CGFloat, CGFloat) = (36, 52, 30)
     let scale = max(
@@ -244,7 +198,6 @@ struct ComputerLayout: View {
     return (scale, origin)
   }
 
-  /// How far a drag reaches for an edge: 14 points on the board.
   nonisolated static func tolerance(_ scale: CGFloat) -> Int {
     Int((CGFloat(14) / scale).rounded())
   }
@@ -258,7 +211,6 @@ struct ComputerLayout: View {
     }
   }
 
-  /// A dotted backdrop, like a desk mat.
   private var dots: some View {
     Canvas { context, size in
       let spacing: CGFloat = 18
@@ -281,7 +233,6 @@ struct ComputerLayout: View {
     }
   }
 
-  /// The part of the canvas the arrangement fills.
   private func boardRect(_ size: CGSize, shelf frame: CGRect?) -> CGRect {
     let all = CGRect(origin: .zero, size: size)
     guard let frame else { return all }
@@ -372,14 +323,12 @@ struct ComputerLayout: View {
       }
   }
 
-  /// The layout point of the corner of a new tile centered on `point`.
   nonisolated static func corner(at point: CGPoint, scale: CGFloat, origin: CGPoint) -> (Int, Int) {
     let x = (point.x - origin.x) / scale - newTile.width / 2
     let y = (point.y - origin.y) / scale - newTile.height / 2
     return (Int(x.rounded()), Int(y.rounded()))
   }
 
-  /// Every display uses the same transform so touching edges stay touching.
   nonisolated static func frame(for computer: Computer, scale: CGFloat, origin: CGPoint) -> CGRect {
     CGRect(
       x: origin.x + CGFloat(computer.x) * scale,
@@ -388,14 +337,12 @@ struct ComputerLayout: View {
       height: CGFloat(computer.height) * scale)
   }
 
-  /// A screen on the board, moved by the drag when it carries it.
   private func screenFrame(_ tile: LayoutTile, scale: CGFloat, origin: CGPoint) -> CGRect {
     let frame = Self.frame(for: tile.computer, scale: scale, origin: origin)
     guard let drag, drag.moves(tile) else { return frame }
     return frame.offsetBy(dx: drag.shown.width * scale, dy: drag.shown.height * scale)
   }
 
-  /// An island's screens on the board, with room around them.
   private func hullFrame(_ island: Island, scale: CGFloat, origin: CGPoint) -> CGRect {
     island.tiles.reduce(CGRect.null) { $0.union(screenFrame($1, scale: scale, origin: origin)) }
       .insetBy(dx: -10, dy: -10)
@@ -404,7 +351,6 @@ struct ComputerLayout: View {
   private func hull(_ island: Island, scale: CGFloat, origin: CGPoint) -> some View {
     let frame = hullFrame(island, scale: scale, origin: origin)
     let selected = selection == island.owner
-    // Only a selected or pointed at computer shows its outline.
     return RoundedRectangle(cornerRadius: 18)
       .strokeBorder(
         selected ? Color.accentColor : Color.secondary.opacity(0.35),
@@ -419,7 +365,6 @@ struct ComputerLayout: View {
   private func screen(_ tile: LayoutTile, scale: CGFloat, origin: CGPoint) -> some View {
     let frame = screenFrame(tile, scale: scale, origin: origin)
     let moving = drag?.moves(tile) ?? false
-    // Out of adjusting, a screen carries its whole computer.
     let alone = adjusting == tile.owner
     let island = islands.first { $0.owner == tile.owner }
     let computer = tile.computer
@@ -449,9 +394,6 @@ struct ComputerLayout: View {
     .accessibilityAction(named: Text("Move down")) { nudge(computer, 0, 1, computer: !alone) }
   }
 
-  /// Lit seams where the pointer crosses to another computer, and dotted
-  /// joints between one computer's own screens. While a drag waits for the
-  /// engine, only the seams it cannot change show.
   private func seamLines(scale: CGFloat, origin: CGPoint) -> some View {
     let moving = Set(placed.filter { drag?.moves($0) ?? false }.map(\.id))
     let still = seams.filter { !moving.contains($0.a) && !moving.contains($0.b) }
@@ -471,7 +413,6 @@ struct ComputerLayout: View {
         context.stroke(
           line, with: .color(.accentColor.opacity(strength)),
           style: StrokeStyle(lineWidth: 4, lineCap: .round))
-        // A badge that says the pointer goes across, where there is room.
         let length = CGFloat(seam.end - seam.start) * scale
         guard length > 34 else { continue }
         let middle = line.boundingRect
@@ -489,7 +430,6 @@ struct ComputerLayout: View {
     .accessibilityHidden(true)
   }
 
-  /// A seam on the board, short of its ends by `inset`.
   nonisolated static func line(_ seam: Seam, inset: CGFloat, scale: CGFloat, origin: CGPoint)
     -> Path
   {
@@ -507,8 +447,6 @@ struct ComputerLayout: View {
     return path
   }
 
-  /// Each island's name, above its top left corner. Dragging one moves its
-  /// whole computer; double-clicking it adjusts its screens one by one.
   private func chips(scale: CGFloat, origin: CGPoint) -> some View {
     ZStack(alignment: .topLeading) {
       Color.clear.allowsHitTesting(false)
@@ -527,8 +465,6 @@ struct ComputerLayout: View {
     let selected = selection == island.owner
     return HStack(spacing: 7) {
       Text(island.name).font(.subheadline.weight(.semibold))
-      // Its state is a dot here, in words in its tooltip and the inspector,
-      // so names stay small on the board.
       if let state = island.state { StateDot(state: state) }
       if open {
         Button("Done") { adjusting = nil }
@@ -539,8 +475,6 @@ struct ComputerLayout: View {
     .lineLimit(1)
     .padding(.leading, 9).padding(.trailing, 11)
     .frame(height: 26)
-    // Bare on the board, filled faintly under the pointer, and on glass
-    // with a ring while selected.
     .background(hoveredChip == island.owner ? Color.primary.opacity(0.08) : .clear, in: .capsule)
     .glassEffect(selected ? .regular : .identity, in: .capsule)
     .overlay {
@@ -584,7 +518,6 @@ struct ComputerLayout: View {
     adjusting = adjusting == owner ? nil : owner
   }
 
-  /// One arrow key's step for `anchor`, or its whole computer.
   private func nudge(_ anchor: Computer, _ dx: Int, _ dy: Int, computer: Bool) {
     let step = Self.step
     let wanted = Move(
@@ -611,7 +544,6 @@ struct ComputerLayout: View {
       .onEnded { _ in
         guard let current = drag else { return }
         let wanted = current.move(tolerance: Self.tolerance(current.scale))
-        // The screens stay where they show until the snapshot moves them.
         Task {
           await move(wanted)
           drag = nil
@@ -619,8 +551,6 @@ struct ComputerLayout: View {
       }
   }
 
-  /// Asks the engine where the drag lands, one question at a time, the
-  /// newest travel next.
   private func ask() {
     guard !asking, let current = drag, current.asked != current.travel else { return }
     asking = true
@@ -646,8 +576,6 @@ struct ComputerLayout: View {
   }
 }
 
-/// A screen on the board, with its name while its computer is selected or
-/// pointed at.
 private struct ScreenView: View {
   var tile: LayoutTile
   var size: CGSize
@@ -669,7 +597,6 @@ private struct ScreenView: View {
             .padding(5)
         }
       } else {
-        // A computer that has not said what screens it has.
         Image(systemName: tile.owner == .thisMac ? "laptopcomputer" : "desktopcomputer")
           .font(.system(size: max(8, min(size.height * 0.35, 28))))
           .foregroundStyle(.secondary)
@@ -691,7 +618,6 @@ private struct ScreenView: View {
   }
 }
 
-/// A found computer on the shelf. One that cannot be placed yet says why.
 private struct ShelfTile: View {
   var computer: Unplaced
   var carried: Bool
@@ -724,7 +650,6 @@ private struct ShelfTile: View {
 
 extension Unplaced {
   var symbol: String { os == .macos ? "laptopcomputer" : "desktopcomputer" }
-  /// The line under its name on the shelf.
   var detail: String {
     switch state {
     case .identifying: "Identifying…"
@@ -735,9 +660,6 @@ extension Unplaced {
   }
 }
 
-/// A key's mark: four small squares, so two computers with one name look
-/// different. Each of the mark's first four hex digits picks one of eight
-/// colors, as the GNOME window draws it too.
 struct KeyMark: View {
   var mark: String
 
@@ -746,14 +668,12 @@ struct KeyMark: View {
   ]
   nonisolated static let palette: [Color] = rgb.map(color)
 
-  // Split out so the compiler doesn't give up inferring one long expression.
   private nonisolated static func color(_ rgb: UInt32) -> Color {
     let red = Double((rgb >> 16) & 0xFF) / 255
     let green = Double((rgb >> 8) & 0xFF) / 255
     let blue = Double(rgb & 0xFF) / 255
     return Color(red: red, green: green, blue: blue)
   }
-  /// The palette index of each square.
   nonisolated static func indices(_ mark: String) -> [Int] {
     mark.prefix(4).compactMap(\.hexDigitValue).map { $0 & 7 }
   }
@@ -764,7 +684,6 @@ struct KeyMark: View {
         RoundedRectangle(cornerRadius: 2).fill(Self.palette[index]).frame(width: 7, height: 7)
       }
     }
-    // The text form a notification or `zflow nearby` gives.
     .help("Mark \(mark)")
     .accessibilityHidden(true)
   }

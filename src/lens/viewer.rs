@@ -1,8 +1,3 @@
-//! The viewing side of a lens as the UI sees it: the other computer's pixels as they arrive,
-//! which chunks of them changed, and input headed back. The UI reads chunks and sends input from
-//! its own thread. Decoding happens elsewhere and only the changed tiles are copied in here, so
-//! the UI never waits behind a decode, and input never waits behind pixels.
-
 use std::sync::Mutex;
 
 use tokio::sync::mpsc;
@@ -10,7 +5,6 @@ use tokio::sync::mpsc;
 use super::tiles::TILE;
 use crate::core::HidUsage;
 
-/// The UI copies pixels in squares this size. 64 divides it, so a tile never straddles two.
 pub const CHUNK: usize = 256;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -23,8 +17,6 @@ pub enum State {
     Failed = 3,
 }
 
-/// Input from the person looking through the lens. Positions are the viewed computer's capture
-/// pixels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Input {
     Move { x: f64, y: f64, radius: f64 },
@@ -43,7 +35,6 @@ pub struct Status {
     pub frames: u64,
 }
 
-/// The desktop as decoded so far, and the chunks the UI has not copied since they changed.
 #[derive(Default)]
 struct Shown {
     width: usize,
@@ -72,8 +63,6 @@ impl Viewer {
         lock(&self.status).1.clone()
     }
 
-    /// Writes into `out` the chunks under a circle that changed since the UI last copied them,
-    /// and returns how many it wrote. Changed chunks outside the circle wait until it gets there.
     pub fn dirty(&self, x: f64, y: f64, radius: f64, out: &mut [u32]) -> usize {
         let shown = lock(&self.shown);
         if shown.width == 0 {
@@ -98,8 +87,6 @@ impl Viewer {
         count
     }
 
-    /// Copies one chunk into `pixels`, rows `stride` bytes apart, and marks it clean. Returns the
-    /// chunk's size, which is smaller than [`CHUNK`] at the right and bottom edges.
     pub fn chunk(&self, id: usize, pixels: &mut [u8], stride: usize) -> Option<(usize, usize)> {
         let mut shown = lock(&self.shown);
         let (width, height) = (shown.width, shown.height);
@@ -124,7 +111,6 @@ impl Viewer {
         Some((w, h))
     }
 
-    /// Queues input for the viewed computer. Input before the lens opens is dropped.
     pub fn send(&self, input: Input) {
         if let Some(sender) = &*lock(&self.input) {
             let _ = sender.send(input);
@@ -143,7 +129,6 @@ impl Viewer {
         *lock(&self.input) = Some(input);
     }
 
-    /// The viewed computer's desktop size, before its tiles.
     pub(crate) fn ready(&self, width: usize, height: usize) {
         *lock(&self.shown) = Shown {
             width,
@@ -159,7 +144,6 @@ impl Viewer {
         };
     }
 
-    /// Copies the tiles a frame changed from the decoder's desktop, and marks their chunks.
     pub(crate) fn show(&self, desktop: &[u8], changed: &[(usize, usize, usize, usize)]) {
         {
             let mut shown = lock(&self.shown);
@@ -220,7 +204,6 @@ mod tests {
         assert_eq!(viewer.chunk(0, &mut chunk, CHUNK * 4), Some((CHUNK, CHUNK)));
         assert!(chunk.iter().all(|b| *b == 9));
         assert_eq!(viewer.dirty(100., 100., 50., &mut ids), 0);
-        // The far edge chunk is narrower, and still waiting because the lens never went there.
         let found = viewer.dirty(590., 290., 20., &mut ids);
         assert_eq!(&ids[..found], &[5]);
         assert_eq!(viewer.chunk(5, &mut chunk, CHUNK * 4), Some((88, 44)));

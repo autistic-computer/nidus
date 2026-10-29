@@ -1,4 +1,3 @@
-//! Windows interactive-session engine and its per-user control channel.
 mod clipboard;
 mod desktop;
 pub(crate) mod engine;

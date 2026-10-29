@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Pack a built zflow.app into a compressed disk image beside an Applications
-# link, so installing is a drag across the window. Notarize the result with
-# notarize-macos-app.sh.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -39,8 +36,6 @@ done
 [[ -d "$app" && ! -L "$app" ]] || die "missing app bundle: $app"
 [[ "$output" == *.dmg ]] || die "output must end in .dmg: $output"
 [[ ! -L "$output" && ! -d "$output" ]] || die "refusing to replace: $output"
-# The image carries the app's signature as is; a broken one would only show up
-# on the user's Mac.
 codesign --verify --strict --deep "$app"
 
 mkdir -p -- "$(dirname -- "$output")"
@@ -57,10 +52,6 @@ trap cleanup EXIT
 mkdir "$work/zflow"
 ditto "$app" "$work/zflow/zflow.app"
 ln -s /Applications "$work/zflow/Applications"
-# HFS+ with zlib is what dmgbuild, create-dmg and electron-builder produce, so
-# it is the format Apple's notary service has seen most.
-# GitHub's macOS runners sometimes fail with "Resource busy" while background
-# scanners hold the new image (actions/runner-images#7522); a retry gets past it.
 for attempt in 1 2 3 4; do
     hdiutil create -quiet -ov -volname zflow -srcfolder "$work/zflow" -fs HFS+ \
         -format UDZO -imagekey zlib-level=9 "$work/zflow.dmg" && break
@@ -69,7 +60,6 @@ for attempt in 1 2 3 4; do
 done
 hdiutil verify -quiet "$work/zflow.dmg"
 
-# Check what users get: the signed app next to the Applications link.
 mount_dir="$work/mount"
 mkdir "$mount_dir"
 hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" "$work/zflow.dmg"

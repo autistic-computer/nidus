@@ -184,10 +184,6 @@ fn playout_mode() -> impl TypedValueParser<Value = PlayoutMode> {
     })
 }
 
-/// Orders zflowd before the display manager so input works at the greeter.
-/// It stays installed only while pre-login input is on: with Type=notify, a
-/// zflowd that never becomes ready would otherwise delay every boot.
-/// Archive installs used this name, so `--prelogin off` also removes their copy.
 const PRELOGIN_DROPIN: &str = "/etc/systemd/system/zflowd.service.d/prelogin.conf";
 const PRELOGIN_ORDERING: &str = include_str!("../packaging/systemd/zflowd-prelogin.conf");
 
@@ -255,8 +251,6 @@ pub fn run(cli: Cli) -> Result<()> {
     }
 }
 
-/// `prelogin_dropin` is where `--prelogin` installs or removes the boot
-/// ordering drop-in; none leaves boot ordering alone.
 fn setup(path: PathBuf, options: SetupOptions, prelogin_dropin: Option<PathBuf>) -> Result<()> {
     let SetupOptions {
         listen,
@@ -300,8 +294,6 @@ fn setup(path: PathBuf, options: SetupOptions, prelogin_dropin: Option<PathBuf>)
     #[cfg(target_os = "linux")]
     crate::runtime::LinuxRuntimeConfig::from_config(&config).validate()?;
     crate::session::SessionOptions::from_config(&config)?;
-    // The daemon binds its listen address once; everything else setup writes
-    // reaches a running daemon through a live reload.
     let restart_required = original_config
         .as_ref()
         .is_some_and(|previous| previous.transport.listen != config.transport.listen);
@@ -331,7 +323,6 @@ fn setup(path: PathBuf, options: SetupOptions, prelogin_dropin: Option<PathBuf>)
             write_atomic_bytes(rules_path, rules.as_bytes(), 0o644)?;
         }
         if let Some((dropin, _, wanted)) = &prelogin_ordering {
-            // Restoring a snapshot of the wanted state writes or removes the file.
             FileSnapshot {
                 contents: wanted.clone(),
             }
@@ -717,8 +708,6 @@ fn doctor_linux(config: &Config, failed: &mut bool) {
     }
 
     let selection = if config.input.capture_devices.is_empty() {
-        // No selectors captures every keyboard and pointer. Receiving never
-        // reads local devices, so a computer without one only warns.
         match crate::runtime::diagnose_capture_selection(&[]) {
             Ok(selection) => {
                 if selection.is_complete() {
@@ -843,8 +832,6 @@ fn doctor_linux(config: &Config, failed: &mut bool) {
     }
 }
 
-/// Remappers that grab every keyboard, by the name of the virtual keyboard
-/// they add. xremap may append its pid.
 #[cfg(target_os = "linux")]
 const KEYBOARD_REMAPPERS: &[(&str, &str)] = &[
     ("XWayKeyz (virtual) Keyboard", "Toshy"),
@@ -853,7 +840,6 @@ const KEYBOARD_REMAPPERS: &[(&str, &str)] = &[
     ("kanata", "kanata"),
 ];
 
-/// The remappers whose keyboard is listed in /proc/bus/input/devices.
 #[cfg(target_os = "linux")]
 fn keyboard_remappers(devices: &str) -> Vec<&'static str> {
     let names = devices
@@ -867,9 +853,6 @@ fn keyboard_remappers(devices: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// The udev property the packaged rule sets on the virtual touchpad. Without
-/// it libinput treats the touchpad as built in and adds palm zones and
-/// disable-while-typing.
 #[cfg(target_os = "linux")]
 const TOUCHPAD_INTEGRATION: (&str, &str) = ("ID_INPUT_TOUCHPAD_INTEGRATION", "external");
 
@@ -904,8 +887,6 @@ fn doctor_touchpad_integration(failed: &mut bool) {
 
 #[cfg(target_os = "linux")]
 fn doctor_prelogin_ordering(failed: &mut bool) {
-    // display-manager.service is an alias, and systemctl lists dependencies
-    // under the name the unit loaded as, such as gdm.service.
     let ordered = systemctl_show("display-manager.service", "Id").and_then(|manager| {
         let before = systemctl_show("zflowd.service", "Before")?;
         Ok(before
@@ -1112,7 +1093,6 @@ fn devices(path: PathBuf) -> Result<()> {
         let mut count = 0;
         for info in scan.physical_devices() {
             count += 1;
-            // An empty list captures every keyboard and pointer.
             let selected = if configured.is_empty() {
                 info.class.is_some()
             } else {
@@ -1146,7 +1126,6 @@ fn daemon_request(socket: &std::path::Path, request: Request) -> Result<Response
             let mut stream = tokio::net::UnixStream::connect(socket)
                 .await
                 .map_err(|error| match error.kind() {
-                    // Only root and the service may reach it.
                     std::io::ErrorKind::PermissionDenied => {
                         anyhow::anyhow!("{error}; run it with sudo")
                     }
@@ -1173,9 +1152,6 @@ fn reload_running_daemon(config: &Config) -> Result<()> {
     }
 }
 
-/// Run as root, setup would leave a root-owned 0600 key that the
-/// zflow service account cannot read, so zflowd would fail to start. Anything
-/// created here is handed to that account instead.
 fn load_or_create_identity(state_dir: &Path) -> Result<Identity> {
     #[cfg(target_os = "linux")]
     {
@@ -1365,9 +1341,6 @@ fn write_atomic_bytes(path: &Path, contents: &[u8], create_mode: u32) -> Result<
     Ok(())
 }
 
-/// udev(7) match values are glob patterns with no escape for `* ? [ ] |`, and
-/// only `\"` is unescaped inside quotes. A value containing one of those or a
-/// backslash would match other devices or none, so it is refused.
 fn escape_udev_value(value: &str) -> Result<String> {
     if value
         .chars()
@@ -1446,7 +1419,6 @@ fn nearby(path: PathBuf, add: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// One found computer: name, mark, system, version and what can be done.
 fn nearby_line(computer: &crate::neighbors::Unplaced) -> String {
     use crate::neighbors::UnplacedState;
     let state = match computer.state {
@@ -1495,9 +1467,6 @@ fn revoke_peer(path: PathBuf, peer: String) -> Result<()> {
     Ok(())
 }
 
-/// Remembers a computer revoked while the service is stopped, so no
-/// introduction adds it back. The file goes to whoever owns the state
-/// directory, the service's account, which must be able to read it.
 fn forget_key(state_dir: &Path, record: &crate::config::PeerConfig) -> Result<()> {
     let mut forgotten = crate::forgotten::Forgotten::load(state_dir);
     forgotten.forget(&record.fingerprint_hex()?)?;
@@ -1754,8 +1723,6 @@ N: Name=\"keyd virtual keyboard\"
 
     #[test]
     fn capture_rule_refuses_a_device_without_a_stable_physical_path() {
-        // An empty phys would render ATTRS{phys}=="" and grant every device
-        // with the same vendor and product.
         for phys in [None, Some(String::new())] {
             let error = render_capture_rules(&[crate::config::DeviceSelector {
                 path: "/dev/input/event7".into(),
@@ -1894,7 +1861,6 @@ N: Name=\"keyd virtual keyboard\"
                 keyboard: KeyboardMode::Mac,
             }
         );
-        // The daemon saves what it applies.
         assert_eq!(Config::load(&path).unwrap(), saved);
     }
 

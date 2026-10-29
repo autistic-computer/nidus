@@ -20,19 +20,14 @@ use super::{
 #[derive(Debug)]
 struct CaptureNode {
     path: PathBuf,
-    /// Raw reads pass SYN_DROPPED through. The synced reader hides it and
-    /// rebuilds state on its own, which leaves stale multitouch slots.
     device: RawDevice,
     frames: FrameAccumulator,
     touch: Option<TouchAccumulator>,
-    /// The touchpad as a pointer, for targets that take no raw contacts.
-    /// A touchscreen has none.
     pointer: Option<TouchpadPointer>,
 }
 
 impl CaptureNode {
     fn open(info: &DeviceInfo) -> io::Result<(Self, Vec<KeyCode>)> {
-        // Capture only reads and grabs, and setup grants read access alone.
         let file = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_NONBLOCK)
@@ -59,9 +54,6 @@ impl CaptureNode {
         ))
     }
 
-    /// mio registers descriptors edge-triggered, and one fetch reads only a
-    /// batch. Drain until the kernel buffer is empty so a trailing key-up or
-    /// finger lift is not left behind until the device reports again.
     fn fetch_events(&mut self) -> io::Result<Vec<InputEvent>> {
         let mut events = Vec::new();
         loop {
@@ -110,10 +102,6 @@ pub struct GrabError {
     pub rollback_failures: Vec<UngrabFailure>,
 }
 
-/// Grabs every target or none. With `skip_busy`, a target another program
-/// already grabbed (EBUSY) is skipped instead, as long as at least one other
-/// target is grabbed; the skipped paths are returned. A skipped target was
-/// never ours, so rollback never releases it.
 fn grab_transaction<T: GrabTarget>(
     targets: &mut [T],
     skip_busy: bool,
@@ -221,9 +209,6 @@ pub struct ReconcileOutcome {
     pub activation_must_close: bool,
 }
 
-/// Open physical input nodes plus their aggregate ownership state. Merely
-/// constructing this set never grabs anything, so Idle remains outside the
-/// local input path.
 #[derive(Debug, Default)]
 pub struct CaptureSet {
     nodes: Vec<CaptureNode>,
@@ -282,10 +267,6 @@ impl CaptureSet {
         self.grabbed
     }
 
-    /// Takes every node's held keys from the kernel. A node another program
-    /// grabbed, as keyd grabs its source keyboard, sends zflow no events, so
-    /// a key held on it when zflow opened it would otherwise stay held here
-    /// and block every activation.
     pub fn resync_held(&mut self) {
         for node in &self.nodes {
             if let Ok(held) = node.device.get_key_state() {
@@ -294,9 +275,6 @@ impl CaptureSet {
         }
     }
 
-    /// Performs fresh EVIOCGKEY checks over every node. Unlike the tracked
-    /// state this closes the arming gap after startup or a dropped frame. A
-    /// finger on a touchpad does not count, as in `nothing_pressed`.
     pub fn kernel_is_neutral(&self) -> Result<bool, CaptureSetError> {
         for node in &self.nodes {
             let held =
@@ -313,13 +291,6 @@ impl CaptureSet {
         Ok(true)
     }
 
-    /// Acquires every EVIOCGRAB or none. Neutrality is checked both before and
-    /// after the transaction; an input racing the ioctl causes full rollback.
-    ///
-    /// With `skip_busy`, used when capturing every keyboard and pointer, a
-    /// node another program already grabbed is left to it and returned. A
-    /// remapper such as keyd holds its source that way and re-emits on a
-    /// virtual node, which is grabbed instead.
     pub fn grab_all(&mut self, skip_busy: bool) -> Result<Vec<PathBuf>, CaptureSetError> {
         if self.nodes.is_empty() {
             return Err(CaptureSetError::Empty);
@@ -349,8 +320,6 @@ impl CaptureSet {
         }
     }
 
-    /// Releases only nodes this process grabbed. A node skipped as busy stays
-    /// with the program that holds it.
     pub fn ungrab_all(&mut self) -> Vec<UngrabFailure> {
         let mut failures = Vec::new();
         for node in self.nodes.iter_mut().rev() {
@@ -367,9 +336,6 @@ impl CaptureSet {
         failures
     }
 
-    /// Reads every currently-ready event from one node. Ownership tracking sees
-    /// the raw event before mapping, while callers see frames only after
-    /// SYN_REPORT.
     pub fn read_ready(
         &mut self,
         path: &Path,
@@ -404,9 +370,6 @@ impl CaptureSet {
         )
     }
 
-    /// Applies a periodic-rescan selection. A removed active node closes the
-    /// whole activation. New nodes never join an already grabbed set; they are
-    /// picked up on the next Arming transition.
     pub fn reconcile(
         &mut self,
         selected: &[DeviceInfo],
@@ -455,9 +418,6 @@ impl CaptureSet {
         })
     }
 
-    /// Fail-safe teardown: try explicit ungrabs, then close all descriptors.
-    /// Closing guarantees kernel grab release even if an ioctl failed. The
-    /// next periodic scan reopens the set.
     pub fn suspend(&mut self) -> Vec<UngrabFailure> {
         let failures = self.ungrab_all();
         self.nodes.clear();
@@ -470,15 +430,9 @@ impl CaptureSet {
 impl Drop for CaptureSet {
     fn drop(&mut self) {
         let _ = self.ungrab_all();
-        // Device fd close is the final, infallible-with-respect-to-EVIOCGRAB
-        // safety net performed by the evdev Device drop implementation.
     }
 }
 
-/// Maps one batch of raw events into complete frames. SYN_DROPPED fails the
-/// batch, so the runtime closes the capture set and rebuilds it from fresh
-/// kernel state instead of guessing what was lost. A touchpad frame also
-/// carries itself as pointer input.
 fn map_events(
     path: &Path,
     aggregate: &mut AggregateInputState,
@@ -506,8 +460,6 @@ fn map_events(
                     frame.event_count = frame.event_count.saturating_add(event_count);
                 }
                 if let (Some(touch), Some(pointer)) = (touch.as_deref(), pointer.as_deref_mut()) {
-                    // The kernel stamps each report, so speed holds up when
-                    // reports are read in a burst.
                     let at = event
                         .timestamp()
                         .duration_since(SystemTime::UNIX_EPOCH)
@@ -618,8 +570,6 @@ mod tests {
         let mut touch = touchpad();
         let mut pointer = TouchpadPointer::new(true, TouchpadSettings::default());
         let mut events = finger_down();
-        // 2 mm across in one report. Unstamped reports count as 4 ms apart,
-        // fast enough for the full gain of 24 counts per millimetre.
         events.extend([
             event(
                 EventType::ABSOLUTE,
@@ -692,7 +642,6 @@ mod tests {
             }
         ));
 
-        // A lifted finger lost in the overflow must not stay down.
         let mut touch = touchpad();
         let mut lost_lift = finger_down();
         lost_lift.push(sync(SynchronizationCode::SYN_DROPPED));
@@ -717,8 +666,6 @@ mod tests {
     #[derive(Debug)]
     struct FakeTarget {
         path: PathBuf,
-        /// The errno a grab fails with, such as EBUSY for a node another
-        /// program already grabbed.
         grab_error: Option<i32>,
         fail_release: bool,
         grabbed: bool,
@@ -801,7 +748,6 @@ mod tests {
 
     #[test]
     fn capture_all_skips_a_node_another_program_grabbed() {
-        // keyd holds the physical keyboard and types through its own node.
         let mut targets = [
             FakeTarget::new("keyd virtual keyboard"),
             FakeTarget::failing("keyboard", libc::EBUSY),

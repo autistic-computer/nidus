@@ -18,8 +18,6 @@ internal sealed class EngineClient
     public async Task<JsonObject> SendAsync(object request, int timeoutMs = 12000) =>
         (await RequestAsync(request, timeoutMs))?.AsObject() ?? throw new IOException("The engine returned no state.");
 
-    // Most commands answer with the engine's state; `preview` answers with
-    // where a move would land, or null where it cannot go.
     public async Task<JsonNode?> RequestAsync(object request, int timeoutMs = 12000)
     {
         using var timeout = new CancellationTokenSource(timeoutMs);
@@ -46,7 +44,6 @@ internal sealed class EngineClient
         if (existing is not null)
         {
             if (!Elevation.IsElevated || existing["elevated"]?.GetValue<bool>() == true) return existing;
-            // An elevated settings window must not silently reuse a normal engine.
             await StopAsync();
         }
         string executable = Path.Combine(AppContext.BaseDirectory, "zflow.exe");
@@ -85,7 +82,6 @@ internal sealed class EngineClient
             }
             else
             {
-                // Compatibility with engines that predate the process ID in status.
                 for (int attempt = 0; attempt < 30; ++attempt)
                 {
                     await Task.Delay(100);

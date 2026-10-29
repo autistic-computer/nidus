@@ -22,10 +22,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: '10.0.x'
       - name: Install Rust build toolchain
@@ -50,7 +50,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pwsh -NoProfile -File windows/Zflow.UpdateTests/Build.Tests.ps1
       - name: Upload Windows preview
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: zflow-windows-x64
           path: windows/dist/
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -73,7 +73,6 @@ jobs:
       - name: Rust
         run: |
           cargo fmt --all --check
-          # Without dev-dependencies, so their features can't hide a missing one.
           cargo build --locked
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked --all-targets
@@ -101,13 +100,12 @@ jobs:
           shellcheck -x install.sh scripts/*.sh packaging/linux/*.sh packaging/system-sleep/zflow \
             debian/zflow.postinst debian/zflow.postrm debian/zflow.preinst debian/zflow.prerm tests/deb_lifecycle.sh
 
-  # The release builds Linux on arm64 too, so its tests run there as well.
   linux-arm:
     name: Linux arm64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -124,7 +122,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -151,11 +149,9 @@ jobs:
           xcrun --sdk macosx clang -isysroot "$sdk" -fobjc-arc -O2 -Wall -Wextra -Werror \
             tests/macos_media_test.m -framework AppKit -framework ApplicationServices \
             -o target/debug/macos-media-test
-          # The Main Thread Checker fails the run if AppKit wants the main thread.
           MTC_CRASH_ON_REPORT=1 \
             DYLD_INSERT_LIBRARIES="$(xcode-select -p)/usr/lib/libMainThreadChecker.dylib" \
             ./target/debug/macos-media-test
-          # A uniquely named pasteboard, so the run leaves the clipboard alone.
           xcrun --sdk macosx clang -isysroot "$sdk" -fobjc-arc -O2 -Wall -Wextra -Werror \
             tests/macos_pasteboard_test.m -framework AppKit -framework CoreGraphics \
             -framework ImageIO -o target/debug/macos-pasteboard-test
@@ -166,7 +162,6 @@ jobs:
         run: |
           MACOSX_DEPLOYMENT_TARGET=26.0 cargo build --locked --lib
           swift test --package-path macos
-      # install.sh also runs on Macs, with their own tar and checksum tools.
       - name: Installer
         run: python3 tests/install_test.py
       - name: Notarization script

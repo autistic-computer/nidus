@@ -1,12 +1,3 @@
-//! Deterministic receiver playout for cumulative motion frames.
-//!
-//! Playout never predicts input. It waits for both the mapped sender deadline
-//! and the reliable-control watermark, then selects the newest mature
-//! cumulative target. That frame's own sample plays at once; any older backlog
-//! drains in bounded catch-up steps. Since each step is reconciled against the
-//! last successfully emitted totals, the final displacement remains exact
-//! through loss, reordering, and jitter bursts.
-
 use std::{
     collections::{BTreeMap, VecDeque},
     error::Error,
@@ -33,16 +24,11 @@ pub enum PlayoutDelayMode {
     Adaptive,
 }
 
-/// Velocity-scaled catch-up tuning derived from capture timestamps.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CatchUpConfig {
-    /// Drain backlog this many times faster than measured sender motion.
     pub speedup: f64,
-    /// Absolute lower bound per scheduler tick and two-axis motion family.
     pub minimum_step: u64,
-    /// Absolute upper bound per scheduler tick and two-axis motion family.
     pub maximum_step: u64,
-    /// Weight of the newest velocity sample in the range `0.0..=1.0`.
     pub velocity_sample_weight: f64,
 }
 
@@ -57,23 +43,17 @@ impl Default for CatchUpConfig {
     }
 }
 
-/// Runtime-tunable receiver playout configuration.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PlayoutConfig {
     pub delay_mode: PlayoutDelayMode,
     pub fixed_delay: Duration,
-    /// Nearest-rank percentile used in adaptive mode. The measured default is p80.
     pub adaptive_percentile: u8,
-    /// Measured treated-link floor.
     pub minimum_delay: Duration,
-    /// Measured untreated-link cap.
     pub maximum_delay: Duration,
     pub scheduler_margin: Duration,
     pub delay_sample_window: usize,
     pub delay_sample_max_age: Duration,
-    /// Adaptive growth divisor. `1` reaches a larger target immediately.
     pub growth_divisor: u32,
-    /// Adaptive contraction divisor. Larger values contract more slowly.
     pub contraction_divisor: u32,
     pub scheduler_tick: Duration,
     pub maximum_queued_frames: usize,
@@ -165,16 +145,12 @@ pub enum EnqueueOutcome {
     RetiredByRebase,
 }
 
-/// One backend-neutral playout operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayoutStep {
-    /// Receiver-domain capture time for the selected snapshot.
     pub mapped_capture_time: MonotonicTimeMicros,
     pub through_sequence: MotionSequence,
     pub delta: MotionDelta,
-    /// A complete newest-wins touch snapshot, emitted once when it matures.
     pub touch_snapshot: Option<TouchState>,
-    /// True when this operation reaches the selected cumulative target exactly.
     pub target_reached: bool,
     pub pointer_catch_up_limited: bool,
     pub scroll_catch_up_limited: bool,
@@ -218,7 +194,6 @@ struct VelocitySample {
     totals: CumulativeMotion,
 }
 
-/// Pure cumulative-motion playout state machine.
 #[derive(Debug, Clone)]
 pub struct ReceiverPlayout {
     config: PlayoutConfig,
@@ -280,8 +255,6 @@ impl ReceiverPlayout {
         Duration::from_micros(self.current_delay_micros())
     }
 
-    /// Recomputes stored receiver-domain timestamps after a clock model
-    /// transition without discarding cumulative motion state.
     pub fn remap_clock(&mut self, clock: &ClockMapper) -> Result<(), PlayoutError> {
         let remapped_queue = self
             .queue
@@ -327,7 +300,6 @@ impl ReceiverPlayout {
         Ok(())
     }
 
-    /// Queues a cumulative frame and records its packet-delay observation.
     pub fn ingest_frame(
         &mut self,
         frame: MotionFrame,
@@ -345,10 +317,6 @@ impl ReceiverPlayout {
             return Ok(EnqueueOutcome::RetiredByRebase);
         }
         if frame.motion_sequence <= self.target.sequence {
-            // Although the cumulative payload is already represented by a
-            // newer target, this authenticated arrival is still valid path
-            // evidence. Keeping it in the bounded delay window lets a burst
-            // that reorders frames past playout grow the adaptive delay.
             let mapped_capture_time = clock.map(frame.sender_capture_time)?;
             let packet_delay = received_at.0.saturating_sub(mapped_capture_time.0);
             self.record_delay_sample(received_at, packet_delay)?;
@@ -383,7 +351,6 @@ impl ReceiverPlayout {
         })
     }
 
-    /// Earliest deadline whose control watermark has already been applied.
     pub fn next_deadline(&self) -> Option<MonotonicTimeMicros> {
         let delay = self.current_delay_micros();
         self.queue
@@ -393,7 +360,6 @@ impl ReceiverPlayout {
             .min()
     }
 
-    /// Advances playout at one receiver-monotonic scheduler instant.
     pub fn poll(&mut self, now: MonotonicTimeMicros) -> Result<Option<PlayoutStep>, PlayoutError> {
         self.observe_time(now)?;
         let elapsed = self.poll_elapsed(now)?;
@@ -409,8 +375,6 @@ impl ReceiverPlayout {
             return Ok(None);
         }
 
-        // Capping the newest sample too would throttle the start of every
-        // fast flick while the smoothed velocity lags behind it.
         let backlog_end = own_sample_start.unwrap_or(self.target.totals);
         let backlog = backlog_end.checked_delta_from(self.injected_totals)?;
         let fresh = self.target.totals.checked_delta_from(backlog_end)?;
@@ -419,7 +383,6 @@ impl ReceiverPlayout {
         let (dx, dy, pointer_limited) = limit_pair(backlog.dx, backlog.dy, pointer_cap);
         let (scroll_x, scroll_y, scroll_limited) =
             limit_pair(backlog.scroll_x, backlog.scroll_y, scroll_cap);
-        // Each sum lies between `fresh` and `remaining`, so it cannot overflow.
         let delta = MotionDelta {
             dx: dx + fresh.dx,
             dy: dy + fresh.dy,
@@ -447,10 +410,6 @@ impl ReceiverPlayout {
         }))
     }
 
-    /// Explicitly discards displacement through a named cumulative sequence.
-    ///
-    /// Nothing calls this automatically for age or lateness. Delayed frames at
-    /// or below the named cutoff are retired so they cannot restore history.
     pub fn rebase(
         &mut self,
         through_sequence: MotionSequence,
@@ -459,7 +418,6 @@ impl ReceiverPlayout {
         if through_sequence < self.target.sequence {
             return Err(PlayoutError::RebaseMovedBackwards);
         }
-        // The receiver rejects the same overflow when it applies the anchor.
         authoritative_totals.checked_delta_from(self.injected_totals)?;
         self.queue
             .retain(|sequence, _| *sequence > through_sequence);
@@ -598,8 +556,6 @@ impl ReceiverPlayout {
         Ok(())
     }
 
-    /// Returns the totals just before the new target's own sample when the
-    /// preceding frame is known. Without them the whole remainder is backlog.
     fn select_newest_mature_target(
         &mut self,
         now: MonotonicTimeMicros,
@@ -992,7 +948,6 @@ mod tests {
         let clock = identity_clock();
         let mut playout = ReceiverPlayout::new(unbounded_test_config(), session(1)).unwrap();
 
-        // Frame 1 is lost, frame 3 overtakes frame 2, and frame 3 arrives twice.
         playout
             .ingest_frame(frame(3, 3_000, 30, 0), time(4_000), &clock)
             .unwrap();
@@ -1007,13 +962,11 @@ mod tests {
         );
         assert_eq!(drain(&mut playout, 50_000), 30);
 
-        // Frames 4 and 5 are lost as a burst; frame 6 carries their totals.
         playout
             .ingest_frame(frame(6, 6_000, 60, 0), time(51_000), &clock)
             .unwrap();
         assert_eq!(drain(&mut playout, 100_000), 30);
 
-        // Late and repeated frames are already covered by the newer target.
         for late in [frame(2, 2_000, 20, 0), frame(6, 6_000, 60, 0)] {
             assert_eq!(
                 playout.ingest_frame(late, time(100_000), &clock).unwrap(),
@@ -1087,8 +1040,6 @@ mod tests {
             ..PlayoutConfig::default()
         };
         let mut playout = ReceiverPlayout::new(config, session(1)).unwrap();
-        // From rest, each 1 ms sample moves 50 units: ten times the minimum
-        // catch-up step and far ahead of the smoothed velocity.
         let mut steps = Vec::new();
         for now in (0..=20_000).step_by(500) {
             let sequence = now / 1_000;
@@ -1128,7 +1079,6 @@ mod tests {
             .ingest_frame(frame(1, 1_000, 100, 0), time(151_000), &clock)
             .unwrap();
 
-        // A very late frame still contributes its complete displacement.
         let mut total = 0;
         for now in 151_000..200_000 {
             if let Some(step) = playout.poll(time(now)).unwrap() {

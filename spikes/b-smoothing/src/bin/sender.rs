@@ -1,12 +1,3 @@
-//! Reads the physical mouse via evdev and streams cumulative motion totals
-//! over UDP. Usage:
-//!
-//!   sender <dest-ip:port> [--device /dev/input/eventX] [--rate 250] [--grab]
-//!
-//! Without --device, picks the first device exposing REL_X and REL_Y.
-//! --grab takes the mouse away from the local session until exit (ctrl+c
-//! from the keyboard still works; the keyboard is never touched).
-
 use std::net::UdpSocket;
 use std::path::PathBuf;
 use std::process::exit;
@@ -16,8 +7,6 @@ use std::time::{Duration, Instant};
 use evdev::{Device, InputEventKind, RelativeAxisType, Synchronization};
 use spike_b_smoothing::MotionFrame;
 
-/// Totals committed per SYN_REPORT so a frame never carries a torn X/Y pair,
-/// with the capture time of the commit.
 #[derive(Clone, Copy, Default)]
 struct Snapshot {
     total_dx: i64,
@@ -33,7 +22,7 @@ fn usage() -> ! {
 fn find_mouse() -> Option<(PathBuf, Device)> {
     for (path, dev) in evdev::enumerate() {
         if dev.name().map_or(false, |n| n.contains("zflow")) {
-            continue; // never capture our own virtual devices
+            continue;
         }
         if let Some(rel) = dev.supported_relative_axes() {
             if rel.contains(RelativeAxisType::REL_X) && rel.contains(RelativeAxisType::REL_Y) {
@@ -118,7 +107,6 @@ fn main() -> std::io::Result<()> {
                         _ => {}
                     }
                 }
-                // batch without a trailing SYN_REPORT: commit anyway
                 if acc != (0, 0) {
                     let mut s = snap.lock().unwrap();
                     s.total_dx += acc.0;
@@ -149,8 +137,6 @@ fn main() -> std::io::Result<()> {
         let frame = MotionFrame {
             session,
             seq,
-            // motion frames carry the commit time of their last input batch so
-            // sender pacing shows up as delay; idle heartbeats carry send time
             t_capture_us: if moved {
                 s.t_capture_us
             } else {
