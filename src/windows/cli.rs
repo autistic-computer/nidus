@@ -13,25 +13,25 @@ pub struct Cli {
 }
 #[derive(Subcommand)]
 enum Commands {
-    /// Run the engine in this interactive Windows session.
+    #[command(about = "Run the engine in this interactive Windows session")]
     Run,
-    /// Create per-user configuration and identity.
+    #[command(about = "Create per-user configuration and identity")]
     Setup,
-    /// Show running engine state as JSON.
+    #[command(about = "Show running engine state as JSON")]
     Status,
-    /// Check the native desktop, identity and network addresses.
+    #[command(about = "Check the native desktop, identity and network addresses")]
     Doctor,
-    /// Discover a computer by IP, Tailscale name, or host:port.
+    #[command(about = "Discover a computer by IP, Tailscale name, or host:port")]
     Nearby { address: String },
-    /// Trust a discovered computer by its full fingerprint or displayed mark.
+    #[command(about = "Trust a discovered computer by its full fingerprint or displayed mark")]
     Trust { key: String },
-    /// Return all input to Windows.
+    #[command(about = "Return all input to Windows")]
     Local,
-    /// Begin controlling a paired computer.
+    #[command(about = "Begin controlling a paired computer")]
     Switch { peer: String },
-    /// Send one JSON control request (also used by automated checks).
+    #[command(about = "Send one JSON control request (also used by automated checks)")]
     Request { json: String },
-    /// Stop the engine and release input.
+    #[command(about = "Stop the engine and release input")]
     Stop,
 }
 pub fn run(cli: Cli) -> Result<()> {

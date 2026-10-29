@@ -7,15 +7,15 @@ set working-directory := ".."
 default:
     @just --list debug
 
-# Run native Mac app diagnostics and save output under target/logs.
+[doc("Run native Mac app diagnostics and save output under target/logs.")]
 mac *args:
     @just debug _app mac "$@"
 
-# Run Linux desktop-agent diagnostics and save output under target/logs.
+[doc("Run Linux desktop-agent diagnostics and save output under target/logs.")]
 linux *args:
     @just debug _app linux "$@"
 
-# Enable Linux daemon diagnostics until reboot; requires sudo and restarts the service.
+[doc("Enable Linux daemon diagnostics until reboot; requires sudo and restarts the service.")]
 daemon: (_platform "linux")
     #!/usr/bin/env bash
     set -euo pipefail

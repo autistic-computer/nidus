@@ -7,10 +7,10 @@ set working-directory := ".."
 default:
     @just --list fmt
 
-# Format Rust code.
+[doc("Format Rust code.")]
 apply:
     cargo fmt --all
 
-# Check formatting without changing files.
+[doc("Check formatting without changing files.")]
 check:
     cargo fmt --all --check
