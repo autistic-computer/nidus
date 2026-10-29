@@ -97,6 +97,7 @@ pub fn init(model: &Entity<Model>, cx: &mut App) {
             id: crate::APP_ID.into(),
             tooltip: "zflow".into(),
             icon: platform::tray_look(true, false),
+            icon_name: None,
             menu_on_click: cfg!(target_os = "macos"),
         },
         menu.clone(),

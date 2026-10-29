@@ -853,16 +853,14 @@ pub fn first_run_cards(
 )]
 pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
-        SettingEntry::new(
-            "Display settings",
-            "Arrange this PC’s own screens in Windows Settings.",
-        )
-        .control(
-            Button::new("display-settings")
-                .label("Open")
-                .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| cx.open_url("ms-settings:display")),
-        ),
+        SettingEntry::new("Display settings")
+            .description("Arrange this PC’s own screens in Windows Settings.")
+            .control(
+                Button::new("display-settings")
+                    .label("Open")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, _, cx| cx.open_url("ms-settings:display")),
+            ),
     )
 }
 
@@ -876,18 +874,16 @@ pub fn peer_entries(
     }
     let name = peer.name.clone();
     vec![
-        SettingEntry::new(
-            "Take control",
-            format!("Send this PC’s keyboard and mouse to {name} now."),
-        )
-        .control(
-            Button::new("take-control")
-                .label("Control")
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.send(Request::TakeControl { name: name.clone() }, cx);
-                })),
-        ),
+        SettingEntry::new("Take control")
+            .description(format!("Send this PC’s keyboard and mouse to {name} now."))
+            .control(
+                Button::new("take-control")
+                    .label("Control")
+                    .on(settings_card_ground(cx))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.send(Request::TakeControl { name: name.clone() }, cx);
+                    })),
+            ),
     ]
 }
 
@@ -902,10 +898,10 @@ pub fn login_entry(
 ) -> Option<SettingEntry> {
     let on = this.services.read(cx).login;
     Some(
-        SettingEntry::new("Run at startup", "Start zflow when you sign in to Windows.").control(
-            Switch::new("login")
-                .checked(on)
-                .on_click(cx.listener(|this, on: &bool, _, cx| {
+        SettingEntry::new("Run at startup")
+            .description("Start zflow when you sign in to Windows.")
+            .control(Switch::new("login").checked(on).on_click(cx.listener(
+                |this, on: &bool, _, cx| {
                     let result = set_starts_at_sign_in(*on);
                     this.services.update(cx, |services, cx| {
                         services.login = starts_at_sign_in();
@@ -915,8 +911,8 @@ pub fn login_entry(
                         this.model
                             .update(cx, |model, cx| model.report(format!("{error:#}"), cx));
                     }
-                })),
-        ),
+                },
+            ))),
     )
 }
 
@@ -928,14 +924,12 @@ pub fn settings_stacks(
 ) -> Vec<SettingsStack> {
     let services = this.services.read(cx);
     let elevated = services.elevated;
-    let administrator = SettingEntry::new(
-        if elevated {
-            "Running as administrator"
-        } else {
-            "Running as user"
-        },
-        "Administrator windows need zflow to run as administrator too.",
-    )
+    let administrator = SettingEntry::new(if elevated {
+        "Running as administrator"
+    } else {
+        "Running as user"
+    })
+    .description("Administrator windows need zflow to run as administrator too.")
     .control(
         Button::new("elevate")
             .label("Restart as administrator")
@@ -946,7 +940,7 @@ pub fn settings_stacks(
     let updates = services.updates.clone();
     let mut stack = SettingsStack::titled("Updates");
     if let Some(reason) = updates.unavailable {
-        stack = stack.child(SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")), reason).control(
+        stack = stack.child(SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION"))).description(reason).control(
             Button::new("get-installer")
                 .label("Get installer")
                 .on(settings_card_ground(cx))
@@ -971,22 +965,24 @@ pub fn settings_stacks(
         };
         stack = stack
             .child(
-                SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")), note).control(
-                    Button::new("update-action")
-                        .label(label)
-                        .disabled(updates.checking)
-                        .on(settings_card_ground(cx))
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            if downloaded {
-                                confirm_restart(this, window, cx);
-                            } else {
-                                this.services.update(cx, action);
-                            }
-                        })),
-                ),
+                SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")))
+                    .description(note)
+                    .control(
+                        Button::new("update-action")
+                            .label(label)
+                            .disabled(updates.checking)
+                            .on(settings_card_ground(cx))
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                if downloaded {
+                                    confirm_restart(this, window, cx);
+                                } else {
+                                    this.services.update(cx, action);
+                                }
+                            })),
+                    ),
             )
             .child(
-                SettingEntry::new("Check for updates automatically", "").control(
+                SettingEntry::new("Check for updates automatically").control(
                     Switch::new("updates-automatic")
                         .checked(updates.automatic.unwrap_or(true))
                         .on_click(cx.listener(|this, on: &bool, _, cx| {
@@ -1035,51 +1031,52 @@ pub fn this_computer_entries(
     let addresses = platform.addresses.join(", ");
     let config = snapshot.config_path.clone();
     vec![
-        SettingEntry::new(
-            "Return here",
-            format!(
+        SettingEntry::new("Return here")
+            .description(format!(
                 "Bring input back to this PC. {} also pauses sharing.",
                 "Ctrl+Win+Backspace"
+            ))
+            .control(
+                Button::new("return-here")
+                    .label("Return here")
+                    .on(settings_card_ground(cx))
+                    .on_click(cx.listener(|this, _, _, cx| this.send(Request::ReturnHere, cx))),
             ),
-        )
-        .control(
-            Button::new("return-here")
-                .label("Return here")
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(|this, _, _, cx| this.send(Request::ReturnHere, cx))),
-        ),
-        SettingEntry::new(
-            "Network addresses",
-            format!(
-                "Listening on {}{}",
-                platform.listen.unwrap_or_default(),
-                if addresses.is_empty() {
-                    String::new()
-                } else {
-                    format!(" · {addresses}")
-                }
+        SettingEntry::new("Network addresses").description(format!(
+            "Listening on {}{}",
+            platform.listen.unwrap_or_default(),
+            if addresses.is_empty() {
+                String::new()
+            } else {
+                format!(" · {addresses}")
+            }
+        )),
+        SettingEntry::new("Configuration")
+            .description("Open your local settings file.")
+            .control(
+                Button::new("open-config")
+                    .label("Open file")
+                    .on(settings_card_ground(cx))
+                    .on_click(move |_, _, _| {
+                        let _ = Command::new("notepad.exe").arg(&config).spawn();
+                    }),
             ),
-        ),
-        SettingEntry::new("Configuration", "Open your local settings file.").control(
-            Button::new("open-config")
-                .label("Open file")
-                .on(settings_card_ground(cx))
-                .on_click(move |_, _, _| {
-                    let _ = Command::new("notepad.exe").arg(&config).spawn();
-                }),
-        ),
-        SettingEntry::new("Input engine", "Restart after editing the configuration.").control(
-            Button::new("restart-engine-settings")
-                .label("Restart")
-                .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| start_engine(true, cx)),
-        ),
-        SettingEntry::new("Quit zflow", "Stop sharing and close the app.").control(
-            Button::new("quit")
-                .danger()
-                .label("Quit")
-                .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| quit(cx)),
-        ),
+        SettingEntry::new("Input engine")
+            .description("Restart after editing the configuration.")
+            .control(
+                Button::new("restart-engine-settings")
+                    .label("Restart")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, _, cx| start_engine(true, cx)),
+            ),
+        SettingEntry::new("Quit zflow")
+            .description("Stop sharing and close the app.")
+            .control(
+                Button::new("quit")
+                    .danger()
+                    .label("Quit")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, _, cx| quit(cx)),
+            ),
     ]
 }

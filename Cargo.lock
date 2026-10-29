@@ -4217,7 +4217,7 @@ dependencies = [
 [[package]]
 name = "penna"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/penna?branch=main#a0d5009e3c025048156c0fa2d96dbb36c6fdbbaf"
+source = "git+https://github.com/autistic-computer/penna?branch=main#0a2f4b22129c213d9346a8fb28e3ca3375c5cb19"
 dependencies = [
  "ala",
  "anyhow",
