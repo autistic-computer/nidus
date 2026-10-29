@@ -1,6 +1,6 @@
 [Unit]
 Description=zflow headless input-sharing daemon
-Documentation=https://github.com/demfabris/zflow
+Documentation=https://github.com/autistic-computer/zflow
 Wants=systemd-udevd.service
 After=local-fs.target systemd-udevd.service
 

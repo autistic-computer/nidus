@@ -37,7 +37,7 @@ Checksums detect corrupt or mismatched downloads; they rely on the same
 GitHub/HTTPS trust as the artifacts.
 
 Installers and invitations use
-`https://github.com/demfabris/zflow/releases/latest/download/install.sh`, so
+`https://github.com/autistic-computer/zflow/releases/latest/download/install.sh`, so
 they run published installation code. The installer resolves one concrete
 tag and fetches both the archive and its checksums from that tag.
 
@@ -131,7 +131,7 @@ it still run, with updating disabled. Sparkle verifies the EdDSA signature befor
 extracting an update. After the Mac disk image is signed, notarized and stapled,
 `scripts/macos-update-feed.sh` signs its final bytes and produces `appcast.xml`
 with a version-specific download URL. Apps read the feed at
-`https://github.com/demfabris/zflow/releases/latest/download/appcast.xml`.
+`https://github.com/autistic-computer/zflow/releases/latest/download/appcast.xml`.
 
 Windows uses pinned Velopack tooling for its per-user installer and update
 packages. Its package ID is `Zflow.App`; `%LOCALAPPDATA%\zflow` remains the

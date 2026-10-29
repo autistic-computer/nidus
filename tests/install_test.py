@@ -42,7 +42,7 @@ as_root() {
     else record "root $*"; fi
 }
 fetch() { record "fetch $1"; cp "$RELEASE/${1##*/}" "$2"; }
-curl() { record latest; echo "${LATEST_URL:-https://github.com/demfabris/zflow/releases/tag/v0.1.0}"; }
+curl() { record latest; echo "${LATEST_URL:-https://github.com/autistic-computer/zflow/releases/tag/v0.1.0}"; }
 archive_install_present() { [[ "$LEGACY" == true ]]; }
 dpkg-query() { echo "${DPKG_STATUS:-unknown}"; }
 dpkg() { echo "${DPKG_ARCH:-amd64}"; }

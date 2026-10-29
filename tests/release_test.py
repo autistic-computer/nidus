@@ -22,15 +22,15 @@ name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == 'git':
     if args == ['remote', 'get-url', '--push', 'origin']:
-        print(os.environ.get('PUSH_URL', 'git@github.com:demfabris/zflow.git'))
+        print(os.environ.get('PUSH_URL', 'git@github.com:autistic-computer/zflow.git'))
         sys.exit(0)
     os.execv(os.environ['REAL_GIT'], ['git', *args])
 with open(os.environ['CALLS'], 'a') as log:
     log.write(json.dumps(args) + '\n')
 if args[:2] == ['repo', 'view']:
-    print(os.environ.get('RELEASE_REPO', 'demfabris/zflow'))
+    print(os.environ.get('RELEASE_REPO', 'autistic-computer/zflow'))
 elif args[:2] == ['release', 'view']:
-    print('https://github.com/demfabris/zflow/releases/tag/v0.5.0' if args[2].startswith('v') else os.environ.get('LATEST', 'v0.4.0'))
+    print('https://github.com/autistic-computer/zflow/releases/tag/v0.5.0' if args[2].startswith('v') else os.environ.get('LATEST', 'v0.4.0'))
 elif args[:2] == ['variable', 'list']:
     print('public-key-fixture')
 elif args[:2] == ['secret', 'list']:

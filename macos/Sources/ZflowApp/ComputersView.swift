@@ -123,7 +123,7 @@ private struct FirstRun: View {
   @State private var networkBlocked = false
 
   static let installCommand =
-    "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/demfabris/zflow/releases/latest/download/install.sh | bash"
+    "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash"
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {

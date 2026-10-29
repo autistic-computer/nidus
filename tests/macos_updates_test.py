@@ -178,7 +178,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.output.is_file())
         self.assertEqual([call[0] for call in calls], ["codesign", "xcrun", "generate_appcast"])
-        self.assertIn("https://github.com/demfabris/zflow/releases/download/v1.2.3/", calls[-1])
+        self.assertIn("https://github.com/autistic-computer/zflow/releases/download/v1.2.3/", calls[-1])
         self.assertIn("--ed-key-file", calls[-1])
         self.assertFalse(list(self.root.glob(".appcast.*")))
 
@@ -265,7 +265,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertIn(str(self.private_file), result.stdout)
         self.assertFalse(list(self.key_directory.glob(".sparkle-key-*")))
         self.assertFalse(any(call[0] in ("swift", "generate_keys") for call in calls))
-        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "demfabris/zflow", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
+        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "autistic-computer/zflow", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
         inode = self.private_file.stat().st_ino
         result, _ = self.linux_setup(mode="generation-forbidden", extra={"EXISTING_PUBLIC": base64.b64encode(SEED_PUBLIC).decode()})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

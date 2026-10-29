@@ -166,9 +166,9 @@ latest_version() {
     url=$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error \
         --head --location --retry 3 --connect-timeout 20 --max-time 60 \
         --output /dev/null --write-out '%{url_effective}' \
-        https://github.com/demfabris/zflow/releases/latest </dev/null) \
-        || die 'No release could be found. Check https://github.com/demfabris/zflow/releases.'
-    [[ "$url" == https://github.com/demfabris/zflow/releases/tag/* ]] || die 'Unexpected release redirect.'
+        https://github.com/autistic-computer/zflow/releases/latest </dev/null) \
+        || die 'No release could be found. Check https://github.com/autistic-computer/zflow/releases.'
+    [[ "$url" == https://github.com/autistic-computer/zflow/releases/tag/* ]] || die 'Unexpected release redirect.'
     printf '%s\n' "${url##*/}"
 }
 
@@ -372,7 +372,7 @@ main() {
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    base_url="https://github.com/demfabris/zflow/releases/download/$version"
+    base_url="https://github.com/autistic-computer/zflow/releases/download/$version"
     fetch "$base_url/SHA256SUMS" "$work_dir/SHA256SUMS" || die "Checksums are unavailable for $version."
     if [[ "$platform" == Darwin ]] && ! awk -v name="$asset" '$2 == name {found = 1} END {exit !found}' "$work_dir/SHA256SUMS"; then
         asset=$legacy_asset

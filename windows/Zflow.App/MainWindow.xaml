@@ -158,7 +158,7 @@
                   <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE946;" /></controls:SettingsCard.HeaderIcon>
                   <StackPanel Orientation="Horizontal" Spacing="16">
                     <TextBlock x:Name="VersionText" VerticalAlignment="Center" />
-                    <HyperlinkButton Content="Release notes" NavigateUri="https://github.com/demfabris/zflow/releases/latest" />
+                    <HyperlinkButton Content="Release notes" NavigateUri="https://github.com/autistic-computer/zflow/releases/latest" />
                   </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard Header="Updates" ContentAlignment="Vertical" HorizontalContentAlignment="Stretch">
@@ -169,26 +169,26 @@
                     <StackPanel Orientation="Horizontal" Spacing="12">
                       <Button x:Name="CheckUpdatesButton" Content="Check for updates" Click="CheckUpdates_Click" />
                       <Button x:Name="InstallUpdateButton" Content="Download update" Click="InstallUpdate_Click" Visibility="Collapsed" />
-                      <HyperlinkButton x:Name="GetInstallerLink" Content="Get installer" NavigateUri="https://github.com/demfabris/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe" Visibility="Collapsed" />
+                      <HyperlinkButton x:Name="GetInstallerLink" Content="Get installer" NavigateUri="https://github.com/autistic-computer/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe" Visibility="Collapsed" />
                     </StackPanel>
                   </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard Header="Open source" Description="GNU General Public License v3.0 or later">
                   <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE943;" /></controls:SettingsCard.HeaderIcon>
-                  <HyperlinkButton Content="View license" NavigateUri="https://github.com/demfabris/zflow/blob/main/LICENSE" />
+                  <HyperlinkButton Content="View license" NavigateUri="https://github.com/autistic-computer/zflow/blob/main/LICENSE" />
                 </controls:SettingsCard>
               </StackPanel>
               <StackPanel Spacing="4">
                 <TextBlock Text="Help and feedback" Style="{StaticResource SectionHeading}" />
-                <controls:SettingsCard Header="Documentation" Description="Setup, pairing, and keyboard shortcuts." IsClickEnabled="True" Tag="https://github.com/demfabris/zflow/blob/main/windows/README.md" Click="OpenLink_Click">
+                <controls:SettingsCard Header="Documentation" Description="Setup, pairing, and keyboard shortcuts." IsClickEnabled="True" Tag="https://github.com/autistic-computer/zflow/blob/main/windows/README.md" Click="OpenLink_Click">
                   <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE8A5;" /></controls:SettingsCard.HeaderIcon>
                   <controls:SettingsCard.ActionIcon><FontIcon Glyph="&#xE8A7;" /></controls:SettingsCard.ActionIcon>
                 </controls:SettingsCard>
-                <controls:SettingsCard Header="GitHub repository" Description="Explore the code and contribute." IsClickEnabled="True" Tag="https://github.com/demfabris/zflow" Click="OpenLink_Click">
+                <controls:SettingsCard Header="GitHub repository" Description="Explore the code and contribute." IsClickEnabled="True" Tag="https://github.com/autistic-computer/zflow" Click="OpenLink_Click">
                   <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE943;" /></controls:SettingsCard.HeaderIcon>
                   <controls:SettingsCard.ActionIcon><FontIcon Glyph="&#xE8A7;" /></controls:SettingsCard.ActionIcon>
                 </controls:SettingsCard>
-                <controls:SettingsCard Header="Report a bug or request a feature" IsClickEnabled="True" Tag="https://github.com/demfabris/zflow/issues/new" Click="OpenLink_Click">
+                <controls:SettingsCard Header="Report a bug or request a feature" IsClickEnabled="True" Tag="https://github.com/autistic-computer/zflow/issues/new" Click="OpenLink_Click">
                   <controls:SettingsCard.HeaderIcon><FontIcon Glyph="&#xE939;" /></controls:SettingsCard.HeaderIcon>
                   <controls:SettingsCard.ActionIcon><FontIcon Glyph="&#xE8A7;" /></controls:SettingsCard.ActionIcon>
                 </controls:SettingsCard>
