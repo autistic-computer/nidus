@@ -8,36 +8,40 @@ use crate::{
     pairing_window::View as PairingWindow,
 };
 
-#[derive(Serialize)]
-pub(super) struct Snapshot<P> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Snapshot<P> {
     pub status: Status,
     pub sharing: Option<bool>,
     pub health: Vec<Health>,
     pub pairing_window: PairingWindow,
     pub layout: Option<Layout>,
+    #[serde(default)]
     pub seams: Vec<Seam>,
     pub own_mark: Option<String>,
+    #[serde(default)]
     pub unplaced: Vec<Unplaced>,
     pub peers: Vec<Peer>,
     pub pause_at_edges: Option<bool>,
+    #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
     pub share_clipboard: Option<bool>,
     pub autostart: Option<bool>,
     pub config_path: PathBuf,
+    #[serde(default)]
     pub notices: Vec<Notice>,
     pub platform: P,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct Status {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Status {
     pub state: State,
     pub peer: Option<String>,
     pub title: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum State {
+pub enum State {
     Ready,
     Controlling,
     Controlled,
@@ -82,21 +86,22 @@ impl Status {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct Peer {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Peer {
     pub name: String,
     pub state: PeerState,
     pub detail: String,
     pub allow_control: bool,
     pub keyboard: KeyboardMode,
     pub reverse_scroll: bool,
+    #[serde(default)]
     pub share_screen: bool,
     pub mark: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum PeerState {
+pub enum PeerState {
     Paired,
     Connecting,
     Connected,
@@ -131,8 +136,8 @@ impl Peer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct Health {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Health {
     pub id: String,
     pub level: Level,
     pub title: String,
@@ -140,16 +145,16 @@ pub(super) struct Health {
     pub action: Option<Action>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Level {
+pub enum Level {
     Ok,
     Warning,
     Error,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct Action {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Action {
     pub label: String,
     pub command: String,
 }
@@ -166,16 +171,16 @@ impl Health {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(super) struct Shortcut {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shortcut {
     pub title: String,
     pub keys: String,
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
-pub(crate) enum Request {
+pub enum Request {
     Snapshot,
     SetSharing {
         enabled: bool,
@@ -242,6 +247,10 @@ pub(crate) enum Request {
     OpenSettings,
     OpenLogs,
     InstallExtension,
+    TakeControl {
+        name: String,
+    },
+    ReturnHere,
 }
 
 #[cfg(test)]

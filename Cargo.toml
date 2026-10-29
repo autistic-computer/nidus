@@ -5,12 +5,11 @@ edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Low-latency, loss-resilient input sharing for Linux, macOS and Windows"
 repository = "https://github.com/autistic-computer/zflow"
-rust-version = "1.88"
+rust-version = "1.99"
 
 [lib]
 name = "zflow"
 path = "src/lib.rs"
-crate-type = ["rlib", "staticlib"]
 
 [[bin]]
 name = "zflow"
@@ -46,7 +45,7 @@ cc = "1.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.10"
-zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
 evdev = "0.13.2"
 mio = { version = "1.2.2", default-features = false, features = ["os-ext", "os-poll"] }
 nix = { version = "0.30", features = ["socket", "user"] }
@@ -70,3 +69,75 @@ strip = "symbols"
 
 [profile.release.build-override]
 strip = "none"
+
+[workspace]
+members = [".", "crates/*"]
+default-members = [".", "crates/zflow-app"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.99"
+version = "0.7.0"
+
+[workspace.dependencies]
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main" }
+ala-platform = { git = "https://github.com/autistic-computer/ala", branch = "main" }
+anyhow = "1.0.86"
+async-channel = "2.5.0"
+block2 = "0.6.2"
+image = { version = "=0.25.10", default-features = false }
+libc = "0.2.189"
+log = "0.4.34"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSView", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false }
+penna = { git = "https://github.com/autistic-computer/penna", branch = "main", features = ["tray"] }
+resvg = { version = "0.46.0", default-features = false, features = [
+    "text",
+    "system-fonts",
+    "memmap-fonts",
+    "raster-images",
+] }
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json = "1.0.151"
+windows = "=0.62.2"
+windows-registry = "0.6.0"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+enum_glob_use = "allow"
+struct_field_names = "allow"
+items_after_statements = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+result_large_err = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+float_cmp = "allow"
+struct_excessive_bools = "allow"
+type_complexity = "allow"
+used_underscore_binding = "allow"
+unused_self = "allow"
+assert_is_empty = "allow"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package]
+"*" = { opt-level = 2 }
+taffy = { opt-level = 3 }
+ala = { opt-level = 3 }
+ala-macros = { opt-level = 2 }
+ala-platform = { opt-level = 2 }

@@ -22,12 +22,22 @@ const LINGER: Duration = Duration::from_secs(1);
 const TROUBLE_AFTER: u32 = 3;
 
 unsafe extern "C" {
+    fn zflow_awdl_check() -> i32;
+    fn zflow_signing_team() -> i32;
     fn zflow_awdl_lease(
         input: *mut i32,
         output: *mut i32,
         error: *mut c_char,
         error_size: usize,
     ) -> i32;
+}
+
+pub fn helper_ready() -> bool {
+    unsafe { zflow_awdl_check() != 0 }
+}
+
+pub fn signed_by_team() -> bool {
+    unsafe { zflow_signing_team() != 0 }
 }
 
 pub(super) struct AwDlLease {

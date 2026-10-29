@@ -300,7 +300,9 @@ impl NativeApp {
             Request::SetAutostart { .. }
             | Request::OpenSettings
             | Request::OpenLogs
-            | Request::InstallExtension => bail!("Not available on this computer"),
+            | Request::InstallExtension
+            | Request::TakeControl { .. }
+            | Request::ReturnHere => bail!("Not available on this computer"),
         }
         Ok(serde_json::to_value(self.snapshot())?)
     }
@@ -1359,14 +1361,13 @@ mod tests {
         assert_eq!(value["share_clipboard"], false);
         assert_eq!(value["autostart"], Value::Null);
         assert_eq!(value["config_path"], path.to_str().unwrap());
-        assert_eq!(
-            value["platform"]
-                .as_object()
-                .unwrap()
-                .keys()
-                .collect::<Vec<_>>(),
-            ["accessibility", "block_awdl", "local_network"]
-        );
+        let mut platform = value["platform"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .collect::<Vec<_>>();
+        platform.sort();
+        assert_eq!(platform, ["accessibility", "block_awdl", "local_network"]);
         let error = app
             .request(Request::SetPeer {
                 name: "desk".into(),

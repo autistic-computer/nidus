@@ -53,8 +53,9 @@ install_session_file() {
 
 build_binaries() {
     local cargo_args=(build --locked --release --manifest-path "$REPO_ROOT/Cargo.toml"
-        --target-dir "$REPO_ROOT/target" --bin zflow --bin zflowd)
-    printf 'Building zflow and zflowd...\n'
+        --target-dir "$REPO_ROOT/target" -p zflow-kvm -p zflow-app
+        --bin zflow --bin zflowd --bin zflow-app)
+    printf 'Building zflow, zflowd and zflow-app...\n'
     cargo "${cargo_args[@]}"
 }
 
@@ -109,7 +110,7 @@ done
 
 binary_dir="$REPO_ROOT/target/release"
 if [[ -d "$REPO_ROOT/bin" ]]; then binary_dir="$REPO_ROOT/bin"; fi
-for binary in zflow zflowd; do
+for binary in zflow zflowd zflow-app; do
     require_regular_source "$binary_dir/$binary"
     [[ -x "$binary_dir/$binary" ]] || die "binary is not executable: $binary"
 done
@@ -129,6 +130,7 @@ install -d -o root -g root -m 0755 \
     "$BIN_DIR" "$LIB_DIR" "$UDEV_RULE_DIR" /etc/modules-load.d /usr/lib/systemd/system-sleep
 install -o root -g root -m 0755 "$binary_dir/zflow" "$BIN_DIR/zflow"
 install -o root -g root -m 0755 "$binary_dir/zflowd" "$BIN_DIR/zflowd"
+install -o root -g root -m 0755 "$binary_dir/zflow-app" "$BIN_DIR/zflow-app"
 install -o root -g root -m 0755 "$SCRIPT_DIR/uninstall.sh" "$UNINSTALLER"
 install -o root -g root -m 0755 "$REPO_ROOT/packaging/linux/firewall.sh" "$FIREWALL_SCRIPT"
 rm -f -- "$BIN_DIR/zflow-gui"
