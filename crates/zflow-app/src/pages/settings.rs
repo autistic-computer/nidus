@@ -1,6 +1,5 @@
-use zflow::app::api::{Level, Request};
-use zz_gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
-use zz_gpui_kit::{
+use ala::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex,
@@ -9,6 +8,7 @@ use zz_gpui_kit::{
     settings::{SettingEntry, SettingsStack, settings_card_ground, settings_scroll_column},
     switch::Switch,
 };
+use zflow::app::api::{Level, Request};
 
 use crate::{platform, window::ZflowWindow};
 

@@ -311,7 +311,7 @@ Use `--purge` only when you also want to delete those files and the account.
 ## macOS app
 
 `scripts/build-macos-app.sh [--debug] [--universal] [--dmg] [--sign IDENTITY]`
-builds the app (`crates/zflow-app`, Rust on zz-gpui) and the AWDL helper (a
+builds the app (`crates/zflow-app`, Rust on ala and penna) and the AWDL helper (a
 small Swift package in `macos/`), fetches Sparkle with
 `scripts/fetch-sparkle.sh`, then assembles `target/{debug,release}/zflow.app`.
 It builds for the current CPU unless `--universal` asks for Apple silicon and
@@ -380,7 +380,7 @@ extension, because extensions.gnome.org discourages extensions that install or
 enable extensions.
 
 The extension adds a panel indicator with sharing and settings actions. The
-window is the same zz-gpui app as on the Mac and Windows; it needs Wayland or X11
+window is the same app as on the Mac and Windows; it needs Wayland or X11
 and Vulkan or OpenGL, which a GNOME desktop has. The service and agent run
 without it.
 

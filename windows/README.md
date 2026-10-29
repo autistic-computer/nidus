@@ -1,7 +1,7 @@
 # zflow for Windows
 
-The Windows preview is two Rust programs: the zflow app, drawn with zz-gpui
-(a fork of Zed's GPUI kept in this repository), and the input engine it starts
+The Windows preview is two Rust programs: the zflow app, drawn with ala
+(autistic-computer's fork of Zed's GPUI), and the input engine it starts
 beside it. It runs in your signed-in session on Windows 10 version 2004 or
 later and Windows 11, x64. Both link the Visual C++ runtime statically, so
 nothing else needs to be installed.

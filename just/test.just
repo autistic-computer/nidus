@@ -13,7 +13,7 @@ rust *args:
 
 [doc("Run the app's tests: its pages, arrangement math, tray menu and platform rules.")]
 app:
-    cargo test --locked -p zflow-app -p zz-gpui-tray
+    cargo test --locked -p zflow-app
 
 [doc("Exercise the shipped GNOME extension with a simulated compositor (requires Node.js).")]
 desktop:

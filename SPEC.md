@@ -588,7 +588,7 @@ ei_gestures carries recognized gestures rather than raw MT contacts. It cannot r
 ### Process model
 
 The current source-only app runs capture and networking in its user process.
-The zz-gpui app owns the menu bar item and the window; an engine thread owns
+The ala app owns the menu bar item and the window; an engine thread owns
 engine lifetimes.
 A separate SMAppService daemon handles only leased AWDL suppression. The app
 connects to it over XPC directly; each side requires the same signing team and

@@ -2,18 +2,18 @@ mod computers;
 mod inspector;
 mod settings;
 
-use zflow::app::api::{Action, Request};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Context, Entity, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_gpui_kit::{
+use penna::{
     ActiveTheme as _, Colorize as _, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},
     input::Input,
     rems_from_px, v_flex,
 };
+use zflow::app::api::{Action, Request};
 
 use crate::{
     model::{Model, Page},
@@ -46,7 +46,7 @@ pub fn page(
             .flex()
             .items_center()
             .justify_center()
-            .child(zz_gpui_kit::spinner::Spinner::new())
+            .child(penna::spinner::Spinner::new())
             .into_any_element(),
     };
     v_flex()
@@ -92,11 +92,11 @@ fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement
 pub fn fix_button(
     id: &str,
     action: &Action,
-    ground: zz_gpui_kit::Ground,
+    ground: penna::Ground,
     cx: &mut Context<ZflowWindow>,
 ) -> AnyElement {
     let command = action.command.clone();
-    Button::new(zz_gpui::SharedString::from(format!("fix-{id}")))
+    Button::new(ala::SharedString::from(format!("fix-{id}")))
         .on(ground)
         .label(action.label.clone())
         .on_click(cx.listener(move |this, _, window, cx| {
@@ -148,9 +148,9 @@ pub fn add_address(this: &Entity<ZflowWindow>, dialog: Dialog, cx: &mut App) -> 
         .button_props(
             DialogButtonProps::default()
                 .ok_text("Look up")
-                .ok_variant(zz_gpui_kit::button::ButtonVariant::Paint(
-                    zz_gpui_kit::Tone::Primary,
-                    zz_gpui_kit::Emphasis::Solid,
+                .ok_variant(penna::button::ButtonVariant::Paint(
+                    penna::Tone::Primary,
+                    penna::Emphasis::Solid,
                 ))
                 .show_cancel(true),
         )
@@ -182,7 +182,7 @@ fn look_up(this: &Entity<ZflowWindow>, address: String, window: &mut Window, cx:
                     this.looking_up = false;
                     match result {
                         Ok(()) => {
-                            use zz_gpui_kit::WindowExt as _;
+                            use penna::WindowExt as _;
                             window.close_dialog(cx);
                         }
                         Err(error) => this.address_error = Some(error),
@@ -195,20 +195,20 @@ fn look_up(this: &Entity<ZflowWindow>, address: String, window: &mut Window, cx:
 }
 
 pub fn card_danger(
-    id: impl Into<zz_gpui::ElementId>,
-    label: impl Into<zz_gpui::SharedString>,
+    id: impl Into<ala::ElementId>,
+    label: impl Into<ala::SharedString>,
     cx: &App,
 ) -> Button {
     Button::new(id)
         .danger()
         .label(label)
-        .on(zz_gpui_kit::settings::settings_card_ground(cx))
+        .on(penna::settings::settings_card_ground(cx))
 }
 
 pub fn heading(
-    title: impl Into<zz_gpui::SharedString>,
-    description: impl Into<zz_gpui::SharedString>,
+    title: impl Into<ala::SharedString>,
+    description: impl Into<ala::SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
-    zz_gpui_kit::settings::settings_page_heading(title, description, cx)
+) -> ala::Div {
+    penna::settings::settings_page_heading(title, description, cx)
 }

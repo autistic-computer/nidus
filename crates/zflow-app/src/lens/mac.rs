@@ -11,19 +11,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+use ala::{
+    App, AppContext as _, Bounds, Context, Entity, InteractiveElement as _, IntoElement,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
+    Render, RenderImage, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, Window,
+    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, img,
+    point, px, size,
+};
 use block2::RcBlock;
 use objc2::{MainThreadMarker, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSBeep, NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSScreen};
 use zflow::{
     app::api::Request,
     lens::viewer::{CHUNK, Input, State, Viewer},
-};
-use zz_gpui::{
-    App, AppContext as _, Bounds, Context, Entity, InteractiveElement as _, IntoElement,
-    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point,
-    Render, RenderImage, ScrollDelta, ScrollWheelEvent, SharedString, Styled as _, Window,
-    WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions, div, img,
-    point, px, size,
 };
 
 use super::geometry::{Fit, Grid, KeyAction, button, key_down, modifier_down, scroll};
@@ -40,7 +40,7 @@ struct Lens {
     window: Option<WindowHandle<LensView>>,
 }
 
-impl zz_gpui::Global for Lens {}
+impl ala::Global for Lens {}
 
 pub fn target(cx: &App) -> Option<String> {
     let lens = cx.try_global::<Lens>()?;
@@ -323,7 +323,7 @@ impl LensView {
             for row in 0..h {
                 pixels.extend_from_slice(&buffer[row * CHUNK * 4..row * CHUNK * 4 + w * 4]);
             }
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 pixel[3] = 255;
             }
             let Some(image) = image::RgbaImage::from_raw(w as u32, h as u32, pixels) else {
@@ -406,8 +406,8 @@ fn mouse_number(button: MouseButton) -> u8 {
         MouseButton::Left => 0,
         MouseButton::Right => 1,
         MouseButton::Middle => 2,
-        MouseButton::Navigate(zz_gpui::NavigationDirection::Back) => 3,
-        MouseButton::Navigate(zz_gpui::NavigationDirection::Forward) => 4,
+        MouseButton::Navigate(ala::NavigationDirection::Back) => 3,
+        MouseButton::Navigate(ala::NavigationDirection::Forward) => 4,
     }
 }
 
@@ -486,9 +486,9 @@ impl Render for LensView {
                     .size(px(diameter))
                     .rounded_full()
                     .overflow_hidden()
-                    .bg(zz_gpui::rgba(0x1414_14ff))
+                    .bg(ala::rgba(0x1414_14ff))
                     .border(px(1.5))
-                    .border_color(zz_gpui::rgba(0xffff_ffd9))
+                    .border_color(ala::rgba(0xffff_ffd9))
                     .children(desktop)
                     .children(message.map(|message| {
                         div()
@@ -503,10 +503,10 @@ impl Render for LensView {
                                     .px(px(10.0))
                                     .py(px(6.0))
                                     .rounded(px(6.0))
-                                    .bg(zz_gpui::rgba(0x0000_00b3))
-                                    .text_color(zz_gpui::rgba(0xffff_ffff))
+                                    .bg(ala::rgba(0x0000_00b3))
+                                    .text_color(ala::rgba(0xffff_ffff))
                                     .text_size(px(13.0))
-                                    .font_weight(zz_gpui::FontWeight::MEDIUM)
+                                    .font_weight(ala::FontWeight::MEDIUM)
                                     .text_center()
                                     .child(message),
                             )

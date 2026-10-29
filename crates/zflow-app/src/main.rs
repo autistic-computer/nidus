@@ -14,11 +14,11 @@ mod window;
 
 use std::path::PathBuf;
 
-use zz_gpui::{
+use ala::{
     App, AppContext as _, Bounds, Entity, QuitMode, SystemNotification, SystemNotificationAction,
     WindowBounds, WindowDecorations, WindowHandle, WindowOptions, px, size,
 };
-use zz_gpui_kit::{Root, TitleBar};
+use penna::{Root, TitleBar};
 
 use crate::{
     model::{Model, Page, Shared},
@@ -100,11 +100,11 @@ fn main() {
         .config
         .clone()
         .unwrap_or_else(platform::default_config);
-    let application = zz_gpui_platform::application();
+    let application = ala_platform::application();
     #[cfg(target_os = "macos")]
     application.on_reopen(open);
     application
-        .with_assets(zz_gpui_kit::Assets)
+        .with_assets(penna::Assets)
         .with_quit_mode(if platform::LIVES_IN_TRAY {
             QuitMode::Explicit
         } else {
@@ -146,7 +146,7 @@ pub fn open(cx: &mut App) {
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(TitleBar::title_bar_options(
-                zz_gpui_kit::Theme::global(cx).title_bar_height(),
+                penna::Theme::global(cx).title_bar_height(),
             )),
             window_min_size: Some(size(px(700.0), px(480.0))),
             window_decorations: Some(if cx.compositor_name() == "X11" {
@@ -177,7 +177,7 @@ pub fn open(cx: &mut App) {
 
 pub struct MainWindow(pub Option<WindowHandle<Root>>);
 
-impl zz_gpui::Global for MainWindow {}
+impl ala::Global for MainWindow {}
 
 fn notify_notices(model: &Entity<Model>, cx: &mut App) {
     cx.observe(model, |model, cx| {

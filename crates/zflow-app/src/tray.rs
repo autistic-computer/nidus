@@ -1,6 +1,6 @@
+use ala::{App, Entity};
+use penna::tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
 use zflow::app::api::Request;
-use zz_gpui::{App, Entity};
-use zz_gpui_tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
 
 use crate::{
     copy,
@@ -14,7 +14,7 @@ struct AppTray {
     look: Option<(String, bool, bool)>,
 }
 
-impl zz_gpui::Global for AppTray {}
+impl ala::Global for AppTray {}
 
 pub fn entries(
     snapshot: Option<&Snapshot>,
