@@ -31,8 +31,12 @@ use crate::{
 #[derive(Debug, Parser)]
 #[command(name = "zflow", version, about = "Headless zflow setup and control")]
 pub struct Cli {
-    /// Configuration file used by setup and offline diagnostics.
-    #[arg(long, global = true, default_value = "/etc/zflow/zflow.toml")]
+    #[arg(
+        long,
+        global = true,
+        default_value = "/etc/zflow/zflow.toml",
+        help = "Configuration file used by setup and offline diagnostics"
+    )]
     config: PathBuf,
 
     #[command(subcommand)]
@@ -41,57 +45,61 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Check for or install a published Linux release.
+    #[command(about = "Check for or install a published Linux release")]
     #[cfg(target_os = "linux")]
     Update {
         #[command(subcommand)]
         command: UpdateCommand,
     },
-    /// Open native GNOME settings. Closing the window leaves sharing running.
+    #[command(about = "Open native GNOME settings. Closing the window leaves sharing running")]
     Settings,
-    /// Run the GNOME session integration without a window.
+    #[command(about = "Run the GNOME session integration without a window")]
     DesktopAgent {
-        /// Install the GNOME extension and start this agent at login.
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Install the GNOME extension and start this agent at login"
+        )]
         install: bool,
     },
-    /// Create or update the local configuration.
+    #[command(about = "Create or update the local configuration")]
     Setup(SetupOptions),
-    /// Show daemon and ownership state.
+    #[command(about = "Show daemon and ownership state")]
     Status {
-        /// Emit stable machine-readable output.
-        #[arg(long)]
+        #[arg(long, help = "Emit stable machine-readable output")]
         json: bool,
     },
-    /// Check Linux input, permissions, service, and configuration.
+    #[command(about = "Check Linux input, permissions, service, and configuration")]
     Doctor,
-    /// List physical input devices and capture-set membership.
+    #[command(about = "List physical input devices and capture-set membership")]
     Devices,
-    /// List paired peers and their permissions.
+    #[command(about = "List paired peers and their permissions")]
     Peers,
-    /// List computers found on the network that are not trusted here.
+    #[command(about = "List computers found on the network that are not trusted here")]
     Nearby {
-        /// Say hello to this IP address first, port optional, for a
-        /// computer mDNS cannot see, such as one on Tailscale.
-        #[arg(long, value_name = "ADDRESS")]
+        #[arg(
+            long,
+            value_name = "ADDRESS",
+            help = "Say hello to this IP address first, port optional, for a computer mDNS cannot see, such as one on Tailscale"
+        )]
         add: Option<String>,
     },
-    /// Trust a computer `zflow nearby` lists, by name or mark, as dragging
-    /// it into the arrangement does.
+    #[command(
+        about = "Trust a computer `zflow nearby` lists, by name or mark, as dragging it into the arrangement does"
+    )]
     Trust {
-        /// Its name, or its mark when two share a name.
+        #[arg(help = "Its name, or its mark when two share a name")]
         computer: String,
     },
-    /// Change one paired peer.
+    #[command(about = "Change one paired peer")]
     Peer {
         #[command(subcommand)]
         command: PeerCommand,
     },
-    /// Arm remote ownership for a paired peer.
+    #[command(about = "Arm remote ownership for a paired peer")]
     Switch { peer: String },
-    /// Return input ownership to this machine.
+    #[command(about = "Return input ownership to this machine")]
     Local,
-    /// Change persistent receiver playout settings.
+    #[command(about = "Change persistent receiver playout settings")]
     Playout {
         #[arg(value_parser = playout_mode())]
         mode: PlayoutMode,
@@ -109,55 +117,63 @@ enum Command {
 #[cfg(target_os = "linux")]
 #[derive(Debug, Subcommand)]
 enum UpdateCommand {
-    /// Check the latest stable release and print JSON. Does not install anything.
+    #[command(about = "Check the latest stable release and print JSON. Does not install anything")]
     Check,
-    /// Install a newer stable release with administrator authorization.
+    #[command(about = "Install a newer stable release with administrator authorization")]
     Install {
-        /// Exact release tag returned by update check.
-        #[arg(long)]
+        #[arg(long, help = "Exact release tag returned by update check")]
         version: String,
-        /// Require the desktop's graphical authentication agent.
-        #[arg(long)]
+        #[arg(long, help = "Require the desktop's graphical authentication agent")]
         gui: bool,
     },
 }
 
 #[derive(Debug, Default, Args)]
 struct SetupOptions {
-    /// Override the QUIC listen address; changes require a daemon restart.
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Override the QUIC listen address; changes require a daemon restart"
+    )]
     listen: Option<SocketAddr>,
-    /// Select a physical evdev node; repeated values replace the capture set.
-    #[arg(long = "device")]
+    #[arg(
+        long = "device",
+        help = "Select a physical evdev node; repeated values replace the capture set"
+    )]
     devices: Vec<PathBuf>,
-    /// Set one evdev key in the activation chord; repeat for every key.
-    #[arg(long = "activation-key", value_name = "EVDEV_KEY")]
+    #[arg(
+        long = "activation-key",
+        value_name = "EVDEV_KEY",
+        help = "Set one evdev key in the activation chord; repeat for every key"
+    )]
     activation_chord: Vec<String>,
-    /// Set one evdev key in the local escape chord; repeat for every key.
-    #[arg(long = "escape-key", value_name = "EVDEV_KEY")]
+    #[arg(
+        long = "escape-key",
+        value_name = "EVDEV_KEY",
+        help = "Set one evdev key in the local escape chord; repeat for every key"
+    )]
     escape_chord: Vec<String>,
-    /// Write explicit capture permissions for the selected devices.
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Write explicit capture permissions for the selected devices"
+    )]
     udev_rules: Option<PathBuf>,
-    /// Enable or disable injection outside an unlocked authenticated session.
-    #[arg(long = "prelogin", value_name = "on|off", value_parser = on_off())]
+    #[arg(long = "prelogin", value_name = "on|off", value_parser = on_off(), help = "Enable or disable injection outside an unlocked authenticated session")]
     allow_prelogin: Option<bool>,
-    /// Enable or disable experimental raw touchpad forwarding.
-    #[arg(long = "experimental-touchpad", value_name = "on|off", value_parser = on_off())]
+    #[arg(long = "experimental-touchpad", value_name = "on|off", value_parser = on_off(), help = "Enable or disable experimental raw touchpad forwarding")]
     experimental_touchpad: Option<bool>,
 }
 
 #[derive(Debug, Subcommand)]
 enum PeerCommand {
-    /// Revoke a peer and close its future access.
+    #[command(about = "Revoke a peer and close its future access")]
     Revoke { peer: String },
-    /// Grant or revoke the separate pre-login permission.
+    #[command(about = "Grant or revoke the separate pre-login permission")]
     AllowPrelogin {
         peer: String,
         #[arg(action = ArgAction::Set, value_parser = on_off())]
         value: bool,
     },
-    /// Choose how keys from a peer act here, from its next crossing.
+    #[command(about = "Choose how keys from a peer act here, from its next crossing")]
     Keyboard {
         peer: String,
         #[arg(value_parser = keyboard_mode())]
