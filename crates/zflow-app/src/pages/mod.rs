@@ -210,5 +210,12 @@ pub fn heading(
     description: impl Into<ala::SharedString>,
     cx: &App,
 ) -> ala::Div {
-    penna::settings::settings_page_heading(title, description, cx)
+    penna::settings::settings_page_heading(title, cx)
+        .gap(px(4.0))
+        .child(
+            div()
+                .text_size(rems_from_px(11.0))
+                .text_color(cx.theme().foreground.muted())
+                .child(description.into()),
+        )
 }
