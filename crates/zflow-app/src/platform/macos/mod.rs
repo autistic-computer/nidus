@@ -753,7 +753,8 @@ fn card(
 ) -> AnyElement {
     SettingsStack::new()
         .child(
-            SettingEntry::new(title, detail)
+            SettingEntry::new(title)
+                .description(detail)
                 .title_icon(Icon::new(icon))
                 .control(
                     Button::new(id)
@@ -807,14 +808,18 @@ pub fn first_run_cards(
 )]
 pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     Some(
-        SettingEntry::new("Displays", "Arrange this Mac’s own screens.").control(
-            Button::new("display-settings")
-                .label("Displays…")
-                .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| {
-                    cx.open_url("x-apple.systempreferences:com.apple.Displays-Settings.extension");
-                }),
-        ),
+        SettingEntry::new("Displays")
+            .description("Arrange this Mac’s own screens.")
+            .control(
+                Button::new("display-settings")
+                    .label("Displays…")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, _, cx| {
+                        cx.open_url(
+                            "x-apple.systempreferences:com.apple.Displays-Settings.extension",
+                        );
+                    }),
+            ),
     )
 }
 
@@ -828,13 +833,10 @@ pub fn peer_entries(
     }
     let name = peer.name.clone();
     vec![
-        SettingEntry::new(
-            format!("Look at {name}"),
-            format!(
+        SettingEntry::new(format!("Look at {name}")).description(format!(
                 "See its screen around the pointer, and work there from this Mac. {} opens and closes it.",
                 crate::lens::HOTKEY_LABEL
-            ),
-        )
+            ))
         .control(
             Button::new("look")
                 .label("Look")
@@ -856,17 +858,15 @@ pub fn login_entry(
     let services = this.services.read(cx);
     let (on, needs_move) = (services.login, services.location.needs_move());
     Some(
-        SettingEntry::new(
-            "Start at login",
-            "Open zflow in the menu bar when you log in.",
-        )
-        .disabled(needs_move)
-        .control(Switch::new("login").checked(on).on_click(cx.listener(
-            |this, on: &bool, _, cx| {
-                this.services
-                    .update(cx, |services, cx| services.set_login(*on, cx));
-            },
-        ))),
+        SettingEntry::new("Start at login")
+            .description("Open zflow in the menu bar when you log in.")
+            .disabled(needs_move)
+            .control(Switch::new("login").checked(on).on_click(cx.listener(
+                |this, on: &bool, _, cx| {
+                    this.services
+                        .update(cx, |services, cx| services.set_login(*on, cx));
+                },
+            ))),
     )
 }
 
@@ -883,14 +883,11 @@ pub fn settings_stacks(
         let enabled = platform.block_awdl == Some(true);
         let helper = services.helper.clone();
         let waiting = enabled && !helper.ready;
-        let mut entry = SettingEntry::new(
-            "Reduce Wi-Fi lag",
-            if waiting {
-                helper.note.clone()
-            } else {
-                "Pauses AirDrop’s radio while input is shared with another computer.".into()
-            },
-        );
+        let mut entry = SettingEntry::new("Reduce Wi-Fi lag").description(if waiting {
+            helper.note.clone()
+        } else {
+            "Pauses AirDrop’s radio while input is shared with another computer.".into()
+        });
         let fix = waiting.then_some(helper.action).flatten().map(|label| {
             Button::new("fix-helper")
                 .label(label)
@@ -920,27 +917,29 @@ pub fn settings_stacks(
                    id: &'static str,
                    cx: &mut Context<ZflowWindow>,
                    allow: fn(&mut ZflowWindow, &mut Context<ZflowWindow>)| {
-        SettingEntry::new(title, if allowed { "" } else { detail }).control(if allowed {
-            penna::h_flex()
-                .gap(px(6.0))
-                .child(
-                    Icon::new(IconName::CircleCheck)
-                        .text_color(penna::ActiveTheme::theme(&**cx).success),
-                )
-                .child(widgets::muted("Allowed", 12.0, cx))
-                .into_any_element()
-        } else {
-            Button::new(id)
-                .label("Allow…")
-                .on(settings_card_ground(cx))
-                .on_click(cx.listener(move |this, _, _, cx| allow(this, cx)))
-                .into_any_element()
-        })
+        SettingEntry::new(title)
+            .description(if allowed { "" } else { detail })
+            .control(if allowed {
+                penna::h_flex()
+                    .gap(px(6.0))
+                    .child(
+                        Icon::new(IconName::CircleCheck)
+                            .text_color(penna::ActiveTheme::theme(&**cx).success),
+                    )
+                    .child(widgets::muted("Allowed", 12.0, cx))
+                    .into_any_element()
+            } else {
+                Button::new(id)
+                    .label("Allow…")
+                    .on(settings_card_ground(cx))
+                    .on_click(cx.listener(move |this, _, _, cx| allow(this, cx)))
+                    .into_any_element()
+            })
     };
     let paste = services.paste;
     stacks.push(
         SettingsStack::titled("Permissions")
-            .description(format!(
+            .note(format!(
                 "Take back control from any computer with {}.",
                 copy::RETURN_KEYS
             ))
@@ -978,31 +977,29 @@ pub fn settings_stacks(
     let updates = services.updates.clone();
     let mut stack = SettingsStack::titled("Updates");
     if let Some(reason) = updates.unavailable {
-        stack = stack.child(SettingEntry::new("Updates", reason));
+        stack = stack.child(SettingEntry::new("Updates").description(reason));
     } else {
         let checks = updates.automatic.unwrap_or(false);
         stack = stack
             .child(
-                SettingEntry::new(
-                    format!("zflow {}", env!("CARGO_PKG_VERSION")),
-                    updates.available.as_ref().map_or_else(
+                SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")))
+                    .description(updates.available.as_ref().map_or_else(
                         || "Check for a new release.".into(),
                         |version| format!("zflow {version} is available."),
+                    ))
+                    .control(
+                        Button::new("check-updates")
+                            .label("Check for Updates…")
+                            .disabled(updates.checking)
+                            .on(settings_card_ground(cx))
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.services
+                                    .update(cx, |services, _| services.check_updates());
+                            })),
                     ),
-                )
-                .control(
-                    Button::new("check-updates")
-                        .label("Check for Updates…")
-                        .disabled(updates.checking)
-                        .on(settings_card_ground(cx))
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.services
-                                .update(cx, |services, _| services.check_updates());
-                        })),
-                ),
             )
             .child(
-                SettingEntry::new("Check for updates automatically", "").control(
+                SettingEntry::new("Check for updates automatically").control(
                     Switch::new("updates-check")
                         .checked(checks)
                         .on_click(cx.listener(|this, on: &bool, _, cx| {
@@ -1017,7 +1014,7 @@ pub fn settings_stacks(
                 ),
             )
             .child(
-                SettingEntry::new("Download and install updates automatically", "")
+                SettingEntry::new("Download and install updates automatically")
                     .disabled(!checks)
                     .control(
                         Switch::new("updates-install")
@@ -1044,12 +1041,14 @@ pub fn this_computer_entries(
     cx: &mut Context<ZflowWindow>,
 ) -> Vec<SettingEntry> {
     vec![
-        SettingEntry::new("Configuration", snapshot.config_path.display().to_string()).control(
-            Button::new("open-config")
-                .label("Open…")
-                .on(settings_card_ground(cx))
-                .on_click(|_, _, cx| open_config(cx)),
-        ),
+        SettingEntry::new("Configuration")
+            .description(snapshot.config_path.display().to_string())
+            .control(
+                Button::new("open-config")
+                    .label("Open…")
+                    .on(settings_card_ground(cx))
+                    .on_click(|_, _, cx| open_config(cx)),
+            ),
     ]
 }
 

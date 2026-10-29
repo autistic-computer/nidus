@@ -70,7 +70,8 @@ fn overview(
     let entries = computers.iter().map(|computer| {
         let owner = computer.owner.clone();
         let board = board.clone();
-        SettingEntry::new(computer.name.clone(), summary(computer))
+        SettingEntry::new(computer.name.clone())
+            .description(summary(computer))
             .title_icon(Icon::new(if computer.owner == LOCAL {
                 IconName::Laptop
             } else {
@@ -98,7 +99,7 @@ fn overview(
             )
     });
     SettingsStack::titled("Your computers")
-        .description(
+        .note(
             "Select a computer on the arrangement or here to see its crossings, screens and settings.",
         )
         .children(entries)
@@ -116,23 +117,25 @@ fn found(
     let entries = snapshot.unplaced.iter().map(|computer| {
         let board = this.board.clone();
         let id = computer.id.clone();
-        SettingEntry::new(computer.name.clone(), copy::unplaced_detail(computer)).control(
-            h_flex()
-                .gap(px(8.0))
-                .children(computer.mark.as_deref().map(widgets::key_mark))
-                .child(
-                    Button::new(SharedString::from(format!("add-{id}")))
-                        .label("Add")
-                        .on(settings_card_ground(cx))
-                        .disabled(!copy::placeable(computer))
-                        .tooltip(format!("Put it beside {}", copy::THIS_COMPUTER_LOWER))
-                        .on_click(move |_, _, cx| board.read(cx).place_beside(&id, cx)),
-                ),
-        )
+        SettingEntry::new(computer.name.clone())
+            .description(copy::unplaced_detail(computer))
+            .control(
+                h_flex()
+                    .gap(px(8.0))
+                    .children(computer.mark.as_deref().map(widgets::key_mark))
+                    .child(
+                        Button::new(SharedString::from(format!("add-{id}")))
+                            .label("Add")
+                            .on(settings_card_ground(cx))
+                            .disabled(!copy::placeable(computer))
+                            .tooltip(format!("Put it beside {}", copy::THIS_COMPUTER_LOWER))
+                            .on_click(move |_, _, cx| board.read(cx).place_beside(&id, cx)),
+                    ),
+            )
     });
     Some(
         SettingsStack::titled("Found on this network")
-            .description("Drag one onto the arrangement, or add it beside this computer.")
+            .note("Drag one onto the arrangement, or add it beside this computer.")
             .children(entries)
             .into_any_element(),
     )
@@ -180,10 +183,7 @@ fn computer_page(
         let owner = computer.owner.clone();
         let adjust = board.clone();
         arrange.push(
-            SettingEntry::new(
-                "Adjust screens",
-                "Move its screens one by one instead of together. Double-clicking it on the arrangement does too.",
-            )
+            SettingEntry::new("Adjust screens").description("Move its screens one by one instead of together. Double-clicking it on the arrangement does too.")
             .control(Switch::new("adjust").checked(adjusting).on_click(move |on: &bool, _, cx| {
                 adjust.update(cx, |board, cx| board.adjust(&owner, *on, cx));
             })),
@@ -200,10 +200,10 @@ fn computer_page(
         .collect();
     let crossings = board::crossings(snapshot, computer);
     let crossing_entries: Vec<SettingEntry> = if crossings.is_empty() {
-        vec![SettingEntry::new(
-            "None yet",
-            "Move it until an edge touches another computer’s screen.",
-        )]
+        vec![
+            SettingEntry::new("None yet")
+                .description("Move it until an edge touches another computer’s screen."),
+        ]
     } else {
         crossings
             .iter()
@@ -212,7 +212,7 @@ fn computer_page(
     };
     let mut crossings_stack = SettingsStack::titled("Crossings").children(crossing_entries);
     if local && computer.screens.len() > 1 {
-        crossings_stack = crossings_stack.description(platform::OWN_SCREENS_NOTE);
+        crossings_stack = crossings_stack.note(platform::OWN_SCREENS_NOTE);
     }
     let screens =
         SettingsStack::titled("Screens").children(computer.screens.iter().map(|monitor| {
@@ -232,8 +232,8 @@ fn computer_page(
                     .display
                     .as_ref()
                     .map_or_else(|| monitor.label.clone(), |display| display.name.clone()),
-                detail,
             )
+            .description(detail)
         }));
 
     v_flex()
@@ -283,20 +283,18 @@ fn crossing_entry(snapshot: &Snapshot, seam: &Seam, mine: &[&str]) -> SettingEnt
                     .unwrap_or_else(|| copy::THIS_COMPUTER.to_owned())
             },
         );
-    SettingEntry::new(
-        other,
-        format!(
+    SettingEntry::new(other)
+        .description(format!(
             "{} edge of {} → {}",
             board::geometry::crossing_side(seam, here_is_a),
             screen(here),
             screen(there)
-        ),
-    )
-    .title_icon(Icon::new(if seam.vertical {
-        IconName::ArrowRight
-    } else {
-        IconName::ArrowDown
-    }))
+        ))
+        .title_icon(Icon::new(if seam.vertical {
+            IconName::ArrowRight
+        } else {
+            IconName::ArrowDown
+        }))
 }
 
 fn peer_settings(
@@ -323,60 +321,58 @@ fn peer_settings(
     let model = this.model.clone();
     let control = {
         let (model, set) = (model.clone(), set(&name));
-        SettingEntry::new(
-            format!("{name} can control {}", copy::THIS_COMPUTER_LOWER),
-            format!(
+        SettingEntry::new(format!("{name} can control {}", copy::THIS_COMPUTER_LOWER))
+            .description(format!(
                 "Push the pointer past {name}’s edge to move onto {}. Take it back with {}.",
                 copy::THIS_COMPUTER_LOWER,
                 copy::RETURN_KEYS
-            ),
-        )
-        .control(
-            Switch::new("allow-control")
-                .checked(peer.allow_control)
-                .on_click(move |on: &bool, _, cx| {
-                    model.read(cx).send(set(Some(*on), None, None, None));
-                }),
-        )
+            ))
+            .control(
+                Switch::new("allow-control")
+                    .checked(peer.allow_control)
+                    .on_click(move |on: &bool, _, cx| {
+                        model.read(cx).send(set(Some(*on), None, None, None));
+                    }),
+            )
     };
     let keyboard = {
         let (model, set) = (model.clone(), set(&name));
         let current = peer.keyboard;
-        SettingEntry::new(
-            format!("Keys from {name}"),
-            format!(
+        SettingEntry::new(format!("Keys from {name}"))
+            .description(format!(
                 "{} Changes apply the next time {name} takes control.",
                 copy::keyboard_detail(current)
-            ),
-        )
-        .control(
-            Button::new("keyboard-mode")
-                .on(settings_card_ground(cx))
-                .label(copy::keyboard_title(current))
-                .dropdown_caret(true)
-                .dropdown_menu(move |menu, _, _| {
-                    copy::KEYBOARD_MODES.iter().fold(menu, |menu, &mode| {
-                        let (model, set) = (model.clone(), set.clone());
-                        menu.item(
-                            PopupMenuItem::new(copy::keyboard_title(mode))
-                                .checked(mode == current)
-                                .on_click(move |_, _, cx| {
-                                    model.read(cx).send(set(None, Some(mode), None, None));
-                                }),
-                        )
-                    })
-                }),
-        )
+            ))
+            .control(
+                Button::new("keyboard-mode")
+                    .on(settings_card_ground(cx))
+                    .label(copy::keyboard_title(current))
+                    .dropdown_caret(true)
+                    .dropdown_menu(move |menu, _, _| {
+                        copy::KEYBOARD_MODES.iter().fold(menu, |menu, &mode| {
+                            let (model, set) = (model.clone(), set.clone());
+                            menu.item(
+                                PopupMenuItem::new(copy::keyboard_title(mode))
+                                    .checked(mode == current)
+                                    .on_click(move |_, _, cx| {
+                                        model.read(cx).send(set(None, Some(mode), None, None));
+                                    }),
+                            )
+                        })
+                    }),
+            )
     };
     let scroll = {
         let (model, set) = (model.clone(), set(&name));
-        SettingEntry::new("Reverse scrolling", "Turn its scrolling around here.").control(
-            Switch::new("reverse-scroll")
-                .checked(peer.reverse_scroll)
-                .on_click(move |on: &bool, _, cx| {
-                    model.read(cx).send(set(None, None, Some(*on), None));
-                }),
-        )
+        SettingEntry::new("Reverse scrolling")
+            .description("Turn its scrolling around here.")
+            .control(
+                Switch::new("reverse-scroll")
+                    .checked(peer.reverse_scroll)
+                    .on_click(move |on: &bool, _, cx| {
+                        model.read(cx).send(set(None, None, Some(*on), None));
+                    }),
+            )
     };
     let mut entries = Vec::new();
     if platform::CAN_REFUSE_CONTROL {
@@ -386,23 +382,22 @@ fn peer_settings(
     if platform::CAN_SHARE_SCREEN {
         let (model, set) = (model.clone(), set(&name));
         entries.push(
-            SettingEntry::new("Can see this screen", "Through a lens around its pointer.").control(
-                Switch::new("share-screen")
-                    .checked(peer.share_screen)
-                    .on_click(move |on: &bool, _, cx| {
-                        model.read(cx).send(set(None, None, None, Some(*on)));
-                    }),
-            ),
+            SettingEntry::new("Can see this screen")
+                .description("Through a lens around its pointer.")
+                .control(
+                    Switch::new("share-screen")
+                        .checked(peer.share_screen)
+                        .on_click(move |on: &bool, _, cx| {
+                            model.read(cx).send(set(None, None, None, Some(*on)));
+                        }),
+                ),
         );
     }
     entries.extend(platform::peer_entries(this, peer, cx));
     let forget = {
         let name = name.clone();
         let model = model.clone();
-        SettingEntry::new(
-            format!("Forget {name}"),
-            "Stops input between the two computers and removes its trusted identity. It goes back to Found on this network.",
-        )
+        SettingEntry::new(format!("Forget {name}")).description("Stops input between the two computers and removes its trusted identity. It goes back to Found on this network.")
         .control(
             super::card_danger("forget", "Forget…", cx).on_click(move |_, window, cx| {
                 let (name, model) = (name.clone(), model.clone());

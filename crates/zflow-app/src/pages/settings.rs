@@ -24,39 +24,41 @@ pub fn render(
     general.extend(platform::login_entry(this, &snapshot, cx));
     if let Some(share) = snapshot.share_clipboard {
         general.push(
-            SettingEntry::new(
-                "Share clipboard",
-                "Text and images go with the pointer to the other computer. Never files.",
-            )
-            .control(Switch::new("share-clipboard").checked(share).on_click(
-                cx.listener(|this, on: &bool, _, cx| {
-                    this.send(Request::SetClipboard { share: *on }, cx);
-                }),
-            )),
+            SettingEntry::new("Share clipboard")
+                .description(
+                    "Text and images go with the pointer to the other computer. Never files.",
+                )
+                .control(
+                    Switch::new("share-clipboard")
+                        .checked(share)
+                        .on_click(cx.listener(|this, on: &bool, _, cx| {
+                            this.send(Request::SetClipboard { share: *on }, cx);
+                        })),
+                ),
         );
     }
     if let Some(pause) = snapshot.pause_at_edges {
         general.push(
-            SettingEntry::new(
-                "Pause at edges",
-                "Rest against an edge for a moment before switching.",
-            )
-            .control(Switch::new("pause-at-edges").checked(pause).on_click(
-                cx.listener(|this, on: &bool, _, cx| {
-                    this.send(
-                        Request::SetSwitching {
-                            pause_at_edges: *on,
-                        },
-                        cx,
-                    );
-                }),
-            )),
+            SettingEntry::new("Pause at edges")
+                .description("Rest against an edge for a moment before switching.")
+                .control(
+                    Switch::new("pause-at-edges")
+                        .checked(pause)
+                        .on_click(cx.listener(|this, on: &bool, _, cx| {
+                            this.send(
+                                Request::SetSwitching {
+                                    pause_at_edges: *on,
+                                },
+                                cx,
+                            );
+                        })),
+                ),
         );
     }
 
     let card = settings_card_ground(cx);
     let shortcuts = snapshot.shortcuts.iter().map(|shortcut| {
-        SettingEntry::new(shortcut.title.clone(), "")
+        SettingEntry::new(shortcut.title.clone())
             .control(Keycap::new(shortcut.keys.clone()).on(card))
     });
 
@@ -84,7 +86,8 @@ pub fn render(
                     Level::Warning => (IconName::TriangleAlert, theme.warning),
                     Level::Error => (IconName::CircleX, theme.danger),
                 };
-                let entry = SettingEntry::new(row.title.clone(), row.detail.clone())
+                let entry = SettingEntry::new(row.title.clone())
+                    .description(row.detail.clone())
                     .title_icon(Icon::new(icon).text_color(color));
                 match platform::health_action(row, cx) {
                     Some(action) => entry.control(super::fix_button(
@@ -128,45 +131,41 @@ fn about(cx: &mut Context<ZflowWindow>) -> [SettingEntry; 2] {
                 .on_click(move |_, _, cx| cx.open_url(&url))
         };
     [
-        SettingEntry::new(
-            format!("zflow {}", env!("CARGO_PKG_VERSION")),
-            "Free software under the GNU GPL, version 3 or later.",
-        )
-        .control(
-            h_flex()
-                .gap(px(8.0))
-                .child(link(
-                    "release-notes",
-                    "Release notes",
-                    format!("{REPOSITORY}/releases/latest"),
-                    cx,
-                ))
-                .child(link(
-                    "license",
-                    "License",
-                    format!("{REPOSITORY}/blob/main/LICENSE"),
-                    cx,
-                )),
-        ),
-        SettingEntry::new(
-            "Help",
-            "Setup, pairing and shortcuts, the code, and bug reports.",
-        )
-        .control(
-            h_flex()
-                .gap(px(8.0))
-                .child(link(
-                    "docs",
-                    "Documentation",
-                    format!("{REPOSITORY}#readme"),
-                    cx,
-                ))
-                .child(link(
-                    "report",
-                    "Report a problem",
-                    format!("{REPOSITORY}/issues/new"),
-                    cx,
-                )),
-        ),
+        SettingEntry::new(format!("zflow {}", env!("CARGO_PKG_VERSION")))
+            .description("Free software under the GNU GPL, version 3 or later.")
+            .control(
+                h_flex()
+                    .gap(px(8.0))
+                    .child(link(
+                        "release-notes",
+                        "Release notes",
+                        format!("{REPOSITORY}/releases/latest"),
+                        cx,
+                    ))
+                    .child(link(
+                        "license",
+                        "License",
+                        format!("{REPOSITORY}/blob/main/LICENSE"),
+                        cx,
+                    )),
+            ),
+        SettingEntry::new("Help")
+            .description("Setup, pairing and shortcuts, the code, and bug reports.")
+            .control(
+                h_flex()
+                    .gap(px(8.0))
+                    .child(link(
+                        "docs",
+                        "Documentation",
+                        format!("{REPOSITORY}#readme"),
+                        cx,
+                    ))
+                    .child(link(
+                        "report",
+                        "Report a problem",
+                        format!("{REPOSITORY}/issues/new"),
+                        cx,
+                    )),
+            ),
     ]
 }
