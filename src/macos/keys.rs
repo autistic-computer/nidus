@@ -1,11 +1,5 @@
-//! Mac virtual keycodes and HID usages, read one way when capturing and the
-//! other way when posting.
-
 use crate::core::{HidUsage, HidUsagePage};
 
-/// Mac keycodes and the keyboard-page usage at the same position. 10 and 50
-/// name ANSI positions. On ISO keyboards macOS swaps them, so capture_bridge.c
-/// swaps them back and `hid_to_mac_keycode` swaps them again.
 const MAC_KEYS: &[(u16, u16)] = &[
     (0, 0x04),
     (1, 0x16),
@@ -17,7 +11,7 @@ const MAC_KEYS: &[(u16, u16)] = &[
     (7, 0x1b),
     (8, 0x06),
     (9, 0x19),
-    (10, 0x64), // left of Z
+    (10, 0x64),
     (11, 0x05),
     (12, 0x14),
     (13, 0x1a),
@@ -57,7 +51,7 @@ const MAC_KEYS: &[(u16, u16)] = &[
     (47, 0x37),
     (48, 0x2b),
     (49, 0x2c),
-    (50, 0x35), // left of 1
+    (50, 0x35),
     (51, 0x2a),
     (53, 0x29),
     (54, 0xe7),
@@ -69,7 +63,7 @@ const MAC_KEYS: &[(u16, u16)] = &[
     (60, 0xe5),
     (61, 0xe6),
     (62, 0xe4),
-    (64, 0x6c), // F17
+    (64, 0x6c),
     (65, 0x63),
     (67, 0x55),
     (69, 0x57),
@@ -77,8 +71,8 @@ const MAC_KEYS: &[(u16, u16)] = &[
     (75, 0x54),
     (76, 0x58),
     (78, 0x56),
-    (79, 0x6d), // F18
-    (80, 0x6e), // F19
+    (79, 0x6d),
+    (80, 0x6e),
     (81, 0x67),
     (82, 0x62),
     (83, 0x59),
@@ -88,26 +82,26 @@ const MAC_KEYS: &[(u16, u16)] = &[
     (87, 0x5d),
     (88, 0x5e),
     (89, 0x5f),
-    (90, 0x6f), // F20
+    (90, 0x6f),
     (91, 0x60),
     (92, 0x61),
-    (93, 0x89), // JIS yen
-    (94, 0x87), // JIS underscore (ro)
-    (95, 0x85), // JIS keypad comma
+    (93, 0x89),
+    (94, 0x87),
+    (95, 0x85),
     (96, 0x3e),
     (97, 0x3f),
     (98, 0x40),
     (99, 0x3c),
     (100, 0x41),
     (101, 0x42),
-    (102, 0x91), // JIS eisu
+    (102, 0x91),
     (103, 0x44),
-    (104, 0x90), // JIS kana
+    (104, 0x90),
     (105, 0x68),
     (106, 0x6b),
     (107, 0x69),
     (109, 0x43),
-    (110, 0x65), // context menu
+    (110, 0x65),
     (111, 0x45),
     (113, 0x6a),
     (114, 0x49),
@@ -128,20 +122,18 @@ const MAC_KEYS: &[(u16, u16)] = &[
 const PRINT_SCREEN: u16 = 0x46;
 const F13: u16 = 105;
 
-/// Consumer-page usages and the `NX_KEYTYPE` macOS posts for them. Power and
-/// the rest are dropped.
 const MEDIA_KEYS: &[(u16, u32)] = &[
-    (0xe9, 0),  // volume up
-    (0xea, 1),  // volume down
-    (0x6f, 2),  // brightness up
-    (0x70, 3),  // brightness down
-    (0xe2, 7),  // mute
-    (0xb8, 14), // eject
-    (0xcd, 16), // play or pause
-    (0xb5, 17), // next track
-    (0xb6, 18), // previous track
-    (0xb3, 19), // fast forward
-    (0xb4, 20), // rewind
+    (0xe9, 0),
+    (0xea, 1),
+    (0x6f, 2),
+    (0x70, 3),
+    (0xe2, 7),
+    (0xb8, 14),
+    (0xcd, 16),
+    (0xb5, 17),
+    (0xb6, 18),
+    (0xb3, 19),
+    (0xb4, 20),
 ];
 
 const SHIFT: u64 = 0x0002_0000;
@@ -152,8 +144,6 @@ const NUMERIC_PAD: u64 = 0x0020_0000;
 const HELP: u64 = 0x0040_0000;
 const FUNCTION: u64 = 0x0080_0000;
 
-/// Modifier keycodes with their aggregate flag and device bit, the masks
-/// `zflow_mac_modifier_pressed` in capture_bridge.c reads back.
 const MODIFIERS: &[(u16, u64, u64)] = &[
     (59, CONTROL, 0x0000_0001),
     (56, SHIFT, 0x0000_0002),
@@ -165,7 +155,6 @@ const MODIFIERS: &[(u16, u64, u64)] = &[
     (62, CONTROL, 0x0000_2000),
 ];
 
-/// Bundle identifiers of terminals, where Ctrl keeps meaning Ctrl.
 const TERMINALS: &[&str] = &[
     "com.apple.Terminal",
     "com.googlecode.iterm2",
@@ -184,16 +173,10 @@ pub fn mac_keycode_to_hid(code: u16) -> Option<HidUsage> {
         .map(|&(_, usage)| HidUsage::keyboard(usage))
 }
 
-/// The keycode to post for a keyboard-page usage. `iso` is this Mac's own
-/// keyboard type, because the type field on a posted event does not change
-/// the characters it types.
 pub fn hid_to_mac_keycode(usage: HidUsage, iso: bool) -> Option<u16> {
     if usage.page != HidUsagePage::KEYBOARD_KEYPAD {
         return None;
     }
-    // Macs have no PrintScreen. F13 sits in its place on Apple's extended
-    // keyboards and reaches apps; F14 and F15 do not, so ScrollLock and Pause
-    // map to nothing.
     let code = if usage.usage.0 == PRINT_SCREEN {
         F13
     } else {
@@ -205,7 +188,6 @@ pub fn hid_to_mac_keycode(usage: HidUsage, iso: bool) -> Option<u16> {
     })
 }
 
-/// The `NX_KEYTYPE` to post for a consumer-page usage.
 pub fn hid_to_media_key(usage: HidUsage) -> Option<u32> {
     if usage.page != HidUsagePage::CONSUMER {
         return None;
@@ -220,8 +202,6 @@ pub fn is_modifier(code: u16) -> bool {
     MODIFIERS.iter().any(|&(modifier, _, _)| modifier == code)
 }
 
-/// Event flags for the held keycodes: each modifier's aggregate flag and its
-/// left or right device bit. Other keycodes add nothing.
 pub fn modifier_flags(held: impl IntoIterator<Item = u16>) -> u64 {
     let mut flags = 0;
     for code in held {
@@ -232,10 +212,6 @@ pub fn modifier_flags(held: impl IntoIterator<Item = u16>) -> u64 {
     flags
 }
 
-/// Flags a key carries of its own, as CGEventCreateKeyboardEvent sets them
-/// on macOS 27: keypad keys are on the numeric pad, function and navigation
-/// keys carry Fn, and arrows carry both. Setting an event's flags replaces
-/// them, so they go back in.
 pub fn key_flags(code: u16) -> u64 {
     match code {
         123..=126 => NUMERIC_PAD | FUNCTION,

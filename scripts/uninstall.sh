@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Remove installed Linux service files. Configuration and identity state stay by default.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -9,7 +8,6 @@ readonly CONFIG_DIR="/etc/zflow"
 readonly STATE_DIR="/var/lib/zflow"
 readonly UNIT_FILE="/etc/systemd/system/zflowd.service"
 readonly DROPIN_DIR="/etc/systemd/system/zflowd.service.d"
-# Written by zflow setup --prelogin on; older installs always added it.
 readonly PRELOGIN_DROPIN="$DROPIN_DIR/prelogin.conf"
 readonly VIRTUAL_RULE_FILE="/etc/udev/rules.d/70-zflow.rules"
 readonly CAPTURE_RULE_FILE="/etc/udev/rules.d/71-zflow-capture.rules"
@@ -58,7 +56,6 @@ esac
 [[ $# -le 1 ]] || die "too many arguments"
 
 [[ "$(uname -s)" == "Linux" ]] || die "Linux is required"
-# The package owns /usr/lib/systemd/system-sleep/zflow and the service.
 if command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' zflow 2>/dev/null || true)" == 'install ok installed' ]]; then
     die 'zflow is managed by dpkg. Remove it with: sudo apt remove zflow'
 fi

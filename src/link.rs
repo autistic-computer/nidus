@@ -1,18 +1,10 @@
-//! What the Mac app and the Linux daemon share about keeping a session to
-//! each paired computer: how long to wait between attempts, and how to tell
-//! people why one failed.
-
 use std::time::Duration;
 
 use crate::transport::TransportError;
 
 const MAX_RETRY_DELAY: Duration = Duration::from_secs(15);
-/// A session that lasted this long was working, so its loss is retried at
-/// once rather than after a wait.
 pub const STABLE_SESSION: Duration = Duration::from_secs(10);
 
-/// Reconnects at once after a stable session drops, then backs off while
-/// attempts fail.
 pub fn retry_delay(failures: u32) -> Duration {
     match failures {
         0 => Duration::ZERO,
@@ -20,16 +12,10 @@ pub fn retry_delay(failures: u32) -> Duration {
     }
 }
 
-/// A link failure that a person has to fix, rather than a network in the way.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fix {
-    /// The other computer speaks another zflow protocol version.
     Update,
-    /// The other computer answered with a key other than the one saved
-    /// here, as after a reset or reinstall. Its new key is on the shelf.
     NewKey,
-    /// The other computer answered with the right key but has not added
-    /// this one, so a person has to place it there.
     WaitingForThem,
 }
 
@@ -50,9 +36,6 @@ impl Fix {
     }
 }
 
-/// Why a paired computer could not be reached, worded for people. It goes
-/// under or after the computer's name, so it leaves the name out. Errors
-/// without a known fix keep their own text.
 pub fn reason(error: &anyhow::Error) -> String {
     match Fix::of(error) {
         Some(Fix::Update) => "Different zflow version. Update both computers.".into(),
@@ -88,7 +71,6 @@ mod tests {
             reason(&failed(TransportError::PeerIdentityMismatch)),
             "Reset or reinstalled. Drag its new tile onto its old one."
         );
-        // Read under or after the name: "desk: Hasn't added this computer yet."
         let refused = failed(TransportError::NotTrusted);
         assert_eq!(Fix::of(&refused), Some(Fix::WaitingForThem));
         assert_eq!(reason(&refused), "Hasn't added this computer yet.");

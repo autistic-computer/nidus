@@ -7,8 +7,6 @@
 
 static void fake_post(CGEventTapLocation, CGEventRef);
 
-// Posting is faked, so these tests never press a media key on the host.
-// AppKit still builds the events, so the tests read back real fields.
 #define CGEventPost fake_post
 #include "../src/macos/media.m"
 
@@ -36,21 +34,16 @@ static void fake_post(CGEventTapLocation tap, CGEventRef event) {
   posted[posted_count++] = (CGEventRef)CFRetain(event);
 }
 
-// The injector posts from its own thread, never the main one.
 static void *post_from_a_thread(void *unused) {
   (void)unused;
   assert(!pthread_main_np());
   unsigned int count = 0;
-  // Discovery is also called on the core worker. Main Thread Checker checks
-  // the real AppKit calls; this only reads hardware and never changes it.
   if (zflow_mac_displays(found_display, &count)) assert(count > 0);
   assert(zflow_mac_post_media_key(NX_KEYTYPE_SOUND_UP, 1, MARK) == 0);
   assert(zflow_mac_post_media_key(NX_KEYTYPE_PLAY, 0, MARK) == 0);
   return NULL;
 }
 
-// What a keyboard's media key sends: NX_SYSDEFINED subtype 8, the key type
-// in the top half of data1, and down (0xA) or up (0xB) in data1 and flags.
 static void check(CGEventRef event, uint32_t key, int state) {
   assert(CGEventGetType(event) == NX_SYSDEFINED);
   assert(CGEventGetIntegerValueField(event, kCGEventSourceUserData) == MARK);

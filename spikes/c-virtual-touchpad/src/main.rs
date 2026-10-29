@@ -1,12 +1,3 @@
-//! Spike C: does a uinput virtual multitouch touchpad make GNOME fire its
-//! native 3-finger gestures from synthetic contacts?
-//!
-//! Creates a type-B MT touchpad (100x73mm at 30 units/mm), waits for udev and
-//! the compositor to adopt it, then performs a 3-finger swipe UP (GNOME:
-//! overview opens), pauses, and a 3-finger swipe DOWN (overview closes).
-//! Verdict comes from udev classification plus what the compositor visibly
-//! does. Device disappears on exit.
-
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -15,10 +6,10 @@ use evdev::{
     AbsInfo, AbsoluteAxisType, AttributeSet, EventType, InputEvent, Key, PropType, UinputAbsSetup,
 };
 
-const MAX_X: i32 = 2999; // 100mm at 30 units/mm
-const MAX_Y: i32 = 2199; // 73mm
+const MAX_X: i32 = 2999;
+const MAX_Y: i32 = 2199;
 const RES: i32 = 30;
-const FRAME: Duration = Duration::from_millis(8); // 125 Hz
+const FRAME: Duration = Duration::from_millis(8);
 
 fn abs(code: u16, v: i32) -> InputEvent {
     InputEvent::new(EventType::ABSOLUTE, code, v)
@@ -34,7 +25,6 @@ struct Pad {
 }
 
 impl Pad {
-    /// Land three fingers in one frame: x-spread row centered at (cx, cy).
     fn touch_down(&mut self, cx: i32, cy: i32) -> std::io::Result<()> {
         let mut ev = Vec::new();
         for s in 0..3 {
@@ -76,8 +66,6 @@ impl Pad {
         self.dev.emit(&ev)
     }
 
-    /// 3-finger vertical swipe, 45mm of travel. Slow mode takes ~1.3s with a
-    /// 400ms hold at the midpoint to expose 1:1 progressive tracking.
     fn swipe_vertical(&mut self, upward: bool, slow: bool) -> std::io::Result<()> {
         let (y0, y1) = if upward { (1800, 450) } else { (450, 1800) };
         let cx = 1500;
@@ -90,7 +78,7 @@ impl Pad {
             self.move_to(cx, y)?;
             sleep(frame);
             if slow && i == steps / 2 {
-                sleep(Duration::from_millis(400)); // fingers hold mid-gesture
+                sleep(Duration::from_millis(400));
             }
         }
         self.lift()

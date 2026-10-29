@@ -1,10 +1,3 @@
-//! The zflow computers around this one: the mDNS records seen, the addresses
-//! a person added, and the keys their hellos proved. Nothing here is trusted.
-//! It is what the shelf of unplaced tiles and the pairing window are made
-//! of, and where a link finds a trusted key's addresses now.
-//!
-//! Time comes from the caller, so tests run on paused time.
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, SocketAddr},
@@ -24,45 +17,26 @@ use crate::{
 
 pub const MAX_INSTANCES: usize = 64;
 pub const MAX_NEIGHBORS: usize = 32;
-/// Addresses a person may add by hand, for computers mDNS cannot see.
 pub const MAX_ADDED: usize = 8;
-/// A computer stays this long after its last record went away and its last
-/// hello, so a flapping network does not empty the shelf.
 pub const NEIGHBOR_TTL: Duration = Duration::from_secs(60);
-/// A hello this recent means the computer is here now.
 pub const FRESH_HELLO: Duration = Duration::from_secs(30);
-/// How long after a hello got no answer it is tried again: soon at first,
-/// since a computer whose Wi-Fi was asleep drops the first packets, then
-/// every [`HELLO_RETRY_LAST`] while its record is around.
 const HELLO_RETRIES: [Duration; 3] = [
     Duration::from_secs(2),
     Duration::from_secs(5),
     Duration::from_secs(15),
 ];
 const HELLO_RETRY_LAST: Duration = Duration::from_secs(30);
-/// While a pairing window is open, a record that answered is asked again
-/// this long after, half of [`FRESH_HELLO`], so its computer never goes
-/// stale while it is still around.
 const ASK_AGAIN: Duration = Duration::from_secs(15);
-/// A hello that never said how it went, such as one dropped with its task,
-/// is tried again after this long.
 const HELLO_LOST: Duration = Duration::from_secs(30);
-/// Hellos one IP address may start here per window, so a flood from one
-/// host cannot keep this computer busy.
 const HELLOS_PER_IP: u32 = 5;
 const HELLO_WINDOW: Duration = Duration::from_secs(30);
 const MAX_TRACKED_IPS: usize = 64;
 const ADDED_PREFIX: &str = "address:";
 
-/// The lowercase hex SHA-256 of a key, as config records and identities
-/// print it.
 pub fn fingerprint(spki: &[u8]) -> String {
     encode_hex(&Sha256::digest(spki))
 }
 
-/// A key's mark: 24 bits drawn as a small pattern beside its name, so two
-/// computers with one name look different. It tells them apart; it does not
-/// prove which is which.
 pub fn mark(spki: &[u8]) -> String {
     let digest = Sha256::new()
         .chain_update(b"zflow mark v1")
@@ -71,20 +45,15 @@ pub fn mark(spki: &[u8]) -> String {
     encode_hex(&digest[..3])
 }
 
-/// How a computer was found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Via {
     Mdns,
-    /// A person typed its address, as for one across Tailscale.
     Address,
 }
 
-/// A computer the board does not have yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Unplaced {
-    /// `key:<fingerprint>` once a hello proved its key, which is what
-    /// `place` takes, else `instance:<record>`.
     pub id: String,
     pub name: String,
     pub os: Option<Os>,
@@ -97,24 +66,16 @@ pub struct Unplaced {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UnplacedState {
-    /// Found, and its hello has not come back yet.
     Identifying,
     Ready,
-    /// It speaks another zflow version, so it cannot be placed.
     DifferentVersion,
-    /// Another computer here has its name. It can be placed, never joined
-    /// on its own.
     DuplicateName,
 }
 
-/// What the pairing window weighs: the computers nobody here trusts yet.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Strangers {
     pub present: Vec<Stranger>,
-    /// Compatible records whose key is not known yet. One might be anyone.
     pub unidentified: usize,
-    /// A record, hello or connection was turned away because a table was
-    /// full, so a stranger may be missing from `present`.
     pub turned_away: bool,
 }
 
@@ -123,17 +84,11 @@ pub struct Stranger {
     pub key: String,
     pub name: String,
     pub mark: String,
-    /// Its key answered a hello this computer sent to an mDNS record or to
-    /// an address a person added. A hello that only came in could be from
-    /// anywhere, so it never makes a computer the one to join.
     pub answered: bool,
-    /// Said hello within [`FRESH_HELLO`].
     pub fresh: bool,
-    /// Shares its name with a trusted computer or another stranger.
     pub duplicate_name: bool,
 }
 
-/// A computer whose key a hello proved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Neighbor {
     pub spki: Vec<u8>,
@@ -141,11 +96,9 @@ pub struct Neighbor {
     pub os: Os,
     pub version: String,
     pub mark: String,
-    /// Where it takes input, best first.
     pub addresses: Vec<SocketAddr>,
     pub via: Via,
     last_hello: Instant,
-    /// When its last record went away, or when it was learned without one.
     last_seen: Instant,
 }
 
@@ -154,34 +107,25 @@ struct Instance {
     addresses: Vec<SocketAddr>,
     compatible: bool,
     name: Option<String>,
-    /// The key a hello to these addresses proved.
     key: Option<String>,
     asking: Asking,
 }
 
-/// Where the hellos to a record's addresses stand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Asking {
-    /// Not asked since its addresses changed.
     Due,
-    /// Asked, and `unanswered` hellos got no answer. It is asked again at
-    /// `again`, unless one answers first.
     Waiting { again: Instant, unanswered: u32 },
-    /// Its hello came back at `at`. Only an open pairing window asks it
-    /// again, see [`Neighbors::keep_fresh`].
     Answered { at: Instant },
 }
 
 #[derive(Debug)]
 pub struct Neighbors {
     own: String,
-    /// This computer's own mDNS record, which browsing finds too.
     own_record: Option<String>,
     instances: BTreeMap<String, Instance>,
     neighbors: BTreeMap<String, Neighbor>,
     added: Vec<String>,
     hellos: BTreeMap<IpAddr, (Instant, u32)>,
-    /// Set for good once anything was turned away for want of room.
     turned_away: bool,
 }
 
@@ -198,17 +142,10 @@ impl Neighbors {
         }
     }
 
-    /// Notes that something was turned away because a table was full, here
-    /// or elsewhere, such as a handshake while too many were under way. The
-    /// computer turned away could be a second stranger, so the pairing
-    /// window can no longer take one by itself.
     pub fn turned_one_away(&mut self) {
         self.turned_away = true;
     }
 
-    /// Names this computer's own mDNS record. Its hellos would come back
-    /// to this computer, which hangs up on them, so it is never said hello
-    /// to and never holds the pairing window as a computer not known yet.
     pub fn own_record(&mut self, instance: Option<String>) {
         if let Some(instance) = &instance {
             self.instances.remove(instance);
@@ -216,8 +153,6 @@ impl Neighbors {
         self.own_record = instance;
     }
 
-    /// An mDNS record was resolved. A record whose addresses changed gets a
-    /// new hello, since another computer may have them now.
     pub fn instance_seen(
         &mut self,
         instance: &str,
@@ -251,8 +186,6 @@ impl Neighbors {
         }
     }
 
-    /// An mDNS record went away. Its computer stays a while in case it
-    /// comes back.
     pub fn instance_gone(&mut self, instance: &str, now: Instant) {
         if let Some(Instance { key: Some(key), .. }) = self.instances.remove(instance)
             && let Some(neighbor) = self.neighbors.get_mut(&key)
@@ -261,8 +194,6 @@ impl Neighbors {
         }
     }
 
-    /// A person added an address. It is said hello to like a record, and
-    /// stays until more are added than [`MAX_ADDED`].
     pub fn add_address(&mut self, address: SocketAddr) {
         let id = format!("{ADDED_PREFIX}{address}");
         self.added.retain(|added| *added != id);
@@ -283,9 +214,6 @@ impl Neighbors {
         );
     }
 
-    /// Makes the records that answered [`ASK_AGAIN`] ago due, for an open
-    /// pairing window: it takes only a computer heard from within
-    /// [`FRESH_HELLO`], and it may open long after the last hello.
     pub fn keep_fresh(&mut self, now: Instant) {
         for instance in self.instances.values_mut() {
             if let Asking::Answered { at } = instance.asking
@@ -296,10 +224,6 @@ impl Neighbors {
         }
     }
 
-    /// Records that need a hello now, at most `room` of them: those never
-    /// asked since their addresses changed, and those whose last hello got
-    /// no answer, once their wait is over. Pass the record back to
-    /// [`Self::hello`] with the answer, or to [`Self::no_answer`].
     pub fn take_due_hellos(&mut self, room: usize, now: Instant) -> Vec<(String, Vec<SocketAddr>)> {
         let mut due = Vec::new();
         for (id, instance) in &mut self.instances {
@@ -320,8 +244,6 @@ impl Neighbors {
         due
     }
 
-    /// The hello to the record `instance` got no answer at any of its
-    /// addresses, so it is asked again after a wait that grows.
     pub fn no_answer(&mut self, instance: &str, now: Instant) {
         let Some(instance) = self.instances.get_mut(instance) else {
             return;
@@ -338,9 +260,6 @@ impl Neighbors {
         }
     }
 
-    /// Whether to answer one more hello from `ip` now. One from loopback or
-    /// from this computer's own addresses, `local`, comes from a process
-    /// here rather than another computer, and is never answered.
     pub fn allow_hello(&mut self, ip: IpAddr, local: &[IpAddr], now: Instant) -> bool {
         let ip = ip.to_canonical();
         if ip.is_loopback() || local.contains(&ip) {
@@ -357,9 +276,6 @@ impl Neighbors {
         *count <= HELLOS_PER_IP
     }
 
-    /// A hello came back from a record, or arrived from `remote`. Returns
-    /// the key's fingerprint, or None when it is this computer's own key or
-    /// there is no room for another computer.
     pub fn hello(
         &mut self,
         spki: &[u8],
@@ -420,9 +336,6 @@ impl Neighbors {
         self.neighbors.get(key)
     }
 
-    /// Where the computer with this key takes input now: the addresses of
-    /// every record its hellos came from, then what its hello claimed. A
-    /// link pins the key, so a wrong guess only fails to connect.
     pub fn addresses_for_key(&self, key: &str) -> Vec<SocketAddr> {
         let mut addresses: Vec<SocketAddr> = self
             .instances
@@ -438,8 +351,6 @@ impl Neighbors {
         addresses
     }
 
-    /// Drops computers whose records are gone and which have not said hello
-    /// for [`NEIGHBOR_TTL`]. Call it on each tick.
     pub fn expire(&mut self, now: Instant) {
         let mapped: BTreeSet<&String> = self
             .instances
@@ -452,8 +363,6 @@ impl Neighbors {
         });
     }
 
-    /// The tiles for the shelf under the board: every computer around that
-    /// is not trusted here, by name.
     pub fn unplaced(&self, config: &Config) -> Vec<Unplaced> {
         let trusted = trusted_keys(config);
         let strangers = self.strangers_of(config, &trusted, None);
@@ -503,7 +412,6 @@ impl Neighbors {
         tiles
     }
 
-    /// The computers nobody here trusts yet, for the pairing window.
     pub fn strangers(&self, config: &Config, now: Instant) -> Strangers {
         let trusted = trusted_keys(config);
         Strangers {
@@ -560,11 +468,6 @@ impl Neighbors {
 }
 
 impl Neighbors {
-    /// The found computers a peer placed, which this computer trusts as if
-    /// a person here had placed them. Each has a tile in `layout`, the one
-    /// this computer keeps from its peers, and answered a hello this
-    /// computer sent with that tile's key: a hello that only came in could
-    /// be from anywhere. One a person here forgot is never among them.
     pub fn introduced(
         &self,
         config: &Config,
@@ -627,7 +530,6 @@ mod tests {
         around.instance_seen("zf-desk", desk.clone(), true, Some("desk".into()));
         around.instance_seen("zf-old", vec![at("192.0.2.9:43119")], false, None);
         let now = Instant::now();
-        // Only the compatible record is asked, once.
         assert_eq!(
             around.take_due_hellos(4, now),
             [("zf-desk".to_owned(), desk.clone())]
@@ -639,8 +541,6 @@ mod tests {
             .hello(&spki(1), desk[0], &hello, Some("zf-desk"), now)
             .unwrap();
         assert_eq!(key, fingerprint(&spki(1)));
-        // The record's addresses first, then what the hello claimed; the
-        // addresses do not have to overlap anything saved.
         assert_eq!(
             around.addresses_for_key(&key),
             [desk[0], desk[1], at("100.64.0.7:43119")]
@@ -650,12 +550,10 @@ mod tests {
         assert_eq!(neighbor.mark, mark(&spki(1)));
         assert!(around.addresses_for_key(&fingerprint(&spki(2))).is_empty());
 
-        // New addresses for the record mean a new hello.
         let moved = vec![at("192.0.2.70:43119")];
         around.instance_seen("zf-desk", moved.clone(), true, Some("desk".into()));
         assert_eq!(around.take_due_hellos(4, now), [("zf-desk".into(), moved)]);
 
-        // This computer's own record maps to its own key and stays hidden.
         around.instance_seen("zf-me", vec![at("192.0.2.2:43119")], true, None);
         around.take_due_hellos(4, now);
         assert_eq!(
@@ -673,8 +571,6 @@ mod tests {
         assert_eq!(shelf[0].name, "Computer");
         assert_eq!(shelf[0].state, UnplacedState::DifferentVersion);
         assert_eq!(shelf[1].state, UnplacedState::Ready);
-        // It claimed to trust this computer, which anyone can claim, so the
-        // shelf does not repeat it.
         assert!(hello.trusts_you);
         let tile = serde_json::to_value(&shelf[1]).unwrap();
         assert!(tile.get("trusts_you").is_none(), "{tile}");
@@ -684,8 +580,6 @@ mod tests {
     async fn computers_a_peer_placed_are_introduced_unless_forgotten_here() {
         let mut around = Neighbors::new(&spki(0));
         let now = Instant::now();
-        // Says hello as `name`; `asked` when this computer found it and
-        // sent the hello, else the hello only came in.
         let mut found = |byte: u8, name: &str, asked: bool| {
             let address = SocketAddr::from(([192, 0, 2, byte], 43119));
             let instance = format!("zf-{name}");
@@ -723,8 +617,6 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let mut forgotten = crate::forgotten::Forgotten::load(directory.path());
         let mut config = Config::default();
-        // Only the one with a tile that answered this computer's hello: a
-        // hello that came in could be from anywhere.
         assert_eq!(
             around.introduced(&config, &layout, &forgotten),
             std::slice::from_ref(&placed)
@@ -756,15 +648,10 @@ mod tests {
         let start = Instant::now();
         assert_eq!(around.take_due_hellos(4, start).len(), 4);
         assert_eq!(around.take_due_hellos(4, start).len(), 2);
-        // A hello still out is not sent again, unless it never says how it
-        // went.
         assert!(around.take_due_hellos(4, start).is_empty());
         assert_eq!(around.strangers(&Config::default(), start).unidentified, 6);
         assert_eq!(around.take_due_hellos(10, start + HELLO_LOST).len(), 6);
 
-        // A record that never answers is asked again after 2, 5 and 15
-        // seconds, then every 30, as a computer whose Wi-Fi was asleep
-        // wakes up.
         let mut around = Neighbors::new(&spki(0));
         around.instance_seen("zf-desk", vec![at("192.0.2.7:43119")], true, None);
         let mut now = Instant::now();
@@ -777,7 +664,6 @@ mod tests {
             assert_eq!(around.take_due_hellos(1, now).len(), 1, "{wait:?}");
         }
 
-        // New addresses start the waits over, and an answer ends them.
         around.no_answer("zf-desk", now);
         let moved = at("192.0.2.70:43119");
         around.instance_seen("zf-desk", vec![moved], true, None);
@@ -796,7 +682,6 @@ mod tests {
         let mut around = Neighbors::new(&spki(0));
         let own = vec![at("192.0.2.2:43119"), at("[2001:db8::2]:43119")];
         around.instance_seen("zf-me", own.clone(), true, Some("me".into()));
-        // Seen before its own advertisement was known, and dropped once it is.
         around.own_record(Some("zf-me".into()));
         around.instance_seen("zf-me", own, true, Some("me".into()));
         around.instance_seen("zf-desk", vec![at("192.0.2.7:43119")], true, None);
@@ -835,7 +720,6 @@ mod tests {
                 Instant::now(),
             )
             .unwrap();
-        // While its record is up it never expires.
         tokio::time::advance(NEIGHBOR_TTL * 2).await;
         around.expire(Instant::now());
         assert!(around.neighbor(&key).is_some());
@@ -867,7 +751,6 @@ mod tests {
                 .hello(&spki(200), at("192.0.2.7:43119"), &hello, None, now)
                 .is_none()
         );
-        // A known one still refreshes.
         assert!(
             around
                 .hello(&spki(1), at("192.0.2.7:43119"), &hello, None, now)
@@ -919,22 +802,18 @@ mod tests {
         let hello = make_hello("desk", 43119, Vec::new(), false);
         let answered =
             |around: &Neighbors| around.strangers(&Config::default(), now).present[0].answered;
-        // A hello that came in shows a tile, but could be from anywhere.
         let key = around.hello(&spki(1), desk, &hello, None, now).unwrap();
         assert!(!answered(&around));
         assert_eq!(
             around.unplaced(&Config::default())[0].id,
             format!("key:{key}")
         );
-        // The answer to a hello sent to its record proves where it is.
         around.instance_seen("zf-desk", vec![desk], true, Some("desk".into()));
         around.take_due_hellos(4, now);
         around.hello(&spki(1), desk, &hello, Some("zf-desk"), now);
         assert!(answered(&around));
-        // Without the record, it is back to a hello that came in.
         around.instance_gone("zf-desk", now);
         assert!(!answered(&around));
-        // An address a person added counts like a record.
         around.add_address(desk);
         let added = format!("address:{desk}");
         around.hello(&spki(1), desk, &hello, Some(&added), now);
@@ -954,7 +833,6 @@ mod tests {
             let address = SocketAddr::from(([198, 51, 100, (index % 250) as u8], 43119));
             around.instance_seen(&format!("zf-{index}"), vec![address], true, None);
         }
-        // A known record still updates; only a new one is turned away.
         around.instance_seen("zf-0", vec![remote], true, None);
         assert!(!turned_away(&around));
         around.instance_seen("zf-new", vec![remote], true, None);
@@ -973,7 +851,6 @@ mod tests {
             let ip = std::net::Ipv4Addr::from(0xc633_6400 + host);
             assert!(around.allow_hello(ip.into(), &[], now));
         }
-        // Too many hellos from one address is that address's own limit.
         let first: IpAddr = "198.51.100.0".parse().unwrap();
         for _ in 0..HELLOS_PER_IP {
             around.allow_hello(first, &[], now);
@@ -982,7 +859,6 @@ mod tests {
         assert!(!around.allow_hello("192.0.2.99".parse().unwrap(), &[], now));
         assert!(turned_away(&around));
 
-        // Elsewhere, such as too many handshakes at once, counts the same.
         let mut around = Neighbors::new(&spki(0));
         around.turned_one_away();
         assert!(turned_away(&around));
@@ -1015,12 +891,10 @@ mod tests {
         assert_eq!(state(&shelf, &desk), Some(UnplacedState::DuplicateName));
         assert_eq!(state(&shelf, &laptop), Some(UnplacedState::Ready));
 
-        // Trusting one takes it off the shelf. Its namesake is still one.
         trusting(&mut config, "desk", &spki(1));
         let shelf = around.unplaced(&config);
         assert_eq!(state(&shelf, &desk), None);
         assert_eq!(state(&shelf, &twin), Some(UnplacedState::DuplicateName));
-        // Forgetting it puts it back at once.
         config.peers.clear();
         assert_eq!(around.unplaced(&config).len(), 3);
         let strangers = around.strangers(&config, now);
@@ -1040,8 +914,6 @@ mod tests {
         around.take_due_hellos(4, start);
         let hello = make_hello("desk", 43119, Vec::new(), false);
         around.hello(&spki(1), desk, &hello, Some("zf-desk"), start);
-        // Nothing asks an answered record again by itself, so a window
-        // that opens a minute later would find its computer stale.
         let later = start + Duration::from_secs(60);
         assert!(around.take_due_hellos(4, later).is_empty());
         assert!(!around.strangers(&Config::default(), later).present[0].fresh);
@@ -1080,8 +952,6 @@ mod tests {
         for host in 1..=MAX_ADDED as u8 {
             around.add_address(SocketAddr::from(([100, 64, 1, host], 43119)));
         }
-        // The oldest added address made room, and its computer stays only
-        // as long as its hellos do.
         assert!(around.addresses_for_key(&key).contains(&tailnet));
         assert!(!around.instances.contains_key(&format!("address:{tailnet}")));
     }

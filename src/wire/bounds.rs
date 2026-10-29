@@ -1,6 +1,3 @@
-//! Limits a peer's message must respect. The family payload caps already bound
-//! what decoding can allocate, so these checks run on the decoded value.
-
 use crate::core::{ReliableControl, TouchState};
 
 use super::{MAX_NAME_BYTES, MAX_VERSION_BYTES, WireError, WireMessage};
@@ -11,8 +8,6 @@ pub const MAX_CONTACTS: usize = 32;
 pub const MAX_HELD_KEYS: usize = 32;
 pub const MAX_HELD_BUTTONS: usize = 16;
 
-/// Runs before encoding and after decoding, so neither side sends or accepts
-/// a message the other would refuse.
 pub(super) fn validate(message: &WireMessage) -> Result<(), WireError> {
     match message {
         WireMessage::NegotiationOffer(offer) => limit(

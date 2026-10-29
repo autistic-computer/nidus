@@ -1,10 +1,3 @@
-//! Spike E: pre-login uinput injection.
-//!
-//! The system service creates and classifies a virtual keyboard, reports
-//! readiness to systemd, then emits one visible sentinel after the display
-//! manager starts. The sentinel never includes Enter: it types ZFLOW and
-//! removes the five characters with Backspace.
-
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{Error, ErrorKind, Write};
@@ -81,8 +74,6 @@ fn tap(device: &mut VirtualDevice, key: Key) -> std::io::Result<()> {
 
 fn keyboard_keys() -> AttributeSet<Key> {
     let mut keys = AttributeSet::<Key>::new();
-    // Advertise the conventional keyboard range. systemd's input_id builtin
-    // requires the low key-code block before it sets ID_INPUT_KEYBOARD=1.
     for code in Key::KEY_ESC.code()..=Key::KEY_MICMUTE.code() {
         keys.insert(Key::new(code));
     }
@@ -216,8 +207,6 @@ fn main() -> std::io::Result<()> {
                     .unwrap_or(settle);
             }
             "--no-inject" => no_inject = true,
-            // Consume arguments from the first installed spike. The corrected
-            // harness emits one cycle regardless of these legacy values.
             "--rounds" | "--interval" => {
                 let _ = args.next();
             }

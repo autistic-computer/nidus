@@ -15,7 +15,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
   #expect(fit.scale == 1512.0 / 3840)
   #expect(fit.frame.minX == 0 && fit.frame.width == 1512)
   #expect(abs(fit.frame.minY - (982 - 850.5) / 2) < 1e-9)
-  // The desktop's top left is the overlay's upper left, y being up there.
   #expect(near(fit.point(.zero), CGPoint(x: 0, y: fit.frame.maxY)))
   #expect(near(fit.point(CGPoint(x: 3840, y: 2160)), CGPoint(x: 1512, y: fit.frame.minY)))
   #expect(abs(fit.pixels(200) - 200 / fit.scale) < 1e-9)
@@ -50,7 +49,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
   let fit = try #require(
     LensFit(
       desktop: CGSize(width: 3840, height: 2160), in: CGRect(x: 0, y: 0, width: 1512, height: 982)))
-  // Above the desktop, in the top bar, and past the right edge.
   let above = fit.pixel(CGPoint(x: 756, y: 975))
   #expect(above.y < 0)
   #expect(fit.clamped(above) == CGPoint(x: above.x, y: 0))
@@ -66,10 +64,8 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
   #expect(grid.rect(0) == CGRect(x: 0, y: 0, width: 256, height: 256))
   #expect(grid.rect(134) == CGRect(x: 3584, y: 2048, width: 256, height: 112))
   #expect(grid.rect(135) == nil && grid.rect(-1) == nil)
-  // Layers sit y up: the first row is at the top of the desktop layer.
   #expect(grid.frame(0) == CGRect(x: 0, y: 1904, width: 256, height: 256))
   #expect(grid.frame(134) == CGRect(x: 3584, y: 0, width: 256, height: 112))
-  // The layers cover the desktop once, with no gaps.
   let frames = (0..<grid.count).compactMap(grid.frame)
   let area = frames.reduce(CGFloat(0)) { $0 + $1.width * $1.height }
   #expect(area == CGFloat(3840 * 2160))
@@ -77,7 +73,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
 }
 
 @Test func aCircleCoversTheChunksUnderItsSquare() throws {
-  // The cases in src/lens/viewer.rs.
   let small = LensGrid(width: 600, height: 300)
   #expect(small.chunks(around: CGPoint(x: 100, y: 100), radius: 50) == [0])
   #expect(small.chunks(around: CGPoint(x: 590, y: 290), radius: 20) == [5])
@@ -87,7 +82,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
   #expect(grid.chunks(around: CGPoint(x: 256, y: 256), radius: 10) == [0, 1, 15, 16])
   #expect(grid.chunks(around: CGPoint(x: 5000, y: 100), radius: 100) == [])
   #expect(grid.chunks(around: CGPoint(x: CGFloat.nan, y: 0), radius: 10) == [])
-  // A 200 point lens on a 1512 point screen, at the bottom right corner.
   let fit = try #require(
     LensFit(
       desktop: CGSize(width: 3840, height: 2160), in: CGRect(x: 0, y: 0, width: 1512, height: 982)))
@@ -111,7 +105,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
 }
 
 @Test func scrollingMovesContentTheWayItMovesHere() {
-  // AppKit's deltas point the way content moves; the engine's dy grows toward the page's end.
   let swipe = LensInput.scroll(dx: 3, dy: -10, precise: true)
   #expect(swipe.dx == -3 && swipe.dy == 10)
   let wheel = LensInput.scroll(dx: 0, dy: 1, precise: false)
@@ -122,7 +115,6 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
   #expect(LensInput.keyDown(53, characters: "\u{1b}", flags: []) == .close)
   #expect(LensInput.keyDown(8, characters: "c", flags: .command) == .copy)
   #expect(LensInput.keyDown(8, characters: "C", flags: [.command, .capsLock]) == .copy)
-  // Dvorak puts c elsewhere; the shortcut follows the letter.
   #expect(LensInput.keyDown(34, characters: "c", flags: .command) == .copy)
   #expect(LensInput.keyDown(8, characters: "c", flags: [.command, .shift]) == .send)
   #expect(LensInput.keyDown(8, characters: "c", flags: .control) == .send)
@@ -133,11 +125,9 @@ private func near(_ a: CGPoint, _ b: CGPoint) -> Bool {
 @Test func modifiersReadEachSide() {
   let shift = NSEvent.ModifierFlags.shift.rawValue
   #expect(LensInput.modifier(56, flags: shift | 0x02) == true)
-  // The right one goes down while the left is held, then the left comes up.
   #expect(LensInput.modifier(60, flags: shift | 0x06) == true)
   #expect(LensInput.modifier(56, flags: shift | 0x04) == false)
   #expect(LensInput.modifier(60, flags: 0) == false)
-  // Made by software, with no side.
   #expect(LensInput.modifier(55, flags: NSEvent.ModifierFlags.command.rawValue) == true)
   #expect(LensInput.modifier(62, flags: NSEvent.ModifierFlags.control.rawValue | 0x2000) == true)
   #expect(LensInput.modifier(59, flags: NSEvent.ModifierFlags.control.rawValue | 0x2000) == false)
@@ -167,7 +157,6 @@ private func peer(_ name: String, _ state: Peer.State) -> Peer {
   ]
   #expect(AppModel.lensTarget(peers: peers, last: "tower") == "tower")
   #expect(AppModel.lensTarget(peers: peers, last: "studio") == "studio")
-  // Never looked, or the last one is no longer connected or gone: the first connected one.
   #expect(AppModel.lensTarget(peers: peers, last: nil) == "laptop")
   #expect(AppModel.lensTarget(peers: peers, last: "desk") == "laptop")
   #expect(AppModel.lensTarget(peers: peers, last: "gone") == "laptop")

@@ -9,15 +9,11 @@ import XPC
 @MainActor @Observable
 final class Services {
   var helperReady = false
-  /// What the Reduce Wi-Fi lag row says while the helper is not ready.
   var helperNote = "Checking the Wi-Fi helper…"
-  /// The row's fix, when there is one.
   var helperAction: String?
   var helperBusy = false
   var loginEnabled = SMAppService.mainApp.status == .enabled
   var error: String?
-  /// Only a build signed by a team can install the helper, and that can't
-  /// change while zflow runs.
   let hasSigningTeam = Services.signingTeam()
   private var refreshing = false
   private let helper = SMAppService.daemon(plistName: "io.zflow.awdl.plist")
@@ -81,9 +77,6 @@ final class Services {
       if status == .requiresApproval {
         SMAppService.openSystemSettingsLoginItems()
       } else if status == .enabled, await Self.checkHelper() {
-        // The row refreshes every 10 s, so this button can outlive the approval
-        // that started the helper. Unregistering disables the item, and macOS
-        // refuses an immediate register, so a working helper is left alone.
       } else {
         if helper.status == .enabled { try await helper.unregister() }
         try helper.register()
@@ -122,8 +115,6 @@ final class Services {
     }
   }
 
-  /// Asks the helper whether it can reach awdl0. The helper answers only this
-  /// signed app, and this side accepts only the helper from the same team.
   private nonisolated static func checkHelper() async -> Bool {
     guard
       let session = try? XPCSession(
@@ -134,8 +125,6 @@ final class Services {
     request["command"] = "check"
     return await withCheckedContinuation { continuation in
       let answer = Answer(continuation)
-      // Cancelling does not always answer a pending reply, so the deadline
-      // answers itself and a stuck helper cannot hold the check open.
       DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
         session.cancel(reason: "Helper check timed out")
         answer.give(false)
@@ -150,7 +139,6 @@ final class Services {
   }
 }
 
-/// A check's answer, given once by whichever of the reply and the deadline comes first.
 private final class Answer: Sendable {
   private let continuation: Mutex<CheckedContinuation<Bool, Never>?>
   init(_ continuation: CheckedContinuation<Bool, Never>) {

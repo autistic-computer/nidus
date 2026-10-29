@@ -10,10 +10,8 @@ use crate::{
     core::{ContactId, SourceDimensions, TouchContact, TouchState, TouchTool},
 };
 
-/// ABS_MT_TOOL_TYPE for a contact the kernel recognised as a palm.
 const MT_TOOL_PALM: i32 = 2;
 
-/// The keys a touchpad holds for how many fingers touch it, one at a time.
 const TOOL_FINGERS: [KeyCode; 5] = [
     KeyCode::BTN_TOOL_FINGER,
     KeyCode::BTN_TOOL_DOUBLETAP,
@@ -26,7 +24,6 @@ const TOOL_FINGERS: [KeyCode; 5] = [
 pub struct TouchAxisRange {
     minimum: i32,
     maximum: i32,
-    /// Units per millimetre; 0 when the driver does not report it.
     resolution: i32,
 }
 
@@ -56,17 +53,13 @@ struct SlotState {
     palm: bool,
 }
 
-/// Converts Linux type-B multitouch slot updates into complete contact states.
-/// A snapshot is emitted only at SYN_REPORT, preserving kernel frame semantics.
 #[derive(Debug)]
 pub struct TouchAccumulator {
     x: TouchAxisRange,
     y: TouchAxisRange,
-    /// Device units per 100 mm on x and y.
     units_per_100mm: [i64; 2],
     slots: [SlotState; MAX_TOUCHPAD_CONTACTS],
     current_slot: Option<usize>,
-    /// One bit per BTN_TOOL_* key held, lowest for one finger.
     tools: u8,
     dirty: bool,
     event_count: u64,
@@ -115,7 +108,6 @@ impl TouchAccumulator {
             LOGGED.call_once(|| {
                 tracing::warn!("touchpad reports no resolution; assuming it is 100 mm wide");
             });
-            // Square units keep the pad's aspect ratio.
             [i64::from(x.extent()); 2]
         };
         Self {
@@ -130,7 +122,6 @@ impl TouchAccumulator {
         }
     }
 
-    /// Returns a complete state and the number of mapped events at SYN_REPORT.
     pub fn push(&mut self, event: InputEvent) -> io::Result<Option<(TouchState, u64)>> {
         if event.event_type() == EventType::SYNCHRONIZATION {
             return match SynchronizationCode(event.code()) {
@@ -141,8 +132,6 @@ impl TouchAccumulator {
                     Ok(Some((state, count)))
                 }
                 SynchronizationCode::SYN_REPORT => Ok(None),
-                // Slots changed while events were lost. Fail rather than keep
-                // contacts the kernel may already have lifted.
                 SynchronizationCode::SYN_DROPPED => {
                     Err(io::Error::other("multitouch synchronization was lost"))
                 }
@@ -195,7 +184,6 @@ impl TouchAccumulator {
                 }
                 self.mapped();
             }
-            // Raw snapshots carry no palms; only the pointer path reads it.
             AbsoluteAxisCode::ABS_MT_TOOL_TYPE => {
                 if let Some(slot) = self.current_slot {
                     self.slots[slot].palm = event.value() == MT_TOOL_PALM;
@@ -206,8 +194,6 @@ impl TouchAccumulator {
         Ok(None)
     }
 
-    /// The fingers on the pad now, palms left out, in hundredths of a
-    /// millimetre like snapshots.
     pub fn fingers(&self) -> Vec<Finger> {
         let [x_scale, y_scale] = self.units_per_100mm;
         self.slots
@@ -223,8 +209,6 @@ impl TouchAccumulator {
             .collect()
     }
 
-    /// How many fingers touch the pad, palms left out. The kernel may count
-    /// more than the pad has slots for.
     pub fn finger_count(&self) -> usize {
         let active = |palm| {
             self.slots
@@ -264,7 +248,6 @@ impl TouchAccumulator {
     }
 }
 
-/// Converts non-negative device units to hundredths of a millimetre, rounded.
 fn hundredths_mm(units: i64, units_per_100mm: i64) -> i32 {
     let hundredths = (units * 10_000 + units_per_100mm / 2) / units_per_100mm;
     hundredths.min(i32::MAX.into()) as i32
@@ -308,7 +291,6 @@ mod tests {
 
     #[test]
     fn positions_and_size_use_the_axis_resolution() {
-        // 13 units/mm across and 10 down: the pad is 99.92 x 72.2 mm.
         let contact = land(&mut accumulator(), 750, 411);
         assert_eq!((contact.x, contact.y), (5_000, 3_610));
         assert_eq!(

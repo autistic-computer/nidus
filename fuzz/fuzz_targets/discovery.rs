@@ -6,10 +6,6 @@ use libfuzzer_sys::fuzz_target;
 use mdns_sd::{ResolvedService, ScopedIp, ServiceInfo, TxtProperties, TxtProperty};
 use zflow::discovery::{SERVICE_TYPE, parse_resolved_service};
 
-// Any host on the LAN can send these records. Input layout: port (2 bytes),
-// address count (1 byte), 17 bytes per address (a tag byte, then IPv4 in the
-// next 4 bytes or IPv6 in the next 16), then service type, full name and host
-// separated by NUL, then raw TXT record bytes.
 fuzz_target!(|data: &[u8]| {
     if let Some(service) = resolved_service(data) {
         let _ = parse_resolved_service(&service);
@@ -24,7 +20,6 @@ fn resolved_service(data: &[u8]) -> Option<ResolvedService> {
     let (ty_domain, fullname, host) = (text(), text(), text());
     let txt = fields.next().unwrap_or_default();
 
-    // ResolvedService is non_exhaustive, so start from a real one.
     let mut service = ServiceInfo::new(
         SERVICE_TYPE,
         "fuzz",

@@ -12,7 +12,6 @@
 #define LEASE_MS 2000
 #define CHECK_MS 100
 
-// The daemon grants one lease at a time, so the guardian needs no lock.
 typedef struct {
   void *context;
   int (*get_up)(void *, bool *);
@@ -163,8 +162,6 @@ int zflow_awdl_run(int input_fd, int output_fd) {
 }
 #endif
 
-// Rechecks awdl0 every CHECK_MS while leased, and ends the lease when the app
-// misses its deadline or closes the pipe.
 static int run_guardian_fds(Backend backend, int input_fd, int output_fd) {
   uint64_t now = milliseconds();
   if (now == UINT64_MAX) return 1;

@@ -3,8 +3,6 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk?version=4.0';
 
-// Only the installed app imports this file. The GNOME extension has its own
-// update mechanism through extensions.gnome.org.
 const INTERVAL = 6 * 60 * 60;
 
 export class Updates {
@@ -49,8 +47,6 @@ export class Updates {
         this.opened();
     }
 
-    // Opening zflow checks, also when its window is already open, such as
-    // from the notification the desktop agent shows for a new release.
     opened() {
         if (this._automatic.active) this.check(true);
     }
@@ -137,7 +133,6 @@ export class Updates {
         this._button.sensitive = this._automatic.sensitive = false;
         this._row.subtitle = 'Downloading and installing… Approve the system prompt to continue.';
         try {
-            // Do not cancel an authorized package transaction when a window closes.
             await this._run(['install', '--version', release, '--gui'], null);
             this._restartNeeded = true;
             this._button.label = 'Restart';

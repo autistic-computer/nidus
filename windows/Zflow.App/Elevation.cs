@@ -27,13 +27,11 @@ internal static class Elevation
         {
             using var child = Process.Start(start);
             if (child is null) return false;
-            // Keep the current app if elevation used another account or the
-            // replacement could not initialize. Only the child signals readiness.
             if (!await Task.Run(() => ready.WaitOne(TimeSpan.FromSeconds(8))))
                 throw new IOException("The administrator app could not start. Your current zflow is still running.");
             return true;
         }
-        catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return false; } // UAC cancelled: keep the current app.
+        catch (Win32Exception e) when (e.NativeErrorCode == 1223) { return false; }
     }
 
     public static async Task<bool> WaitForPreviousAsync(string[] args)
@@ -53,7 +51,7 @@ internal static class Elevation
             using (var ready = EventWaitHandle.OpenExisting(args[readyArg + 1])) ready.Set();
             Process previous;
             try { previous = Process.GetProcessById(pid); }
-            catch (ArgumentException) { return true; } // The previous app already exited.
+            catch (ArgumentException) { return true; }
             using (previous)
             using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
                 await previous.WaitForExitAsync(timeout.Token);

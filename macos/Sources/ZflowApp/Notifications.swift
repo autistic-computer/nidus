@@ -1,8 +1,5 @@
 import UserNotifications
 
-/// Tells people when a computer joined, with a Forget button for one that
-/// is not theirs, and when an update is available. macOS asks for permission
-/// the first time there is something to tell, not at launch.
 @MainActor
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
   nonisolated static let category = "joined"
@@ -10,8 +7,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
   nonisolated static let update = "update"
   private weak var model: AppModel?
 
-  /// Takes the clicks on notifications. Called before launch finishes, so
-  /// one that relaunched zflow still arrives.
   func listen() {
     let center = UNUserNotificationCenter.current()
     center.delegate = self
@@ -76,8 +71,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
   }
 
-  /// Shown even while zflow is in front, since the person may be looking
-  /// at another computer.
   nonisolated func userNotificationCenter(
     _ center: UNUserNotificationCenter, willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions {

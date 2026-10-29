@@ -1,5 +1,3 @@
-"""Check release gates without submitting software to Apple."""
-
 import json
 import os
 from pathlib import Path

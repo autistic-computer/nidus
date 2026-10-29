@@ -8,24 +8,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-// AppKit's pasteboard is only safe on the main thread, so each call below
-// does its pasteboard part there and waits a bounded time for it. The main
-// thread never waits on the caller, so a busy main thread only makes the
-// call fail. Image conversion and copying stay on the caller's thread.
-
-// What a read found. Text and PNG match ClipKind's wire codes.
 enum {
   ZFLOW_CLIP_EMPTY = 0,
   ZFLOW_CLIP_TEXT = 1,
   ZFLOW_CLIP_PNG = 2,
-  // The change count was still the one the caller wrote, so nothing was read.
   ZFLOW_CLIP_UNCHANGED = 3,
-  // macOS would ask the person first, or refuses, so nothing was read.
   ZFLOW_CLIP_NOT_ALLOWED = 4,
 };
 
-// NSPasteboardAccessBehavior's values, as numbers: the type is newer than
-// the oldest macOS a plain cargo build targets.
 enum {
   ACCESS_DEFAULT = 0,
   ACCESS_ASK = 1,
@@ -33,23 +23,15 @@ enum {
   ACCESS_ALWAYS_DENY = 3,
 };
 
-// Written beside every clip zflow puts on the pasteboard, so clipboard
-// managers and anyone listing its types can tell where it came from.
 static NSString *const ZFLOW_CLIP_MARKER = @"io.zflow.clip";
 
-// Password managers mark what they copy with these (nspasteboard.org), and so
-// do apps that put something on the pasteboard only for a moment. Neither is
-// meant to leave this Mac.
 static NSString *const CONCEALED_TYPE = @"org.nspasteboard.ConcealedType";
 static NSString *const TRANSIENT_TYPE = @"org.nspasteboard.TransientType";
 
-// How long a call waits for the main thread, in seconds. Tests shorten it.
 static double zflow_pasteboard_wait = 3.0;
 
 enum { WORK_PENDING, WORK_RUNNING, WORK_ABANDONED };
 
-// Runs `work` on the main thread, in place when already there. Returns false
-// when the main thread did not start it within the wait; it then never runs.
 static bool on_main(void (^work)(void)) {
   if (pthread_main_np()) {
     work();
@@ -67,8 +49,6 @@ static bool on_main(void (^work)(void)) {
   if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, wait)) == 0) return true;
   int pending = WORK_PENDING;
   if (atomic_compare_exchange_strong(&state, &pending, WORK_ABANDONED)) return false;
-  // The main thread started it as the wait ended, and finishes it without
-  // waiting on anyone.
   dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
   return true;
 }
@@ -77,7 +57,6 @@ static NSPasteboard *pasteboard_named(NSString *name) {
   return name ? [NSPasteboard pasteboardWithName:name] : NSPasteboard.generalPasteboard;
 }
 
-// The first image in `tiff`, as PNG, or nil. ImageIO is safe off the main thread.
 static NSData *png_from_tiff(NSData *tiff) {
   CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)tiff, NULL);
   if (!source) return nil;
@@ -94,28 +73,17 @@ static NSData *png_from_tiff(NSData *tiff) {
   return converted ? png : nil;
 }
 
-// How macOS treats zflow reading `board` on its own. Main thread only.
 static NSInteger access_behavior(NSPasteboard *board) {
   if (@available(macOS 15.4, *)) return board.accessBehavior;
   return ACCESS_ALWAYS_ALLOW;
 }
 
-// Tests replace it, since a named pasteboard always allows reading.
 static NSInteger (*zflow_access_behavior)(NSPasteboard *) = access_behavior;
 
-// Whether a crossing reads a pasteboard macOS treats this way. Named ones
-// always allow it. On the general one, `Ask` would put an alert on the
-// screen the person just left at every crossing, and `AlwaysDeny` finds
-// nothing, so both wait until the person allows zflow in System Settings.
-// Before macOS has ever asked (`Default`) the read goes ahead: that first
-// alert is what lists zflow there, and a Mac that never asks just works.
 static bool may_read(NSInteger behavior) {
   return behavior == ACCESS_ALWAYS_ALLOW || behavior == ACCESS_DEFAULT;
 }
 
-// What zflow shares from `board`: UTF-8 text if there is any, else a PNG,
-// else a TIFF, with `tiff` set. Nothing when the copy is marked concealed or
-// transient. Main thread only.
 static NSData *clip_on(NSPasteboard *board, uint32_t *kind, bool *tiff) {
   NSArray<NSPasteboardType> *types = board.types;
   if ([types containsObject:CONCEALED_TYPE] || [types containsObject:TRANSIENT_TYPE]) return nil;
@@ -133,14 +101,6 @@ static NSData *clip_on(NSPasteboard *board, uint32_t *kind, bool *tiff) {
   return found;
 }
 
-// Reads the pasteboard `name`, or the general one when it is NULL: UTF-8
-// text if there is any, else a PNG, else a TIFF turned into a PNG, and
-// nothing from a password manager. When the change count is still
-// `*unchanged_at`, or macOS would not let zflow read it quietly, reads
-// nothing and says so in `kind`.
-// `length` is the clip's size; `data` gets a copy only when that is at most
-// `limit`, to free with zflow_mac_pasteboard_free. Returns 0, or -1 when the
-// main thread did not answer in time or an image could not be converted.
 int zflow_mac_pasteboard_read(const char *name, const int64_t *unchanged_at, size_t limit,
                               uint32_t *kind, uint8_t **data, size_t *length,
                               int64_t *change_count) {
@@ -187,11 +147,6 @@ void zflow_mac_pasteboard_free(uint8_t *data) {
   free(data);
 }
 
-// Reads the pasteboard `name`, or the general one when it is NULL, as a
-// crossing would, if macOS has never asked the person about zflow reading
-// it. Its one alert then shows while they are at this Mac, not at a
-// crossing, and lists zflow in System Settings. Returns at once and leaves
-// the read to the main thread.
 void zflow_mac_pasteboard_ask(const char *name) {
   @autoreleasepool {
     NSString *board_name = name ? [NSString stringWithUTF8String:name] : nil;
@@ -207,11 +162,6 @@ void zflow_mac_pasteboard_ask(const char *name) {
   }
 }
 
-// Puts `length` bytes of `kind`, text or PNG, on the pasteboard `name`, or the
-// general one when it is NULL, beside zflow's marker. Sets `change_count` to
-// the count after the write. Returns 0, or -1 when the main thread did not
-// answer in time, the pasteboard refused, or another app wrote at the same
-// moment.
 int zflow_mac_pasteboard_write(const char *name, uint32_t kind, const uint8_t *data, size_t length,
                                int64_t *change_count) {
   if (!data || length == 0 || !change_count) return -1;
@@ -228,9 +178,6 @@ int zflow_mac_pasteboard_write(const char *name, uint32_t kind, const uint8_t *d
           ![item setData:[NSData data] forType:ZFLOW_CLIP_MARKER])
         return;
       NSPasteboard *board = pasteboard_named(board_name);
-      // Writing does not move the count past the one clearing returns. Any
-      // other count means another app wrote in between, and its copy must
-      // not pass for this one.
       NSInteger cleared = [board clearContents];
       written = [board writeObjects:@[ item ]] && board.changeCount == cleared;
       count = cleared;

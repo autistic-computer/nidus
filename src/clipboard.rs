@@ -1,26 +1,18 @@
-//! What the clipboard carries between computers: one piece of text or one
-//! PNG image per transfer, sent when the pointer leaves a computer.
-
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-/// The most a clip may hold. The over-limit notice and the stream check both
-/// use this, so they always agree.
 pub const MAX_CLIP_BYTES: usize = 3 * 1024 * 1024;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ClipKind {
-    /// UTF-8 text.
     Text,
-    /// A PNG image.
     Png,
 }
 
 impl ClipKind {
-    /// The byte that names this kind on the wire.
     pub fn code(self) -> u8 {
         match self {
             Self::Text => 1,
@@ -44,7 +36,6 @@ pub struct Clip {
 }
 
 impl std::fmt::Debug for Clip {
-    // Logs must never hold clipboard content.
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Clip")
@@ -55,7 +46,6 @@ impl std::fmt::Debug for Clip {
 }
 
 impl Clip {
-    /// Checks the size and that the bytes are what `kind` says.
     pub fn new(kind: ClipKind, data: Vec<u8>) -> Result<Self> {
         ensure!(!data.is_empty(), "The clipboard is empty");
         ensure!(data.len() <= MAX_CLIP_BYTES, "{}", too_large(data.len()));
@@ -92,7 +82,6 @@ impl Clip {
     }
 }
 
-/// What the person sees when a clip is too large to share.
 pub fn too_large(bytes: usize) -> String {
     let megabytes = |bytes: usize| bytes as f64 / (1024.0 * 1024.0);
     format!(
@@ -102,16 +91,12 @@ pub fn too_large(bytes: usize) -> String {
     )
 }
 
-/// Keeps a clip from going back and forth. It remembers the clip the peer
-/// last had from this computer or gave it, whichever came last, and a clip
-/// goes only when it differs from that one.
 #[derive(Debug, Default)]
 pub struct Echo {
     peer_has: Option<[u8; 32]>,
 }
 
 impl Echo {
-    /// Whether `clip` is news to the peer, and if so remembers sending it.
     pub fn should_send(&mut self, clip: &Clip) -> bool {
         let digest = Some(clip.digest());
         if self.peer_has == digest {
@@ -121,7 +106,6 @@ impl Echo {
         true
     }
 
-    /// Remembers a clip a peer gave this computer.
     pub fn written(&mut self, clip: &Clip) {
         self.peer_has = Some(clip.digest());
     }

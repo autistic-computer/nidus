@@ -1,9 +1,5 @@
 pub const FRAME_LEN: usize = 40;
 
-/// Cumulative motion since sender start. Losing a frame loses nothing:
-/// any later frame carries the running totals. `session` is random per
-/// sender run so the receiver detects restarts instead of guessing from
-/// sequence numbers.
 #[derive(Debug, Clone, Copy)]
 pub struct MotionFrame {
     pub session: u64,

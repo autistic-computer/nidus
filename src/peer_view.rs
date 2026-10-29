@@ -1,5 +1,3 @@
-//! Desktop peer metadata, placing found computers, and desktop session attachment.
-
 use std::{
     collections::BTreeMap,
     net::{IpAddr, SocketAddr},
@@ -21,21 +19,14 @@ use crate::{
 
 pub const SOCKET_PATH: &str = "/run/zflow-gui/peers.sock";
 
-/// What the service tells the desktop agent when a peer opens a lens.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LensOpened {
     pub peer: String,
-    /// How that peer's keys act here, as in a crossing.
     pub keyboard: KeyboardMode,
 }
-/// The port zflow takes input on unless its configuration says otherwise.
 pub const DEFAULT_INPUT_PORT: u16 = 43119;
-/// The largest message between the service and the desktop agent: a whole
-/// clip in base64, plus room for the JSON around it. Every other local
-/// stream keeps [`crate::control::MAX_CONTROL_MESSAGE`].
 pub const MAX_AGENT_MESSAGE: usize =
     MAX_CLIP_BYTES.div_ceil(3) * 4 + crate::control::MAX_CONTROL_MESSAGE;
-/// The longest notice the service asks the desktop to show.
 const MAX_NOTICE: usize = 256;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,26 +39,18 @@ pub enum Request {
     Forget {
         name: String,
     },
-    /// Changes what a paired computer may do here; absent fields stay as
-    /// they are. See [`set_peer`].
     SetPeer {
         name: String,
-        /// Whether it may control this computer.
         allow_control: Option<bool>,
         keyboard: Option<KeyboardMode>,
         reverse_scroll: Option<bool>,
-        /// Whether it may look at this screen through a lens.
         #[serde(default)]
         share_screen: Option<bool>,
     },
-    /// Whether the focused desktop app is a terminal. The desktop agent sends
-    /// this; it never leaves this computer.
     Focus {
         terminal: bool,
     },
     Desktop {},
-    /// The desktop agent offers to serve the next lens a peer opens onto this screen. The
-    /// service answers with [`LensOpened`] when one arrives, then relays the lens stream.
     Lens {},
     SetSwitching {
         pause_at_edges: bool,
@@ -75,19 +58,12 @@ pub enum Request {
     SetClipboard {
         share: bool,
     },
-    /// The pointer pushed against an edge that leads to another computer.
-    /// `position` is a fraction of the desktop along that edge, out of
-    /// [`FRACTION_MAX`].
     EdgeHit {
         #[serde(default)]
         monitor: Option<String>,
         edge: Edge,
         position: u32,
     },
-    /// Moves a computer in the shared layout. `id` names a tile of
-    /// [`DesktopStatus::layout`]; it lands at `x`, `y` in layout units, or
-    /// against an edge within `tolerance` of there.
-    /// With `computer`, every screen of its computer moves alike.
     MoveTile {
         id: String,
         x: i32,
@@ -96,8 +72,6 @@ pub enum Request {
         #[serde(default)]
         computer: bool,
     },
-    /// Answers where [`Request::MoveTile`] would land without moving
-    /// anything, as [`DesktopReply::Preview`].
     Preview {
         id: String,
         x: i32,
@@ -106,31 +80,18 @@ pub enum Request {
         #[serde(default)]
         computer: bool,
     },
-    /// Tries each paired computer that is not connected again now, instead
-    /// of after its link's wait.
     Retry {},
-    /// Trusts a computer from [`DesktopStatus::unplaced`] by putting its
-    /// tile on the board. `id` is its `key:` id; `x`, `y` is where the top
-    /// left corner of its new tile lands, in layout units, as for
-    /// [`Request::MoveTile`]. Dropped on the tile of a saved computer with
-    /// its name, it takes that computer's place with its new key.
     Place {
         id: String,
         x: i32,
         y: i32,
         tolerance: u32,
     },
-    /// Says hello to an address mDNS cannot reach, such as one on
-    /// Tailscale. What answers shows up in [`DesktopStatus::unplaced`].
     AddAddress {
         address: SocketAddr,
     },
 }
 
-/// What the service asks the desktop agent to do through GNOME Shell. Only
-/// handoff requests can come from another computer. Local requests come from
-/// this one, and a session never parses them, so a peer cannot move the
-/// pointer or place barriers here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AgentRequest {
@@ -141,29 +102,27 @@ pub enum AgentRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LocalRequest {
-    /// Where the pointer leaves for another computer. Replaces the last set.
-    /// With `pause_ms`, the pointer has to rest against an edge that long.
     Edges {
         edges: Vec<OutboundEdge>,
         #[serde(default)]
         pause_ms: u32,
     },
-    /// Hides the pointer and keeps the session awake while this computer's
-    /// input goes to another one.
-    Sending { active: bool },
-    /// Puts the pointer back where a crossing returned.
-    Warp { position: Point },
-    /// Reads the clipboard for the computer the pointer went to. The answer
-    /// is an [`AgentReply::Clipboard`].
+    Sending {
+        active: bool,
+    },
+    Warp {
+        position: Point,
+    },
     ReadClipboard,
-    /// Puts a clip from the computer the pointer came from on the clipboard.
-    WriteClipboard { kind: ClipKind, data: ClipData },
-    /// Shows the person a short notice, such as why a clip stayed here.
-    Notify { message: String },
+    WriteClipboard {
+        kind: ClipKind,
+        data: ClipData,
+    },
+    Notify {
+        message: String,
+    },
 }
 
-/// A range of one outer edge of this desktop, as fractions of its length
-/// out of [`FRACTION_MAX`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OutboundEdge {
@@ -175,7 +134,6 @@ pub struct OutboundEdge {
 }
 
 impl AgentRequest {
-    /// A short name for logs.
     pub fn operation(&self) -> &'static str {
         match self {
             Self::Handoff(request) => crate::session::desktop_operation(request),
@@ -208,14 +166,11 @@ impl AgentRequest {
                 );
                 Ok(())
             }
-            // The agent checks a clip's bytes before writing them.
             Self::Local(_) => Ok(()),
         }
     }
 }
 
-/// Clipboard bytes, as base64 in JSON. Debug shows only the size, because
-/// logs must never hold clipboard content.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct ClipData(pub Vec<u8>);
 
@@ -241,24 +196,14 @@ impl<'de> Deserialize<'de> for ClipData {
     }
 }
 
-/// What the desktop agent found on the clipboard.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "clipboard", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClipboardContents {
-    Clip {
-        kind: ClipKind,
-        data: ClipData,
-    },
+    Clip { kind: ClipKind, data: ClipData },
     Empty,
-    /// Over [`MAX_CLIP_BYTES`]; only the size leaves GNOME.
-    TooLarge {
-        bytes: usize,
-    },
+    TooLarge { bytes: usize },
 }
 
-/// What the desktop agent answers the service. Only the agent sends these,
-/// on its own stream. A peer's handoff request still gets a plain
-/// [`DesktopResponse`], which reads the same here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AgentReply {
@@ -267,7 +212,6 @@ pub enum AgentReply {
 }
 
 impl AgentReply {
-    /// A short name for logs.
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Desktop(response) => crate::session::desktop_response_kind(response),
@@ -289,9 +233,6 @@ impl AgentReply {
     }
 }
 
-/// Applies a settings change to a paired computer. Any change also lets this
-/// computer send to it, which brings a record saved by one-way pairing up to
-/// two-way. Pre-login input stays a root-only setting.
 pub fn set_peer(
     peer: &mut PeerConfig,
     allow_control: Option<bool>,
@@ -331,8 +272,6 @@ pub async fn connect_service() -> anyhow::Result<tokio::net::UnixStream> {
     Ok(stream)
 }
 
-/// What desktop users may see: sharing state and public peer records, never
-/// private paths or keys.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopStatus {
@@ -342,52 +281,34 @@ pub struct DesktopStatus {
     pub connected: Vec<String>,
     pub peers: BTreeMap<String, PeerConfig>,
     pub discovery: bool,
-    /// Evdev key names, for the shortcut rows. A service from before these
-    /// fields leaves them out.
-    /// Whether the pointer has to rest against an edge before it crosses.
     #[serde(default)]
     pub pause_at_edges: bool,
     #[serde(default)]
     pub activation_chord: Vec<String>,
     #[serde(default)]
     pub escape_chord: Vec<String>,
-    /// This computer's view of the shared layout, with its own tile named
-    /// "local". A service from before the layout editor leaves it out.
     #[serde(default)]
     pub layout: Option<Layout>,
-    /// Whether the clipboard goes along with the pointer.
     #[serde(default)]
     pub share_clipboard: bool,
-    /// The links to paired computers that have no session yet. A computer
-    /// in neither this nor `connected` is not dialed: nothing listens where
-    /// it was paired. A service from before live links leaves it out.
     #[serde(default)]
     pub links: BTreeMap<String, LinkStatus>,
-    /// The fresh install's one-shot window for taking a computer by itself.
     #[serde(default)]
     pub pairing_window: PairingWindow,
-    /// This computer's key mark.
     #[serde(default)]
     pub own_mark: Option<String>,
-    /// Computers found around this one that are not trusted here.
     #[serde(default)]
     pub unplaced: Vec<Unplaced>,
-    /// Computers that joined lately, for a window to tell people once.
     #[serde(default)]
     pub notices: Vec<Notice>,
 }
 
-/// A link to a paired computer that has no session yet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LinkStatus {
     Connecting,
-    /// The last attempt failed. The link keeps retrying, and `reason` says
-    /// why in words for people.
     Unreachable {
         reason: String,
-        /// A person has to act, as opposed to a computer that is off or
-        /// out of reach.
         #[serde(default)]
         needs_fix: bool,
     },
@@ -416,8 +337,6 @@ impl DesktopStatus {
     }
 }
 
-/// An address a person typed: an IP address, with a port or without, which
-/// then is [`DEFAULT_INPUT_PORT`].
 pub fn parse_address(input: &str) -> anyhow::Result<SocketAddr> {
     use anyhow::Context;
     let input = input.trim();
@@ -437,7 +356,6 @@ pub fn parse_address(input: &str) -> anyhow::Result<SocketAddr> {
 #[serde(tag = "response", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopReply {
     Status(Box<DesktopStatus>),
-    /// None where the screens cannot go.
     Preview {
         preview: Option<crate::app::layout_model::Preview>,
     },
@@ -482,7 +400,6 @@ mod tests {
             r#"{"command":"reload_config"}"#,
             r#"{"command":"status","path":"/etc/zflow"}"#,
             r#"{"command":"snapshot"}"#,
-            // Code pairing is gone.
             r#"{"command":"pair","remote":null,"code":null}"#,
             r#"{"command":"pair_respond","allow":true}"#,
             r#"{"command":"set_keyboard","name":"desk","mode":"mac"}"#,
@@ -494,8 +411,6 @@ mod tests {
             r#"{"command":"focus","terminal":true,"peer":"desk"}"#,
             r#"{"command":"edge_hit","edge":"right","position":5,"peer":"desk"}"#,
             r#"{"command":"warp","position":{"x":1,"y":2}}"#,
-            // A move names a tile and a spot, never the shared layout's
-            // version, editor, keys or sizes.
             r#"{"command":"move_tile","id":"local","x":1,"y":2,"tolerance":8,"version":9}"#,
             r#"{"command":"move_tile","id":"local","x":1,"y":2,"tolerance":8,"editor":"00"}"#,
             r#"{"command":"move_tile","id":"local","x":1,"y":2,"tolerance":8,"key":"00"}"#,
@@ -506,14 +421,11 @@ mod tests {
             r#"{"command":"set_clipboard","share":"yes"}"#,
             r#"{"command":"set_clipboard","share":true,"peer":"desk"}"#,
             r#"{"command":"retry","peer":"desk"}"#,
-            // Placing names a found computer and a spot, never a name,
-            // permissions or a key to trust.
             r#"{"command":"place","id":"key:ab","x":1,"y":2,"tolerance":8,"name":"desk"}"#,
             r#"{"command":"place","id":"key:ab","x":1,"y":2,"tolerance":8,"spki":"00"}"#,
             r#"{"command":"place","id":"key:ab","x":1,"y":2}"#,
             r#"{"command":"add_address","address":"100.64.0.7"}"#,
             r#"{"command":"add_address","address":"100.64.0.7:43119","trust":true}"#,
-            // Only the service asks the agent for these, on its own stream.
             r#"{"command":"read_clipboard"}"#,
             r#"{"command":"write_clipboard","kind":"text","data":"aGk="}"#,
             r#"{"command":"notify","message":"hi"}"#,
@@ -623,7 +535,6 @@ mod tests {
 
     #[test]
     fn a_clip_crosses_the_agent_stream_as_base64_and_only_that_stream_fits_it() {
-        // RFC 4648's test vectors.
         for (bytes, text) in [
             ("", ""),
             ("f", "Zg=="),
@@ -640,7 +551,6 @@ mod tests {
                 data
             );
         }
-        // Only what the encoder writes: no stray padding, characters or bits.
         for text in [
             "Zg=", "Zg", "Z===", "Zg==Zg==", "Zm9v\n", "Zm-v", "Zh==", "Zm9=", "====",
         ] {
@@ -750,8 +660,6 @@ mod tests {
         assert_eq!(value["share_clipboard"], true);
         assert_eq!(value["pairing_window"]["state"], "never");
         assert!(!value.to_string().contains("identity-location"));
-        // A service from before clipboard sharing, live links or the shelf
-        // leaves them out.
         let mut old = value;
         for field in [
             "share_clipboard",

@@ -1,14 +1,11 @@
-//! Monitor identity and desk placement are separate from OS cursor coordinates.
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Display {
-    /// Platform identity, scoped to the computer. Never an enumeration index.
     pub id: String,
     pub name: String,
     pub bounds: Rect,
-    /// Zero when the platform cannot supply a reliable physical size.
     #[serde(default)]
     pub width_mm: u32,
     #[serde(default)]
@@ -42,7 +39,6 @@ impl Display {
         .validate()
     }
 
-    /// About 100 desk units per inch. Unknown sizes retain logical proportions.
     pub fn desk_size(&self) -> (u32, u32) {
         if self.width_mm > 0 && self.height_mm > 0 {
             (self.width_mm * 4, self.height_mm * 4)
@@ -77,7 +73,6 @@ impl Geometry {
         Ok(())
     }
 
-    /// Legacy requests address the whole desktop; new ones name one active display.
     pub fn for_monitor(&self, id: Option<&str>) -> Result<Self> {
         self.validate()?;
         let Some(id) = id else {
@@ -96,8 +91,6 @@ impl Geometry {
 }
 
 impl SharedLayout {
-    /// Reconcile only this computer's detected displays. Unplugged displays keep
-    /// their saved positions but cannot participate in crossings.
     pub fn with_geometry(&self, key: &str, geometry: &Geometry) -> Option<Self> {
         geometry.validate().ok()?;
         if geometry.displays.is_empty() {
@@ -110,7 +103,6 @@ impl SharedLayout {
                 old.active = geometry.displays.iter().any(|d| d.id == old.id);
             }
         }
-        // Dormant placements must not push active screens away or block a replug.
         let dormant: Vec<_> = next
             .tiles
             .iter()
@@ -120,8 +112,6 @@ impl SharedLayout {
         next.tiles
             .retain(|t| t.display.as_ref().is_none_or(|d| d.active));
 
-        // Split the old bounding rectangle in-place before resizing. This retains
-        // the outside contacts and the OS's ordering on the first upgrade.
         if let Some(index) = next
             .tiles
             .iter()
@@ -158,8 +148,6 @@ impl SharedLayout {
                 t.key == key && t.display.as_ref().is_some_and(|d| d.id == display.id)
             }) {
                 next.tiles[index].display = Some(display.clone());
-                // A returning monitor keeps its spot if still free. If another
-                // screen now occupies it, find a free edge before resizing.
                 if next
                     .tiles
                     .iter()
@@ -193,7 +181,6 @@ impl SharedLayout {
             }
         }
         next.tiles.extend(dormant);
-        // Stable ordering also avoids publishing a new version at every poll.
         next.tiles.sort_by(|a, b| {
             (&a.key, a.display.as_ref().map(|d| &d.id))
                 .cmp(&(&b.key, b.display.as_ref().map(|d| &d.id)))
@@ -292,8 +279,6 @@ mod tests {
 
     #[test]
     fn fitting_this_computer_keeps_the_tiles_of_computers_it_has_not_paired() {
-        // This computer, key 1, has paired the Mac, key 2, but not key 3,
-        // which the Mac placed below itself, with a monitor now unplugged.
         let mut layout = legacy();
         let theirs = |x, y, display| Tile {
             key: key(3),

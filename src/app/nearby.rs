@@ -25,8 +25,6 @@ pub(super) enum BrowserStatus {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct NearbyRecord {
     pub instance: String,
-    /// The name its record gives, which versions before arrange to pair
-    /// leave out. Anyone can claim any name, so it only labels the row.
     pub name: Option<String>,
     pub addresses: Vec<SocketAddr>,
     pub compatible: bool,
@@ -47,13 +45,10 @@ impl NearbyRecord {
 pub(super) struct NearbySnapshot {
     pub status: BrowserStatus,
     pub records: BTreeMap<String, NearbyRecord>,
-    /// A new record was dropped because there were too many.
     pub turned_away: bool,
 }
 
 impl NearbySnapshot {
-    /// Keeps a record without this Mac's own addresses, `local`. One left
-    /// with none is this Mac's own.
     fn insert(&mut self, mut record: NearbyRecord, local: &[IpAddr]) {
         record.addresses = remote_addresses(&record.addresses, local);
         if record.addresses.is_empty() {
@@ -178,8 +173,6 @@ async fn browse(shared: Arc<Mutex<NearbySnapshot>>, mut stop: oneshot::Receiver<
             event = discovery.next_event() => match event {
                 Ok(DiscoveryEvent::Candidate(candidate)) => {
                     if let Some(record) = NearbyRecord::from_candidate(candidate) {
-                        // Every address, as they are now, not the 16 this
-                        // Mac's own record may name.
                         let local = this_host_addresses();
                         update(&shared, |state| state.insert(record, &local));
                     }

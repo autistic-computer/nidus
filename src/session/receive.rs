@@ -1,6 +1,3 @@
-//! The receive side of one input session: control ordering, playout, clock
-//! probes, and the handoff of effects to the input backend.
-
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex},
@@ -79,7 +76,6 @@ impl Inbound {
         !self.pending.is_empty()
     }
 
-    /// Restarts probing whenever the open activation changes.
     pub(super) fn track_activation(&mut self, clock: &MonotonicClock) {
         let active_context = self.receiver.active_context();
         if self.probe_context != active_context {
@@ -138,9 +134,6 @@ impl Inbound {
         self.reporter
             .metrics()
             .observe_motion_sequence(frame.motion_sequence.0);
-        // One sample gives playout a bounded bootstrap mapping. Further arrival
-        // times contain network jitter and must not train the affine clock model;
-        // authenticated probe exchanges replace the bootstrap fit.
         if !self.clock.is_ready() {
             self.clock
                 .bootstrap_from_arrival(frame.sender_capture_time, now)?;
@@ -168,8 +161,6 @@ impl Inbound {
         Ok(())
     }
 
-    /// Echoes a probe for our outbound activation, or feeds an echo of our
-    /// own probe to the clock model.
     pub(super) fn receive_probe(
         &mut self,
         channels: &InputChannels,
@@ -223,8 +214,6 @@ impl Inbound {
         Ok(())
     }
 
-    /// Expires the lease, plays due motion, applies due controls, and sends
-    /// the next clock probe.
     pub(super) async fn tick(
         &mut self,
         channels: &mut InputChannels,
@@ -251,8 +240,6 @@ impl Inbound {
             && self.probes.len() < MAX_PENDING_PROBES
             && let Some(context) = active_context
         {
-            // The backend awaits above can take a while. A stale stamp
-            // would inflate RTT and bias the clock offset.
             let sent_at = clock.now();
             let probe = ProbeMessage {
                 session: context,
@@ -276,7 +263,6 @@ impl Inbound {
         Ok(())
     }
 
-    /// Releases everything the closing connection held.
     pub(super) async fn close(
         &mut self,
         channels: &mut InputChannels,
@@ -343,10 +329,7 @@ impl Inbound {
                 .any(|effect| matches!(effect, ReceiverEffect::ActivationOpened(_)))
             {
                 self.reporter.metrics().begin_activation();
-                // Motion sequences restart with each activation.
                 self.motion_received_at.clear();
-                // Probes only run during an activation, so an old fit may have
-                // drifted, or missed a Mac sleep, while the session sat idle.
                 self.clock = ClockMapper::new(ClockConfig::default())?;
                 self.playout = Some(ReceiverPlayout::new(
                     self.playout_config,
@@ -356,8 +339,6 @@ impl Inbound {
             if let Some(active) = self.playout.as_mut() {
                 active.advance_control_watermark(sequence)?;
                 if let Some(anchor) = anchor {
-                    // The receiver injects whatever the anchor adds, so this only
-                    // moves playout's baseline. Nothing is discarded.
                     active.rebase(anchor.through_motion_sequence, anchor.totals)?;
                     self.motion_received_at
                         .retain(|sequence, _| *sequence > anchor.through_motion_sequence);
@@ -431,8 +412,6 @@ impl Inbound {
             .await
     }
 
-    /// Hands injections to the backend, waits until they are applied, and
-    /// only then answers the peer.
     pub(super) async fn emit(
         &mut self,
         channels: &mut InputChannels,
@@ -480,8 +459,6 @@ impl Inbound {
                     .saturating_add(synthetic_releases as u64);
             }
             let (applied, receipt) = oneshot::channel();
-            // Wait for queue space: this also runs during cleanup, where
-            // dropping synthetic releases would leave keys held.
             self.reporter
                 .send(SessionEventKind::ReceiverEffects {
                     effects: backend,
@@ -514,8 +491,6 @@ impl Inbound {
     }
 }
 
-// Tick only when an engine needs progress. Catch-up and deferred controls keep
-// their 1ms cadence; quiet connections sleep until a checkpoint, lease, or probe.
 pub(super) fn session_deadline(
     sender: Option<&Sender>,
     receiver: &Receiver,
@@ -602,9 +577,6 @@ fn capture_instant(capture: MonotonicTimeMicros, now: MonotonicTimeMicros) -> In
         .unwrap_or(instant)
 }
 
-/// The receiver keeps tracking keys and buttons the local backend cannot
-/// inject, so held state and control sequences stay in step with the sender.
-/// Only their injection is dropped.
 #[cfg(target_os = "linux")]
 fn backend_supports(effect: &ReceiverEffect) -> bool {
     match effect {
@@ -616,7 +588,6 @@ fn backend_supports(effect: &ReceiverEffect) -> bool {
     }
 }
 
-/// The Mac posts only the keys and buttons it has codes for, and no touch.
 #[cfg(target_os = "macos")]
 fn backend_supports(effect: &ReceiverEffect) -> bool {
     match effect {
@@ -644,7 +615,6 @@ pub(super) fn is_synthetic_release(effect: &ReceiverEffect) -> bool {
             synthetic: true,
             ..
         } => true,
-        // A synthetic replacement can carry contacts; only an empty one lifts.
         ReceiverEffect::TouchReplaced {
             state,
             synthetic: true,

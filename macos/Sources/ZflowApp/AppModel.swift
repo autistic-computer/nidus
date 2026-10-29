@@ -3,18 +3,15 @@ import Foundation
 import Observation
 import SwiftUI
 
-/// What the main window shows.
 enum Page: Hashable {
   case computers
   case settings
 }
 
-/// A computer on the board: this Mac, or a paired one by name.
 enum Owner: Hashable, Sendable {
   case thisMac
   case peer(String)
 
-  /// A layout tile's owner, where nil is this Mac.
   init(_ peer: String?) { self = peer.map(Owner.peer) ?? .thisMac }
   var peer: String? {
     if case .peer(let name) = self { name } else { nil }
@@ -24,34 +21,24 @@ enum Owner: Hashable, Sendable {
 @MainActor @Observable
 final class AppModel {
   var snapshot: Snapshot?
-  /// Why the engine gave no snapshot. The window shows it in place of a page.
   var error: String?
-  /// The last request that failed, shown for a few seconds.
   var failure: String?
   var page = Page.computers
-  /// The computer the arrangement has selected, whose settings show under it.
   var selection: Owner?
-  /// The computer whose screens move one by one rather than together.
   var adjusting: Owner?
-  /// Shows the Add by address sheet.
   var addingAddress = false
-  /// Posts a computer that joined. The app sets it; each notice comes once.
   @ObservationIgnored var joined: ((Notice) -> Void)?
   @ObservationIgnored private var lastNotice: UInt64 = 0
-  /// Asked once at launch, when zflow runs from somewhere it cannot stay.
   var askToMove = AppLocation.main.needsMove
-  /// How macOS treats zflow reading what other apps copied.
   var pasteAccess = NSPasteboard.general.accessBehavior
   var busy = false
   let services = Services()
   let updates = Updates()
   let lens = LensController()
-  /// The computer the lens last looked at, which ⌃⌥L opens again.
   private(set) var lastLooked: String?
   @ObservationIgnored private var hotKey: LensHotKey?
   let configPath: String
   let showSettingsAtLaunch: Bool
-  /// Set by the menu bar icon, which lives as long as the app.
   @ObservationIgnored var openWindow: OpenWindowAction?
   private let core: CoreBridge
   private var poller: Task<Void, Never>?
@@ -59,7 +46,6 @@ final class AppModel {
   @ObservationIgnored private var wake: (any NSObjectProtocol)?
   @ObservationIgnored private var failureTimer: Task<Void, Never>?
 
-  /// Tests pass `polling: false`, so nothing reaches the engine until they ask.
   init(arguments: [String] = ProcessInfo.processInfo.arguments, polling: Bool = true) {
     if let index = arguments.firstIndex(of: "--config"), arguments.indices.contains(index + 1) {
       configPath = URL(fileURLWithPath: arguments[index + 1]).standardizedFileURL.path
@@ -81,14 +67,11 @@ final class AppModel {
         await self.perform(CoreRequest(command: "snapshot"), quiet: true)
         let access = NSPasteboard.general.accessBehavior
         if access != self.pasteAccess { self.pasteAccess = access }
-        // Beside the poll, so a slow helper never holds the window on an old snapshot.
         if ticks % 20 == 0 { Task { await self.checkServices() } }
         ticks += 1
         try? await Task.sleep(for: .milliseconds(500))
       }
     }
-    // A receiver can drop the session while the Mac sleeps, and the link would
-    // still look ready until its next keep-alive. Recheck it on wake.
     wake = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
     ) { [weak self] _ in
@@ -112,7 +95,6 @@ final class AppModel {
       report(message)
     }
   }
-  /// Sends `request` and returns why it failed, for a caller that shows it.
   func attempt(_ request: CoreRequest) async -> String? {
     guard !busy else { return nil }
     do {
@@ -124,8 +106,6 @@ final class AppModel {
     }
   }
 
-  /// Takes the engine's latest snapshot. The page follows it, and each new
-  /// notice is posted.
   func apply(_ next: Snapshot) {
     if next != snapshot { snapshot = next }
     for notice in next.notices where notice.id > lastNotice {
@@ -140,19 +120,14 @@ final class AppModel {
     if gone(adjusting) { adjusting = nil }
   }
 
-  /// Moves screens on the arrangement and waits for the snapshot that shows
-  /// them there, so a dropped computer does not jump back first.
   func move(_ move: Move) async {
     await perform(move.request)
   }
-  /// Where a drag would land, asked at each step. Nil where it cannot go,
-  /// or when the engine cannot answer.
   func preview(_ move: Move) async -> Preview? {
     guard !busy else { return nil }
     return try? await core.preview(move.preview)
   }
 
-  /// Shows a failed request for a few seconds.
   func report(_ message: String?) {
     guard let message else { return }
     failure = message
@@ -163,8 +138,6 @@ final class AppModel {
     }
   }
 
-  // The engine polls input on 1 to 12 ms timers. App Nap and timer coalescing
-  // would stutter the pointer and delay crossings, so opt out while sharing.
   private func holdActivity(_ sharing: Bool) {
     if sharing, activity == nil {
       activity = ProcessInfo.processInfo.beginActivity(
@@ -176,8 +149,6 @@ final class AppModel {
     }
   }
 
-  /// Shows the lens around the pointer onto computer `name`'s screen. It
-  /// shows at once, and says why if the engine cannot open it.
   func look(at name: String) {
     guard !busy else { return }
     lastLooked = name
@@ -190,7 +161,6 @@ final class AppModel {
     }
   }
 
-  /// ⌃⌥L: closes the lens, or opens one on the computer `lensTarget` picks.
   func toggleLens() {
     if lens.isOpen { return lens.close() }
     guard let name = Self.lensTarget(peers: snapshot?.peers ?? [], last: lastLooked) else {
@@ -198,22 +168,17 @@ final class AppModel {
     }
     look(at: name)
   }
-  /// The computer ⌃⌥L looks at: the last one looked at while it is still
-  /// connected, else the first connected one.
   nonisolated static func lensTarget(peers: [Peer], last: String?) -> String? {
     let linked = peers.filter(\.state.linked)
     if let last, linked.contains(where: { $0.name == last }) { return last }
     return linked.first?.name
   }
 
-  /// The Computers page with a paired computer selected on it.
   func show(computer name: String) {
     selection = .peer(name)
     show(.computers)
   }
 
-  /// Brings the window to the front, on `page` when given. The app gets its
-  /// Dock icon while the window is open.
   func show(_ page: Page? = nil) {
     if let page { self.page = page }
     guard let openWindow else { return }
@@ -222,7 +187,6 @@ final class AppModel {
     NSApplication.shared.activate()
   }
 
-  /// The name other computers know this Mac by, as its hellos give it.
   nonisolated static let hostName: String = {
     var buffer = [CChar](repeating: 0, count: 256)
     guard gethostname(&buffer, buffer.count) == 0 else { return "this Mac" }
@@ -231,8 +195,6 @@ final class AppModel {
     return name.isEmpty ? "this Mac" : name
   }()
 
-  /// A health row's fix. The engine's rows carry theirs; the clipboard row
-  /// gets one here while macOS keeps zflow from reading the pasteboard.
   func fix(for row: Health) -> HealthAction? {
     if let action = row.action { return action }
     if row.id == "clipboard", pasteAccess != .alwaysAllow {
@@ -240,7 +202,6 @@ final class AppModel {
     }
     return nil
   }
-  /// The app handles the fixes that open something here.
   func fix(_ action: HealthAction) {
     switch action.command {
     case "allow_accessibility": openAccessibility()
@@ -254,8 +215,6 @@ final class AppModel {
     send(CoreRequest(command: "allow_accessibility"))
     openPrivacy("Privacy_Accessibility")
   }
-  /// Looking for computers is what makes macOS ask; once it has, the switch
-  /// is in System Settings.
   func allowLocalNetwork() {
     if snapshot?.platform.localNetwork == .unknown {
       send(CoreRequest(command: "discover"))
@@ -263,8 +222,6 @@ final class AppModel {
       openPrivacy("Privacy_LocalNetwork")
     }
   }
-  /// The first read makes macOS ask, which also lists zflow in System
-  /// Settings; after that, the switch is there.
   func allowPaste() {
     if pasteAccess == .default {
       _ = NSPasteboard.general.string(forType: .string)
@@ -278,8 +235,6 @@ final class AppModel {
       URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!)
   }
 
-  /// While Accessibility is missing, checks it faster than the engine's own
-  /// ticks, and comes back from System Settings once it is on.
   func watchAccessibility() async {
     guard snapshot?.platform.accessibility == false else { return }
     while !Task.isCancelled && snapshot?.platform.accessibility == false {
@@ -289,8 +244,6 @@ final class AppModel {
     if snapshot?.platform.accessibility == true { NSApplication.shared.activate() }
   }
 
-  /// The login item always, and the Wi-Fi helper only while Reduce Wi-Fi lag
-  /// is on, since checking it means a call to the helper.
   func checkServices() async {
     services.refreshLogin()
     guard snapshot?.platform.blockAwdl == true else { return }
@@ -330,6 +283,5 @@ final class AppModel {
 }
 
 extension Peer.State {
-  /// Connected, so the lens can look at it.
   var linked: Bool { [.connected, .controllingThis, .controlledFromHere].contains(self) }
 }

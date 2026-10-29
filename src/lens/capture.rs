@@ -1,8 +1,3 @@
-//! Frames of the recorded monitor, received from Mutter over PipeWire in shared memory. Nothing
-//! is copied: the newest buffer stays out of the stream while the encoder reads it in place, and
-//! goes back to Mutter when a newer one arrives. Mutter's damage rectangles tell the encoder which
-//! tiles to compare. A 4K frame is 33 MB; the encoder reads the few tiles it needs.
-
 use crate::lens::tiles::Rect;
 use anyhow::{Context, Result, anyhow, ensure};
 use pipewire as pw;
@@ -12,26 +7,19 @@ use spa::utils::{Choice, ChoiceEnum, ChoiceFlags, Fraction, Id, Rectangle, SpaTy
 use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// Rectangles kept between two takes. Past this, comparing every tile is cheaper than the list.
 const MAX_DAMAGE: usize = 128;
-/// Damage rectangles Mutter can describe in one frame; it sends their bounding box beyond this.
 const DAMAGE_SLOTS: usize = 32;
-/// Mutter offers no larger monitor today; the range only has to contain what it offers.
 const MAX_SIDE: u32 = 16384;
 
-/// The latest frame of the recorded monitor, kept up to date by the PipeWire thread.
 #[derive(Default)]
 pub struct Screen {
     held: Option<Held>,
     pub width: usize,
     pub height: usize,
-    /// Frames received so far.
     pub frames: u64,
-    /// Changed since the last take; `None` means everything.
     damage: Option<Vec<Rect>>,
 }
 
-/// A buffer kept out of the stream while the encoder reads its mapped memory.
 struct Held {
     buffer: *mut pw::sys::pw_buffer,
     data: *const u8,
@@ -39,8 +27,6 @@ struct Held {
     stride: usize,
 }
 
-// SAFETY: `Held`'s pointers are read only under the screen's lock, and the PipeWire thread takes
-// the buffer back under that lock before the stream lets go of its memory.
 unsafe impl Send for Screen {}
 
 fn contains(outer: Rect, inner: Rect) -> bool {
@@ -51,22 +37,16 @@ fn contains(outer: Rect, inner: Rect) -> bool {
 }
 
 impl Screen {
-    /// The newest frame: `height` rows of BGRx or BGRA pixels, `stride` bytes apart, valid while
-    /// the lock is held.
     pub fn frame(&self) -> Option<(&[u8], usize)> {
         let held = self.held.as_ref()?;
-        // SAFETY: see `Held`; the slice lives no longer than the borrow of the locked screen.
         let bytes = unsafe { std::slice::from_raw_parts(held.data, held.len) };
         Some((bytes, held.stride))
     }
 
-    /// What changed since the last call: `None` means assume everything (no damage metadata, a
-    /// resize, or too many rectangles).
     pub fn take_damage(&mut self) -> Option<Vec<Rect>> {
         self.damage.replace(Vec::new())
     }
 
-    /// Counts one frame of `size` and its damage, already cut to the frame.
     fn note(&mut self, (width, height): (usize, usize), damage: Option<&[Rect]>) {
         let whole = Rect {
             x: 0,
@@ -80,7 +60,6 @@ impl Screen {
         self.frames += 1;
     }
 
-    /// Keeps `next` for the encoder and returns the buffer it replaces, for the stream.
     fn hold(
         &mut self,
         next: Held,
@@ -91,7 +70,6 @@ impl Screen {
         self.held.replace(next).map(|held| held.buffer)
     }
 
-    /// Gives up the held buffer, for the stream, before its memory goes away.
     fn release(&mut self) -> Option<*mut pw::sys::pw_buffer> {
         self.held.take().map(|held| held.buffer)
     }
@@ -118,7 +96,6 @@ fn lock(screen: &Mutex<Screen>) -> MutexGuard<'_, Screen> {
     screen.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// A damage region in frame pixels, cut to the frame. `None` when nothing of it is inside.
 fn clamp(x: i32, y: i32, width: u32, height: u32, frame: (usize, usize)) -> Option<Rect> {
     let (left, top) = (i64::from(x).max(0), i64::from(y).max(0));
     let right = (i64::from(x) + i64::from(width)).min(frame.0 as i64);
@@ -131,8 +108,6 @@ fn clamp(x: i32, y: i32, width: u32, height: u32, frame: (usize, usize)) -> Opti
     })
 }
 
-/// The bytes of a `width` x `height` frame inside a mapped buffer of `len` bytes, or `None` when
-/// the chunk cannot hold one.
 fn frame(
     len: usize,
     offset: usize,
@@ -151,23 +126,15 @@ fn frame(
     (needed <= size && end <= len).then_some(offset..end)
 }
 
-/// Stream state on the PipeWire thread.
 struct Frames {
     screen: Arc<Mutex<Screen>>,
     size: Option<(usize, usize)>,
-    /// The next frame replaces the whole picture: the format changed or a frame was lost.
     whole: bool,
     first: bool,
-    /// A bad buffer was reported for this format; the rest would only repeat it.
     warned: bool,
 }
 
 impl Frames {
-    /// Takes one dequeued buffer. Returns whether the picture changed, and the buffer to give
-    /// back to the stream: the one this replaced, or this one if it is not worth keeping.
-    ///
-    /// # Safety
-    /// `raw` must come from this stream's `dequeue_raw_buffer`, with buffers mapped.
     unsafe fn receive(
         &mut self,
         raw: *mut pw::sys::pw_buffer,
@@ -175,7 +142,6 @@ impl Frames {
         let Some(size) = self.size else {
             return (false, Some(raw));
         };
-        // SAFETY: the caller's contract.
         let Some((held, damage)) = (unsafe { self.inspect(raw, size) }) else {
             return (false, Some(raw));
         };
@@ -185,28 +151,21 @@ impl Frames {
         (true, previous)
     }
 
-    /// Reads a buffer's frame and damage from its SPA structures, or `None` to skip it.
-    ///
-    /// # Safety
-    /// As for [`Self::receive`].
     unsafe fn inspect(
         &mut self,
         raw: *mut pw::sys::pw_buffer,
         size: (usize, usize),
     ) -> Option<(Held, Option<Vec<Rect>>)> {
         use spa::sys;
-        // SAFETY: a dequeued buffer's structures stay valid until it is queued again.
         let buffer = unsafe { (*raw).buffer.as_ref()? };
         let mut damage = None;
         for index in 0..buffer.n_metas as usize {
-            // SAFETY: `metas` holds `n_metas` entries.
             let meta = unsafe { &*buffer.metas.add(index) };
             if meta.data.is_null() {
                 continue;
             }
             match meta.type_ {
                 sys::SPA_META_Header => {
-                    // SAFETY: a header meta holds one `spa_meta_header`.
                     let header = unsafe { &*meta.data.cast::<sys::spa_meta_header>() };
                     if header.flags & sys::SPA_META_HEADER_FLAG_CORRUPTED != 0 {
                         return None;
@@ -214,7 +173,6 @@ impl Frames {
                 }
                 sys::SPA_META_VideoDamage => {
                     let count = meta.size as usize / std::mem::size_of::<sys::spa_meta_region>();
-                    // SAFETY: a damage meta holds `size` bytes of regions.
                     let regions = unsafe {
                         std::slice::from_raw_parts(meta.data.cast::<sys::spa_meta_region>(), count)
                     };
@@ -234,13 +192,10 @@ impl Frames {
         if buffer.n_datas == 0 {
             return None;
         }
-        // SAFETY: `datas` holds `n_datas` entries, and each has a chunk.
         let (data, chunk) = unsafe {
             let data = &*buffer.datas;
             (data, data.chunk.as_ref()?)
         };
-        // Mutter keeps the damage of a frame it could not record for the next one, and sends an
-        // empty chunk for a cursor-only update.
         if chunk.size == 0 || chunk.flags & sys::SPA_CHUNK_FLAG_CORRUPTED as i32 != 0 {
             return None;
         }
@@ -283,7 +238,6 @@ impl Frames {
         }
         let held = Held {
             buffer: raw,
-            // SAFETY: `frame` checked the range lies inside the mapped `maxsize` bytes.
             data: unsafe { data.data.cast::<u8>().add(range.start) },
             len: range.len(),
             stride: chunk.stride as usize,
@@ -309,8 +263,6 @@ fn int_choice(choice: ChoiceEnum<i32>) -> Value {
     Value::Choice(ChoiceValue::Int(Choice(ChoiceFlags::empty(), choice)))
 }
 
-/// Raw BGRx or BGRA of any size Mutter offers, at most `fps` frames a second. Leaving out the
-/// DMA-BUF modifier makes Mutter fall back to shared memory.
 fn format(fps: u32) -> Result<Vec<u8>> {
     use spa::param::format::{FormatProperties, MediaSubtype, MediaType};
     use spa::param::video::VideoFormat;
@@ -371,7 +323,6 @@ fn format(fps: u32) -> Result<Vec<u8>> {
     ))
 }
 
-/// Shared memory buffers with a header and up to Mutter's 32 damage rectangles.
 fn buffer_params() -> Result<Vec<Vec<u8>>> {
     use spa::sys;
     let memory = (1 << sys::SPA_DATA_MemFd) | (1 << sys::SPA_DATA_MemPtr);
@@ -421,8 +372,6 @@ fn pods(bytes: &[Vec<u8>]) -> Result<Vec<&Pod>> {
         .collect()
 }
 
-/// Receives a PipeWire stream until `quit` fires or the stream ends. Sends `Ok` on `ready` once
-/// connected; an error returned before that is the caller's to report.
 fn run(
     node: u32,
     fps: u32,
@@ -445,7 +394,6 @@ fn run(
             *pw::keys::MEDIA_CATEGORY => "Capture",
             *pw::keys::MEDIA_ROLE => "Screen",
             *pw::keys::NODE_DONT_RECONNECT => "true",
-            // Without this a vanished node could be replaced by the default camera.
             "node.dont-fallback" => "true",
         },
     )?;
@@ -496,7 +444,6 @@ fn run(
             frames.size = Some((size.width as usize, size.height as usize));
             frames.whole = true;
             if let Some(old) = lock(&frames.screen).release() {
-                // SAFETY: a buffer this stream dequeued and the screen held.
                 unsafe { stream.queue_raw_buffer(old) };
             }
             frames.first = true;
@@ -509,18 +456,14 @@ fn run(
         })
         .process(move |stream, frames| {
             let mut changed = false;
-            // Every buffer is taken in order: each one's damage is relative to the one before.
             loop {
-                // SAFETY: the buffer is held by the screen or queued again below.
                 let raw = unsafe { stream.dequeue_raw_buffer() };
                 if raw.is_null() {
                     break;
                 }
-                // SAFETY: just dequeued from this stream, which maps its buffers.
                 let (landed, back) = unsafe { frames.receive(raw) };
                 changed |= landed;
                 if let Some(back) = back {
-                    // SAFETY: dequeued from this stream and no longer read.
                     unsafe { stream.queue_raw_buffer(back) };
                 }
             }
@@ -542,23 +485,18 @@ fn run(
     let _quit = quit.attach(main.loop_(), move |()| stopper.quit());
     let _ = ready.send(Ok(()));
     main.run();
-    // The encoder must stop reading the held buffer before the stream frees its memory.
     if let Some(old) = lock(&screen).release() {
-        // SAFETY: a buffer this stream dequeued and the screen held.
         unsafe { stream.queue_raw_buffer(old) };
     }
     Ok(())
 }
 
-/// A PipeWire thread keeping a [`Screen`] on the recorded monitor's newest frame.
 pub struct Capture {
     quit: pw::channel::Sender<()>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Capture {
-    /// Connects to `node` and keeps `screen` current, calling `wake` after each frame lands and
-    /// once more when the stream ends.
     pub fn start(
         node: u32,
         fps: u32,
@@ -594,7 +532,6 @@ impl Capture {
         }
     }
 
-    /// Whether the stream ended, for example because Mutter stopped recording.
     pub fn is_finished(&self) -> bool {
         self.thread
             .as_ref()
@@ -613,7 +550,6 @@ impl Drop for Capture {
 
 #[cfg(test)]
 impl Screen {
-    /// A screen showing `pixels`, as if the stream had delivered them.
     pub(super) fn showing(pixels: &'static [u8], width: usize, height: usize) -> Self {
         let mut screen = Self::default();
         let held = Held {
@@ -718,7 +654,6 @@ mod tests {
 
     #[test]
     fn a_frame_must_fit_its_chunk_and_buffer() {
-        // 4x2 pixels, stride 20, starting 8 bytes in: the last row ends at 8 + 20 + 16.
         assert_eq!(frame(64, 8, 56, 20, 4, 2), Some(8..44));
         assert_eq!(frame(40, 8, 56, 20, 4, 2), None);
         assert_eq!(frame(64, 8, 30, 20, 4, 2), None);
@@ -769,7 +704,6 @@ mod tests {
                     && bytes.len() >= stride * (height - 1) + width * 4)
         );
 
-        // Takes damage every 16 ms like an encoder would, and sums up what it saw.
         let watch = async |moving: bool| -> Result<String> {
             let (x, y) = (width as f64 / 2., height as f64 / 2.);
             let started = std::time::Instant::now();

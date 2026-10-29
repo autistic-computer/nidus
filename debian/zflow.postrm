@@ -3,7 +3,6 @@ set -eu
 #DEBHELPER#
 case "$1" in
     remove)
-        # Preserve the device selection outside udev's active rules directory.
         if [ -f /etc/udev/rules.d/71-zflow-capture.rules ] && [ ! -L /etc/udev/rules.d/71-zflow-capture.rules ]; then
             test -d /etc/udev && test ! -L /etc/udev
             test ! -L /etc/udev/71-zflow-capture.rules.disabled
@@ -12,10 +11,8 @@ case "$1" in
         ;;
     purge)
         rm -f /etc/udev/rules.d/71-zflow-capture.rules /etc/udev/71-zflow-capture.rules.disabled
-        # zflow setup --prelogin on writes this drop-in.
         rm -f /etc/systemd/system/zflowd.service.d/prelogin.conf
         rmdir /etc/systemd/system/zflowd.service.d 2>/dev/null || true
-        # Preserve identities and the system account even on purge.
         if [ -d /etc/zflow ] && [ ! -L /etc/zflow ]; then
             rm -f /etc/zflow/zflow.toml
             rmdir /etc/zflow 2>/dev/null || true

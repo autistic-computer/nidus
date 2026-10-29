@@ -1,9 +1,3 @@
-//! Pure sender-side capture and checkpoint state machine.
-//!
-//! The caller owns clocks and I/O. Every method either returns a logical wire
-//! message or a deadline; nothing in this module opens a socket or touches an
-//! input device.
-
 use std::{collections::BTreeMap, time::Duration};
 
 use thiserror::Error;
@@ -62,8 +56,6 @@ pub enum SenderExitReason {
 pub enum SenderTick {
     Idle,
     Checkpoint(Box<ReliableControlMessage>),
-    /// The receiver stopped acknowledging. The message tells it to close the
-    /// activation in case only the acks were lost.
     ExitRemote(SenderExitReason, Box<ReliableControlMessage>),
 }
 
@@ -98,12 +90,9 @@ pub enum SenderError {
 #[derive(Debug, Clone)]
 struct PendingSnapshot {
     snapshot: StateSnapshot,
-    /// Neutral snapshots need acks too: a receiver that closed the activation
-    /// on its own sends nothing else.
     ack_deadline: MonotonicTimeMicros,
 }
 
-/// Sender state for one activation.
 #[derive(Debug, Clone)]
 pub struct Sender {
     config: SenderConfig,
@@ -157,7 +146,6 @@ impl Sender {
         &self.held
     }
 
-    /// The latest time any call has passed in. Earlier times are rejected.
     pub fn last_observed_time(&self) -> MonotonicTimeMicros {
         self.last_observed_time
     }
@@ -328,7 +316,6 @@ impl Sender {
         Ok(message)
     }
 
-    /// Returns the next instant at which the caller must tick the engine.
     pub fn next_deadline(&self) -> Option<MonotonicTimeMicros> {
         if !self.remote {
             return None;
@@ -408,8 +395,6 @@ impl Sender {
             return Err(SenderError::UnknownSnapshotAck);
         };
         self.last_acknowledged = Some((ack.snapshot_sequence, pending.snapshot.clone()));
-        // The reliable stream is ordered. Acknowledging a later snapshot proves
-        // every earlier snapshot on that stream was applied too.
         self.pending_snapshots
             .retain(|sequence, _| *sequence > ack.snapshot_sequence);
         Ok(())
@@ -488,8 +473,6 @@ impl Sender {
 }
 
 fn one_third_rounded_down(duration: Duration) -> Duration {
-    // At least one microsecond keeps very short negotiated leases live while
-    // still scheduling strictly no later than one third for normal values.
     Duration::from_micros(
         u64::try_from(duration.as_micros().saturating_sub(1) / 3)
             .unwrap_or(u64::MAX)

@@ -1,8 +1,3 @@
-//! What travels on a lens stream. Both directions carry `Lens` wire frames, each behind a four
-//! byte length, and a [`LensMessage::Frame`] is followed by its tile packet the same way. The
-//! lens has a stream of its own, below the input control stream's priority, so pixels never
-//! hold up input.
-
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -13,31 +8,23 @@ use crate::{
     wire::{self, WireMessage},
 };
 
-/// Opens every lens stream, so a stray stream is refused at once.
 pub const PREFACE: &[u8; 11] = b"zflow-lens\0";
-/// A whole desktop of exact tiles plus their record headers, the most one packet can hold.
 pub const MAX_BODY_BYTES: usize = tiles::MAX_PIXELS * 4 + 64 * 1_024;
-/// Selections longer than a clip are not copied.
 pub const MAX_TEXT_BYTES: usize = crate::clipboard::MAX_CLIP_BYTES;
 pub const MAX_REASON_BYTES: usize = 256;
 pub const MAX_RADIUS: u16 = 2_048;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LensMessage {
-    /// Viewer: the lens and the pointer are centred here, in the viewed computer's capture
-    /// pixels. `id` grows with every move, so a frame can say which move it answers.
     Move {
         x: u16,
         y: u16,
         radius: u16,
         id: u64,
     },
-    /// Viewer: every frame up to `serial` has been decoded.
     Ack {
         serial: u64,
     },
-    /// Viewer: a [`crate::core::PointerButton`]: 1 primary, 2 secondary, 3 middle, 4 back,
-    /// 5 forward.
     Button {
         button: u8,
         pressed: bool,
@@ -46,20 +33,15 @@ pub enum LensMessage {
         usage: HidUsage,
         pressed: bool,
     },
-    /// Viewer: whole pixels; positive `dy` scrolls content up.
     Scroll {
         dx: i32,
         dy: i32,
     },
-    /// Viewer: copy the selection and send it back.
     Copy,
-    /// Viewed: the recorded monitor's size. Tiles follow.
     Ready {
         width: u16,
         height: u16,
     },
-    /// Viewed: a tile packet follows. `request` is the newest move it answers; `exact` says
-    /// whether the lens is free of previews once it lands.
     Frame {
         serial: u64,
         request: u64,
@@ -68,14 +50,12 @@ pub enum LensMessage {
     Copied {
         text: String,
     },
-    /// Viewed: why the lens or a copy cannot go on.
     Refused {
         reason: String,
     },
 }
 
 impl LensMessage {
-    /// Limits checked before encoding and after decoding.
     pub(crate) fn validate(&self) -> Result<(), String> {
         let check = |ok: bool, what: &str| if ok { Ok(()) } else { Err(what.to_owned()) };
         match self {
@@ -95,7 +75,6 @@ impl LensMessage {
     }
 }
 
-/// Writes one message, and the tile packet that goes with a frame.
 pub async fn write(
     stream: &mut (impl AsyncWrite + Unpin),
     message: LensMessage,
@@ -119,8 +98,6 @@ pub async fn write(
     Ok(())
 }
 
-/// Reads one message, and its tile packet if it is a frame. `None` when the stream ends cleanly
-/// between messages.
 pub async fn read(
     stream: &mut (impl AsyncRead + Unpin),
 ) -> Result<Option<(LensMessage, Option<Vec<u8>>)>> {

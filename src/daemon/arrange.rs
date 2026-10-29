@@ -1,7 +1,3 @@
-//! Arrange to pair on Linux: hellos in and out, the computers found around
-//! this one, the fresh install's pairing window, and trusting a computer a
-//! person placed. Nothing here trusts a key on a hello's word alone.
-
 use std::sync::PoisonError;
 
 use super::*;
@@ -13,16 +9,10 @@ use crate::{
     wire::Hello,
 };
 
-/// Hellos this computer has out at once.
 pub(super) const HELLO_SLOTS: usize = 4;
-/// How often found computers expire, due hellos go out and the pairing
-/// window looks around.
 const TICK: Duration = Duration::from_secs(1);
-/// Recent notices kept for the settings window.
 const MAX_NOTICES: usize = 8;
 
-/// Where a person dropped a tile: its top left corner, in layout units,
-/// and how far it may snap.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Spot {
     pub x: i32,
@@ -30,8 +20,6 @@ pub(super) struct Spot {
     pub tolerance: u32,
 }
 
-/// Expires found computers, says hello to new ones and lets the pairing
-/// window take a lone stranger, once a second.
 pub(super) fn start(shared: Arc<Shared>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(TICK);
@@ -77,8 +65,6 @@ impl Shared {
         }
     }
 
-    /// Trusts a computer a peer placed, one a tick, as if a person here had
-    /// placed it. See [`crate::neighbors::Neighbors::introduced`].
     async fn introduce(self: &Arc<Self>) {
         let Some(layout) = self.layout.lock().await.clone() else {
             return;
@@ -113,8 +99,6 @@ impl Shared {
             .unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Remembers that a person here forgot `record`, so no introduction
-    /// adds it back. Placing it again does.
     pub(super) fn forgot(&self, record: &crate::config::PeerConfig) -> Result<()> {
         let key = record.fingerprint_hex()?;
         self.forgotten()
@@ -122,12 +106,8 @@ impl Shared {
             .context("Could not remember the forgotten computer")
     }
 
-    /// Trusts the lone stranger the pairing window settled on. Saving it
-    /// closes the window as accepted; if it cannot be saved, the window
-    /// closes as failed and a person places it.
     async fn join(self: &Arc<Self>, stranger: &Stranger) {
         let _mutation = self.config_mutation.lock().await;
-        // A person placed a computer while this waited, which used it up.
         if !self.window().is_open() {
             return;
         }
@@ -149,8 +129,6 @@ impl Shared {
         }
     }
 
-    /// Says hello at every address of a record at once and keeps the first
-    /// computer that answers. A record nothing answers at is asked again.
     async fn say_hello(&self, instance: &str, addresses: &[SocketAddr]) {
         let mut attempts = tokio::task::JoinSet::new();
         for &address in addresses {
@@ -185,8 +163,6 @@ impl Shared {
         }
     }
 
-    /// Answers a hello that came to the input port, from any key, unless
-    /// it came from this computer itself.
     pub(super) async fn answer_hello(&self, connection: HelloConnection) {
         let remote = connection.remote_address();
         let now = tokio::time::Instant::now();
@@ -203,7 +179,6 @@ impl Shared {
         self.exchange(connection, remote, None).await;
     }
 
-    /// Trades hellos on `connection` and returns whether one came back.
     async fn exchange(
         &self,
         connection: HelloConnection,
@@ -236,7 +211,6 @@ impl Shared {
         });
     }
 
-    /// Browsing started, and finds this computer's own record too.
     pub(super) fn own_record(&self, discovery: Option<&crate::discovery::Discovery>) {
         let own = discovery.map(|discovery| discovery.instance_id().to_string());
         self.neighbors.send_if_modified(|neighbors| {
@@ -245,7 +219,6 @@ impl Shared {
         });
     }
 
-    /// Browsing stopped, so the records it found are gone.
     pub(super) fn forget_records(&self, records: &mut std::collections::BTreeSet<String>) {
         let now = tokio::time::Instant::now();
         self.neighbors.send_modify(|neighbors| {
@@ -255,7 +228,6 @@ impl Shared {
         });
     }
 
-    /// Says hello to an address a person typed, as to an mDNS record.
     pub(super) fn add_address(&self, address: SocketAddr) -> Result<()> {
         UntrustedCandidate::explicit(address)
             .map_err(|error| anyhow!("{address} cannot be added: {error}"))?;
@@ -264,8 +236,6 @@ impl Shared {
         Ok(())
     }
 
-    /// Opens a fresh install's pairing window, now that a person is at this
-    /// computer. Only the first call after setup does anything.
     pub(super) async fn open_pairing_window(&self) {
         let has_peers = !self.config.read().await.peers.is_empty();
         self.window().open(has_peers, tokio::time::Instant::now());
@@ -282,13 +252,10 @@ impl Shared {
             .clone()
     }
 
-    /// The found computers that are not trusted here.
     pub(super) fn unplaced(&self, config: &Config) -> Vec<Unplaced> {
         self.neighbors.borrow().unplaced(config)
     }
 
-    /// The found computer with this name or mark, for the command line. A
-    /// name two computers share needs the mark.
     pub(super) fn find_unplaced(&self, config: &Config, computer: &str) -> Result<Unplaced> {
         let tiles = self.unplaced(config);
         let matches: Vec<&Unplaced> = tiles
@@ -314,12 +281,6 @@ impl Shared {
         }
     }
 
-    /// Trusts a found computer, as a person dropping its tile on the board
-    /// or the pairing window does, and returns the name it is saved under.
-    /// Dropped on the tile of a saved computer with its name, it is that
-    /// computer reinstalled: it keeps the name, settings and tile with its
-    /// new key. Otherwise its tile goes where it was dropped, or beside this
-    /// computer. The caller holds `config_mutation`; `config` is current.
     pub(super) async fn trust(
         self: &Arc<Self>,
         mut config: Config,
@@ -369,8 +330,6 @@ impl Shared {
         if let Err(error) = self.forgotten().remember(key) {
             tracing::warn!(%error, peer = %name, "placed, but may not be added again by itself after a forget");
         }
-        // A new tile starts beside this computer; a reinstalled one already
-        // has its old tile.
         if let (None, Some(spot)) = (&namesake, spot)
             && let Err(error) = self
                 .move_tile(
@@ -388,8 +347,6 @@ impl Shared {
         Ok(name)
     }
 
-    /// The saved computer called `name` whose tile is under the middle of a
-    /// new tile dropped at `spot`.
     async fn namesake_under(&self, name: &str, spot: Spot) -> Option<String> {
         let layout = self.layout_status().await?;
         let (width, height) = (i64::from(PEER_TILE_SIZE.0), i64::from(PEER_TILE_SIZE.1));
@@ -407,9 +364,6 @@ impl Shared {
         })
     }
 
-    /// Tells the person here that `name` joined, with its key's `mark`: a
-    /// notification now, and a notice the settings window shows with a way
-    /// to forget it.
     fn post_joined(self: &Arc<Self>, name: &str, mark: &str) {
         {
             let mut notices = self.notices.lock().unwrap_or_else(PoisonError::into_inner);
@@ -430,8 +384,6 @@ impl Shared {
     }
 }
 
-/// The notification for a computer that joined. Its mark is what tells it
-/// from another computer with its name.
 fn joined_message(name: &str, mark: &str) -> String {
     format!(
         "{name} joined, with mark {mark}. It can share this computer's keyboard and mouse. Not yours? Forget it in zflow settings."
@@ -448,8 +400,6 @@ mod tests {
         (directory, identity)
     }
 
-    /// A computer called `name` said hello; returns its shelf id. It takes
-    /// input where nothing listens, so its link dials nothing real.
     fn found(shared: &Shared, spki: &[u8], name: &str) -> String {
         let hello = crate::hello::make_hello(name, 9, Vec::new(), false);
         let remote = "127.0.0.1:9".parse().unwrap();
@@ -457,7 +407,6 @@ mod tests {
         format!("key:{}", fingerprint(spki))
     }
 
-    /// The layout before anyone arranged it: this computer alone.
     async fn arranged(shared: &Shared) {
         let own = &shared.identity_fingerprint;
         let layout = initial_layout(own, 2560, 1440, &BTreeMap::new()).unwrap();
@@ -502,7 +451,6 @@ mod tests {
         let message = joined_message("desk", &mark);
         assert!(message.starts_with(&format!("desk joined, with mark {mark}.")));
 
-        // Once only, and only computers that said hello.
         assert!(place(&shared, &id, None).await.is_err());
         let (_other_directory, other) = identity();
         let unknown = format!("key:{}", fingerprint(other.spki()));
@@ -511,8 +459,6 @@ mod tests {
         assert_eq!(shared.config.read().await.peers.len(), 1);
     }
 
-    /// A computer called `name` this computer found and said hello to,
-    /// which answered; returns its shelf id.
     fn answered(shared: &Shared, spki: &[u8], name: &str) -> String {
         let instance = format!("zf-{name}");
         let remote: SocketAddr = "127.0.0.1:9".parse().unwrap();
@@ -538,7 +484,6 @@ mod tests {
             "nobody placed it"
         );
 
-        // A peer's layout came with its tile.
         if let Some(layout) = shared.layout.lock().await.as_mut() {
             layout.tiles.push(crate::desktop::Tile {
                 key: key.clone(),
@@ -571,7 +516,6 @@ mod tests {
             shared.config.read().await.peers.is_empty(),
             "forgotten here"
         );
-        // A person placing it again takes it off the list.
         place(&shared, &id, None).await.unwrap();
         assert!(!shared.forgotten().contains(&key));
     }
@@ -582,7 +526,6 @@ mod tests {
         let (_directory, desk) = identity();
         arranged(&shared).await;
         let id = found(&shared, desk.spki(), "desk");
-        // Right on top of this computer, too far from an edge to snap.
         let onto = Spot {
             x: 0,
             y: 0,
@@ -610,7 +553,6 @@ mod tests {
         let layout = shared.layout.lock().await.clone().unwrap();
         let (x, y) = tile_at(&layout, &before).unwrap();
 
-        // The same name with a new key, dropped on the old tile.
         let after = found(&shared, new.spki(), "desk");
         let state = shared.unplaced(&*shared.config.read().await)[0].state;
         assert_eq!(state, UnplacedState::DuplicateName);
@@ -641,7 +583,6 @@ mod tests {
         let now = tokio::time::Instant::now();
         let config = shared.config.read().await.clone();
         let stranger = shared.neighbors.borrow().strangers(&config, now).present[0].clone();
-        // Someone edited the file meanwhile, so saving it refuses.
         let mut edited = config.clone();
         edited.clipboard.share = !edited.clipboard.share;
         edited.save(&shared.config_path).unwrap();
@@ -685,7 +626,6 @@ mod tests {
             input_server_config_for_peers(&server_key, std::iter::empty::<&[u8]>()).unwrap();
         let listener = Endpoint::server(server.quinn_config(), loopback).unwrap();
         let address = listener.local_addr().unwrap();
-        // A process on this computer, such as another user's, knocks.
         let client = Endpoint::client(loopback).unwrap();
         let config = hello_client_config(&local_key).unwrap();
         let knocking = tokio::spawn(async move {

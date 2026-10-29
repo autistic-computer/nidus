@@ -12,38 +12,23 @@ using Windows.UI;
 
 namespace Zflow;
 
-// The arrangement, as the Mac and GNOME windows show it: each computer's
-// screens as an island with its name above, lit seams where the pointer
-// crosses to another computer, and under it every computer, or the selected
-// one's crossings, screens and settings. The engine owns the geometry: a
-// drag asks it where the screens would land, and a drop asks it to move them.
 public sealed partial class MainWindow
 {
-    // An arrow key moves a computer 100 layout units, about an inch, and snaps
-    // within a little less, so a step away from a seam is not pulled back to
-    // it. A drag snaps within 14 pixels.
     private const int KeyStep = 100, KeyTolerance = KeyStep - 1;
     private const double DragTolerance = 14;
-    // Room around the arrangement: at the sides, above it for the computers'
-    // names, and under it. An island's outline stands off its screens.
     private const double RoomSides = 28, RoomAbove = 48, RoomBelow = 24, HullGap = 8, ChipGap = 6;
     private const string Local = "local", ThisPc = "This PC";
-    // Each of a key mark's first four hex digits picks one of these by its low
-    // three bits, as on the Mac and GNOME, so a key looks the same everywhere.
     private static readonly Color[] MarkColors = [.. new uint[] { 0xE5484D, 0xF76B15, 0xFFC53D, 0x30A46C, 0x12A594, 0x0090FF, 0x8E4EC6, 0xD6409F }
         .Select(rgb => Color.FromArgb(255, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb))];
 
     private sealed record Fit(double Scale, int Left, int Top, double OffsetX, double OffsetY);
-    // A computer, with the screens the layout gives it, in layout order.
     private sealed record Computer(string Owner, string Name, JsonObject? Peer, string? Mark, List<JsonObject> Monitors);
     private sealed class Screen(JsonObject monitor, string owner, Border tile)
     {
         public readonly JsonObject Monitor = monitor;
         public readonly string Owner = owner;
         public readonly Border Tile = tile;
-        // Its name, when it has room for one.
         public Border? Caption;
-        // Where it sits on the board, and where it shows while a drag carries it.
         public Rect Home, Shown;
         public string Id => Text(Monitor["id"]);
     }
@@ -54,7 +39,6 @@ public sealed partial class MainWindow
         public readonly Border Chip = chip;
         public readonly Button Done = done;
         public readonly List<Screen> Screens = [];
-        // Which corner its name took, kept through a drag so it does not jump.
         public int? Spot;
         public string Owner => Computer.Owner;
     }
@@ -62,13 +46,9 @@ public sealed partial class MainWindow
     {
         public readonly string Owner = owner, AnchorId = anchor.Id;
         public readonly int AnchorX = Number(anchor.Monitor["x"]), AnchorY = Number(anchor.Monitor["y"]);
-        // Whether the whole computer moves, or only the anchor screen.
         public readonly bool Computer = computer;
-        // The board keeps its scale until the drop, so nothing rescales under the pointer.
         public readonly Fit Fit = fit;
         public double Dx, Dy;
-        // The move the engine last answered for, and its answer: where the
-        // screens land, or null where they cannot go.
         public string? Asked;
         public JsonObject? Landing;
         public bool Dropped;
@@ -86,9 +66,6 @@ public sealed partial class MainWindow
     private Drag? drag;
     private bool asking;
     private string? selection, adjusting;
-    // The computer under the pointer, and which of its name or screens the
-    // pointer is over, so going from one to the next keeps it whichever
-    // event comes first.
     private (string Owner, UIElement Over)? hover;
 
     private static string? Seed(JsonNode? node) => node is JsonValue value && value.TryGetValue(out string? seed) && seed.Length >= 4 && seed.All(Uri.IsHexDigit) ? seed : null;
@@ -98,8 +75,6 @@ public sealed partial class MainWindow
     private List<JsonObject> ActiveMonitors() => (state?["layout"]?["monitors"] as JsonArray)?.OfType<JsonObject>()
         .Where(m => m["display"]?["active"] is null || Flag(m["display"]!["active"])).ToList() ?? [];
 
-    // The computers on the arrangement, in its order, then any paired one
-    // with no screen there.
     private List<Computer> Computers()
     {
         var peers = (state?["peers"] as JsonArray)?.OfType<JsonObject>().ToList() ?? [];
@@ -125,7 +100,6 @@ public sealed partial class MainWindow
         return computers;
     }
 
-    // A few words for a paired computer's state, and its dot's brush; null draws a hollow dot.
     private (string Label, string? Dot) PeerState(JsonObject peer)
     {
         string name = Text(peer["name"]);
@@ -147,7 +121,6 @@ public sealed partial class MainWindow
         };
     }
 
-    // Four small squares, so two computers with one name look different.
     private static FrameworkElement? MarkView(string? mark)
     {
         if (mark is null) return null;
@@ -164,7 +137,6 @@ public sealed partial class MainWindow
         return state is null ? screens : $"{screens} · {state}";
     }
 
-    // "27″ · 3840 × 2160", with what the system knows of the two.
     private static string ScreenDetail(JsonNode? display)
     {
         if (display is null) return "";
@@ -180,7 +152,6 @@ public sealed partial class MainWindow
     private void DrawArrangement()
     {
         if (dragging || Arrangement.ActualWidth <= 64) return;
-        // A drop ends with the state it brought.
         if (drag is { Dropped: true }) drag = null;
         Arrangement.Children.Clear();
         screens.Clear(); islands.Clear(); seamMarks.Clear();
@@ -202,8 +173,6 @@ public sealed partial class MainWindow
         PlaceArrangement();
     }
 
-    // The scale and origin that center the layout on the board, with room
-    // above it for the computers' names, as the Mac app fits it.
     private static Fit FitLayout(List<JsonObject> monitors, double width, double height)
     {
         int left = monitors.Min(m => Number(m["x"])), top = monitors.Min(m => Number(m["y"]));
@@ -212,7 +181,6 @@ public sealed partial class MainWindow
         return new Fit(scale, left, top, (width - (right - left) * scale) / 2, RoomAbove + (height - RoomAbove - RoomBelow - (bottom - top) * scale) / 2);
     }
 
-    // Every screen rounds its edges alike, so touching edges stay touching.
     private static Rect RectOf(JsonObject monitor, Fit f, double dx = 0, double dy = 0)
     {
         double X(int v) => Math.Round(f.OffsetX + (v - f.Left) * f.Scale + dx);
@@ -228,10 +196,7 @@ public sealed partial class MainWindow
         Canvas.SetZIndex(hull, 0);
         var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7 };
         content.Children.Add(new TextBlock { Text = computer.Name, FontSize = 12, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, MaxWidth = 160, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Foreground = Brush("TextFillColorPrimaryBrush") });
-        // Its state is a dot here, in words in its tooltip and the inspector,
-        // and its mark is in the inspector, so names stay small on the board.
         if (computer.Peer is not null) content.Children.Add(Dot(computer.Peer));
-        // Its border keeps its width unselected, so selecting it does not move its name.
         var chip = new Border { Child = content, CornerRadius = new CornerRadius(13), Padding = new Thickness(9, 3, 11, 3), BorderThickness = new Thickness(2) };
         string described = computer.Peer is null ? ThisPc : $"{computer.Name} · {PeerState(computer.Peer).Label}";
         ToolTipService.SetToolTip(chip, described);
@@ -255,13 +220,11 @@ public sealed partial class MainWindow
     {
         var face = new Grid();
         var tile = new Border { CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), Background = Brush("SolidBackgroundFillColorTertiaryBrush"), Child = face };
-        // A paired computer that cannot take input now shows faded.
         if (island.Computer.Peer is JsonObject peer && !Flag(peer["connected"])) tile.Opacity = 0.62;
         var screen = new Screen(monitor, island.Owner, tile);
         var rect = RectOf(monitor, fit!);
         if (monitor["display"] is JsonObject display)
         {
-            // A screen too small for its name shows none.
             if (rect.Width >= 64 && rect.Height >= 30)
             {
                 screen.Caption = new Border
@@ -275,20 +238,16 @@ public sealed partial class MainWindow
         }
         else if (Math.Min(rect.Width, rect.Height) >= 24)
         {
-            // A computer that has not said what screens it has.
             face.Children.Add(new FontIcon { Glyph = island.Owner == Local ? "\uE7F8" : "\uE7F4", FontSize = Math.Min(22, rect.Height * 0.35), Foreground = Brush("TextFillColorSecondaryBrush") });
         }
         ToolTipService.SetToolTip(tile, Text(monitor["label"]));
         AutomationProperties.SetName(tile, $"{ScreenName(monitor)}, {island.Computer.Name}");
-        // Out of adjusting, a screen carries its whole computer.
         AttachDrag(tile, island, () => screen, () => adjusting != island.Owner);
         AttachHover(tile, island);
         Arrangement.Children.Add(tile);
         return screen;
     }
 
-    // Places the screens, outlines, names and seams; a drag moves its screens
-    // to where the engine says they land, else under the pointer.
     private void PlaceArrangement()
     {
         if (fit is not Fit f) return;
@@ -320,9 +279,6 @@ public sealed partial class MainWindow
         DrawSeams();
     }
 
-    // Only the selected computer and the one under the pointer show their
-    // outline and their screens' names, the selected one in the accent. A
-    // name has a background only while selected or under the pointer.
     private void Highlight()
     {
         var accent = Accent;
@@ -340,7 +296,6 @@ public sealed partial class MainWindow
         }
     }
 
-    // An island's screens as shown, with room around them.
     private static Rect Hull(Island island)
     {
         var rects = island.Screens.Select(s => s.Shown).ToList();
@@ -349,9 +304,6 @@ public sealed partial class MainWindow
         return new Rect(left - HullGap, top - HullGap, right - left + 2 * HullGap, bottom - top + 2 * HullGap);
     }
 
-    // A computer's name sits over its outline's top left corner, or at
-    // another corner or just inside, wherever it covers the least of the
-    // other computers and names.
     private void PlaceChips()
     {
         double width = Arrangement.ActualWidth, height = Arrangement.Height;
@@ -375,7 +327,6 @@ public sealed partial class MainWindow
             double above = hull.Top - chip.Height - ChipGap, below = hull.Bottom + ChipGap, inside = hull.Top + HullGap + 4;
             (double X, double Y)[] spots = [(start, above), (end, above), (start, below), (end, below), (start, inside)];
             var others = islands.Where(other => other != island).Select(other => hulls[other]).Concat(taken).ToList();
-            // Off the board counts as covering everything.
             double Cost((double X, double Y) spot) => spot.Y < 4 || spot.Y + chip.Height > height - 4 ? double.PositiveInfinity
                 : others.Sum(other => Covered(new Rect(spot.X, spot.Y, span, chip.Height), other));
             if (drag is null || island.Spot is null)
@@ -391,9 +342,6 @@ public sealed partial class MainWindow
         }
     }
 
-    // Lit seams where the pointer crosses to another computer, and dotted
-    // joints between one computer's own screens. While a drag waits for the
-    // engine, only the seams it cannot change show.
     private void DrawSeams()
     {
         foreach (var mark in seamMarks) Arrangement.Children.Remove(mark);
@@ -406,7 +354,6 @@ public sealed partial class MainWindow
             var moving = screens.Values.Where(current.Moves).Select(s => s.Id).ToHashSet();
             seams = seams.Where(s => !moving.Contains(Text(s["a"])) && !moving.Contains(Text(s["b"])));
         }
-        // Seams fade while sharing is off, since the pointer crosses none.
         double strength = Flag(state?["sharing"]) ? 1 : 0.3;
         var accent = Accent;
         void Add(UIElement mark) { Canvas.SetZIndex(mark, 3); seamMarks.Add(mark); Arrangement.Children.Add(mark); }
@@ -427,7 +374,6 @@ public sealed partial class MainWindow
             var ends = SeamLine(seam, f, 3);
             Stroke(ends, new SolidColorBrush(WithAlpha(accent, 0.28 * strength)), 11);
             Stroke(ends, new SolidColorBrush(WithAlpha(accent, strength)), 4);
-            // Arrows across it, where there is room.
             if ((Number(seam["end"]) - Number(seam["start"])) * f.Scale <= 34) continue;
             var badge = new Grid { Width = 18, Height = 18, IsHitTestVisible = false };
             badge.Children.Add(new Ellipse { Fill = new SolidColorBrush(WithAlpha(accent, strength)) });
@@ -437,7 +383,6 @@ public sealed partial class MainWindow
         }
     }
 
-    // A seam on the board, short of its ends by `inset`.
     private static (Point A, Point B) SeamLine(JsonObject seam, Fit f, double inset)
     {
         bool vertical = Flag(seam["vertical"]);
@@ -448,9 +393,6 @@ public sealed partial class MainWindow
         return vertical ? (new Point(across, from), new Point(across, to)) : (new Point(from, across), new Point(to, across));
     }
 
-    // A press on a name or a screen picks up its computer, or the screen
-    // alone while the computer is being adjusted. Past a click, the screens
-    // follow the pointer; a click selects the computer.
     private void AttachDrag(FrameworkElement element, Island island, Func<Screen> anchor, Func<bool> computer)
     {
         element.PointerPressed += (_, e) =>
@@ -488,7 +430,6 @@ public sealed partial class MainWindow
             if (drag is { Dropped: false } current) await FinishMoveAsync(current);
             else Select(press.Island.Owner);
         };
-        // Lost without a release, as when the window loses focus: the screens go back.
         element.PointerCaptureLost += (_, _) =>
         {
             if (pressed is null) return;
@@ -500,8 +441,6 @@ public sealed partial class MainWindow
         element.DoubleTapped += (_, e) => { Adjust(island.Owner, adjusting != island.Owner); e.Handled = true; };
     }
 
-    // The pointer over a computer's name or one of its screens shows its
-    // outline and its screens' names.
     private void AttachHover(FrameworkElement element, Island island)
     {
         element.PointerEntered += (_, _) => { hover = (island.Owner, element); Highlight(); };
@@ -513,7 +452,6 @@ public sealed partial class MainWindow
         };
     }
 
-    // As far as the pointer went, but with the screens kept on the board.
     private (double, double) Travel(Drag current, double dx, double dy)
     {
         var moving = screens.Values.Where(current.Moves).Select(s => s.Home).ToList();
@@ -523,7 +461,6 @@ public sealed partial class MainWindow
         return (Math.Clamp(dx, -left, Math.Max(-left, Arrangement.ActualWidth - right)), Math.Clamp(dy, -top, Math.Max(-top, Arrangement.Height - bottom)));
     }
 
-    // Asks the engine where the drag lands, one question at a time, the newest travel next.
     private async void Ask()
     {
         if (drag is not { Dropped: false } current || asking) return;
@@ -533,7 +470,6 @@ public sealed partial class MainWindow
         asking = true;
         JsonNode? landing;
         try { landing = await engine.RequestAsync(new { command = "preview", id = current.AnchorId, x, y, tolerance = current.Tolerance, computer = current.Computer }, 1500); }
-        // Without an answer, the screens follow the pointer.
         catch (Exception) { return; }
         finally { asking = false; }
         if (drag == current && !current.Dropped)
@@ -545,8 +481,6 @@ public sealed partial class MainWindow
         Ask();
     }
 
-    // The screens stay where they show until the engine's state moves them,
-    // or go back if it refuses.
     private async Task FinishMoveAsync(Drag current)
     {
         current.Dropped = true;
@@ -568,7 +502,6 @@ public sealed partial class MainWindow
         DrawInspector();
     }
 
-    // Whether a computer's screens move one by one instead of together.
     private void Adjust(string owner, bool on, bool redraw = true)
     {
         bool reselect = selection != owner;
@@ -584,13 +517,11 @@ public sealed partial class MainWindow
         (int dx, int dy) = e.Key switch { VirtualKey.Left => (-1, 0), VirtualKey.Right => (1, 0), VirtualKey.Up => (0, -1), VirtualKey.Down => (0, 1), _ => (0, 0) };
         if ((dx, dy) == (0, 0) || drag is not null || islands.Count == 0) return;
         e.Handled = true;
-        // The first arrow picks a computer to move.
         if (islands.Find(i => i.Owner == selection) is not Island island) { Select(islands[0].Owner); return; }
         var anchor = island.Screens[0].Monitor;
         await SendAsync(new { command = "move_tile", id = Text(anchor["id"]), x = Number(anchor["x"]) + dx * KeyStep, y = Number(anchor["y"]) + dy * KeyStep, tolerance = KeyTolerance, computer = true });
     }
 
-    // A click beside the computers lets go of the selected one.
     private void Arrangement_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (ReferenceEquals(e.OriginalSource, Arrangement)) Select(null);
@@ -605,7 +536,6 @@ public sealed partial class MainWindow
         var selected = computers.Find(c => c.Owner == selection);
         if (selected is null && selection is not null)
         {
-            // A removed computer lets go of the selection.
             selection = adjusting = null;
             PlaceArrangement();
         }
@@ -637,7 +567,6 @@ public sealed partial class MainWindow
         var peer = computer.Peer;
         string name = computer.Name;
         bool local = computer.Owner == Local;
-        // Its name, state and mark, with a way back to every computer.
         var header = new Grid { ColumnSpacing = 12, Margin = new Thickness(0, 0, 0, 4) };
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -687,7 +616,6 @@ public sealed partial class MainWindow
             PeersPanel.Children.Add(new SettingsCard { Header = "Take control", Description = "Move input to it now. Crossing an edge does too.", HeaderIcon = new FontIcon { Glyph = "\uE962" }, Content = control });
         }
 
-        // Where the pointer goes from this computer's screens to another's.
         var monitors = ActiveMonitors();
         var mine = computer.Monitors.Select(m => Text(m["id"])).ToHashSet();
         var crossings = (state?["seams"] as JsonArray)?.OfType<JsonObject>()

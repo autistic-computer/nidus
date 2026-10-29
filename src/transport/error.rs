@@ -2,8 +2,6 @@ use thiserror::Error;
 
 use crate::wire::WireError;
 
-/// The close code a listener sends when it refuses input from a key it has
-/// not added.
 pub(super) const NOT_TRUSTED: quinn::VarInt = quinn::VarInt::from_u32(0x103);
 
 #[derive(Debug, Error)]
@@ -69,16 +67,11 @@ pub enum TransportError {
 
 impl From<quinn::ConnectionError> for TransportError {
     fn from(error: quinn::ConnectionError) -> Self {
-        // TLS alert 120 (no_application_protocol) means the peers share no
-        // ALPN, which is how two zflow versions tell each other apart.
         let code = match &error {
             quinn::ConnectionError::ConnectionClosed(close) => Some(close.error_code),
             quinn::ConnectionError::TransportError(error) => Some(error.code),
             _ => None,
         };
-        // Alert 49 (access_denied) raised here is this computer's key check
-        // refusing the peer's key. Sent by the peer, it means the reverse,
-        // which stays a plain connection error.
         let raised_here = matches!(error, quinn::ConnectionError::TransportError(_));
         if code == Some(quinn::TransportErrorCode::crypto(120)) {
             Self::InvalidAlpn
@@ -92,8 +85,6 @@ impl From<quinn::ConnectionError> for TransportError {
     }
 }
 
-// The refusal reaches a dialer as whichever stream call notices it first, and
-// it says more than the stream error that carried it.
 impl From<quinn::WriteError> for TransportError {
     fn from(error: quinn::WriteError) -> Self {
         match &error {
@@ -116,7 +107,6 @@ impl From<quinn::ReadExactError> for TransportError {
     }
 }
 
-/// Whether the other computer closed because it has not added this one.
 fn refused(error: &quinn::ConnectionError) -> bool {
     matches!(error, quinn::ConnectionError::ApplicationClosed(close) if close.error_code == NOT_TRUSTED)
 }

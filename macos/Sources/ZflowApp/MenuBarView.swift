@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// The menu bar panel: sharing, the computers, and the way into the window.
 struct MenuBarView: View {
   var model: AppModel
 
@@ -42,7 +41,6 @@ struct MenuBarView: View {
             }
           }
         }
-        // Found nearby: placing one happens on the arrangement.
         ForEach(found) { computer in
           MenuRow(title: computer.name, symbol: computer.symbol) {
             model.show(.computers)
@@ -91,7 +89,6 @@ struct MenuBarView: View {
   }
 }
 
-/// A row that acts like a menu item: it highlights under the pointer.
 private struct MenuRow<Trailing: View>: View {
   var title: String
   var symbol: String?

@@ -1,13 +1,5 @@
-//! Keep about two round trips of data unacknowledged. More only queues in the network and delays
-//! every later update; the tile encoder merges whatever waits, so holding back loses nothing.
-//!
-//! A still screen sends little, and what it sends says nothing about the link, so those samples
-//! only ever raise the estimate, and the newest one never expires. A click that changes half the
-//! screen after a minute of nothing then goes out at the rate the link last showed.
-
 use std::collections::VecDeque;
 
-/// Small enough that a 2 Mbit/s link queues at most a few tens of milliseconds behind it.
 const MIN_WINDOW: usize = 8 * 1024;
 const RATE_WINDOW_NS: u64 = 2_000_000_000;
 const RTT_WINDOW_NS: u64 = 10_000_000_000;
@@ -18,7 +10,6 @@ struct Sent {
     at: u64,
     delivered: u64,
     delivered_at: u64,
-    /// Sent with nothing more waiting, so the window did not hold it back.
     app_limited: bool,
 }
 
@@ -29,14 +20,11 @@ pub struct Pacer {
     in_flight: usize,
     delivered: u64,
     delivered_at: u64,
-    /// Bytes per nanosecond, newest last, kept for a max filter.
     rates: VecDeque<(u64, f64)>,
     min_rtt: Option<(u64, u64)>,
 }
 
 impl Pacer {
-    /// Record a message about to be written and return its serial for the viewer to acknowledge.
-    /// `more` says the sender had more than the window let it send.
     pub fn sent(&mut self, bytes: usize, more: bool, now: u64) -> u64 {
         if self.in_flight == 0 {
             self.delivered_at = now;
@@ -54,8 +42,6 @@ impl Pacer {
         self.serial
     }
 
-    /// Takes the viewer's acknowledgement of everything up to `serial`, and returns the round trip
-    /// of the newest message it covers.
     pub fn acked(&mut self, serial: u64, now: u64) -> Option<u64> {
         let mut last = None;
         while self.sent.front().is_some_and(|s| s.serial <= serial) {
@@ -89,7 +75,6 @@ impl Pacer {
         Some(rtt)
     }
 
-    /// The best delivery rate lately, in bytes per nanosecond.
     fn rate(&self) -> f64 {
         self.rates.iter().map(|r| r.1).fold(0., f64::max)
     }
@@ -113,7 +98,6 @@ mod tests {
     fn window_tracks_two_round_trips_of_delivery_rate() {
         let mut pacer = Pacer::default();
         assert_eq!(pacer.window(), MIN_WINDOW);
-        // Each megabyte lands 5 ms after it was sent: 200 MB/s over a 5 ms round trip.
         let mut now = 0;
         for _ in 0..50 {
             let serial = pacer.sent(1_000_000, true, now);
@@ -136,7 +120,6 @@ mod tests {
             pacer.acked(serial, now);
         }
         let busy = pacer.window();
-        // A minute of a blinking cursor: small frames with nothing else waiting.
         for _ in 0..600 {
             let serial = pacer.sent(200, false, now);
             now += 5_000_000;
@@ -144,7 +127,6 @@ mod tests {
             now += 95_000_000;
         }
         assert_eq!(pacer.window(), busy);
-        // A slower link still shows once the window is what holds the sender back.
         for _ in 0..50 {
             let serial = pacer.sent(100_000, true, now);
             now += 5_000_000;

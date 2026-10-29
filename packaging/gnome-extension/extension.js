@@ -1,7 +1,3 @@
-// Loads zflow's Shell code from the build folder named in `current`. GJS keeps a module for as
-// long as its path, so a new build in a new folder runs as soon as the extension is turned off
-// and on again, without a new login. Keep this file unchanged: Shell keeps it until the next
-// login, so a change here would need one after all.
 import Gio from 'gi://Gio';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -9,7 +5,6 @@ export default class ZflowLoader extends Extension {
     enable() {
         const token = this._token = {};
         import(`./${this._build()}shell.js`).then(({Zflow}) => {
-            // Turned off, or off and on again, while loading.
             if (token !== this._token) return;
             this._zflow = new Zflow();
             this._zflow.enable();
@@ -22,7 +17,6 @@ export default class ZflowLoader extends Extension {
         this._zflow = null;
     }
 
-    // A checkout or an extensions.gnome.org copy has no build folder, only the files themselves.
     _build() {
         try {
             const [, bytes] = Gio.File.new_for_path(`${this.path}/current`).load_contents(null);

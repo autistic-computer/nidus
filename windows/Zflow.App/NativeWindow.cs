@@ -2,8 +2,6 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 
 namespace Zflow;
-// A Win32 notification-area icon complements the WinUI window. All callbacks run
-// on the window's dispatcher; no engine work happens inside a window procedure.
 internal sealed class NativeWindow : IDisposable
 {
     private readonly Window window;
@@ -16,7 +14,6 @@ internal sealed class NativeWindow : IDisposable
     public NativeWindow(Window window, string iconPath)
     {
         this.window = window; hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window); callback = Procedure;
-        // Keep the owned icon until disposal so Explorer restarts can reuse it.
         nint trayIcon = LoadImage(0, iconPath, 1, GetSystemMetrics(49), GetSystemMetrics(50), 0x10);
         if (trayIcon == 0) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Could not load the zflow tray icon.");
         icon = new NotifyIconData { cbSize = (uint)Marshal.SizeOf<NotifyIconData>(), hWnd = hwnd, uID = 1, uFlags = 1 | 2 | 4, uCallbackMessage = TrayMessage, hIcon = trayIcon, szTip = "zflow · Open to manage input sharing", szInfo = "", szInfoTitle = "" };

@@ -1,4 +1,3 @@
-//! Opt-in real Windows engine smoke test. No keyboard/mouse events or clipboard access.
 #![cfg(windows)]
 
 use serde_json::{Value, json};
@@ -213,7 +212,6 @@ async fn native_engine_pairs_persists_reconnects_and_stops() {
         .max()
         .unwrap();
     let tile = monitors.iter().find(|m| m["peer"] == "smoke-peer").unwrap();
-    // Leave a gap so real physical pointer motion cannot cross during this test.
     let moved = request(
         &path,
         json!({"command":"move_tile","id":tile["id"],"x":local_right + 128,"y":tile["y"],"tolerance":0,"computer":true}),
@@ -241,8 +239,6 @@ async fn native_engine_pairs_persists_reconnects_and_stops() {
     assert!(saved.peers["smoke-peer"].reverse_scroll);
     assert!(saved.switching.pause_at_edges);
     assert!(!saved.clipboard.share);
-    // Enter with neutral state only: no key, button, motion, or clipboard data.
-    // Return input here must stop the sender, not just clear current held keys.
     remote
         .begin_outbound(SessionContext {
             session_epoch: SessionEpoch([7; 16]),

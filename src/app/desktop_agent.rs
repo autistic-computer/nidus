@@ -1,4 +1,3 @@
-//! Login-session GNOME integration without a desktop window.
 use anyhow::{Result, ensure};
 use std::{
     sync::{Arc, Mutex},
@@ -50,8 +49,6 @@ pub fn run(install: bool) -> Result<()> {
         state.lock().unwrap_or_else(|e| e.into_inner()).receiver.stop();
         anyhow::Ok(updated)
     })?;
-    // The service and this agent speak the version they were built from, so
-    // after an update the agent runs the new binary in its place.
     match updated {
         Some(path) => {
             use std::os::unix::process::CommandExt;
@@ -64,7 +61,6 @@ pub fn run(install: bool) -> Result<()> {
     }
 }
 
-/// Keeps an offer to serve a lens open at the service, and serves each lens that arrives.
 async fn offer_lenses(bus: zbus::Connection) {
     loop {
         if let Err(error) = offer_lens(&bus).await {
@@ -77,7 +73,6 @@ async fn offer_lenses(bus: zbus::Connection) {
 async fn offer_lens(bus: &zbus::Connection) -> Result<()> {
     let mut stream = tokio::net::UnixStream::connect(crate::peer_view::SOCKET_PATH).await?;
     crate::control::write_message(&mut stream, &crate::peer_view::Request::Lens {}).await?;
-    // Waits here until a peer opens a lens.
     let opened: crate::peer_view::LensOpened = crate::control::read_message(&mut stream).await?;
     tracing::info!(peer = %opened.peer, "showing this screen through a lens");
     let result = crate::lens::host::serve(stream, opened, bus).await;
@@ -85,8 +80,6 @@ async fn offer_lens(bus: &zbus::Connection) -> Result<()> {
     result
 }
 
-/// Where the new binary is, once an update replaced the file this agent runs
-/// from. Linux names a running program's removed file "<path> (deleted)".
 fn replaced(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     let path = std::path::Path::new(exe.to_str()?.strip_suffix(" (deleted)")?);
     path.is_file().then(|| path.to_owned())

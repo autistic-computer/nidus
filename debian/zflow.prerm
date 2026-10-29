@@ -2,7 +2,6 @@
 set -eu
 case "$1" in
     remove)
-        # postrm runs after the script is gone, so close the ports here.
         /usr/lib/zflow/firewall.sh close
         ;;
 esac

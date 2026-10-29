@@ -10,8 +10,6 @@ try {
     $metadata = & cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed' }
     $engine = Join-Path $metadata.target_directory "$target/release/zflow.exe"
-    # Cargo chooses one flag source. Append to the active environment override,
-    # or merge the target flags through Cargo's own configuration support.
     $flagVariable = @('CARGO_ENCODED_RUSTFLAGS', 'RUSTFLAGS', 'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS') |
         Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) } | Select-Object -First 1
     $previousFlags = if ($flagVariable) { [Environment]::GetEnvironmentVariable($flagVariable) } else { $null }
@@ -23,12 +21,10 @@ try {
             $flags = @($previousFlags, '-C', 'target-feature=+crt-static') | Where-Object { $_ -ne '' }
             [Environment]::SetEnvironmentVariable($flagVariable, ($flags -join $separator))
         } else {
-            # A config file avoids native argument quote differences in Windows PowerShell.
             $configFile = [IO.Path]::GetTempFileName()
             [IO.File]::WriteAllText($configFile, 'target.x86_64-pc-windows-msvc.rustflags=["-C","target-feature=+crt-static"]', [Text.UTF8Encoding]::new($false))
             $cargoConfig = @('--config', $configFile)
         }
-        # An explicit target keeps these flags off host build scripts and proc macros.
         & cargo build --locked --release --bin zflow --target $target @cargoConfig
         if ($LASTEXITCODE -ne 0) { throw 'Rust engine build failed' }
     } finally {

@@ -1,5 +1,3 @@
-//! Headless zflow core, platform adapters, transport, and local control plane.
-
 pub mod app;
 pub mod capture;
 #[cfg(not(windows))]

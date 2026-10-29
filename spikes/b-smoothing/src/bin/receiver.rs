@@ -1,22 +1,3 @@
-//! Receives cumulative motion frames and injects them through a uinput
-//! virtual mouse in one of three playout modes. Usage:
-//!
-//!   receiver [--port 5555] [--mode raw|fixed|adaptive] [--delay-ms 8] [--log FILE]
-//!
-//! --log appends one "t_us,dx,dy" line per injection for offline analysis.
-//!
-//! Needs write access to /dev/uinput (root, or a udev rule).
-//! Switch modes at runtime by typing on stdin (works over ssh):
-//!
-//!   raw          apply every frame the instant it arrives
-//!   fixed        fixed playout delay, full catch-up jump after a burst
-//!   adaptive     adaptive delay (p95 jitter + margin) with capped catch-up
-//!   delay <ms>   set the fixed-mode delay
-//!   stats        print counters now
-//!
-//! A mode switch resets playout state (queue and target), so expect the
-//! remote cursor to sit still for an instant right after switching.
-
 use std::collections::VecDeque;
 use std::io::{BufRead, Write};
 use std::net::UdpSocket;
@@ -28,19 +9,15 @@ use evdev::uinput::{VirtualDevice, VirtualDeviceBuilder};
 use evdev::{AttributeSet, EventType, InputEvent, Key, RelativeAxisType};
 use spike_b_smoothing::{MotionFrame, FRAME_LEN};
 
-const MIN_WINDOW_US: i64 = 3_000_000; // sliding window for clock offset + jitter
+const MIN_WINDOW_US: i64 = 3_000_000;
 const ADAPT_MARGIN_US: i64 = 2_000;
 const ADAPT_MIN_US: i64 = 2_000;
 const ADAPT_MAX_US: i64 = 80_000;
 const TICK: Duration = Duration::from_millis(1);
 
-// catch-up slew: drain backlog at CATCHUP_SPEEDUP times the sender's real
-// motion velocity (measured from frame capture timestamps, so capping the
-// output can never inflate the estimate and feed back). Bounded per tick so
-// a stale estimate can neither freeze nor teleport the cursor.
 const CATCHUP_SPEEDUP: f64 = 3.0;
-const STEP_FLOOR: f64 = 5.0; // px per tick
-const STEP_CEIL: f64 = 60.0; // px per tick
+const STEP_FLOOR: f64 = 5.0;
+const STEP_CEIL: f64 = 60.0;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Mode {
@@ -64,18 +41,12 @@ struct Shared {
     queue: VecDeque<RecvFrame>,
     highest_seq: Option<u64>,
     last_totals: Option<(i64, i64)>,
-    // latest matured totals; playout slews last_totals toward this each tick
     target_totals: Option<(i64, i64)>,
-    // previous matured frame (totals + capture time) for velocity estimation
     last_matured: Option<(i64, i64, i64)>,
-    // sender motion velocity in px/ms, from capture-time deltas
     vel_ewma: f64,
     recv_count: u64,
     gap_count: u64,
-    // (t_recv_us, owd_us): owd carries the unknown clock offset; the sliding
-    // minimum estimates that offset plus base one-way delay.
     owd_window: VecDeque<(i64, i64)>,
-    // monotonic deque over owd_window for O(1) sliding minimum
     owd_min: VecDeque<(i64, i64)>,
 }
 
@@ -113,13 +84,10 @@ impl Shared {
         }
         let mut v: Vec<i64> = self.owd_window.iter().map(|&(_, o)| o - min).collect();
         v.sort_unstable();
-        // nearest-rank percentile, not the max at small counts
         let idx = ((v.len() * self.jitter_pct).div_ceil(100)).saturating_sub(1);
         Some(v[idx])
     }
 
-    /// New sender run (or first frame ever): drop everything derived from the
-    /// old session and baseline totals so history is never replayed.
     fn reset_session(&mut self, f: &MotionFrame) {
         self.session = Some(f.session);
         self.queue.clear();
@@ -180,8 +148,6 @@ fn inject(vdev: &mut VirtualDevice, dx: i64, dy: i64) -> bool {
     }
 }
 
-/// Injection failed: walk the logical position back so a later cumulative
-/// frame repairs the lost displacement.
 fn roll_back(shared: &Mutex<Shared>, dx: i64, dy: i64) {
     let mut s = shared.lock().unwrap();
     if let Some((ax, ay)) = s.last_totals {
@@ -265,7 +231,6 @@ fn main() -> std::io::Result<()> {
         owd_min: VecDeque::new(),
     }));
 
-    // stdin control
     {
         let shared = shared.clone();
         std::thread::spawn(move || {
@@ -304,8 +269,6 @@ fn main() -> std::io::Result<()> {
                 if let Some(m) = new_mode {
                     if m != s.mode {
                         s.mode = m;
-                        // stale queued totals from the old mode would replay
-                        // as backwards motion; drop them
                         s.reset_playout();
                     }
                 }
@@ -325,7 +288,6 @@ fn main() -> std::io::Result<()> {
         });
     }
 
-    // receive thread
     {
         let shared = shared.clone();
         let vdev = vdev.clone();
@@ -347,7 +309,7 @@ fn main() -> std::io::Result<()> {
                     continue;
                 };
                 if f.t_capture_us > (1 << 62) {
-                    continue; // garbage timestamp would overflow owd math
+                    continue;
                 }
                 let t_recv = now_us(start);
                 let mut s = shared.lock().unwrap();
@@ -355,7 +317,7 @@ fn main() -> std::io::Result<()> {
 
                 match s.session {
                     Some(id) if id == f.session => match s.highest_seq {
-                        Some(h) if f.seq <= h => continue, // stale or duplicate
+                        Some(h) if f.seq <= h => continue,
                         Some(h) => {
                             if f.seq > h + 1 {
                                 s.gap_count += f.seq - h - 1;
@@ -367,7 +329,7 @@ fn main() -> std::io::Result<()> {
                     Some(_) => {
                         eprintln!("sender restart detected, resetting state");
                         s.reset_session(&f);
-                        continue; // baseline frame carries no motion to apply
+                        continue;
                     }
                     None => {
                         s.reset_session(&f);
@@ -400,7 +362,6 @@ fn main() -> std::io::Result<()> {
         });
     }
 
-    // playout loop
     let mut cached_adaptive_us: i64 = ADAPT_MIN_US;
     let mut last_adapt = Instant::now();
     let mut last_report = Instant::now();
@@ -432,8 +393,6 @@ fn main() -> std::io::Result<()> {
         if last_adapt.elapsed() >= Duration::from_millis(100) {
             cached_adaptive_us = match s.jitter_p95() {
                 Some(p) => (p + ADAPT_MARGIN_US).clamp(ADAPT_MIN_US, s.adapt_cap_us),
-                // sparse or idle: decay toward the floor instead of holding
-                // a stale spike-era delay forever
                 None => (cached_adaptive_us * 3 / 4).max(ADAPT_MIN_US),
             };
             last_adapt = Instant::now();
@@ -443,7 +402,6 @@ fn main() -> std::io::Result<()> {
             _ => cached_adaptive_us,
         };
 
-        // a frame is mature when capture time + offset + delay has passed
         let deadline = now_us(start) - offset - delay;
         while s.queue.front().map_or(false, |f| f.t_capture_us <= deadline) {
             let f = s.queue.pop_front().unwrap();

@@ -1,14 +1,3 @@
-//! One authenticated input session per paired computer while sharing is on.
-//! The desktop snapshot and every crossing reuse it, so a crossing costs a
-//! Prepare round trip instead of a QUIC handshake and session negotiation.
-//! The same session carries the peer's input when it controls this Mac,
-//! and the shared layout both ways. Peers may also connect first; the Mac
-//! keeps one session per peer.
-//!
-//! The same port answers hellos from computers that do not trust this Mac
-//! yet, and links say hello to the ones the app asks about. What the hellos
-//! tell goes back to the app, which decides who is trusted.
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -54,40 +43,25 @@ use super::{
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const SNAPSHOT_RETRY: Duration = Duration::from_secs(5);
-// A receiver still replacing this peer's previous session refuses the first
-// snapshot for a few milliseconds, so retry quickly before backing off.
 const FIRST_SNAPSHOT_RETRY: Duration = Duration::from_millis(250);
-// Long enough for the close to leave; the receiver refuses a second session
-// from this Mac while the old one is open.
 const CLOSE_GRACE: Duration = Duration::from_millis(100);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
-/// Handshakes the listener runs at once, as the Linux daemon allows.
 const MAX_PENDING_ACCEPTS: usize = 8;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LinkState {
     Connecting,
-    /// Connected, with the receiver's current desktop. Only this state crosses.
     Ready(Geometry),
-    /// Connected to a peer that does not take input from this Mac, so it
-    /// can only control it.
     Connected,
-    /// Connected, but the peer takes no input from this Mac for now, and
-    /// says why. It can still control this Mac, and the link keeps asking.
     Refused(String),
-    /// Not usable right now. The link keeps retrying.
     Down(String),
 }
 
-/// A crossing handed to a link. Setting or dropping `stop` returns input to
-/// the Mac. `status` closes once cleanup has finished.
 pub struct Crossing {
     pub stop: watch::Sender<bool>,
     pub status: mpsc::UnboundedReceiver<SourceStatus>,
 }
 
-/// What this Mac says in a hello: its key, the port it takes input on, and
-/// the keys it trusts, so each hello says whether it trusts the other side.
 #[derive(Clone)]
 pub struct Greeting {
     pub client: HelloClientConfig,
@@ -101,45 +75,30 @@ impl Greeting {
     }
 }
 
-/// What came of hellos and connections, for the app to weigh. Only a
-/// session's address was proven by the key it trusts.
 pub enum Heard {
-    /// A computer is saying hello. Answer it with [`Links::answer`], or
-    /// drop it to hang up.
     Knock(HelloConnection),
-    /// A computer's hello: the answer to one this Mac sent to the record
-    /// `instance`, or one that came in.
     Hello {
         instance: Option<String>,
         spki: Vec<u8>,
         remote: SocketAddr,
         hello: Box<Hello>,
     },
-    /// Nothing answered the hello this Mac sent to the record `instance`.
-    Unanswered { instance: String },
-    /// A connection was turned away because too many were being set up at
-    /// once. It could have been a computer not seen otherwise.
+    Unanswered {
+        instance: String,
+    },
     TurnedAway,
-    /// A trusted computer's input session came up: this Mac dialed it at
-    /// `address`, or it connected from there. Unlike a hello's word, TLS
-    /// proved the key at that address, so it is worth saving.
     Connected {
-        /// The computer's `spki_der_hex`.
         key: String,
         address: SocketAddr,
         dialed: bool,
     },
 }
 
-/// Where each paired computer was found just now, by its key
-/// (`spki_der_hex`). Links try these before the saved addresses.
 pub type Found = BTreeMap<String, Vec<SocketAddr>>;
 
-/// A session a peer opened to this Mac.
 struct Opened {
     handle: SessionHandle,
     events: mpsc::Receiver<SessionEvent>,
-    /// The address this Mac dialed, or the one the peer connected from.
     address: SocketAddr,
 }
 
@@ -149,19 +108,14 @@ impl Opened {
     }
 }
 
-/// Carries the shared layout between the app and one link's sessions.
-/// The app keeps one layout for every peer; each session gets it when it
-/// starts and whenever it changes, and hands back a newer one.
 pub(super) struct LayoutRoute {
     peer: String,
     kept: watch::Receiver<Option<SharedLayout>>,
     received: mpsc::UnboundedSender<(String, SharedLayout)>,
-    /// The newest layout the current session's peer is known to hold.
     peer_has: Option<SharedLayout>,
 }
 
 impl LayoutRoute {
-    /// Sends the kept layout if the peer does not hold it or a newer one.
     fn offer(&mut self, session: &SessionHandle) {
         let Some(kept) = self.kept.borrow_and_update().clone() else {
             return;
@@ -179,8 +133,6 @@ impl LayoutRoute {
         }
     }
 
-    /// Takes the peer's layout: a newer one goes to the app, and an older
-    /// one gets the kept layout back.
     pub(super) fn take(&mut self, session: &SessionHandle, layout: SharedLayout) {
         self.peer_has = Some(layout.clone());
         let newer = self
@@ -196,15 +148,11 @@ impl LayoutRoute {
     }
 }
 
-/// The links whose sessions are ready for a crossing, by peer, so a
-/// crossing on one computer can move on to the next.
 #[derive(Clone, Default)]
 pub(super) struct Hops(Arc<std::sync::Mutex<BTreeMap<String, Door>>>);
 
-/// How long taking AWDL down may take for a lens.
 const LENS_AWDL_LIMIT: Duration = Duration::from_secs(5);
 
-/// Every link's live session, ready for a crossing or not. A lens needs only this.
 #[derive(Clone, Default)]
 pub(super) struct Connected(Arc<std::sync::Mutex<BTreeMap<String, SessionHandle>>>);
 
@@ -229,7 +177,6 @@ impl Connected {
     }
 }
 
-/// A ready link: its session, and the way to hand it a crossing.
 #[derive(Clone)]
 pub(super) struct Door {
     pub session: SessionHandle,
@@ -266,7 +213,6 @@ enum Command {
         reduce_wifi_latency: bool,
         stop: watch::Receiver<bool>,
         status: mpsc::UnboundedSender<SourceStatus>,
-        /// Keeps a peer from taking control until input is back on the Mac.
         guard: OutboundGuard,
     },
     Inbound(Opened),
@@ -274,7 +220,6 @@ enum Command {
 }
 
 impl Command {
-    /// The session a crossing that moved on here prepared its desktop on.
     fn prepared_on(&self) -> Option<u64> {
         match self {
             Self::Cross {
@@ -286,10 +231,6 @@ impl Command {
     }
 }
 
-/// What a link's session depends on. The rest of a peer's record, such as
-/// whether it may control this Mac, reaches the link without a reconnect.
-/// So do its addresses: a link finds its computer by key, and an address
-/// learned while connected must not drop the session.
 #[derive(Clone, PartialEq)]
 struct LinkKey {
     spki_der_hex: String,
@@ -313,18 +254,13 @@ struct Link {
     task: JoinHandle<()>,
 }
 
-/// What the accept loop needs, kept current by `Links::sync`.
 #[derive(Default)]
 struct Accepting {
     server: Option<InputServerConfig>,
     options: Option<SessionOptions>,
-    /// Each link's peer and commands, by the peer's key.
     routes: BTreeMap<Vec<u8>, (String, mpsc::UnboundedSender<Command>)>,
 }
 
-/// Takes connections on `transport.listen`: input from paired computers,
-/// and hellos from any. It has its own endpoint, so a port in use only
-/// stops connections coming in.
 struct Listener {
     address: SocketAddr,
     endpoint: Endpoint,
@@ -334,7 +270,6 @@ struct Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        // Sessions already accepted keep running on the endpoint.
         self.task.abort();
     }
 }
@@ -342,35 +277,24 @@ impl Drop for Listener {
 pub struct Links {
     runtime: Option<Runtime>,
     links: BTreeMap<String, Link>,
-    /// Replaced links still returning input or closing their session.
     closing: BTreeMap<String, JoinHandle<()>>,
     found: watch::Sender<Found>,
     changed: bool,
     receiving: Arc<Receiving>,
     listener: Option<Listener>,
     listen_error: Option<String>,
-    /// How long after this Mac's dial a peer's connection counts as dialed
-    /// at the same moment.
     dial_window: Duration,
-    /// The layout this Mac keeps, which every session gets.
     layout: watch::Sender<Option<SharedLayout>>,
-    /// Newer layouts peers sent, by peer, until the app takes them.
     received: mpsc::UnboundedReceiver<(String, SharedLayout)>,
     received_sender: mpsc::UnboundedSender<(String, SharedLayout)>,
-    /// Hellos and refusals, until the app takes them.
     heard: mpsc::UnboundedReceiver<Heard>,
     heard_sender: mpsc::UnboundedSender<Heard>,
-    /// Hellos this Mac is sending.
     dialing: Vec<JoinHandle<()>>,
-    /// The links ready for a crossing.
     hops: Hops,
-    /// Every live session, for a lens.
     connected: Connected,
 }
 
 impl Links {
-    /// Opens a lens onto peer `name`'s screen over its live session. Its text copies land on
-    /// this Mac's pasteboard, and with `reduce_wifi_latency` AWDL stays down while it is open.
     pub fn open_lens(
         &mut self,
         name: &str,
@@ -394,8 +318,6 @@ impl Links {
                     tracing::warn!(%error, "lens copy did not reach the pasteboard");
                 }
             };
-            // AWDL's channel hops stall Wi-Fi for tens of milliseconds twice a second, which a
-            // lens shows as the circle freezing.
             let wifi = reduce_wifi_latency.then(|| super::awdl::shared().want());
             if wifi.is_some() {
                 let peer = peer.clone();
@@ -425,14 +347,11 @@ impl Links {
         Self::with_receiving(Receiving::mac()?)
     }
 
-    /// Links that post through `backend` instead of on this Mac, with
-    /// motion that is not accelerated, and a pasteboard of their own.
     #[cfg(test)]
     pub(crate) fn with_backend(backend: super::inject::FakeBackend) -> Result<Self> {
         Self::with_fakes(backend, Default::default())
     }
 
-    /// Links that also share `pasteboard` instead of this Mac's.
     #[cfg(test)]
     pub(crate) fn with_fakes(
         backend: super::inject::FakeBackend,
@@ -479,15 +398,7 @@ impl Links {
         })
     }
 
-    /// While `sharing`, keeps one link per peer that may connect and closes
-    /// the others; while paused, closes every link. Either way it listens
-    /// while any peer may connect, or while `welcome` lets computers that do
-    /// not trust this Mac yet say hello. A peer whose key or permission to
-    /// receive changed reconnects, and so does every peer when the session
-    /// settings change.
     pub fn sync(&mut self, config: &Config, sharing: bool, welcome: bool) {
-        // Made here once, so link tasks and the listener never race to
-        // create it.
         if let Err(error) = Identity::load_or_create(&config.daemon.state_dir) {
             tracing::warn!(%error, "could not read this Mac's key");
         }
@@ -518,7 +429,6 @@ impl Links {
         for name in stale {
             let link = self.links.remove(&name).expect("stale link exists");
             tracing::info!(peer = %name, "closing input link");
-            // Dropping the command sender stops the task after any crossing.
             self.closing.insert(name, link.task);
             self.changed = true;
         }
@@ -571,11 +481,6 @@ impl Links {
         }
     }
 
-    /// Listens on `transport.listen` for every peer that may connect, and
-    /// for hellos while `welcome`, or on nothing. The Mac still dials when
-    /// this fails. While sharing is paused there are no links, so input
-    /// from a peer is closed once it arrives. The allowlist keeps its key,
-    /// or the peer would hear that this Mac never added it.
     fn listen(&mut self, config: &Config, welcome: bool) {
         let peers: Vec<(&String, Vec<u8>)> = config
             .peers
@@ -636,7 +541,6 @@ impl Links {
         let Some(runtime) = &self.runtime else {
             return;
         };
-        // Quinn needs the runtime to bind.
         let _entered = runtime.enter();
         match Endpoint::client(address) {
             Ok(endpoint) => {
@@ -665,7 +569,6 @@ impl Links {
                 let message = format!(
                     "Other computers cannot connect to this Mac: could not listen on {address}: {error}"
                 );
-                // The app tries again every few seconds.
                 if self.listen_error.as_ref() != Some(&message) {
                     tracing::warn!(%address, %error, "could not listen for other computers");
                 }
@@ -674,23 +577,19 @@ impl Links {
         }
     }
 
-    /// Why the clipboard last went nowhere, while that still holds.
     pub fn clipboard_notice(&self) -> Option<String> {
         self.receiving.clipboard().notice()
     }
 
-    /// Why peers cannot connect to this Mac, if they cannot.
     pub fn listen_error(&self) -> Option<&str> {
         self.listen_error.as_deref()
     }
 
-    /// The port peers connect to, while this Mac listens.
     pub fn listen_port(&self) -> Option<u16> {
         let listener = self.listener.as_ref()?;
         Some(listener.endpoint.local_addr().ok()?.port())
     }
 
-    /// True when a link came, went, or changed state since the last call.
     pub fn changed(&mut self) -> bool {
         let mut changed = std::mem::take(&mut self.changed);
         for link in self.links.values_mut() {
@@ -708,9 +607,6 @@ impl Links {
             .map(|(name, link)| (name.as_str(), link.state.borrow().clone()))
     }
 
-    /// Hands a crossing to its peer's link, if that link is ready and no
-    /// peer controls this Mac. `entry_position` is where the cursor reached
-    /// the edge. The crossing can move on to the computers ready now.
     pub(crate) fn cross(
         &self,
         mut handoff: Handoff,
@@ -741,28 +637,21 @@ impl Links {
         })
     }
 
-    /// The peer controlling this Mac, or about to.
     pub fn controller(&self) -> Option<String> {
         self.receiving.ownership().controller()
     }
 
-    /// Whether Accessibility lets peers control this Mac, and whether AWDL
-    /// goes down while one does. The app sets both on every tick; turning
-    /// Accessibility off ends control at once.
     pub fn set_receive_policy(&self, accessibility: bool, reduce_wifi_latency: bool) {
         self.receiving.set_accessibility(accessibility);
         self.receiving.set_reduce_wifi_latency(reduce_wifi_latency);
     }
 
-    /// Reconnects waiting links now and rechecks connected receivers.
     pub fn retry(&self) {
         for link in self.links.values() {
             let _ = link.commands.send(Command::Retry);
         }
     }
 
-    /// Makes `layout` the one every peer gets: each session is sent it
-    /// unless its peer already holds it or a newer one.
     pub fn share_layout(&self, layout: SharedLayout) {
         self.layout.send_if_modified(|current| {
             let changed = current.as_ref() != Some(&layout);
@@ -771,13 +660,10 @@ impl Links {
         });
     }
 
-    /// Layouts peers sent that are newer than the shared one, oldest first.
     pub fn take_layouts(&mut self) -> Vec<(String, SharedLayout)> {
         std::iter::from_fn(|| self.received.try_recv().ok()).collect()
     }
 
-    /// Where each paired computer was found just now. A link that waits to
-    /// retry dials at once when its computer's addresses change.
     pub fn set_found(&self, found: Found) {
         self.found.send_if_modified(|current| {
             let changed = *current != found;
@@ -786,10 +672,6 @@ impl Links {
         });
     }
 
-    /// Says hello to the record `instance` at every one of `addresses` at
-    /// once, as Linux does, and keeps the first computer that answers. The
-    /// answer comes back from [`Self::take_heard`], or
-    /// [`Heard::Unanswered`] when none came.
     pub fn say_hello(&mut self, instance: String, addresses: Vec<SocketAddr>, greeting: Greeting) {
         let Some(runtime) = &self.runtime else {
             return;
@@ -825,13 +707,11 @@ impl Links {
         }));
     }
 
-    /// Hellos this Mac is still waiting on.
     pub fn hellos_in_flight(&mut self) -> usize {
         self.dialing.retain(|task| !task.is_finished());
         self.dialing.len()
     }
 
-    /// Answers a computer that knocked, with this Mac's hello.
     pub fn answer(&self, knock: HelloConnection, greeting: Greeting) {
         let Some(runtime) = &self.runtime else {
             return;
@@ -855,14 +735,11 @@ impl Links {
         });
     }
 
-    /// Hellos and refusals since the last call, oldest first.
     pub fn take_heard(&mut self) -> Vec<Heard> {
         std::iter::from_fn(|| self.heard.try_recv().ok()).collect()
     }
 }
 
-/// Says hello to whatever answers at `remote`, from an endpoint of its own,
-/// and returns its key and hello.
 async fn dial_hello(remote: SocketAddr, greeting: &Greeting) -> Result<(Vec<u8>, Hello)> {
     let endpoint = Endpoint::client(unspecified_like(remote))?;
     let said = async {
@@ -876,7 +753,6 @@ async fn dial_hello(remote: SocketAddr, greeting: &Greeting) -> Result<(Vec<u8>,
     said
 }
 
-/// Any port on the unspecified address of `remote`'s family.
 fn unspecified_like(remote: SocketAddr) -> SocketAddr {
     if remote.is_ipv4() {
         SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0))
@@ -896,7 +772,6 @@ impl Drop for Links {
         let Some(runtime) = self.runtime.take() else {
             return;
         };
-        // Links return input and close their sessions once their commands close.
         runtime.block_on(async {
             let deadline = tokio::time::Instant::now() + SHUTDOWN_TIMEOUT;
             for task in tasks {
@@ -907,7 +782,6 @@ impl Drop for Links {
     }
 }
 
-/// The settings a session was negotiated with. Other edits leave links alone.
 fn session_settings(config: &Config) -> Config {
     Config {
         peers: BTreeMap::new(),
@@ -918,27 +792,18 @@ fn session_settings(config: &Config) -> Config {
     }
 }
 
-/// One link's peer, and the settings its sessions use.
 struct Remote {
     name: String,
     peer: PeerConfig,
     config: Config,
-    /// How long after this Mac's dial a peer's connection counts as dialed
-    /// at the same moment.
     window: Duration,
-    /// Where each session's address goes, for the app to save.
     heard: mpsc::UnboundedSender<Heard>,
-    /// Every link ready for a crossing, which this one joins while ready.
     hops: Hops,
     connected: Connected,
-    /// This link's own commands, for a crossing another link hands on.
-    /// Weak, so dropping the link's sender still stops it.
     commands: mpsc::WeakUnboundedSender<Command>,
 }
 
 impl Remote {
-    /// Whether this Mac's connection stays when both computers dial at once.
-    /// Both sides keep the one dialed by the computer whose key sorts first.
     fn wins(&self) -> bool {
         let local = Identity::load_or_create(&self.config.daemon.state_dir);
         let peer = self.peer.fingerprint_hex();
@@ -948,9 +813,6 @@ impl Remote {
             .is_some_and(|(local, peer)| wins_simultaneous_dial(&local.fingerprint_hex(), &peer))
     }
 
-    /// Where to dial the peer: where its key was found just now, then the
-    /// addresses saved with it. Each dial pins the key, so a stale or wrong
-    /// address only fails to connect.
     fn addresses(&self, found: &Found) -> Vec<SocketAddr> {
         let found = found.get(&self.peer.spki_der_hex).into_iter().flatten();
         let mut addresses = Vec::new();
@@ -963,12 +825,9 @@ impl Remote {
     }
 }
 
-/// How a link's session ended.
 enum Served {
-    /// The link was closed.
     Stopped,
     Lost(String),
-    /// The peer connected again, and its session replaces this one.
     Replaced(Opened),
 }
 
@@ -981,7 +840,6 @@ async fn run(
     mut layouts: LayoutRoute,
     previous: Option<JoinHandle<()>>,
 ) {
-    // The receiver refuses a second session from this Mac while the old one is open.
     if let Some(previous) = previous {
         let _ = previous.await;
     }
@@ -1024,7 +882,6 @@ async fn run(
                     .await;
                 remote.hops.set(name, None);
                 remote.connected.set(name, None);
-                // Lets go of whatever the peer held before the session goes.
                 drop(inbound);
                 let reason = match served {
                     Served::Stopped => {
@@ -1042,8 +899,6 @@ async fn run(
                 };
                 state.send_replace(LinkState::Down(reason.clone()));
                 session.close(SessionCloseReason::LocalRelease).await;
-                // A session that keeps dropping right after it opens backs off
-                // like a failed attempt.
                 failures = if opened_at.elapsed() >= STABLE_SESSION {
                     0
                 } else {
@@ -1067,9 +922,6 @@ async fn run(
     }
 }
 
-/// Picks one session when the peer connected while this Mac dialed it:
-/// this Mac's if its dial wins, otherwise the peer's. A failed dial takes
-/// the peer's.
 async fn keep_one(
     ours: Result<Session>,
     theirs: Option<Opened>,
@@ -1102,8 +954,6 @@ fn refuse(command: Command, reason: &str) {
             guard,
             ..
         } => {
-            // A crossing that moved on from another computer gives the Mac
-            // its input back first, and lets go of the desktop it prepared.
             arrival.give_back();
             drop(guard);
             let _ = status.send(SourceStatus::Cancelled(reason.into()));
@@ -1113,8 +963,6 @@ fn refuse(command: Command, reason: &str) {
     }
 }
 
-/// Hands a crossing that moved on to the next computer's link. If that link
-/// went away meanwhile, input comes back to the Mac.
 fn hand_on(hops: &Hops, command: Command) {
     let Command::Cross { handoff, .. } = &command else {
         return;
@@ -1131,8 +979,6 @@ fn hand_on(hops: &Hops, command: Command) {
     }
 }
 
-/// Runs `work`, a dial, while refusing crossings, and keeps the newest
-/// session the peer opened meanwhile. None means the link was closed.
 async fn opening<T>(
     commands: &mut mpsc::UnboundedReceiver<Command>,
     work: impl Future<Output = T>,
@@ -1160,16 +1006,12 @@ async fn opening<T>(
     }
 }
 
-/// What a link does after waiting.
 enum Next {
     Dial,
-    /// Use the session the peer opened meanwhile.
     Adopt(Opened),
     Stop,
 }
 
-/// Waits before the next attempt. Retry or addresses for the peer other
-/// than the ones `tried` end the wait early, and so does the peer connecting.
 async fn wait_to_retry(
     commands: &mut mpsc::UnboundedReceiver<Command>,
     found: &mut watch::Receiver<Found>,
@@ -1200,8 +1042,6 @@ async fn wait_to_retry(
     }
 }
 
-/// Takes connections until the listener is dropped. Hellos and refusals go
-/// to `heard`.
 async fn take_connections(
     endpoint: Endpoint,
     accepting: Arc<Mutex<Accepting>>,
@@ -1230,10 +1070,6 @@ async fn take_connections(
     }
 }
 
-/// Sorts a connection by what it asks for. Input from a peer is
-/// negotiated into a session and handed to that peer's link; the session
-/// starts here, so it is ready even while the link runs a crossing. A
-/// hello, or input from a key not trusted here, goes to `heard`.
 async fn open_inbound(
     incoming: Incoming,
     accepting: &Mutex<Accepting>,
@@ -1285,19 +1121,14 @@ async fn open_inbound(
 }
 
 struct Session {
-    /// The endpoint this Mac dialed from. None for a session the peer opened.
     endpoint: Option<Endpoint>,
-    /// When this Mac's dial finished.
     dialed_at: Option<Instant>,
-    /// Where the peer is: the address this Mac dialed, or the one it
-    /// connected from.
     address: SocketAddr,
     handle: SessionHandle,
     events: mpsc::Receiver<SessionEvent>,
     epoch: SessionEpoch,
     activations: u64,
     raw_touch: bool,
-    /// The peer takes input from this Mac, so the link reads its desktop.
     sends: bool,
 }
 
@@ -1311,8 +1142,6 @@ impl Session {
         let identity = Identity::load_or_create(&config.daemon.state_dir)?;
         let client = input_client_config(&identity, &peer.spki_der()?)?;
         let options = SessionOptions::from_config(config)?;
-        // One endpoint dials every address of its family, and most
-        // networks give each computer an IPv4 address.
         let family = addresses
             .iter()
             .find(|address| address.is_ipv4())
@@ -1354,7 +1183,6 @@ impl Session {
         })
     }
 
-    /// Takes over a session the peer opened.
     fn adopt(opened: Opened, remote: &Remote) -> Result<Self> {
         let session = Self::new(opened, None, &remote.peer, &remote.config)?;
         tracing::info!(peer = %remote.name, session_id = session.handle.id(), "using the other computer's connection");
@@ -1380,8 +1208,6 @@ impl Session {
             }
             bail!("could not create the source session epoch: {error}");
         }
-        // A receiver without Touch drops contact snapshots, so keep pointer
-        // and scroll instead of suppressing them while a finger is down.
         let raw_touch = config.input.experimental_touchpad
             && handle.capabilities().contains(InputCapability::Touch);
         Ok(Self {
@@ -1397,7 +1223,6 @@ impl Session {
         })
     }
 
-    /// Each crossing is a new activation in this session's epoch.
     fn next_context(&mut self) -> SessionContext {
         self.activations += 1;
         SessionContext {
@@ -1407,11 +1232,6 @@ impl Session {
         }
     }
 
-    /// Serves crossings and the peer's input until the session ends, the
-    /// link is closed, or the peer's newer session replaces this one. A
-    /// session the peer opens while this Mac's dial is `remote.window` old
-    /// or younger counts as dialed at the same moment, and `wins` picks one.
-    /// While ready, the link is among `remote.hops`.
     async fn serve(
         &mut self,
         commands: &mut mpsc::UnboundedReceiver<Command>,
@@ -1421,11 +1241,8 @@ impl Session {
         wins: bool,
         remote: &Remote,
     ) -> Served {
-        // A new session holds nothing yet.
         layouts.peer_has = None;
         layouts.offer(&self.handle);
-        // The peer's input keeps flowing while its desktop is read, so the
-        // answer is awaited next to it. Only crossings wait for it.
         let mut snapshot = self.ask(inbound);
         let mut ready = false;
         let mut listed = false;
@@ -1453,8 +1270,6 @@ impl Session {
                         snapshot = snapshot.or_else(|| self.ask(inbound));
                     }
                     Some(Command::Inbound(theirs)) => {
-                        // A peer that connects later lost its connection,
-                        // so its new one replaces this one.
                         let simultaneous = self.dialed_at.is_some_and(|at| at.elapsed() < remote.window);
                         if !(simultaneous && wins) {
                             return Served::Replaced(theirs);
@@ -1463,8 +1278,6 @@ impl Session {
                         theirs.close(SessionCloseReason::Superseded);
                     }
                     Some(command) if !ready => refuse(command, "the other computer is not ready"),
-                    // The desktop was prepared on a session this link has
-                    // since replaced, so its polls would go nowhere.
                     Some(command)
                         if command
                             .prepared_on()
@@ -1502,8 +1315,6 @@ impl Session {
                         )
                         .await;
                         if let Some((handoff, arrival)) = onward {
-                            // The next computer's link takes the crossing,
-                            // with the guard that keeps peers out meanwhile.
                             hand_on(&remote.hops, Command::Cross {
                                 handoff,
                                 arrival,
@@ -1513,13 +1324,10 @@ impl Session {
                                 guard,
                             });
                         } else {
-                            // Input is back on the Mac. Let a peer take control
-                            // before the observer hears the crossing ended.
                             drop(guard);
                             drop(status);
                         }
                         if failed {
-                            // The receiver may have changed; check it before the next crossing.
                             ready = false;
                             snapshot = snapshot.or_else(|| self.ask(inbound));
                         }
@@ -1546,7 +1354,6 @@ impl Session {
                     Some(SessionEventKind::Clipboard { clip }) => {
                         inbound.clipboard().keep(self.handle.peer(), clip);
                     }
-                    // This Mac does not share its screen yet; dropping the stream refuses it.
                     Some(SessionEventKind::Lens { .. }) => {
                         tracing::info!(peer = %self.handle.peer(), "lens refused: this Mac does not share its screen");
                     }
@@ -1555,8 +1362,6 @@ impl Session {
                 },
                 Ok(()) = layouts.kept.changed() => layouts.offer(&self.handle),
                 () = tokio::time::sleep(retry), if !ready && snapshot.is_none() && self.sends => {
-                    // Nothing is asked while the peer controls this Mac, so
-                    // the next try comes as soon as it lets go.
                     snapshot = self.ask(inbound);
                     if snapshot.is_some() {
                         retry = (retry * 2).min(SNAPSHOT_RETRY);
@@ -1566,9 +1371,6 @@ impl Session {
         }
     }
 
-    /// Asks for the receiver's desktop, unless it takes no input from this
-    /// Mac, or controls it and so refuses while it sends. Dropping the
-    /// answer before it comes closes the session.
     fn ask(&self, inbound: &Inbound) -> Option<Snapshot> {
         if !self.sends || inbound.controls() {
             return None;
@@ -1579,7 +1381,6 @@ impl Session {
         }))
     }
 
-    /// Closes the session and waits briefly for the close to leave.
     async fn close(mut self, reason: SessionCloseReason) {
         self.handle.close(reason);
         let closed = async {
@@ -1588,7 +1389,6 @@ impl Session {
                     endpoint.close(0_u32.into(), b"sharing stopped");
                     endpoint.wait_idle().await;
                 }
-                // The peer's connection lives on the listener's endpoint.
                 None => {
                     while let Some(event) = self.events.recv().await {
                         if matches!(event.kind, SessionEventKind::Closed { .. }) {
@@ -1602,10 +1402,8 @@ impl Session {
     }
 }
 
-/// A desktop snapshot on its way back from the receiver.
 type Snapshot = Pin<Box<dyn Future<Output = Result<DesktopResponse>> + Send>>;
 
-/// The answer to the snapshot in flight. Never ready without one.
 async fn answered(snapshot: &mut Option<Snapshot>) -> Result<DesktopResponse> {
     match snapshot {
         Some(snapshot) => snapshot.await,
@@ -1613,8 +1411,6 @@ async fn answered(snapshot: &mut Option<Snapshot>) -> Result<DesktopResponse> {
     }
 }
 
-/// Puts the receiver's desktop into the link state. True if it can be
-/// crossed into.
 fn show(state: &watch::Sender<LinkState>, response: Result<DesktopResponse>) -> bool {
     let response = response.and_then(|response| {
         response.validate()?;
@@ -1622,7 +1418,6 @@ fn show(state: &watch::Sender<LinkState>, response: Result<DesktopResponse>) -> 
     });
     let (ready, shown) = match response {
         Ok(DesktopResponse::Snapshot { geometry, .. }) => (true, LinkState::Ready(geometry)),
-        // The session works, so the peer can still control this Mac.
         Ok(DesktopResponse::Unavailable { reason }) => (false, LinkState::Refused(reason)),
         Ok(_) => (
             false,
@@ -1634,9 +1429,6 @@ fn show(state: &watch::Sender<LinkState>, response: Result<DesktopResponse>) -> 
     ready
 }
 
-/// Races the peer's addresses of the endpoint's family within one timeout.
-/// SPKI pinning rejects every host that is not this peer, so unverified
-/// addresses are safe to try.
 async fn connect_peer(
     endpoint: &Endpoint,
     client: &InputClientConfig,
@@ -1665,8 +1457,6 @@ async fn connect_peer(
                 .and_then(|result| result)
             {
                 Ok(connected) => return Ok(connected),
-                // Only the peer's own key can say it has not added this
-                // Mac, so that says more than another address failing.
                 Err(error) if Fix::of(&failure) == Some(Fix::WaitingForThem) => {
                     tracing::debug!(error = %format!("{error:#}"), "input address failed");
                 }
@@ -1725,8 +1515,6 @@ mod tests {
         }
     }
 
-    /// A receiver that answers desktop requests and applies input, the way
-    /// the Linux daemon does, without touching any device.
     struct Receiver {
         address: SocketAddr,
         sessions: mpsc::UnboundedReceiver<SessionHandle>,
@@ -1734,7 +1522,6 @@ mod tests {
         closed: mpsc::UnboundedReceiver<u64>,
         layouts: mpsc::UnboundedReceiver<SharedLayout>,
         clips: mpsc::UnboundedReceiver<Clip>,
-        /// While set, desktop requests wait in `held` for the test to answer.
         hold: Arc<std::sync::atomic::AtomicBool>,
         held: mpsc::UnboundedReceiver<(DesktopRequest, oneshot::Sender<DesktopResponse>)>,
         _endpoint: Endpoint,
@@ -1929,7 +1716,6 @@ mod tests {
         let mut opened = Vec::new();
         let mut sessions = BTreeSet::new();
         for token in 1..=2 {
-            // A crossing's steps on the link's session, without native capture.
             let prepare = DesktopRequest::Prepare {
                 monitor: None,
                 token,
@@ -1941,7 +1727,6 @@ mod tests {
             };
             let prepared = session.handle.desktop_request(prepare).await.unwrap();
             assert!(matches!(prepared, DesktopResponse::Prepared { .. }));
-            // The previous release left an OutboundEnded behind.
             receive::answer_waiting_events(&mut session.events, drop, drop).unwrap();
             let context = session.next_context();
             session.handle.begin_outbound(context).unwrap();
@@ -2059,7 +1844,6 @@ mod tests {
         }
     }
 
-    /// Whether a button or modifier is held, for [`neutral`].
     static HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
     fn neutral() -> bool {
@@ -2088,7 +1872,6 @@ mod tests {
         )
         .await
         .unwrap();
-        // This Mac, linux to its right, and desk below linux.
         let tile = |name: &str, x, y| Monitor {
             id: name.into(),
             label: name.into(),
@@ -2131,7 +1914,6 @@ mod tests {
             hops: &hops,
             neutral,
         };
-        // Native capture never starts here; forward only reads its queue.
         let mut capture = MacCapture {
             running: false,
             raw_touch: false,
@@ -2163,12 +1945,8 @@ mod tests {
                 exit: 1,
                 position: 750_000,
             };
-            // A button is held: the pointer stays on linux, which hears that
-            // from the next Poll. Each change below waits for that Poll, so
-            // forward has decided by then.
             poll().await.send(toward_desk.clone()).unwrap();
             let reply = poll().await;
-            // Nothing held, but desk is not ready.
             HELD.store(false, std::sync::atomic::Ordering::SeqCst);
             reply.send(toward_desk.clone()).unwrap();
             let reply = poll().await;
@@ -2193,7 +1971,6 @@ mod tests {
         assert_eq!(next.peer, "desk");
         assert_eq!((next.edge, next.position), (Edge::Top, 750_000));
 
-        // Home through the edge the pointer came in at.
         poll = Some(poll_desktop(activation.session, token));
         let home = async {
             let (_, reply) = receiver.held.recv().await.unwrap();
@@ -2222,7 +1999,6 @@ mod tests {
         session.close(SessionCloseReason::LocalRelease).await;
     }
 
-    // Links own a runtime, so this test drives them from a plain thread.
     #[test]
     fn a_link_reconnects_after_losing_its_session_and_closes_promptly() {
         let server = tokio::runtime::Builder::new_multi_thread()
@@ -2244,7 +2020,6 @@ mod tests {
         wait_until(&mut links, ready);
         let first = server.block_on(receiver.sessions.recv()).unwrap();
 
-        // Radio, clipboard and edge settings leave the session alone.
         config.macos.block_awdl = true;
         config.clipboard.share = true;
         config.switching.pause_at_edges = true;
@@ -2252,7 +2027,6 @@ mod tests {
         links.sync(&config, true, false);
         assert_eq!(links.links["linux"].task.id(), task);
 
-        // The receiver drops the session, as when its daemon restarts.
         first.close(SessionCloseReason::BackendUnavailable);
         let second = server
             .block_on(async {
@@ -2264,7 +2038,6 @@ mod tests {
         wait_until(&mut links, ready);
         assert!(links.cross(handoff("other"), ENTRY, false).is_none());
 
-        // While a peer controls this Mac, nothing crosses.
         let claim = links
             .receiving
             .ownership()
@@ -2279,8 +2052,6 @@ mod tests {
             "no crossing kept input"
         );
 
-        // Pausing closes the link, and that reaches the receiver now, not
-        // at its idle timeout.
         links.sync(&config, false, false);
         assert!(links.states().next().is_none());
         server.block_on(async {
@@ -2297,8 +2068,6 @@ mod tests {
         drop(links);
     }
 
-    /// A fake Linux computer on its own runtime, and this Mac's links to it,
-    /// ready, posting into `fake` and sharing `pasteboard`.
     struct Pair {
         links: Links,
         receiver: Receiver,
@@ -2344,7 +2113,6 @@ mod tests {
         }
     }
 
-    /// The first activation of the fake computer's session.
     fn activation(session: &SessionHandle) -> SessionContext {
         activation_number(session, 1)
     }
@@ -2357,7 +2125,6 @@ mod tests {
         }
     }
 
-    /// Waits until the Mac posted `line`, and returns what it posted so far.
     fn posted(fake: &FakeBackend, line: &str, within: Duration) -> Vec<String> {
         let deadline = Instant::now() + within;
         loop {
@@ -2370,7 +2137,6 @@ mod tests {
         }
     }
 
-    /// Waits until the Mac closes the fake computer's session `id`.
     fn closed(server: &tokio::runtime::Runtime, receiver: &mut Receiver, id: u64) {
         server.block_on(async {
             loop {
@@ -2464,7 +2230,6 @@ mod tests {
             "the peer's scrolling is turned around: {log:?}"
         );
 
-        // The pointer leaves through the edge it came in by.
         linux.capture(motion(-100, 0)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
         let returned = loop {
@@ -2482,7 +2247,6 @@ mod tests {
                 position: 500_000
             }
         );
-        // Motion after that stays off the Mac.
         fake.take_log();
         for frame in [
             motion(50, 0),
@@ -2513,8 +2277,6 @@ mod tests {
         drop(links);
     }
 
-    /// The fake computer takes control of this Mac with activation `id`,
-    /// types a key, and lets go.
     fn control_once(pair: &mut Pair, linux: &SessionHandle, id: u64) {
         linux.begin_outbound(activation_number(linux, id)).unwrap();
         linux.capture(key(KeyState::Pressed)).unwrap();
@@ -2531,7 +2293,6 @@ mod tests {
         }
     }
 
-    /// The next clip the fake computer gets within `within`, if one comes.
     fn clip(pair: &mut Pair, within: Duration) -> Option<Clip> {
         let clips = &mut pair.receiver.clips;
         pair.server
@@ -2546,7 +2307,6 @@ mod tests {
         let linux = pair.server.block_on(pair.receiver.sessions.recv()).unwrap();
         pair.pasteboard.copy(ClipKind::Text, b"copied on the mac");
 
-        // Sharing is off, so the pasteboard is not even read.
         control_once(&mut pair, &linux, 1);
         assert!(clip(&mut pair, Duration::from_millis(200)).is_none());
         assert_eq!(pair.pasteboard.board().reads, 0);
@@ -2558,7 +2318,6 @@ mod tests {
         assert_eq!(sent.kind(), ClipKind::Text);
         assert_eq!(sent.data(), b"copied on the mac");
 
-        // A clip from the peer lands on the pasteboard, and does not go back.
         let theirs = Clip::new(ClipKind::Text, b"copied on linux".to_vec()).unwrap();
         pair.server
             .block_on(async { linux.send_clipboard(theirs.clone()) });
@@ -2591,7 +2350,6 @@ mod tests {
         posted(&fake, "key 0 down", Duration::from_secs(2));
         assert_eq!(links.controller().as_deref(), Some("linux"));
         assert_eq!(fake.state().wakes, 1, "taking control wakes the display");
-        // The peer stops without a word, as when its process is killed.
         let vanished = Instant::now();
         drop(linux);
         server.shutdown_background();
@@ -2606,7 +2364,6 @@ mod tests {
         drop(receiver);
     }
 
-    /// The next desktop request the fake computer holds, if one comes.
     fn held(
         server: &tokio::runtime::Runtime,
         receiver: &mut Receiver,
@@ -2636,8 +2393,6 @@ mod tests {
         let (request, reply) = held(&server, &mut receiver, Duration::from_secs(2))
             .expect("the Mac asked for the desktop");
         assert!(matches!(request, DesktopRequest::Snapshot));
-        // The peer takes control before it answers, as when it dials and
-        // activates at once. The Mac gives up on an answer after 1 s.
         linux.begin_outbound(activation(&linux)).unwrap();
         linux.capture(key(KeyState::Pressed)).unwrap();
         posted(&fake, "key 0 down", Duration::from_millis(800));
@@ -2660,7 +2415,6 @@ mod tests {
                 .any(|(_, state)| state == LinkState::Ready(smaller.clone()))
         });
 
-        // The peer refuses snapshots while it sends, so none is asked.
         links.retry();
         assert!(
             held(&server, &mut receiver, Duration::from_millis(300)).is_none(),
@@ -2698,7 +2452,6 @@ mod tests {
         receiver
             .hold
             .store(false, std::sync::atomic::Ordering::SeqCst);
-        // Linux's answer when its switch for this Mac is off, or it is locked.
         let reason = "Desktop control requires the active unlocked local session and an authorized paired peer";
         let _ = reply.send(DesktopResponse::unavailable(reason));
         wait_until(&mut links, |links| {
@@ -2706,7 +2459,6 @@ mod tests {
                 .states()
                 .any(|(_, state)| state == LinkState::Refused(reason.into()))
         });
-        // The link keeps asking, and crosses again once the peer takes input.
         wait_until(&mut links, ready);
         assert!(!linux.is_closed());
         drop(links);
@@ -2730,8 +2482,6 @@ mod tests {
             "modifier 58 down flags 0x80020",
             Duration::from_secs(2),
         );
-        // The peer holds Option and sends nothing more, so no batch finds
-        // the lock.
         fake.state().locked = true;
         posted(&fake, "modifier 58 up", Duration::from_secs(1));
         closed(&server, &mut receiver, linux.id());
@@ -2745,7 +2495,6 @@ mod tests {
 
     #[test]
     fn a_peer_may_not_control_this_mac_without_leave_or_while_it_sends() {
-        // Not allowed to control this Mac.
         let Pair {
             links,
             mut receiver,
@@ -2767,7 +2516,6 @@ mod tests {
         assert_eq!(links.controller(), None);
         drop(links);
 
-        // This Mac is sending its own input.
         let Pair {
             links,
             mut receiver,
@@ -2785,7 +2533,6 @@ mod tests {
         drop(sending);
         drop(links);
 
-        // Control taken away while the peer holds a key.
         let Pair {
             mut links,
             mut receiver,
@@ -2845,7 +2592,6 @@ mod tests {
         links.share_layout(layout(2));
         assert_eq!(next_layout(&mut receiver), layout(2));
 
-        // A newer one goes to the app, and once kept it is not sent back.
         let linux = server.block_on(receiver.sessions.recv()).unwrap();
         linux.send_layout(layout(3)).unwrap();
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -2862,12 +2608,10 @@ mod tests {
         std::thread::sleep(Duration::from_millis(200));
         assert!(receiver.layouts.try_recv().is_err(), "no echo");
 
-        // An older one gets the kept one back.
         linux.send_layout(layout(1)).unwrap();
         assert_eq!(next_layout(&mut receiver), layout(3));
         assert!(links.take_layouts().is_empty());
 
-        // So does the next session.
         linux.close(SessionCloseReason::BackendUnavailable);
         assert_eq!(next_layout(&mut receiver), layout(3));
         drop(links);
@@ -2891,7 +2635,6 @@ mod tests {
         assert!(links.cross(handoff("linux"), ENTRY, false).is_none());
         let first = server.block_on(receiver.sessions.recv()).unwrap();
 
-        // Whether it may control this Mac, and how, keeps the session.
         let task = links.links["linux"].task.id();
         let peer = config.peers.get_mut("linux").unwrap();
         peer.permissions.send_normal = false;
@@ -2900,7 +2643,6 @@ mod tests {
         links.sync(&config, true, false);
         assert_eq!(links.links["linux"].task.id(), task);
 
-        // Taking input from this Mac needs the desktop, so it reconnects.
         config
             .peers
             .get_mut("linux")
@@ -2915,8 +2657,6 @@ mod tests {
         drop(links);
     }
 
-    /// Key directories for this Mac and a fake computer, where this Mac's
-    /// dial `wins` when both dial at once.
     fn identities(wins: bool) -> (tempfile::TempDir, tempfile::TempDir) {
         let mac = tempfile::tempdir().unwrap();
         let local = Identity::load_or_create(mac.path())
@@ -2933,9 +2673,6 @@ mod tests {
         }
     }
 
-    /// The fake computer dials this Mac, as the Linux daemon does. The
-    /// channel says "snapshot" for each desktop the Mac reads through the
-    /// session, and "closed" once it closes.
     async fn dial_mac(
         linux: &std::path::Path,
         mac: &[u8],
@@ -3040,7 +2777,6 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        // Even the dial that would win at once gives way once it is older.
         let (mac, linux) = identities(true);
         let spki = Identity::load_or_create(mac.path())
             .unwrap()
@@ -3060,8 +2796,6 @@ mod tests {
         assert!(!theirs.is_closed());
         drop(links);
 
-        // A computer this Mac has no address for connects on its own, and
-        // the app hears where from.
         config.peers.get_mut("linux").unwrap().addresses.clear();
         let mut links = Links::with_backend(FakeBackend::default()).unwrap();
         links.sync(&config, true, false);
@@ -3101,7 +2835,6 @@ mod tests {
             .spki()
             .to_vec();
         let receiver = server.block_on(receiver(linux.path(), &spki, false));
-        // Nothing saved, as for a computer placed before it ever answered.
         let mut config = mac_config(mac.path(), linux.path(), receiver.address);
         let peer = config.peers.get_mut("linux").unwrap();
         peer.addresses.clear();
@@ -3115,7 +2848,6 @@ mod tests {
         });
         links.set_found(Found::from([(key.clone(), vec![receiver.address])]));
         wait_until(&mut links, ready);
-        // The app hears the address that answered, to save it.
         let Heard::Connected {
             key: connected,
             address,
@@ -3126,7 +2858,6 @@ mod tests {
         };
         assert_eq!((connected, address, dialed), (key, receiver.address, true));
 
-        // Saving where it was found does not reconnect.
         let task = links.links["linux"].task.id();
         let peer = config.peers.get_mut("linux").unwrap();
         assert!(peer.learn_addresses([receiver.address]));
@@ -3135,7 +2866,6 @@ mod tests {
         drop(links);
     }
 
-    /// Waits for the next thing heard.
     fn heard(links: &mut Links) -> Heard {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
@@ -3165,7 +2895,6 @@ mod tests {
         config.daemon.state_dir = mac.path().to_owned();
         config.transport.listen = "127.0.0.1:0".parse().unwrap();
         let mut links = Links::with_backend(FakeBackend::default()).unwrap();
-        // Nobody is trusted, so only a welcome listens.
         links.sync(&config, true, false);
         assert!(links.listener.is_none());
         links.sync(&config, true, true);
@@ -3176,7 +2905,6 @@ mod tests {
             trusted: Arc::default(),
         };
 
-        // A computer knocks, and the app answers.
         let knocking = linux_key.clone();
         let theirs = server.spawn(async move {
             let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
@@ -3205,8 +2933,6 @@ mod tests {
         assert!(!ours.trusts_you);
         assert!(ours.candidates.is_empty(), "a stranger hears no addresses");
 
-        // Input from a key not trusted here is refused. That it asked says
-        // nothing anyone could not claim, so the app hears nothing.
         let refused = server.block_on(async {
             let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
             let client = input_client_config(&linux_key, mac_key.spki()).unwrap();
@@ -3221,7 +2947,6 @@ mod tests {
         assert!(matches!(refused, TransportError::NotTrusted), "{refused}");
         assert!(links.take_heard().is_empty(), "nothing was heard");
 
-        // The Mac says hello to a record, and hears back from it.
         let answering = linux_key.clone();
         let endpoint = server.block_on(async move {
             let config =
@@ -3241,8 +2966,6 @@ mod tests {
             endpoint
         });
         let record = endpoint.local_addr().unwrap();
-        // Its first address swallows every packet, so a hello there would
-        // only time out. The Mac asks at every address at once.
         let silent = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         let addresses = vec![silent.local_addr().unwrap(), record];
         links.say_hello("zf-linux".into(), addresses, greeting.clone());
@@ -3259,7 +2982,6 @@ mod tests {
         assert!(asked.elapsed() < CONNECT_TIMEOUT, "{:?}", asked.elapsed());
         assert_eq!((instance.as_deref(), remote), (Some("zf-linux"), record));
         assert!(hello.trusts_you);
-        // A record nothing answers at says so, so it is asked again.
         links.say_hello("zf-gone".into(), Vec::new(), greeting);
         let Heard::Unanswered { instance } = heard(&mut links) else {
             panic!("expected no answer");
@@ -3299,7 +3021,6 @@ mod tests {
         );
         let address = listening(&links);
 
-        // A hello still reaches the app.
         let knocking = linux_key.clone();
         server.spawn(async move {
             let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
@@ -3314,7 +3035,6 @@ mod tests {
         };
         knock.close();
 
-        // The peer's input is closed, but not as from a key never added.
         let closed = server.block_on(async move {
             let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
             let client = input_client_config(&linux_key, &mac_spki).unwrap();
@@ -3340,7 +3060,6 @@ mod tests {
             "{error}"
         );
         assert_eq!(links.states().count(), 1, "the link still dials");
-        // Once the port is free, the next sync listens on it.
         drop(busy);
         links.sync(&config, true, false);
         assert_eq!(links.listen_error(), None);
@@ -3349,10 +3068,8 @@ mod tests {
         links.sync(&config, true, false);
         assert_eq!(links.listen_error(), None);
         assert!(links.listener.is_some());
-        // Paused, it still listens, so peers hear it is there.
         links.sync(&config, false, false);
         assert!(links.listener.is_some() && links.states().next().is_none());
-        // Nobody who may connect, and no welcome, listens on nothing.
         config.peers.get_mut("linux").unwrap().permissions.connect = false;
         links.sync(&config, true, false);
         assert!(links.listener.is_none() && links.listen_error().is_none());
@@ -3418,7 +3135,6 @@ mod tests {
             guard: ownership.begin_outbound().unwrap(),
         };
         assert_eq!(hop.prepared_on(), Some(session.handle.id()));
-        // As when the next computer's link went away before it took the hop.
         refuse(hop, "the next computer's link closed");
         assert!(matches!(
             statuses.try_recv(),
@@ -3455,7 +3171,6 @@ mod tests {
             servers.push(server);
         }
         let [stranger, linux] = [&servers[0], &servers[1]].map(|s| s.local_addr().unwrap());
-        // The saved address stopped answering, as after a DHCP change.
         let stale = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
         let addresses = [stale.local_addr().unwrap(), stranger, linux];

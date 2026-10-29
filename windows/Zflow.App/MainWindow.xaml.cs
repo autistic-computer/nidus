@@ -37,7 +37,6 @@ public sealed partial class MainWindow : Window
         updateTimer.Tick += async (_, _) => { if (AutoUpdatesSwitch.IsOn) await CheckUpdatesAsync(); };
         Root.Loaded += async (_, _) =>
         {
-            // AppWindow uses physical pixels; size the settings UI consistently at any DPI.
             double dpi = Root.XamlRoot.RasterizationScale;
             var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Primary).WorkArea;
             int width = Math.Min((int)(1120 * dpi), area.Width - 48), height = Math.Min((int)(820 * dpi), area.Height - 48);
@@ -94,7 +93,6 @@ public sealed partial class MainWindow : Window
             int connected = next["peers"]?.AsArray().Count(p => Flag(p?["connected"])) ?? 0;
             ConnectionSummary.Text = sending != "" ? $"Controlling {sending}" : receiving != "" ? $"Controlled by {receiving}" : !Flag(next["available"]) ? "Waiting for an unlocked Windows desktop" : !SharingSwitch.IsOn ? "Sharing paused · your input stays here" : $"Ready to share · {connected} computer{(connected == 1 ? "" : "s")} connected";
             NetworkDetails.Text = "Listening on " + Text(next["listen"]) + "\n" + string.Join("\n", next["addresses"]?.AsArray().Select(a => Text(a)) ?? []);
-            // What the arrangement and the computers under it show.
             var shown = new JsonObject();
             foreach (string key in new[] { "peers", "nearby", "layout", "seams", "sending", "receiving", "mark", "sharing" }) shown[key] = next[key]?.DeepClone();
             string view = shown.ToJsonString();
@@ -169,7 +167,7 @@ public sealed partial class MainWindow : Window
         try
         {
             try { await engine.StopAsync(); }
-            catch (Exception error) when (error is IOException or OperationCanceledException or TimeoutException) { } // Start also recovers an exited engine.
+            catch (Exception error) when (error is IOException or OperationCanceledException or TimeoutException) { }
             await StartAsync();
         }
         catch (Exception error) { ShowError(error); }
@@ -182,8 +180,6 @@ public sealed partial class MainWindow : Window
         try
         {
             if (!await Elevation.RequestRestartAsync()) return;
-            // The replacement waits for this process, including the old engine,
-            // before acquiring the single-instance mutex or launching input hooks.
             await engine.StopAsync();
             await QuitAsync(engineStopped: true);
         }
@@ -253,7 +249,6 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception error)
         {
-            // If shutdown or updater launch fails, resume the existing input engine.
             await StartAsync();
             UpdateUpdateControls("Could not install the update. " + error.Message);
             timer.Start(); updateTimer.Start();
@@ -264,8 +259,6 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            // Render the real WinUI visual tree for visual QA on machines whose
-            // graphics driver does not expose the composition surface to capture.
             await Task.Delay(500);
             var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
             await bitmap.RenderAsync(Root);

@@ -73,7 +73,6 @@ import Testing
   _ = try await core.request(CoreRequest(command: "snapshot"))
   try original.replacingOccurrences(of: "block_awdl = false", with: "block_awdl = true").write(
     to: file, atomically: true, encoding: .utf8)
-  // No UI requests occur while the worker observes the edit.
   try await Task.sleep(for: .milliseconds(2200))
   let snapshot = try await core.request(CoreRequest(command: "snapshot"))
   #expect(snapshot.platform.blockAwdl)
@@ -95,7 +94,6 @@ import Testing
   #expect(snapshot.layout != nil)
   #expect(snapshot.peers.isEmpty)
   #expect(snapshot.configPath == file.path)
-  // The old names are gone; the shared ones reach the engine.
   for old in ["move", "pair_start", "pair", "pair_cancel"] {
     await #expect(throws: AppError.self) { try await core.request(CoreRequest(command: old)) }
   }
@@ -104,11 +102,9 @@ import Testing
       CoreRequest(command: "move_tile", id: "nowhere", x: 0, y: 0, tolerance: 8))
     Issue.record("An unknown tile cannot move")
   } catch { #expect(error.localizedDescription == "The layout has no screen nowhere") }
-  // A drag over nothing gets no landing rather than an error.
   let nowhere = try await core.preview(
     CoreRequest(command: "preview", id: "nowhere", x: 0, y: 0, tolerance: 8, computer: true))
   #expect(nowhere == nil)
-  // A computer added by address waits on the shelf until its hello comes back.
   let added = try await core.request(CoreRequest(command: "add_address", address: "100.64.0.7"))
   let tile = try #require(added.unplaced.first)
   #expect(tile.state == .identifying && tile.via == .address && !tile.placeable)
@@ -136,7 +132,6 @@ import Testing
   let core = CoreBridge(path: file.path)
   let initial = try #require(try await core.request(CoreRequest(command: "snapshot")).peers.first)
   #expect(!initial.allowControl && initial.keyboard == .standard && !initial.reverseScroll)
-  // Two-word fields go out in snake case, one at a time.
   _ = try await core.request(CoreRequest(command: "set_peer", name: "desk", allowControl: true))
   _ = try await core.request(
     CoreRequest(command: "set_peer", name: "desk", keyboard: .pcPositions))
@@ -175,11 +170,9 @@ import Testing
   try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(at: directory) }
   let file = directory.appendingPathComponent("zflow.toml")
-  // Discovery stays on; only the missing computer and the window hold it back.
   try "[macos]\nsharing = false\n".write(to: file, atomically: true, encoding: .utf8)
   let core = CoreBridge(path: file.path)
   _ = try await core.request(CoreRequest(command: "check_accessibility"))
-  // Let the worker's first maintenance tick run.
   try await Task.sleep(for: .milliseconds(200))
   let snapshot = try await core.request(CoreRequest(command: "snapshot"))
   #expect(snapshot.platform.localNetwork == .unknown)

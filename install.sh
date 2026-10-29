@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Install published zflow binaries on Linux or macOS.
 set -Eeuo pipefail
 
 usage() {
@@ -59,7 +58,6 @@ cleanup() {
     local status=$?
     trap - EXIT
     if [[ -n "${mac_stage:-}" ]]; then
-        # Restore the previous bundle if installation stopped between the two renames.
         if [[ -d "$mac_stage/previous.app" && ! -e "$mac_destination" ]]; then
             if ! as_root mv "$mac_stage/previous.app" "$mac_destination"; then
                 printf 'Previous app retained at %s/previous.app\n' "$mac_stage" >&2
@@ -72,7 +70,6 @@ cleanup() {
     exit "$status"
 }
 
-# Runtime packages the root step installs before an archive.
 linux_dependencies() {
     if command -v apt-get >/dev/null 2>&1; then
         manager=apt-get
@@ -91,18 +88,11 @@ linux_dependencies() {
     fi
 }
 
-# Every Linux system change, run as root in a shell of its own (see install_linux).
-# It works on a root-owned copy of the download and checks the checksum again, so
-# a process running as the user cannot swap files while the password prompt is open.
-# Arguments: DOWNLOAD SHA256 FROM_VERSION INSTALLED_CLI, then apt options for a
-# .deb, or the package manager and runtime packages for an archive.
 root_install() {
     local source=$1 checksum=$2 previous=$3 installed_cli=$4 asset=${1##*/} manager
     shift 4
     update_lock=false
     if [[ -n "$previous" ]]; then
-        # Serialize updates across login sessions. Recheck after a download or
-        # password prompt so an older request cannot replace a newer install.
         umask 077
         exec 9>/run/zflow-update.lock
         flock --exclusive 9
@@ -115,7 +105,6 @@ root_install() {
     cp -- "$source" "$root_stage/$asset"
     [[ "$(sha256_of "$root_stage/$asset")" == "$checksum" ]] || die "Checksum mismatch for $asset; nothing was installed."
     if [[ "$asset" == *.deb ]]; then
-        # apt reads local packages as the unprivileged _apt user.
         chmod 0755 "$root_stage"
         chmod 0644 "$root_stage/$asset"
         apt-get update
@@ -127,7 +116,6 @@ root_install() {
     case "$manager" in
         apt-get) apt-get update; apt-get install -y "$@" ;;
         dnf) dnf install -y "$@" ;;
-        # Do not refresh the package database without upgrading the whole system.
         pacman) pacman -S --needed --noconfirm "$@" ;;
         *) die "Unsupported package manager: $manager" ;;
     esac
@@ -136,15 +124,11 @@ root_install() {
     bash "$root_stage/payload/scripts/install.sh" --install-built
 }
 
-# Runs before anything changes. Tools such as groupadd live in /usr/sbin, which is not
-# on a normal user's PATH everywhere (Debian), so the root-side setup checks those.
 check_linux() {
     require udevadm
     udevadm --help | grep 'verify' >/dev/null || die 'udevadm verify is required (systemd 254 or newer).'
     if [[ "$desktop" == true ]]; then
         local versions gtk_version adw_version
-        # Missing libraries are installed with zflow; only reject ones that are too old.
-        # These template expressions belong to JavaScript.
         # shellcheck disable=SC2016
         if command -v gjs >/dev/null 2>&1 && versions=$(gjs -c 'imports.gi.versions.Gtk="4.0"; imports.gi.versions.Adw="1"; const {Gtk,Adw}=imports.gi; print(`${Gtk.get_major_version()}.${Gtk.get_minor_version()} ${Adw.get_major_version()}.${Adw.get_minor_version()}`);' 2>/dev/null); then
             IFS=' ' read -r gtk_version adw_version <<< "$versions"
@@ -198,14 +182,12 @@ select_artifact() {
     if [[ "$platform" == Linux ]]; then
         libc_version=$(getconf GNU_LIBC_VERSION 2>/dev/null) || die 'Linux release binaries require glibc 2.39 or newer; musl is not supported.'
         version_at_least "${libc_version#glibc }" 2.39 || die 'Linux release binaries require glibc 2.39 or newer.'
-        # Keep existing source/archive installs in place instead of shadowing them with /usr/bin.
         if command -v apt-get >/dev/null 2>&1 && ! archive_install_present; then
             use_deb=true
         elif command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' zflow 2>/dev/null || true)" == 'install ok installed' ]]; then
             use_deb=true
         fi
         if [[ "$use_deb" == true ]]; then
-            # A 32-bit userland can run on a 64-bit kernel; the package must match dpkg.
             deb_arch=$(dpkg --print-architecture)
             case "$deb_arch" in
                 amd64|arm64) asset="zflow_${version#v}_${deb_arch}.deb" ;;
@@ -215,14 +197,11 @@ select_artifact() {
             asset="zflow-${version}-${architecture}-unknown-linux-gnu.tar.gz"
         fi
     else
-        # Releases after v0.1.0 ship one universal Mac archive; older ones had
-        # one per CPU, which main falls back to when SHA256SUMS lacks this name.
         asset="zflow-${version}-universal-apple-darwin.tar.gz"
         legacy_asset="zflow-${version}-${architecture}-apple-darwin.tar.gz"
     fi
 }
 
-# What happens next, printed before the password prompt that confirms it.
 describe_linux() {
     if [[ "$use_deb" == true ]]; then
         printf '  - the zflow command and the zflowd service, from %s and apt\n' "$asset"
@@ -249,19 +228,14 @@ install_linux() {
         linux_dependencies
         root_args+=("$manager" "${packages[@]}")
     fi
-    # One elevated shell makes every system change: one password prompt, and
-    # cancelling it leaves nothing half installed.
     as_root bash -c "set -euo pipefail; $(declare -f die sha256_of root_install); root_install \"\$@\"" \
         zflow-install "${root_args[@]}"
-    # The running desktop agent detects its replaced executable and restarts.
-    # Keep the GTK caller alive so it can show the result and reopen settings.
     if [[ "${update:-false}" == true ]]; then return; fi
     if [[ "$desktop" == false ]]; then
         say 'The Linux service is installed. Run zflow desktop-agent --install from a GNOME session to add the desktop app.'
         return
     fi
     say 'Setting up GNOME for your account…'
-    # Adds the extension and starts the desktop agent in this session.
     "$installed_cli" desktop-agent --install </dev/null \
         || die 'The service is installed, but desktop setup failed. Run zflow desktop-agent --install after correcting the error above.'
     if [[ "$launch" == true ]]; then
@@ -317,7 +291,6 @@ main() {
     mac_destination=/Applications/zflow.app
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            # The password prompt is the confirmation; --yes stays valid for old commands.
             --yes) ;;
             --headless) headless=true ;;
             --no-launch) launch=false ;;
@@ -385,7 +358,6 @@ main() {
         mkdir "$payload_dir"
         tar -xzf "$work_dir/$asset" --strip-components=1 -C "$payload_dir"
         if [[ "$platform" == Linux ]]; then
-            # Only a check before asking for a password; the root step extracts its own copy.
             [[ -x "$payload_dir/bin/zflow" && -x "$payload_dir/bin/zflowd" && -f "$payload_dir/scripts/install.sh" ]] \
                 || die 'The release archive is missing the Linux binaries or installer.'
         fi
@@ -394,5 +366,4 @@ main() {
     say 'zflow installation finished.'
 }
 
-# Keep the final invocation after all definitions so a truncated curl download cannot start setup.
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "$0" ]]; then main "$@"; fi

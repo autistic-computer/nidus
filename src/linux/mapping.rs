@@ -41,11 +41,8 @@ impl KeyMapping {
     }
 }
 
-// Linux input-event-codes.h to USB HID Usage Tables. This intentionally lists
-// only keys whose semantics are unambiguous. Capture ignores unknown/vendor
-// codes; receiver validation rejects unsupported usages before injection.
 const KEY_MAP: &[KeyMapping] = &[
-    KeyMapping::keyboard(1, 0x29), // Esc
+    KeyMapping::keyboard(1, 0x29),
     KeyMapping::keyboard(2, 0x1e),
     KeyMapping::keyboard(3, 0x1f),
     KeyMapping::keyboard(4, 0x20),
@@ -60,7 +57,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(13, 0x2e),
     KeyMapping::keyboard(14, 0x2a),
     KeyMapping::keyboard(15, 0x2b),
-    KeyMapping::keyboard(16, 0x14), // Q
+    KeyMapping::keyboard(16, 0x14),
     KeyMapping::keyboard(17, 0x1a),
     KeyMapping::keyboard(18, 0x08),
     KeyMapping::keyboard(19, 0x15),
@@ -74,7 +71,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(27, 0x30),
     KeyMapping::keyboard(28, 0x28),
     KeyMapping::keyboard(29, 0xe0),
-    KeyMapping::keyboard(30, 0x04), // A
+    KeyMapping::keyboard(30, 0x04),
     KeyMapping::keyboard(31, 0x16),
     KeyMapping::keyboard(32, 0x07),
     KeyMapping::keyboard(33, 0x09),
@@ -88,7 +85,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(41, 0x35),
     KeyMapping::keyboard(42, 0xe1),
     KeyMapping::keyboard(43, 0x31),
-    KeyMapping::keyboard(44, 0x1d), // Z
+    KeyMapping::keyboard(44, 0x1d),
     KeyMapping::keyboard(45, 0x1b),
     KeyMapping::keyboard(46, 0x06),
     KeyMapping::keyboard(47, 0x19),
@@ -103,7 +100,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(56, 0xe2),
     KeyMapping::keyboard(57, 0x2c),
     KeyMapping::keyboard(58, 0x39),
-    KeyMapping::keyboard(59, 0x3a), // F1..F10
+    KeyMapping::keyboard(59, 0x3a),
     KeyMapping::keyboard(60, 0x3b),
     KeyMapping::keyboard(61, 0x3c),
     KeyMapping::keyboard(62, 0x3d),
@@ -128,11 +125,11 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(81, 0x5b),
     KeyMapping::keyboard(82, 0x62),
     KeyMapping::keyboard(83, 0x63),
-    KeyMapping::keyboard(85, 0x94), // LANG5
-    KeyMapping::keyboard(86, 0x64), // non-US backslash
+    KeyMapping::keyboard(85, 0x94),
+    KeyMapping::keyboard(86, 0x64),
     KeyMapping::keyboard(87, 0x44),
     KeyMapping::keyboard(88, 0x45),
-    KeyMapping::keyboard(89, 0x87), // international/language keys
+    KeyMapping::keyboard(89, 0x87),
     KeyMapping::keyboard(90, 0x92),
     KeyMapping::keyboard(91, 0x93),
     KeyMapping::keyboard(92, 0x8a),
@@ -154,7 +151,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(109, 0x4e),
     KeyMapping::keyboard(110, 0x49),
     KeyMapping::keyboard(111, 0x4c),
-    KeyMapping::consumer(113, 0xe2), // mute/volume/power
+    KeyMapping::consumer(113, 0xe2),
     KeyMapping::consumer(114, 0xea),
     KeyMapping::consumer(115, 0xe9),
     KeyMapping::consumer(116, 0x30),
@@ -179,7 +176,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(137, 0x7b),
     KeyMapping::keyboard(138, 0x75),
     KeyMapping::keyboard(139, 0x76),
-    KeyMapping::consumer(140, 0x192), // calculator
+    KeyMapping::consumer(140, 0x192),
     KeyMapping::consumer(142, 0x32),
     KeyMapping::consumer(143, 0x83),
     KeyMapping::consumer(150, 0x196),
@@ -201,7 +198,7 @@ const KEY_MAP: &[KeyMapping] = &[
     KeyMapping::keyboard(180, 0xb7),
     KeyMapping::consumer(181, 0x201),
     KeyMapping::consumer(182, 0x279),
-    KeyMapping::keyboard(183, 0x68), // F13..F24
+    KeyMapping::keyboard(183, 0x68),
     KeyMapping::keyboard(184, 0x69),
     KeyMapping::keyboard(185, 0x6a),
     KeyMapping::keyboard(186, 0x6b),
@@ -319,8 +316,6 @@ impl fmt::Debug for FrameAccumulator {
 }
 
 impl FrameAccumulator {
-    /// Adds one kernel event. A frame is returned only for a complete
-    /// `SYN_REPORT`, including an empty frame used as an ownership boundary.
     pub fn push(&mut self, event: InputEvent) -> Result<Option<CaptureFrame>, MappingError> {
         match event.event_type() {
             EventType::SYNCHRONIZATION => match SynchronizationCode(event.code()) {
@@ -344,7 +339,6 @@ impl FrameAccumulator {
                         state,
                     }
                 } else {
-                    // Capture ignores keys without an unambiguous HID usage.
                     let Ok(usage) = evdev_key_to_hid(key) else {
                         return Ok(None);
                     };

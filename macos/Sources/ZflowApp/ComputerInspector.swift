@@ -1,10 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// What the arrangement shows under it, as System Settings shows a
-/// display's settings under its arrangement: the selected computer's
-/// crossings, screens and settings, or every computer while none is
-/// selected. The arrangement is the list of computers.
 struct ComputerInspector: View {
   var model: AppModel
   var snapshot: Snapshot
@@ -68,7 +64,6 @@ struct ComputerInspector: View {
     }
   }
 
-  /// "2 screens · Connected"
   private func summary(_ island: Island) -> String {
     let count = island.tiles.count
     let screens = "\(count) \(count == 1 ? "screen" : "screens")"
@@ -136,7 +131,6 @@ struct ComputerInspector: View {
     }
   }
 
-  /// Where the pointer goes from this computer's screens to another's.
   private func crossings(_ island: Island, islands: [Island]) -> some View {
     let mine = Set(island.tiles.map(\.id))
     let screens = Dictionary(
@@ -203,7 +197,6 @@ struct ComputerInspector: View {
     }
   }
 
-  /// "27″ · 3840 × 2160", with what the system knows of the two.
   nonisolated static func detail(_ display: DisplayInfo?) -> String? {
     guard let display else { return nil }
     var parts: [String] = []
@@ -268,7 +261,6 @@ struct ComputerInspector: View {
     .padding(.horizontal, 12).padding(.vertical, 7)
   }
 
-  /// Shows the engine's value, and sends each change to it.
   private func binding<Value>(
     _ value: Value, _ request: @escaping (Value) -> CoreRequest
   ) -> Binding<Value> {
@@ -276,7 +268,6 @@ struct ComputerInspector: View {
   }
 }
 
-/// A titled group of rows, as a grouped form draws one.
 private struct InspectorSection<Content: View>: View {
   var title: String
   var footer: String? = nil
@@ -304,7 +295,6 @@ extension KeyboardMode {
     case .mac: "Mac shortcuts"
     }
   }
-  /// What the mode does on this Mac, as the README's Keyboard modes has it.
   var detail: String {
     switch self {
     case .standard: "Keys arrive as sent: Super is Command and Alt is Option."

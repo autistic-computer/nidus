@@ -1,7 +1,5 @@
-//! USB HID usages to Windows set-1 scan codes. Extended keys keep their E0 bit.
 use crate::core::HidUsage;
 
-// (HID keyboard usage, scan code including E0 in bit 8).
 const KEYS: &[(u16, u16)] = &[
     (4, 0x1e),
     (5, 0x30),
@@ -145,7 +143,6 @@ pub fn captured(scan: u16, extended: bool, vk: u16) -> Option<HidUsage> {
         .map(|(h, _)| HidUsage::keyboard(*h))
 }
 
-/// (native kind, code, extended). Virtual keys are needed only for Pause/media.
 pub fn posted(key: HidUsage) -> Option<(i32, i32, i32)> {
     if key == HidUsage::keyboard(72) {
         return Some((2, 0x13, 0));

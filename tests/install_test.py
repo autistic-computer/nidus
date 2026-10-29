@@ -1,5 +1,3 @@
-"""Test release selection and verification without installing on the host."""
-
 import hashlib
 import json
 import os
@@ -15,7 +13,6 @@ import unittest
 INSTALLER = Path(__file__).resolve().parents[1] / "install.sh"
 BASH = os.environ.get("TEST_BASH", "bash")
 
-# Only host commands are replaced; checksums, archive extraction and files are real.
 HOST_COMMANDS = r'''
 record() { printf '%s\n' "$*" >> "$LOG"; }
 uname() { if [[ "$1" == -s ]]; then echo "$PLATFORM"; else echo "$ARCH"; fi; }
@@ -86,7 +83,6 @@ class InstallerTest(unittest.TestCase):
         (self.source / "scripts/install.sh").write_text('printf \'setup %s %s\\n\' "$0" "$*" >> "$LOG"\n')
         for name in ("zflow", "zflowd"):
             binary = self.source / "bin" / name
-            # TMPDIR can be noexec, so the installer must never run downloaded files.
             binary.write_text('#!/bin/sh\necho executed-download >> "$LOG"\n')
             binary.chmod(0o755)
         (self.source / "zflow.app/Contents").mkdir(parents=True)
@@ -105,12 +101,10 @@ class InstallerTest(unittest.TestCase):
         (self.root / "home").mkdir()
         (self.root / "tmp").mkdir()
         (self.root / "root").mkdir()
-        # Commands the elevated shell runs; it cannot see this shell's functions.
         tools = self.root / "bin"
         tools.mkdir()
         for name in ("apt-get", "dnf", "pacman", "flock"):
             (tools / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "$LOG"\n')
-        # The root step stages under /tmp; keep that inside the test directory.
         (tools / "mktemp").write_text(
             '#!/bin/sh\ncase "$2" in /tmp/zflow-install.*) set -- "$1" "$TEST_ROOT/root/${2#/tmp/}";; esac\n'
             'exec /usr/bin/mktemp "$@"\n')
@@ -162,7 +156,6 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(len(self.elevations()), 1)
         self.assertIn("\napt-get install -y kmod", calls)
         self.assertIn("gir1.2-adw-1", calls)
-        # Root runs the installer from its own extracted copy, not the user's download.
         self.assertIn(f"setup {self.root}/root/zflow-install.", calls)
         self.assertIn("/payload/scripts/install.sh --install-built", calls)
         self.assertIn("user installed-zflow desktop-agent --install", calls)
@@ -188,8 +181,6 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(len(self.elevations()), 1)
         self.assertIn(f"apt-get install -y --install-recommends {self.root}/root/zflow-install.", self.calls())
         self.assertIn("/zflow_0.1.0_amd64.deb", self.calls())
-        # The package ships the launcher, autostart and D-Bus files; the user step
-        # adds the extension and starts the agent in this session.
         self.assertTrue(self.calls().endswith("user deb-zflow desktop-agent --install\n"), self.calls())
         self.assertNotIn("extension ", self.calls())
         self.assertNotIn("setup ", self.calls())
@@ -241,7 +232,6 @@ command() {
                 self.assertNotIn("setup ", self.calls())
 
     def test_root_step_rejects_a_download_swapped_after_verification(self):
-        # Simulate a process running as the user replacing the file during the password prompt.
         swap = 'eval "original_$(declare -f as_root)"\nas_root() { printf swapped > "$5"; original_as_root "$@"; }'
         for legacy in ("false", "true"):
             with self.subTest(legacy=legacy):
@@ -298,7 +288,6 @@ command() {
                                env={"PLATFORM": platform, "ARCH": architecture})
                 self.assertIn(f"/releases/download/v0.1.0/zflow-v0.1.0-{target}.tar.gz", self.calls())
                 self.assertNotIn("latest", self.calls())
-        # An arm64 Mac running this script under Rosetta still gets the native app.
         output = self.run_shell('platform=Darwin; version=v0.1.0; select_artifact; echo "$legacy_asset"',
                                 env={"ARCH": "x86_64", "ROSETTA": "1"})
         self.assertIn("zflow-v0.1.0-aarch64-apple-darwin.tar.gz", output)
@@ -379,18 +368,15 @@ command() {
         self.assertEqual(result.stdout, "")
 
     def test_no_question_before_the_password_prompt(self):
-        # No terminal at all: the password prompt is the only confirmation.
         result = subprocess.run(
             [BASH, "-c", f'source {shlex.quote(str(INSTALLER))}\n{HOST_COMMANDS}\nmain --version 0.1.0 --no-launch'],
             env=self.env, stdin=subprocess.DEVNULL, start_new_session=True, capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("[y/N]", result.stdout)
-        # The elevated step starts right after "Installing the service".
         summary = result.stdout[:result.stdout.index("Installing the service")]
         for line in ("This installs:", "UDP port 43119 when", "for every GNOME user", "GNOME extension"):
             self.assertIn(line, summary)
-        # --yes stays accepted so older command lines keep working.
         self.log.write_text("")
         self.run_shell("main --yes --version 0.1.0 --no-launch")
         self.assertEqual(len(self.elevations()), 1)
@@ -542,7 +528,6 @@ class PackagingTest(unittest.TestCase):
         packaged = set(re.search(r"addprefix packaging/gnome-extension/,([^)]*)\)", self.read("debian/rules")).group(1).split())
         self.assertEqual(written, packed)
         self.assertEqual(written, packaged)
-        # The setup banner installs extensions, which extensions.gnome.org reviewers reject.
         self.assertNotIn("setup.js", written)
         self.assertNotIn("app.js", written)
         self.assertNotIn("updates.js", written)
@@ -561,7 +546,6 @@ class PackagingTest(unittest.TestCase):
         self.assertIn("Icon=io.zflow.zflow\n", self.read("packaging/linux/io.zflow.zflow.desktop"))
         entry = self.read("packaging/linux/io.zflow.desktop-agent.desktop")
         self.assertIn("OnlyShowIn=GNOME;", entry)
-        # A removed-but-not-purged package leaves this conffile behind.
         self.assertIn("TryExec=/usr/bin/zflow", entry)
 
 

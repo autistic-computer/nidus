@@ -46,7 +46,6 @@ internal sealed class AppUpdates
         IsBusy = true;
         try
         {
-            // Confirm that input has stopped before Update.exe can replace the engine.
             await stopEngine();
             if (apply is not null) apply(downloaded);
             else manager.WaitExitThenApplyUpdates(downloaded, silent: false, restart: true);

@@ -2,16 +2,10 @@ import AppKit
 import QuartzCore
 import ZflowCore
 
-/// The lens: another computer's screen in a circle around the pointer, which
-/// sends the pointer, clicks, scrolling and keys to that computer while it is
-/// open. Moving the pointer only moves the circle. Pixels come in on the
-/// display's ticks, and only for the chunks under the circle that changed.
 @MainActor
 final class LensController: NSObject {
-  /// The circle's radius on this screen, in points.
   static let radius: CGFloat = 200
   private static let space = CGColorSpace(name: CGColorSpace.sRGB)!
-  /// BGRx in memory: little-endian words with the unused byte first.
   private static let bgrx = CGBitmapInfo(
     rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
   private static let stride = LensGrid.chunk * 4
@@ -20,13 +14,9 @@ final class LensController: NSObject {
   private var panel: LensPanel?
   private var view: LensView?
   private var name = ""
-  /// Grows with each lens shown, so a late answer to an earlier one is told apart.
   private var session = 0
-  /// When the engine took the request; until then its status is the last lens's.
   private var requested: ContinuousClock.Instant?
-  /// Whether the engine has said it is opening or open.
   private var opened = false
-  /// Shows why the lens failed, then closes it.
   private var closing: Task<Void, Never>?
   private var link: CADisplayLink?
   private var monitor: Any?
@@ -34,22 +24,16 @@ final class LensController: NSObject {
 
   private var fit: LensFit?
   private var grid: LensGrid?
-  /// The pointer on the overlay, which is the circle's centre.
   private var pointer = CGPoint.zero
-  /// The frame count and circle the chunks were last asked for at.
   private var polled: (frames: UInt64, center: CGPoint)?
   private var ids: [UInt32] = []
   private var buffer = [UInt8](repeating: 0, count: LensGrid.chunk * stride)
-  /// What is held down on the other computer, let go when the lens closes.
   private var keys: Set<UInt16> = []
   private var buttons: Set<UInt32> = []
-  /// Keys whose press was not sent, so neither is their release.
   private var swallowed: Set<UInt16> = []
 
   var isOpen: Bool { panel != nil }
 
-  /// Shows the lens around the pointer while the engine opens it onto `name`,
-  /// and returns the session that `requested` answers.
   func show(_ name: String, handle: LensHandle) -> Int {
     close()
     session += 1
@@ -77,8 +61,6 @@ final class LensController: NSObject {
     let link = view.displayLink(target: self, selector: #selector(tick))
     link.add(to: .main, forMode: .common)
     self.link = link
-    // A local monitor sees the key-up of ⌘ shortcuts, which AppKit does not
-    // pass to views, and keeps them from zflow's own menu.
     monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) {
       [weak self] event in
       MainActor.assumeIsolated { self?.key(event) == true } ? nil : event
@@ -97,10 +79,8 @@ final class LensController: NSObject {
     return session
   }
 
-  /// The engine has answered the request to open `session`.
   func requested(_ session: Int, failure: String?) {
     guard session == self.session, isOpen else {
-      // Closed while the engine was opening it, and nothing else is open.
       if failure == nil, !isOpen { handle? { zflow_lens_close($0) } }
       return
     }
@@ -140,7 +120,6 @@ final class LensController: NSObject {
     opened = false
   }
 
-  /// Shows `message` in the circle for a moment, then closes.
   private func fail(_ message: String) {
     guard closing == nil else { return }
     view?.show(message)
@@ -175,8 +154,6 @@ final class LensController: NSObject {
     }
   }
 
-  /// Copies the chunks under the circle that changed, and fits the desktop
-  /// to the screen when its size is new.
   private func pull(_ status: ZflowLensStatus) {
     guard let view, let handle else { return }
     let size = CGSize(width: Int(status.width), height: Int(status.height))
@@ -226,9 +203,6 @@ final class LensController: NSObject {
     }
   }
 
-  // MARK: Input
-
-  /// Sends the pointer's place on the other computer, held to its desktop.
   private func sendMove() {
     guard let fit, closing == nil else { return }
     let pixel = fit.clamped(fit.pixel(pointer))
@@ -239,7 +213,6 @@ final class LensController: NSObject {
   func move(_ event: NSEvent) {
     guard let view else { return }
     let point = view.convert(event.locationInWindow, from: nil)
-    // The tracking area and the window can both report the same move.
     guard point != pointer else { return }
     pointer = point
     view.moveCircle(to: point)
@@ -249,7 +222,6 @@ final class LensController: NSObject {
   func press(_ event: NSEvent, pressed: Bool) {
     guard let view else { return }
     let point = view.convert(event.locationInWindow, from: nil)
-    // A click outside the circle, or one while it shows why it failed, closes it.
     if pressed, event.type == .leftMouseDown, !view.contains(point) || closing != nil {
       return close()
     }
@@ -278,7 +250,6 @@ final class LensController: NSObject {
     handle? { zflow_lens_scroll($0, delta.dx, delta.dy) }
   }
 
-  /// Takes the panel's key events; true when the lens used them up.
   private func key(_ event: NSEvent) -> Bool {
     guard let panel, event.window === panel else { return false }
     let code = event.keyCode
@@ -293,14 +264,12 @@ final class LensController: NSObject {
         swallowed.insert(code)
         if closing == nil { handle? { zflow_lens_copy($0) } }
       case .send:
-        // Repeats go over too, as the other computer's own keys would.
         send(code, pressed: true)
       }
     case .keyUp:
       if swallowed.remove(code) == nil { send(code, pressed: false) }
     case .flagsChanged:
       if code == LensInput.capsLock {
-        // Each change is one press of the key, which toggles it there too.
         send(code, pressed: true)
         send(code, pressed: false)
       } else if let pressed = LensInput.modifier(code, flags: event.modifierFlags.rawValue),

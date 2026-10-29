@@ -1,24 +1,12 @@
-//! Crossings this computer starts when its pointer pushes against an edge:
-//! prepare the other computer's desktop, send input until the pointer leaves
-//! it again, then put the pointer back here. A pointer that leaves toward a
-//! third computer moves on to it, with this computer routing.
-
 use super::*;
 use crate::app::handoff::{self, Handoff, Next};
 use crate::desktop::{DesktopRequest, DesktopResponse, Edge};
 use anyhow::ensure;
 
-/// How long activation may take to start arming before the crossing gives up.
 const ARMING_START: Duration = Duration::from_millis(500);
-/// Arming waits for every key and button to be up. A push made while one is
-/// held, such as dragging a window to the edge, is not a crossing, so give up
-/// rather than cross when it is dropped later somewhere else.
 const ARMING_LIMIT: Duration = Duration::from_millis(400);
-/// Receivers from before the poll hold answer at once; this paces their polls.
 const MIN_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// The computer a crossing's input goes to now: its session, its handoff,
-/// and the token that holds its desktop.
 struct Leg {
     session: SessionHandle,
     handoff: Handoff,
@@ -26,8 +14,6 @@ struct Leg {
 }
 
 impl Shared {
-    /// Runs one crossing toward the computer behind `edge`. Only one runs at
-    /// a time; a push during a crossing is ignored.
     pub(super) async fn cross(
         self: &Arc<Self>,
         monitor: Option<&str>,
@@ -80,8 +66,6 @@ impl Shared {
         let result = match entered {
             Ok(()) => {
                 let result = self.until_returned(&mut leg).await;
-                // However it failed, input must not stay armed or grabbed for
-                // a crossing that is over. Finish below ends the other side.
                 if result.is_err() {
                     self.release_own_input().await;
                 }
@@ -94,13 +78,9 @@ impl Shared {
                 .desktop_request(DesktopRequest::Finish { token: leg.token })
                 .await,
         );
-        // A failure on the way in matters more than one while cleaning up.
         result.and(finished)
     }
 
-    /// Keeps the handoff's routes on to computers this one may send to and
-    /// has a session with now. A hop never waits for a dial, which could
-    /// outlast the lease of the computer the pointer is on.
     async fn keep_reachable(&self, handoff: &mut Handoff) {
         let config = self.config.read().await;
         let sessions = self.sessions.lock().await;
@@ -115,10 +95,6 @@ impl Shared {
         });
     }
 
-    /// Keeps the handoff of the computer input goes to alive. When the
-    /// pointer leaves it toward home, puts the pointer at the matching point
-    /// here and gives input back; toward a third computer with nothing
-    /// held, moves input on to that one and keeps going.
     async fn until_returned(self: &Arc<Self>, leg: &mut Leg) -> Result<()> {
         let started = Instant::now();
         let mut armed = false;
@@ -158,7 +134,6 @@ impl Shared {
                             self.release_own_input().await;
                             return Ok(());
                         }
-                        // Polling on tells that computer the pointer stays.
                         Next::Hop(next) if !self.runtime.status().neutral => {
                             tracing::debug!(peer = %next.peer, "a key or button is held; the pointer stays");
                         }
@@ -193,10 +168,6 @@ impl Shared {
         }
     }
 
-    /// Moves input on to the computer `next` names, for a pointer that left
-    /// the current one toward it: prepares that computer's desktop at the
-    /// matching entry, then sends input there. Returns the leg it left,
-    /// whose desktop the caller lets go of. On failure input stays.
     async fn hop(self: &Arc<Self>, leg: &mut Leg, mut next: Handoff) -> Result<Leg> {
         let session = self
             .sessions
@@ -215,13 +186,11 @@ impl Shared {
         }
         .await;
         if let Err(error) = switched {
-            // Whatever Prepare took on that computer goes back.
             let _ = session
                 .desktop_request(DesktopRequest::Finish { token })
                 .await;
             return Err(error);
         }
-        // The pointer left for the next computer, so the clipboard goes along.
         self.share_clipboard(&next.peer);
         Ok(std::mem::replace(
             leg,
@@ -233,8 +202,6 @@ impl Shared {
         ))
     }
 
-    /// Gives this computer's input back to it. Releasing while idle does
-    /// nothing, so this is safe whatever state the crossing reached.
     async fn release_own_input(&self) {
         let released = self
             .runtime
@@ -250,7 +217,6 @@ impl Shared {
         }
     }
 
-    /// This computer's view of the shared layout, if it has one.
     pub(super) async fn local_layout(&self) -> Option<crate::app::layout_model::Layout> {
         let layout = self.layout.lock().await.clone()?;
         let keys = peer_keys(&*self.config.read().await);

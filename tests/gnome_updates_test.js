@@ -1,4 +1,3 @@
-// GTK_A11Y=none GIO_USE_VFS=local dbus-run-session --config-file=tests/gtk-session.conf -- gjs -m tests/gnome_updates_test.js
 import Adw from 'gi://Adw?version=1';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -76,7 +75,6 @@ app.connect('activate', () => {
     const restart = updates._restart.bind(updates);
     updates._restart = () => { restarted++; };
     (async () => {
-        // If the host is metered, the explicit check still works.
         await waitFor(() => !updates._busy);
         if (!updates._release) await updates.check();
         assert(updates._button.label === 'Install…', 'a newer release offers installation');
@@ -86,7 +84,6 @@ app.connect('activate', () => {
         await waitFor(() => window.visible_dialog);
         assert(window.visible_dialog instanceof Adw.AlertDialog, 'installation asks in a native dialog');
         assert(calls().every(call => call === 'update check'), 'opening confirmation never installs');
-        // Activate the actual response button so libadwaita owns response and closing.
         const cancel = responseButton(window.visible_dialog, 'Cancel');
         await waitFor(() => cancel.get_mapped());
         assert(cancel.activate(), 'the native Cancel button activates');
@@ -160,10 +157,9 @@ app.connect('activate', () => {
 });
 try { app.run([]); }
 finally {
-    // The only generated files live in this fresh directory.
     for (const path of ['zflow/updates.json', 'zflow', 'fixture-cli', 'result', 'error', 'status', 'install-error', 'install-status', 'calls', 'replacement']) {
-        try { Gio.File.new_for_path(`${directory}/${path}`).delete(null); } catch { /* May not have been created. */ }
+        try { Gio.File.new_for_path(`${directory}/${path}`).delete(null); } catch { }
     }
-    try { Gio.File.new_for_path(directory).delete(null); } catch { /* GIO may have created a cache. */ }
+    try { Gio.File.new_for_path(directory).delete(null); } catch { }
 }
 if (failure) throw failure;

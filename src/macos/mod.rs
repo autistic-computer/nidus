@@ -1,5 +1,3 @@
-//! macOS input source: native capture, and crossings over a receiver's session.
-
 mod advertise;
 mod awdl;
 mod clipboard;
@@ -42,33 +40,22 @@ pub(crate) use inject::{install_exit_handlers, supports_key};
 pub use link::{Crossing, Found, Greeting, Heard, LinkState, Links};
 pub use local_network::{LocalNetwork, local_network_access};
 
-// Yield to the session between batches so a backlog after a stall cannot
-// overflow its 512-command queue in one burst.
 const MAX_EVENTS_PER_DRAIN: usize = 256;
 const TOUCH_STALE_TIMEOUT: Duration = Duration::from_millis(150);
-/// A Magic Trackpad 2, 160 x 115 mm, in hundredths of a millimetre.
 const FALLBACK_TRACKPAD_SIZE: SourceDimensions = SourceDimensions {
     width: 16_000,
     height: 11_500,
 };
-/// 500 mm. A larger reported side is not a trackpad.
 const MAX_TRACKPAD_EXTENT: i32 = 50_000;
 const SECURE_INPUT_CHECK_INTERVAL: Duration = Duration::from_millis(100);
 const SECURE_INPUT_RETURNED: &str = "Secure keyboard entry turned on in a Mac app, so typing \
     could not be shared. Input returned to the Mac";
 const RELEASE_TIMEOUT: Duration = Duration::from_millis(200);
-// Prepare starts the receiver's two-second handoff lease, which only polling
-// renews, and polling starts once the AWDL lease is held.
 const AWDL_ACQUIRE_TIMEOUT: Duration = Duration::from_millis(crate::desktop::LEASE_MS / 2);
 
-/// Woken by the capture bridge whenever it queues an event or stops.
 static CAPTURE_WAKE: Notify = Notify::const_new();
 
-/// Puts the calling thread at the QoS of input handling. Input passes
-/// through the capture, sharing and inject threads; at the default QoS a
-/// busy Mac shares the CPU evenly with them and the pointer stutters.
 pub(crate) fn user_interactive() {
-    // SAFETY: changes only the calling thread's scheduling class.
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INTERACTIVE, 0);
     }
@@ -78,8 +65,6 @@ extern "C" fn wake_capture() {
     CAPTURE_WAKE.notify_one();
 }
 
-/// How a crossing goes, for the app. `Hopped` says input moved on to another
-/// computer without coming back first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceStatus {
     PauseRequested,
@@ -104,8 +89,6 @@ fn failure_status(error: &anyhow::Error) -> SourceStatus {
     }
 }
 
-/// Keeps the first failure. A cleanup failure still replaces success or a
-/// cancellation, because input may not be back on the Mac.
 fn keep_first_failure<T>(result: &mut Result<T>, cleanup: Result<()>, operation: &str) {
     if let Err(error) = cleanup {
         tracing::warn!(operation, error = %format!("{error:#}"), "crossing cleanup failed");
@@ -118,9 +101,6 @@ fn keep_first_failure<T>(result: &mut Result<T>, cleanup: Result<()>, operation:
     }
 }
 
-/// As [`keep_first_failure`], except that a crossing that moved on stays
-/// moved on: the next computer holds input and its prepared desktop now,
-/// and only the computer it left failed to clean up.
 fn keep_cleanup_failure(result: &mut Result<Outcome>, cleanup: Result<()>, operation: &str) {
     if let (Ok(Outcome::Hopped(handoff, _)), Err(error)) = (&*result, &cleanup) {
         tracing::warn!(operation, peer = %handoff.peer, error = %format!("{error:#}"),
@@ -146,24 +126,16 @@ pub struct DesktopRect {
     pub height: f64,
 }
 
-/// `prompt` asks macOS to show its normal Accessibility permission UI.
 pub fn accessibility_authorized(prompt: bool) -> bool {
-    // SAFETY: the bridge creates and releases its own permission options.
     unsafe { zflow_mac_accessibility_authorized(i32::from(prompt)) == 1 }
 }
 
-/// Asks the window server for an active event tap and releases it at once.
-/// Unlike `accessibility_authorized`, this notices access removed while
-/// zflow runs. A refused tap leaks a Mach port inside CoreGraphics, so
-/// callers must not retry a refusal quickly.
 pub fn event_tap_allowed() -> bool {
-    // SAFETY: the bridge creates, disables and releases its own tap.
     unsafe { zflow_mac_event_tap_allowed() == 1 }
 }
 
 pub fn cursor_position() -> Result<CursorPosition> {
     let mut position = CursorPosition::default();
-    // SAFETY: the output has the bridge's two-double C layout.
     if unsafe { zflow_mac_cursor_position(&mut position) } != 0 {
         bail!("could not read the Mac cursor position");
     }
@@ -172,7 +144,6 @@ pub fn cursor_position() -> Result<CursorPosition> {
 
 pub fn active_desktop_rectangles() -> Result<Vec<DesktopRect>> {
     let mut rectangles = vec![DesktopRect::default(); 64];
-    // SAFETY: the bridge receives writable storage for all 64 rectangles.
     let count = unsafe { zflow_mac_desktop_rectangles(rectangles.as_mut_ptr(), 64) };
     if !(1..=64).contains(&count) {
         bail!("could not read active Mac displays");
@@ -188,16 +159,12 @@ pub fn active_desktop_rectangles() -> Result<Vec<DesktopRect>> {
     Ok(rectangles)
 }
 
-/// Changes whenever macOS reconfigures a display.
 pub fn display_generation() -> u32 {
-    // SAFETY: the bridge registers its reconfiguration callback once.
     unsafe { zflow_mac_display_generation() }
 }
 
 static GEOMETRY: Mutex<Option<(u32, Geometry)>> = Mutex::new(None);
 
-/// The Mac desktop in whole points, read again only after macOS
-/// reconfigures a display or after `forget_desktop_geometry`.
 pub fn desktop_geometry() -> Result<Geometry> {
     let generation = display_generation();
     let mut cache = GEOMETRY.lock().unwrap_or_else(PoisonError::into_inner);
@@ -218,7 +185,6 @@ pub fn desktop_geometry() -> Result<Geometry> {
         context: *mut std::ffi::c_void,
     ) {
         use std::ffi::CStr;
-        // SAFETY: the bridge calls synchronously with live UTF-8 strings.
         let geometry = unsafe { &mut *context.cast::<Geometry>() };
         let bounds = Rect {
             x,
@@ -261,19 +227,14 @@ pub fn desktop_geometry() -> Result<Geometry> {
     Ok(geometry)
 }
 
-/// Drops the cached desktop, in case a display change went unnoticed.
 pub fn forget_desktop_geometry() {
     *GEOMETRY.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
-/// The Mac's own pointer motion since the last [`take_local_motion`], in
-/// points. macOS reports the deltas even while the cursor is held against a
-/// screen edge and cannot move.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LocalMotion {
     pub dx: f64,
     pub dy: f64,
-    /// How long ago the last move came.
     pub age: Duration,
 }
 
@@ -285,7 +246,6 @@ struct NativeMotion {
     age_ns: u64,
 }
 
-/// A configured monitor edge held before the cursor can enter another local display.
 #[repr(C)]
 pub(crate) struct EdgeGuard {
     pub bounds: DesktopRect,
@@ -294,16 +254,11 @@ pub(crate) struct EdgeGuard {
     pub edge: u32,
 }
 
-/// Refreshes the native guards' short lease; an empty list releases every edge.
 pub(crate) fn set_edge_guards(guards: &[EdgeGuard]) {
-    // SAFETY: the C bridge copies the C-layout array before returning.
     unsafe { zflow_mac_edge_guards(guards.as_ptr(), guards.len() as u32) };
 }
 
-/// Starts watching the Mac's own pointer motion, if it is not watched yet.
-/// Motion zflow posts for a peer is left out.
 pub fn watch_local_motion() -> Result<()> {
-    // SAFETY: the bridge creates its motion tap and thread once.
     ensure!(
         unsafe { zflow_mac_motion_watch() } == 0,
         "macOS refused to show zflow the Mac's pointer motion"
@@ -311,10 +266,8 @@ pub fn watch_local_motion() -> Result<()> {
     Ok(())
 }
 
-/// The Mac's own pointer motion since the last call, if there was any.
 pub fn take_local_motion() -> Option<LocalMotion> {
     let mut motion = NativeMotion::default();
-    // SAFETY: the output has the bridge's C layout.
     (unsafe { zflow_mac_motion_take(&mut motion) } == 1).then(|| LocalMotion {
         dx: motion.dx,
         dy: motion.dy,
@@ -323,24 +276,17 @@ pub fn take_local_motion() -> Option<LocalMotion> {
 }
 
 pub fn input_is_neutral() -> bool {
-    // SAFETY: this reads physical key, button and modifier state without capture.
     unsafe { zflow_mac_input_is_neutral() == 1 }
 }
 
-/// True while any app holds Secure Event Input. The event tap then sees no
-/// keys, so typing would reach the Mac while the pointer drives the peer.
 pub fn secure_input_enabled() -> bool {
-    // SAFETY: this reads a system-wide flag without capture.
     unsafe { zflow_mac_secure_input_enabled() == 1 }
 }
 
-/// Why AWDL keeps staying up with Reduce Wi-Fi lag on, once it has failed
-/// a few times in a row.
 pub fn awdl_trouble() -> Option<String> {
     awdl::shared().trouble()
 }
 
-/// What one crossing borrows from its link.
 struct Activation<'a> {
     session: &'a SessionHandle,
     events: &'a mut mpsc::Receiver<SessionEvent>,
@@ -348,18 +294,12 @@ struct Activation<'a> {
     clipboard: &'a Arc<clipboard::Clipboard>,
     context: SessionContext,
     raw_touch: bool,
-    /// The links ready for a crossing, which it can move on to.
     hops: &'a link::Hops,
-    /// Whether no button or modifier is held, so input can move on.
     neutral: fn() -> bool,
 }
 
-/// How a crossing reaches a computer.
 enum Arrival {
-    /// Through an edge of the Mac, where the cursor was at that moment.
     Edge(CursorPosition),
-    /// From another computer, with the Mac's input still captured and this
-    /// computer's desktop prepared under `token` on `session`.
     Hop {
         token: u64,
         capture: MacCapture,
@@ -369,8 +309,6 @@ enum Arrival {
 }
 
 impl Arrival {
-    /// Gives the Mac its input back from a hop that goes no further, and
-    /// lets go of the desktop prepared for it.
     fn give_back(self) {
         let Self::Hop {
             token,
@@ -392,24 +330,14 @@ impl Arrival {
     }
 }
 
-/// How a crossing's time on one computer ended.
 enum Outcome {
-    /// Input is back on the Mac without coming home through an edge, as
-    /// after a stop.
     Stopped,
-    /// The pointer came home through an exit, at this position of it.
     Returned(u32),
-    /// The pointer moved on to the computer `handoff` names.
     Hopped(Box<Handoff>, Arrival),
 }
 
 type DesktopPoll<'a> = Pin<Box<dyn Future<Output = Result<DesktopResponse>> + Send + 'a>>;
 
-/// Runs one crossing on one computer and reports how it ended. The status
-/// sender drops only after cleanup, so the observer rearms once the Mac
-/// owns input again. Returns whether the crossing failed, and where it goes
-/// on to, if it moved to another computer; that computer's link reports
-/// from then on.
 async fn run_crossing(
     activation: Activation<'_>,
     handoff: Handoff,
@@ -458,10 +386,6 @@ async fn run_crossing(
     (failed, None)
 }
 
-/// Prepares the receiver's desktop, forwards input until it returns, and
-/// finishes the handoff. The session outlives the crossing, so every desktop
-/// request is awaited: dropping one closes the transport. A crossing that
-/// arrives from another computer is already prepared and captured.
 async fn cross(
     mut activation: Activation<'_>,
     mut handoff: Handoff,
@@ -479,9 +403,6 @@ async fn cross(
         arrival.give_back();
         return Err(error);
     }
-    // AWDL goes down beside Prepare, before input starts. A peer that
-    // controlled this Mac a moment ago, or the computer a hop came from, may
-    // still hold it down; then the crossing shares its lease.
     let awdl = reduce_wifi_latency.then(|| awdl::shared().want());
     let awdl_down = async {
         if awdl.is_some() {
@@ -499,7 +420,6 @@ async fn cross(
             let token = handoff::token()?;
             let prepare = prepare_request(&mut handoff, entry_position, token)?;
             let preparing = Instant::now();
-            // Await Prepare even after Stop so Finish can use the same session.
             let ((), prepared) =
                 tokio::join!(awdl_down, activation.session.desktop_request(prepare));
             tracing::info!(
@@ -507,8 +427,6 @@ async fn cross(
                 "desktop preparation completed"
             );
             if let Some(cancelled) = busy(session.peer(), &prepared) {
-                // It refused before reserving anything, so there is nothing to
-                // finish, and a Finish it refused too would fail the crossing.
                 return Err(cancelled);
             }
             (token, local_desktop, None, Some(prepared))
@@ -524,8 +442,6 @@ async fn cross(
         }
     };
     let mut result = async {
-        // The link's snapshot already showed the receiver handles desktop
-        // requests, so a failure here is the session or the receiver.
         if let Some(prepared) = prepared {
             handoff.check_prepared(
                 prepared.context("Could not prepare the other computer's desktop")?,
@@ -563,20 +479,15 @@ async fn cross(
         "desktop handoff cleanup completed"
     );
     keep_cleanup_failure(&mut result, finished, "desktop handoff cleanup");
-    // A moment after the last user lets go, the shared lease gives AWDL back.
     drop(awdl);
     result
 }
 
-/// A peer refuses a crossing while it sends its own input, as just after it
-/// took control of this Mac back. Nothing is wrong, so the crossing is
-/// cancelled rather than failed.
 fn busy(peer: &str, prepared: &Result<DesktopResponse>) -> Option<anyhow::Error> {
     matches!(prepared, Ok(DesktopResponse::Unavailable { reason }) if reason == receive::SENDING)
         .then(|| AdmissionCancelled(format!("{peer} is sending its own input")).into())
 }
 
-/// Samples the cursor again, since it kept moving after the edge was detected.
 fn prepare_request(
     handoff: &mut Handoff,
     entry_position: CursorPosition,
@@ -608,8 +519,6 @@ fn prepare_request(
     Ok(request)
 }
 
-/// Owns input on the receiver: activation, native capture, and release.
-/// `captured` is the capture a hop brought along.
 #[allow(clippy::too_many_arguments)]
 async fn remote(
     activation: &mut Activation<'_>,
@@ -648,12 +557,9 @@ async fn remote(
         "remote input release completed"
     );
     if released.is_err() {
-        // Closing the session makes the receiver release everything it holds.
         session.close(SessionCloseReason::LocalRelease);
     }
     keep_cleanup_failure(&mut result, released, "remote input release");
-    // Keep the poll alive through Leave, then finish it before Finish. Late
-    // responses cannot change the cursor placement or the capture result.
     if let Some(poll) = poll {
         tracing::debug!("waiting for desktop poll before cleanup");
         let response = poll.await;
@@ -662,13 +568,9 @@ async fn remote(
     result
 }
 
-/// Why forwarding stopped.
 struct Ended {
     reason: &'static str,
-    /// Where the pointer comes home, and the position of the exit it left
-    /// through.
     returned: Option<(Point, u32)>,
-    /// The next computer, for a pointer that left toward one.
     hop: Option<Handoff>,
     error: Option<anyhow::Error>,
     touch_active: bool,
@@ -696,8 +598,6 @@ async fn capture<'a>(
 ) -> Result<Outcome> {
     let started = Instant::now();
     let mut capture = match captured {
-        // The tap kept running through the hop, so nothing is admitted again:
-        // its entry region is on the Mac's edge toward the first computer.
         Some(capture) => {
             let _ = status.send(SourceStatus::Hopped {
                 peer: activation.session.peer().to_owned(),
@@ -725,9 +625,7 @@ async fn capture<'a>(
             capture
         }
     };
-    // The pointer left for the peer, so the clipboard goes along.
     activation.clipboard.share(activation.session);
-    // Polling renews the receiver's handoff and reports its exits.
     *poll = Some(poll_desktop(activation.session, token));
     let mut ended = Ended {
         reason: "stop requested",
@@ -797,7 +695,6 @@ async fn capture<'a>(
         tracing::info!(point = ?return_point, "Mac cursor positioned before local input resumed");
         let _ = status.send(SourceStatus::LocalInputRestored);
     }
-    // Escape must stay paused even when the event queue was full or cleanup failed.
     if capture.pause_requested() {
         let _ = status.send(SourceStatus::PauseRequested);
     }
@@ -812,9 +709,6 @@ async fn capture<'a>(
     error.map_or(Ok(outcome), Err)
 }
 
-/// Prepares the next computer's desktop for a pointer that left this one,
-/// over that computer's own link, and returns the handoff's token and that
-/// session. A desktop it prepared but that does not fit goes back.
 async fn prepare_hop(
     activation: &Activation<'_>,
     next: &mut Handoff,
@@ -851,9 +745,6 @@ fn return_point(local_desktop: &[DesktopRect], point: Point) -> Result<CursorPos
     })
 }
 
-/// Forwards captured input until the crossing ends, or the pointer leaves
-/// toward another computer while nothing is held and that computer is ready,
-/// and reports why in `ended`.
 #[allow(clippy::too_many_arguments)]
 async fn forward<'a>(
     capture: &mut MacCapture,
@@ -891,7 +782,6 @@ async fn forward<'a>(
                         return ended;
                     }
                     Ok(Next::Hop(next)) => {
-                        // Polling on tells the receiver the pointer stays.
                         tracing::debug!(peer = %next.peer, "a button or modifier is held, or that computer is not ready; the pointer stays");
                         *poll = Some(poll_desktop(session, token));
                     }
@@ -912,7 +802,6 @@ async fn forward<'a>(
                     let error = AdmissionCancelled(SECURE_INPUT_RETURNED.into()).into();
                     return ended.failed("secure keyboard entry", error);
                 }
-                // A stop the wake missed still ends capture.
                 if capture.stop_requested() {
                     CAPTURE_WAKE.notify_one();
                 }
@@ -939,7 +828,6 @@ async fn forward<'a>(
                     }
                 }
                 if drained == MAX_EVENTS_PER_DRAIN {
-                    // More may be queued. Let the session send this batch first.
                     tokio::task::yield_now().await;
                     CAPTURE_WAKE.notify_one();
                 } else if capture.stop_requested() {
@@ -955,10 +843,6 @@ async fn forward<'a>(
             }
             event = activation.events.recv() => match event.map(|event| event.kind) {
                 Some(SessionEventKind::OutboundEnded) => {
-                    // The session ends remote control when the receiver stops
-                    // acknowledging, for example after a Wi-Fi stall outlived its
-                    // lease. Return where the crossing left the Mac and keep
-                    // sharing armed.
                     ended.reason = "remote ownership ended";
                     match handoff.home() {
                         Ok(point) => ended.returned = Some((point, handoff.origin)),
@@ -1011,7 +895,6 @@ fn poll_desktop(session: &SessionHandle, token: u64) -> DesktopPoll<'_> {
         let response = session
             .desktop_request(DesktopRequest::Poll { token })
             .await;
-        // Older receivers reply immediately; limit their poll rate before repeating.
         if matches!(&response, Ok(DesktopResponse::Active)) {
             tokio::time::sleep_until((started + Duration::from_millis(50)).into()).await;
         }
@@ -1058,7 +941,6 @@ fn native_frame(event: NativeEvent) -> Result<Option<CapturedDeviceFrame>> {
             let contacts = event.contacts[..count].iter().filter_map(|contact| {
                 let id = u32::try_from(contact.id).ok()?;
                 let x = surface_axis(contact.x, size.width);
-                // MultitouchSupport uses a bottom-left origin; Linux touchpads use top-left.
                 let y = surface_axis(1.0 - contact.y, size.height);
                 Some(TouchContact {
                     id: ContactId(id),
@@ -1097,8 +979,6 @@ fn touch_frame(state: TouchState) -> CapturedDeviceFrame {
     }
 }
 
-/// The trackpad's size in hundredths of a millimetre, as MultitouchSupport
-/// reported it, or a Magic Trackpad 2's when the report is missing or absurd.
 fn trackpad_size(width: i32, height: i32) -> SourceDimensions {
     let plausible = |extent: i32| (1..=MAX_TRACKPAD_EXTENT).contains(&extent);
     if plausible(width) && plausible(height) {
@@ -1118,7 +998,6 @@ fn trackpad_size(width: i32, height: i32) -> SourceDimensions {
     FALLBACK_TRACKPAD_SIZE
 }
 
-/// Converts a 0..1 MultitouchSupport position to hundredths of a millimetre.
 fn surface_axis(value: f32, extent: u32) -> i32 {
     (f64::from(value.clamp(0.0, 1.0)) * f64::from(extent)).round() as i32
 }
@@ -1218,9 +1097,6 @@ struct MacCapture {
 }
 
 impl MacCapture {
-    /// Installs the event tap. The bridge then admits the crossing only if the
-    /// cursor is still in `entry` and no key or button is held; checking after
-    /// the tap is installed leaves no gap for a press to slip through.
     fn start(raw_touch: bool, entry: Rect) -> Result<Self> {
         let entry = DesktopRect {
             x: f64::from(entry.x),
@@ -1228,8 +1104,6 @@ impl MacCapture {
             width: f64::from(entry.width),
             height: f64::from(entry.height),
         };
-        // SAFETY: start initializes the native thread before returning; the
-        // wake callback is a plain function that only touches a static Notify.
         let status = unsafe { zflow_mac_capture_start(i32::from(raw_touch), &entry, wake_capture) };
         if status < 0 {
             return Err(capture_start_error(status, Self::last_error()));
@@ -1242,23 +1116,19 @@ impl MacCapture {
 
     fn poll(&mut self) -> Option<NativeEvent> {
         let mut event = NativeEvent::default();
-        // SAFETY: event points to writable storage matching the bridge's C layout.
         (unsafe { zflow_mac_capture_poll(&mut event) } == 1).then_some(event)
     }
 
     fn stop_requested(&self) -> bool {
-        // SAFETY: the bridge exposes this flag atomically.
         unsafe { zflow_mac_capture_stop_requested() == 1 }
     }
 
     fn pause_requested(&self) -> bool {
-        // SAFETY: the bridge exposes this flag atomically and preserves it after stop.
         unsafe { zflow_mac_capture_pause_requested() == 1 }
     }
 
     fn stop_at(&mut self, position: Option<CursorPosition>) -> Result<()> {
         if self.running {
-            // SAFETY: stop is idempotent after a successful start and joins the native thread.
             let status = unsafe {
                 zflow_mac_capture_stop_at(position.as_ref().map_or(std::ptr::null(), |point| point))
             };
@@ -1271,12 +1141,10 @@ impl MacCapture {
     }
 
     fn last_error() -> String {
-        // SAFETY: the bridge returns a process-lifetime NUL-terminated buffer.
         let pointer = unsafe { zflow_mac_capture_last_error() };
         if pointer.is_null() {
             return "unknown error".to_owned();
         }
-        // SAFETY: checked non-null and the bridge always terminates the buffer.
         unsafe { CStr::from_ptr(pointer) }
             .to_string_lossy()
             .into_owned()
@@ -1284,7 +1152,6 @@ impl MacCapture {
 }
 
 fn capture_start_error(status: i32, reason: String) -> anyhow::Error {
-    // capture_bridge.c uses -2 only for admission cancellation after cleanup.
     if status == -2 {
         AdmissionCancelled(reason).into()
     } else {
@@ -1321,7 +1188,6 @@ mod tests {
 
     #[test]
     fn a_peer_sending_its_own_input_cancels_the_crossing() {
-        // As in the live test, where linux had just taken control back.
         let refused = Ok(DesktopResponse::unavailable(receive::SENDING));
         let cancelled = busy("linux", &refused).unwrap();
         assert_eq!(
@@ -1440,7 +1306,6 @@ mod tests {
 
     #[test]
     fn trackpad_contacts_are_sent_in_hundredths_of_a_millimetre() {
-        // MultitouchSupport's origin is bottom-left; the wire's is top-left.
         let state = touch_state(touch_event(
             15_600,
             9_600,
@@ -1525,14 +1390,12 @@ mod tests {
     }
 
     fn forward_scroll(raw: bool, active: bool, scroll: i64, momentum: i64) -> bool {
-        // SAFETY: the helper accepts scalar values and does not access capture state.
         unsafe {
             zflow_mac_should_forward_scroll(u8::from(raw), u8::from(active), scroll, momentum) == 1
         }
     }
 
     fn modifier_pressed(keycode: u16, flags: u64) -> bool {
-        // SAFETY: the helper accepts scalar values and does not access capture state.
         unsafe { zflow_mac_modifier_pressed(keycode, flags) == 1 }
     }
 }

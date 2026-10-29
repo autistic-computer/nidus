@@ -61,26 +61,15 @@ const LOCAL_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const TERMINAL_SEND_TIMEOUT: Duration = Duration::from_millis(250);
 const DISCOVERY_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 const DISCOVERY_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
-/// A stop signal ends the process within this, even if something hangs.
-/// systemd kills the service after TimeoutStopSec=2s.
 const SHUTDOWN_DEADLINE: Duration = Duration::from_millis(1_500);
-/// How long a stop waits for the input thread to let go of devices.
 const RUNTIME_STOP_TIMEOUT: Duration = Duration::from_millis(500);
-/// An input thread that takes longer than this to apply effects is wedged.
 const RUNTIME_ACK_TIMEOUT: Duration = Duration::from_secs(1);
-/// Blocking tasks, such as a logind query, get this long after the daemon
-/// returns.
 const EXECUTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_METRICS_HISTORY: usize = 128;
 const MAX_PENDING_HANDSHAKES: usize = 64;
 const MAX_LOCAL_CLIENTS: usize = 64;
-/// The shared layout this computer keeps, in its state directory.
 const LAYOUT_FILE: &str = "layout.json";
-/// A paired computer's tile has this size until that computer writes its own.
 const PEER_TILE_SIZE: (u32, u32) = (1920, 1080);
-/// Logind answers Unknown when a reply is slow or races a property change.
-/// Such a short Unknown holds injection and keeps the last definite state for
-/// authorization, so it does not end a live crossing.
 const SEAT_UNKNOWN_GRACE: Duration = Duration::from_secs(1);
 
 pub fn run(config_path: PathBuf) -> Result<()> {
@@ -90,8 +79,6 @@ pub fn run(config_path: PathBuf) -> Result<()> {
                 .unwrap_or_else(|_| "zflow=info".into()),
         )
         .init();
-    // The unit caps threads with TasksMax=128, and input runs on its own
-    // thread, so the control plane gets two workers rather than one per CPU.
     let executor = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -102,8 +89,6 @@ pub fn run(config_path: PathBuf) -> Result<()> {
 }
 
 async fn run_async(config_path: PathBuf) -> Result<()> {
-    // systemctl stop and the sleep hook send SIGTERM. Handle it from the start
-    // so it always reaches the graceful shutdown below.
     let terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     let config = Config::load(&config_path)
@@ -133,7 +118,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
 
     let (session_events, mut session_event_rx) = mpsc::channel(SESSION_EVENT_CAPACITY);
     let (accepted_tx, mut accepted_rx) = mpsc::channel(ACCEPT_EVENT_CAPACITY);
-    // Give the first logind answer a moment so early requests see a real seat.
     let _ = tokio::time::timeout(SEAT_UNKNOWN_GRACE, seat.changed()).await;
     let shared = Arc::new(Shared::new(
         config.clone(),
@@ -158,7 +142,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
     let local_slots = Arc::new(Semaphore::new(MAX_LOCAL_CLIENTS));
     let seat_watcher = tokio::spawn(watch_seat(shared.clone()));
     let looking_around = arrange::start(shared.clone());
-    // The mDNS records fed to the neighbors, so they go when browsing stops.
     let mut records = std::collections::BTreeSet::new();
     let mut discovery_retry = tokio::time::interval(DISCOVERY_RETRY_INTERVAL);
     discovery_retry.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -202,7 +185,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
                     let Ok(permit) = handshake_slots.clone().try_acquire_owned() else {
                         incoming.refuse();
                         tracing::warn!("input handshake limit reached");
-                        // The one refused could be a second stranger.
                         shared.neighbors.send_if_modified(|neighbors| {
                             neighbors.turned_one_away();
                             false
@@ -227,7 +209,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
                                 let shared = shared.clone();
                                 tokio::spawn(async move { shared.answer_hello(hello).await });
                             }
-                            // It trusts this computer, which does not trust it.
                             Ok(Accepted::NotTrusted { remote_address, .. }) => {
                                 tracing::debug!(%remote_address, "input refused from a computer not added here");
                             }
@@ -272,8 +253,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
                     let Some(frame) = frame else {
                         bail!("Linux input runtime capture channel closed");
                     };
-                    // The input thread sends the switch to Remote before the frames
-                    // it covers, so handle queued events first.
                     while let Ok(event) = runtime.events.try_recv() {
                         handle_runtime_event(event, &shared).await?;
                     }
@@ -293,14 +272,10 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
                             let Some(instance) = candidate.ephemeral_instance_id() else {
                                 continue;
                             };
-                            // Every address here, not the 16 a record may
-                            // name, which can leave some of this one's out.
                             let local = this_host_addresses();
                             let addresses = remote_addresses(candidate.socket_addresses(), &local);
                             let instance = instance.to_string();
                             let now = tokio::time::Instant::now();
-                            // A computer on another version stays listed, so
-                            // its tile can say so.
                             if addresses.is_empty() {
                                 shared.neighbors.send_modify(|neighbors| neighbors.instance_gone(&instance, now));
                                 records.remove(&instance);
@@ -335,14 +310,10 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
     })
     .await;
 
-    // Links stop dialing before the sessions close.
     shared.links.lock().await.clear();
     shared
         .close_all(SessionCloseReason::BackendUnavailable)
         .await;
-    // A stop signal already told the input thread to let go of injected
-    // input, before the slower network teardown; a key held from the peer
-    // would autorepeat until then. A failed loop tells it here.
     let stopped = runtime.stop(RUNTIME_STOP_TIMEOUT).await;
     seat_watcher.abort();
     looking_around.abort();
@@ -351,10 +322,6 @@ async fn run_async(config_path: PathBuf) -> Result<()> {
     served.and(stopped.map_err(anyhow::Error::from))
 }
 
-/// Waits for SIGTERM or Ctrl-C. Then it tells the input thread to stop at
-/// once, so injected keys go up even while the daemon loop is busy, and ends
-/// the process if the graceful shutdown overruns SHUTDOWN_DEADLINE. The
-/// returned receiver fires when the signal comes.
 fn stop_on_signal(
     mut terminate: tokio::signal::unix::Signal,
     mut interrupt: tokio::signal::unix::Signal,
@@ -367,23 +334,16 @@ fn stop_on_signal(
             _ = interrupt.recv() => {}
         }
         tracing::info!("stopping");
-        // The loop hears first, so the input thread's Stopped event that
-        // follows is not taken for a fault.
         let _ = stop.send(());
         runtime.request_stop();
         exit_after(SHUTDOWN_DEADLINE, || {
             tracing::error!("shutdown overran its deadline; exiting now");
-            // SAFETY: _exit only ends the process. The kernel closes every
-            // descriptor, which drops grabs and removes the virtual devices,
-            // and removing them releases whatever they held.
             unsafe { libc::_exit(1) }
         });
     });
     stopping
 }
 
-/// Runs `exit` once `deadline` passes, on a plain thread, so neither a stuck
-/// task nor a busy executor can hold it up.
 fn exit_after(deadline: Duration, exit: impl FnOnce() + Send + 'static) {
     let spawned = std::thread::Builder::new()
         .name("zflow-stop".into())
@@ -396,9 +356,6 @@ fn exit_after(deadline: Duration, exit: impl FnOnce() + Send + 'static) {
     }
 }
 
-/// Runs the daemon loop until it fails or `stop` fires. The loop is dropped
-/// wherever it waits, so a stop never queues behind its work, and a stop
-/// wins over an error that comes at the same moment.
 async fn serve_until(
     stop: impl Future,
     serve: impl Future<Output = Result<std::convert::Infallible>>,
@@ -413,7 +370,6 @@ async fn serve_until(
 struct Shared {
     config: RwLock<Config>,
     config_mutation: Mutex<()>,
-    /// Serializes authorization commits with session insertion and injection.
     policy: Mutex<()>,
     policy_generation: AtomicU64,
     config_path: PathBuf,
@@ -425,41 +381,27 @@ struct Shared {
     endpoint: Endpoint,
     server_config: RwLock<InputServerConfig>,
     hello_config: HelloClientConfig,
-    /// Limits the hellos this computer has out at once.
     hello_slots: Arc<Semaphore>,
     runtime: LinuxRuntimeControl,
     sessions: Mutex<BTreeMap<String, SessionHandle>>,
-    /// Bumped whenever `sessions` gains or loses one, which links watch.
     session_changes: watch::Sender<()>,
-    /// Sessions this computer dialed, by id, with when the dial finished.
     dialed: Mutex<BTreeMap<u64, Instant>>,
-    /// The zflow computers around this one, from mDNS and hellos. Links
-    /// find a peer here by its key, wherever it is now.
     neighbors: watch::Sender<Neighbors>,
-    /// A fresh install's one-shot window for taking a computer by itself.
     window: std::sync::Mutex<PairingWindow>,
-    /// Computers that joined lately, newest last.
     notices: std::sync::Mutex<Vec<crate::hello::Notice>>,
     forgotten: std::sync::Mutex<crate::forgotten::Forgotten>,
-    /// The live link to each peer this computer may send to.
     links: Mutex<BTreeMap<String, links::Link>>,
-    /// The newest layout this computer has seen from any peer.
     layout: Mutex<Option<crate::desktop::SharedLayout>>,
-    /// Held while a crossing started from an edge runs.
     crossing: Mutex<()>,
     metrics_history: Mutex<BTreeMap<String, crate::metrics::SessionMetricsSnapshot>>,
     arming_started: Mutex<Option<(String, Instant)>>,
     active_outbound: Mutex<Option<ActiveOutbound>>,
     inbound_owner: Mutex<Option<(String, u64)>>,
-    /// The computer the activation chord picked last.
     chord_peer: Mutex<Option<String>>,
-    /// Per peer, the clip last sent to it and the one it last gave here.
     clipboard_echo: Mutex<BTreeMap<String, crate::clipboard::Echo>>,
-    /// The desktop agent's standing offer to serve the next lens.
     lens_host: Mutex<Option<tokio::net::UnixStream>>,
     desktop: desktop::Hub,
     seat: watch::Receiver<SeatState>,
-    /// The inbound injection gate, kept current by `watch_seat`.
     seat_gate: RwLock<SeatGate>,
     session_events: mpsc::Sender<SessionEvent>,
 }
@@ -481,7 +423,6 @@ impl Shared {
         seat: watch::Receiver<SeatState>,
         session_events: mpsc::Sender<SessionEvent>,
     ) -> Result<Self> {
-        // Always listening: hellos are answered before anything is trusted.
         let server_config = build_server_config(&identity, &config)?;
         endpoint.set_server_config(Some(server_config.quinn_config()));
         let initial_seat = SeatGrace::new(seat.borrow().clone(), Instant::now()).gate();
@@ -541,7 +482,6 @@ impl Shared {
         DaemonStatus {
             identity: self.identity_fingerprint.clone(),
             ownership: ownership_status(runtime.ownership),
-            // A hop moves input on without the runtime choosing again.
             selected_peer: active
                 .as_ref()
                 .map(|active| active.peer.clone())
@@ -600,7 +540,6 @@ impl Shared {
             .map_err(|error| anyhow!(error))
     }
 
-    /// Reads the layout this computer kept last time.
     async fn restore_layout(self: &Arc<Self>) {
         let path = self.config.read().await.daemon.state_dir.join(LAYOUT_FILE);
         match fs::read(&path) {
@@ -618,9 +557,6 @@ impl Shared {
         self.apply_layout().await;
     }
 
-    /// Gives a computer whose new key was dropped onto its old tile, after
-    /// a reset or reinstall, the tile its old key had, instead of a new one
-    /// beside this computer.
     async fn move_reinstalled_tiles(&self, old: &Config) {
         let before = peer_keys(old);
         let after = peer_keys(&*self.config.read().await);
@@ -641,10 +577,6 @@ impl Shared {
         }
     }
 
-    /// Gives each paired computer the layout lacks a tile beside this one,
-    /// such as one paired after the computers were arranged, and tells the
-    /// other computers. Without a layout there is nothing to add to: the
-    /// first one places every paired computer.
     async fn place_new_peers(&self) {
         let keys = peer_keys(&*self.config.read().await);
         let current = self.layout.lock().await.clone();
@@ -663,8 +595,6 @@ impl Shared {
         }
     }
 
-    /// Places a barrier on each edge of this computer's tile that touches a
-    /// paired computer. Without a layout, crossings start only from the chord.
     async fn apply_layout(&self) {
         let edges = self
             .local_layout()
@@ -676,7 +606,6 @@ impl Shared {
         desktop::set_edges(self, edges, pause);
     }
 
-    /// Sends a peer the layout this computer keeps, if it has one.
     async fn offer_layout(&self, session: &SessionHandle) {
         let layout = self.layout.lock().await.clone();
         if let Some(layout) = layout
@@ -686,9 +615,6 @@ impl Shared {
         }
     }
 
-    /// Keeps whichever of this computer's layout and a peer's is newer. A
-    /// newer one is saved and passed to the other peers; a peer with an older
-    /// one gets this computer's back.
     async fn merge_layout(
         self: &Arc<Self>,
         from: &str,
@@ -718,9 +644,7 @@ impl Shared {
             return;
         }
         tracing::info!(peer = %from, version, "layout adopted");
-        // A computer paired here but not there has no tile in it yet.
         self.place_new_peers().await;
-        // The other computer may not know this desktop's size yet.
         let shared = self.clone();
         tokio::spawn(async move {
             if let crate::desktop::DesktopResponse::Snapshot { geometry, .. } =
@@ -731,9 +655,6 @@ impl Shared {
         });
     }
 
-    /// Uses `layout` from now on if it is newer than the one kept, saves it,
-    /// and sends it to every peer except the session it came from. Returns
-    /// whether it was kept: another task may have kept a newer one first.
     async fn keep_layout(&self, layout: crate::desktop::SharedLayout, origin: Option<u64>) -> bool {
         {
             let mut current = self.layout.lock().await;
@@ -761,8 +682,6 @@ impl Shared {
         true
     }
 
-    /// Writes this computer's own tile size, from its GNOME desktop, into
-    /// the shared layout, and tells the other computers.
     pub(super) async fn fit_own_tile(&self, geometry: &crate::desktop::Geometry) {
         let Ok(bounds) = geometry.bounds() else {
             return;
@@ -784,7 +703,6 @@ impl Shared {
         }
     }
 
-    /// Writes `layout` to the state directory, so it outlives a restart.
     async fn save_layout(&self, layout: &crate::desktop::SharedLayout) {
         let path = self.config.read().await.daemon.state_dir.join(LAYOUT_FILE);
         let saved = serde_json::to_string(layout)
@@ -795,9 +713,6 @@ impl Shared {
         }
     }
 
-    /// The layout this computer keeps, or, before anyone arranged the
-    /// computers, the one it would start from. Starting one asks GNOME for
-    /// this desktop's size.
     async fn layout_or_initial(&self) -> Result<crate::desktop::SharedLayout> {
         if let Some(layout) = self.layout.lock().await.clone() {
             return Ok(layout);
@@ -814,8 +729,6 @@ impl Shared {
             bounds.height,
             &peer_keys(&*self.config.read().await),
         )?;
-        // Keep it, so later requests do not ask GNOME again. Version 0 gives
-        // way to any layout a peer arranged.
         let initial = initial
             .with_geometry(&self.identity_fingerprint, &geometry)
             .unwrap_or(initial);
@@ -827,16 +740,12 @@ impl Shared {
             .context("the layout was not kept")
     }
 
-    /// What the settings window arranges. None while there is no layout and
-    /// GNOME cannot describe this desktop.
     pub(super) async fn layout_status(&self) -> Option<crate::app::layout_model::Layout> {
         let layout = self.layout_or_initial().await.ok()?;
         let keys = peer_keys(&*self.config.read().await);
         Some(layout_view(&layout, &self.identity_fingerprint, &keys))
     }
 
-    /// Moves one computer, as the settings window asks, and tells the
-    /// other computers. The first move also starts the layout.
     pub(super) async fn move_tile(
         self: &Arc<Self>,
         id: &str,
@@ -865,8 +774,6 @@ impl Shared {
         Ok(())
     }
 
-    /// Starts a crossing toward the computer behind the edge the pointer
-    /// pushed against. The usual activation checks apply.
     fn edge_hit(
         self: &Arc<Self>,
         monitor: Option<String>,
@@ -884,7 +791,6 @@ impl Shared {
         });
     }
 
-    /// A computer that another one controls does not send its own input.
     async fn require_not_controlled(&self) -> Result<()> {
         match &*self.inbound_owner.lock().await {
             Some((peer, _)) => bail!("{peer} is controlling this computer"),
@@ -900,7 +806,6 @@ impl Shared {
         if let Some(existing) = self.sessions.lock().await.get(peer).cloned() {
             return Ok(existing);
         }
-        // Where a hello proved its key now, then where it was saved.
         let mut addresses = self
             .neighbors
             .borrow()
@@ -912,8 +817,6 @@ impl Shared {
         self.connect(peer, record, &addresses).await
     }
 
-    /// Session options for the computer with this key. Its hello tells
-    /// whether it runs Linux and can post raw touchpad contacts.
     async fn session_options(&self, key: &str) -> Result<SessionOptions> {
         let os = self
             .neighbors
@@ -923,8 +826,6 @@ impl Shared {
         Ok(SessionOptions::from_config(&*self.config.read().await)?.for_peer_os(os))
     }
 
-    /// Dials `peer` at `addresses` and keeps the session, unless one the
-    /// peer dialed at the same moment wins.
     async fn connect(
         &self,
         peer: &str,
@@ -966,8 +867,6 @@ impl Shared {
         let wins = wins_dial(&config, &self.identity_fingerprint, peer);
         let mut sessions = self.sessions.lock().await;
         if let Some(existing) = sessions.get(peer).cloned() {
-            // Either this computer dialed twice at once, or the peer dialed
-            // while this computer did.
             let own = self.dialed.lock().await.contains_key(&existing.id());
             if own || !wins {
                 session.close(SessionCloseReason::Superseded);
@@ -988,9 +887,6 @@ impl Shared {
         Ok(session)
     }
 
-    /// Saves where a peer's authenticated session came from, so it is
-    /// dialed there next. Only addresses change, so links and sessions
-    /// carry on. Skipped while another change is being saved.
     async fn learn_address(&self, peer: &str, address: SocketAddr) {
         let Ok(_mutation) = self.config_mutation.try_lock() else {
             return;
@@ -1009,9 +905,6 @@ impl Shared {
         }
     }
 
-    /// Where a peer that dialed in from `remote` takes input: that IP on
-    /// the port its hello named, else on a port it was saved with. A Mac
-    /// dials from a passing port, so the source port says nothing.
     async fn input_address(&self, peer: &str, spki: &[u8], remote: SocketAddr) -> SocketAddr {
         let key = crate::neighbors::fingerprint(spki);
         let heard = self
@@ -1028,8 +921,6 @@ impl Shared {
         SocketAddr::new(remote.ip().to_canonical(), port)
     }
 
-    /// Whether this computer's own dial to `peer` just finished and wins
-    /// over a connection the peer dialed at the same moment.
     async fn keeps_own_dial(&self, peer: &str) -> bool {
         let Some(session) = self.sessions.lock().await.get(peer).cloned() else {
             return false;
@@ -1046,8 +937,6 @@ impl Shared {
             let config = self.config.read().await;
             peer_name_for_spki(&config, connection.peer_spki())
         };
-        // The listener keeps trusted keys while sharing is paused, so they
-        // are not told they were never added.
         let peer = match peer {
             Ok(peer) => peer,
             Err(error) => {
@@ -1062,10 +951,6 @@ impl Shared {
             connection.close();
             bail!("{peer} dialed while this computer did; keeping this computer's connection");
         }
-        // A peer that reconnects after a silent network loss would otherwise
-        // wait for its old session's idle timeout. This connection is the same
-        // authenticated peer, so the old session goes first, and its close
-        // releases what it held before the new one is registered.
         self.retire_session(&peer).await;
         let generation = self.allocate_generation()?;
         let options = self
@@ -1079,7 +964,6 @@ impl Shared {
             self.session_events.clone(),
         )
         .await?;
-        // Another reconnect can race this one; the last to finish wins.
         loop {
             {
                 let _policy = self.policy.lock().await;
@@ -1093,8 +977,6 @@ impl Shared {
                     session.close(SessionCloseReason::PermissionRevoked);
                     bail!("peer authorization changed during inbound connection negotiation");
                 }
-                // A session that already ended has sent its Closed event, and
-                // nothing would ever remove it from the map.
                 if session.is_closed() {
                     bail!("peer {peer} input session ended during setup");
                 }
@@ -1120,8 +1002,6 @@ impl Shared {
         }
     }
 
-    /// Closes the peer's current session and waits until its Closed event has
-    /// run, which is where its held input is released.
     async fn retire_session(&self, peer: &str) {
         loop {
             let old = self.sessions.lock().await.get(peer).cloned();
@@ -1160,7 +1040,6 @@ impl Shared {
             .cloned()
             .with_context(|| format!("peer {peer} was revoked before capture armed"))?;
         require_outbound_permission(&*self.config.read().await, peer, &record)?;
-        // The runtime may have been arming when a peer took control.
         self.require_not_controlled().await?;
         let session = self
             .sessions
@@ -1183,12 +1062,6 @@ impl Shared {
         Ok(())
     }
 
-    /// Moves this computer's input on from the computer it goes to now to
-    /// `peer`, as a hop does: Leave there, then Enter at `peer` with a new
-    /// activation. The runtime stays Remote, so nothing is ungrabbed, and
-    /// captured input waits on the policy lock until it can go to `peer`.
-    /// A release of input takes that lock too, so it ends whichever
-    /// activation is open once this is done.
     async fn switch_outbound(&self, peer: &str) -> Result<()> {
         let _policy = self.policy.lock().await;
         let record = self
@@ -1205,8 +1078,6 @@ impl Shared {
             runtime.ownership == OwnershipPhase::Remote,
             "this computer's input is not going anywhere"
         );
-        // Checked again here: a key can go down while the next computer
-        // prepares its desktop.
         ensure!(runtime.neutral, "a key or button is held");
         let session = self
             .sessions
@@ -1234,8 +1105,6 @@ impl Shared {
             .filter(|session| session.id() == previous.session_id)
             .cloned();
         if let Some(left) = left {
-            // As after a runtime close: the session may be waiting on the
-            // daemon, so bound the wait and close it instead.
             let leave = left.end_outbound(SessionCloseReason::LocalRelease);
             if !matches!(
                 tokio::time::timeout(TERMINAL_SEND_TIMEOUT, leave).await,
@@ -1246,7 +1115,6 @@ impl Shared {
             }
         }
         if let Err(error) = session.begin_outbound(context) {
-            // Input left and has nowhere to go, so it comes back here.
             let _ = self.runtime.send(RuntimeCommand::Release {
                 transport_live: false,
             });
@@ -1277,8 +1145,6 @@ impl Shared {
     }
 
     async fn finish_runtime_terminal(&self, reason: SessionCloseReason) -> Result<()> {
-        // Taken before the timeout below, so a hop that is moving input on
-        // finishes first and this ends the activation it left open.
         let _policy = self.policy.lock().await;
         let active_session = if let Some(active) = self.active_outbound.lock().await.clone() {
             self.sessions
@@ -1298,8 +1164,6 @@ impl Shared {
             } else {
                 tracing::warn!("outbound terminal state timed out");
             }
-            // Closing the transport is the authoritative fallback: the peer's
-            // receiver lifecycle releases held state before local ungrab.
             if let Some(session) = active_session {
                 session.close(SessionCloseReason::LocalRelease);
             }
@@ -1313,8 +1177,6 @@ impl Shared {
             .map_err(|error| anyhow!(error))
     }
 
-    /// Sends a captured frame to its peer, or releases local input if it
-    /// cannot go anywhere.
     async fn forward_capture(&self, frame: crate::linux::CapturedDeviceFrame) -> Result<()> {
         if let Err(error) = self.route_capture(frame).await {
             tracing::warn!(%error, "captured input could not reach its peer");
@@ -1364,8 +1226,6 @@ async fn handle_client(
     shared: Arc<Shared>,
     daemon_uid: u32,
 ) -> Result<()> {
-    // The socket is mode 0660 for the service account, whose group has no
-    // members, so only root and the service itself can reach it.
     authorize_peer(&stream, daemon_uid, None)?;
     let request: Request = read_message(&mut stream).await?;
     let response = match dispatch_result(request, &shared).await {
@@ -1526,7 +1386,6 @@ async fn handle_runtime_event(event: RuntimeEvent, shared: &Arc<Shared>) -> Resu
             }
             desktop::set_sending(shared, true);
             match shared.begin_outbound(&peer).await {
-                // The pointer left for `peer`, so the clipboard goes along.
                 Ok(()) => shared.share_clipboard(&peer),
                 Err(error) => {
                     tracing::warn!(%error, %peer, "outbound session could not start");
@@ -1558,13 +1417,9 @@ async fn handle_runtime_event(event: RuntimeEvent, shared: &Arc<Shared>) -> Resu
                 .await?;
         }
         RuntimeEvent::ActivationClosed(reason) => {
-            // As in finish_runtime_terminal: a hop under way ends first.
             let _policy = shared.policy.lock().await;
             let active = shared.active_outbound.lock().await.clone();
             if let Some(active) = active {
-                // The session may itself be waiting on this loop to apply input
-                // from the peer, so bound the wait and close it instead; the
-                // peer's receiver releases held state on connection loss.
                 let result = tokio::time::timeout(
                     TERMINAL_SEND_TIMEOUT,
                     shared.end_outbound(runtime_close_reason(reason)),
@@ -1598,8 +1453,6 @@ async fn handle_runtime_event(event: RuntimeEvent, shared: &Arc<Shared>) -> Resu
     Ok(())
 }
 
-/// Dials every address at once and keeps the first connection. `saved` are
-/// the peer's own addresses; see [`dial_error`] for what a failure means.
 async fn race_connect(
     endpoint: &Endpoint,
     identity: &Identity,
@@ -1637,8 +1490,6 @@ async fn race_connect(
             Ok(Err(error)) => error,
             Err(error) => anyhow!(error),
         };
-        // An answer a person can act on says more than an address that
-        // timed out.
         if last_error
             .as_ref()
             .is_none_or(|last| crate::link::Fix::of(last).is_none())
@@ -1649,10 +1500,6 @@ async fn race_connect(
     Err(last_error.unwrap_or_else(|| anyhow!("peer has no connection candidates")))
 }
 
-/// What a failed dial at `address` means. A wrong key there is the peer
-/// reset only at one of its own addresses; elsewhere it is whatever other
-/// zflow computer took that address. Only the pinned key can say it has
-/// not added this computer, so that answer counts wherever it came from.
 fn dial_error(error: TransportError, own: bool, address: SocketAddr) -> anyhow::Error {
     if own || matches!(error, TransportError::NotTrusted) {
         return error.into();
@@ -1663,8 +1510,6 @@ fn dial_error(error: TransportError, own: bool, address: SocketAddr) -> anyhow::
     }
 }
 
-/// Keeps the inbound gate in step with the seat watch and ends the inbound
-/// session once the seat stops authorizing it.
 async fn watch_seat(shared: Arc<Shared>) {
     let mut seat = shared.seat.clone();
     let mut grace = SeatGrace::new(seat.borrow_and_update().clone(), Instant::now());
@@ -1681,7 +1526,6 @@ async fn watch_seat(shared: Arc<Shared>) {
     }
 }
 
-/// Sleeps until `deadline`, or forever without one.
 async fn sleep_until(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
@@ -1689,11 +1533,8 @@ async fn sleep_until(deadline: Option<Instant>) {
     }
 }
 
-/// The seat as the daemon judges it: the last definite state rides out a
-/// short Unknown, then Unknown takes over.
 struct SeatGrace {
     state: SeatState,
-    /// Set while logind's latest answer is Unknown.
     unknown_since: Option<Instant>,
 }
 
@@ -1721,7 +1562,6 @@ impl SeatGrace {
         }
     }
 
-    /// When a short Unknown runs out and must be observed again.
     fn deadline(&self) -> Option<Instant> {
         if matches!(self.state, SeatState::Unknown { .. }) {
             return None;
@@ -1739,10 +1579,7 @@ impl SeatGrace {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SeatGate {
-    /// What the last definite seat state allows.
     gate: InjectionGate,
-    /// Logind's latest answer is Unknown, so nothing is injected until it
-    /// clears or the grace runs out.
     held: bool,
 }
 
@@ -1756,7 +1593,6 @@ impl SeatGate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Admission {
     Inject,
-    /// Deliver releases and drop the rest without ending the session.
     Hold,
     Refuse,
 }
@@ -1771,8 +1607,6 @@ fn admit(config: &Config, peer: &str, seat: SeatGate) -> Admission {
     }
 }
 
-/// Splits receiver effects into what reaches the backend and whether any
-/// were refused outright.
 fn admitted_effects(
     effects: Vec<ReceiverEffect>,
     admission: Admission,
@@ -1783,7 +1617,6 @@ fn admitted_effects(
         let admitted = !effect.is_injection()
             || match admission {
                 Admission::Inject => true,
-                // A release can only return keys, buttons and contacts to rest.
                 Admission::Hold => is_release(&effect),
                 Admission::Refuse => is_safety_release(&effect),
             };
@@ -1815,8 +1648,6 @@ fn receiver_authorized(config: &Config, peer: &str, gate: InjectionGate) -> bool
     }
 }
 
-/// Whether a batch leaves its activation closed. One batch can close an
-/// activation and open the next, so the last of those effects decides.
 fn ends_closed(effects: &[ReceiverEffect]) -> bool {
     effects
         .iter()
@@ -1836,8 +1667,6 @@ fn claim_inbound(
     authorized: bool,
     local: OwnershipPhase,
 ) -> bool {
-    // Grabbed or arming devices mean this computer is sending, and it is
-    // never controlled at the same time.
     if !authorized
         || local != OwnershipPhase::Idle
         || owner.as_ref().is_some_and(|(current_peer, current_id)| {
@@ -1850,8 +1679,6 @@ fn claim_inbound(
     true
 }
 
-/// Turns a peer's scrolling around, for a Mac with natural scrolling against
-/// a desktop without it. Pointer motion stays as it is.
 fn reverse_scrolling(effects: &mut [ReceiverEffect]) {
     for effect in effects {
         if let ReceiverEffect::Motion { delta, .. } = effect {
@@ -1871,8 +1698,6 @@ fn is_release(effect: &ReceiverEffect) -> bool {
 }
 
 fn is_safety_release(effect: &ReceiverEffect) -> bool {
-    // A synthetic touch replacement can carry peer-supplied contacts; only a
-    // replacement with no contacts is a release.
     if let ReceiverEffect::TouchReplaced { state, synthetic } = effect {
         return *synthetic && state.is_empty();
     }
@@ -1901,9 +1726,6 @@ fn require_outbound_permission(config: &Config, peer: &str, record: &PeerConfig)
     Ok(())
 }
 
-/// A dial counts as simultaneous with the peer's while it is younger than a
-/// connection attempt. A peer that dials in later lost its connection, so its
-/// new one replaces whatever was there.
 fn keeps_own_dial(dialed_at: Option<Instant>, now: Instant) -> bool {
     dialed_at.is_some_and(|at| now.saturating_duration_since(at) < CONNECT_TIMEOUT)
 }
@@ -1916,7 +1738,6 @@ fn wins_dial(config: &Config, local_fingerprint: &str, peer: &str) -> bool {
         .is_some_and(|theirs| crate::identity::wins_simultaneous_dial(local_fingerprint, &theirs))
 }
 
-/// Each paired computer's key fingerprint, by its name here.
 fn peer_keys(config: &Config) -> BTreeMap<String, String> {
     config
         .peers
@@ -1925,8 +1746,6 @@ fn peer_keys(config: &Config) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// This computer's view of a shared layout: its own tile is "local", and
-/// paired computers carry their names here.
 fn layout_view(
     layout: &crate::desktop::SharedLayout,
     own: &str,
@@ -1935,9 +1754,6 @@ fn layout_view(
     crate::app::layout_model::Layout::from_shared(layout, own, "This computer", keys)
 }
 
-/// The layout to start from before anyone arranged the computers: this
-/// computer's tile, then each paired computer to its right. It is version 0,
-/// so the first edit makes version 1.
 fn initial_layout(
     own: &str,
     width: u32,
@@ -1977,10 +1793,6 @@ fn initial_layout(
     Ok(layout)
 }
 
-/// A new version of `layout`, edited by this computer, with the tile `id` of
-/// its view at (x, y), or against an edge within `tolerance` of there; with
-/// `computer`, every tile of its computer moves alike. Tiles of computers
-/// not paired here stay where they were.
 fn with_tile_moved(
     layout: &crate::desktop::SharedLayout,
     own: &str,
@@ -2000,9 +1812,6 @@ fn with_tile_moved(
     Ok(moved)
 }
 
-/// The computer the activation chord sends to. Connected computers come
-/// first, in name order, and each press moves to the one after `last`. With
-/// none connected, a sole eligible computer is dialed.
 fn chord_peer(
     eligible: &[String],
     connected: &std::collections::BTreeSet<String>,
@@ -2065,10 +1874,6 @@ fn validate_peer_identities(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// The input port's listener: hellos from anyone, input from the keys
-/// trusted here. While sharing is paused, input from them is refused once
-/// it arrives rather than by the allowlist, which would tell them they
-/// were never added.
 fn build_server_config(identity: &Identity, config: &Config) -> Result<InputServerConfig> {
     let peers = config
         .peers
@@ -2079,8 +1884,6 @@ fn build_server_config(identity: &Identity, config: &Config) -> Result<InputServ
     Ok(input_server_config_for_peers(identity, &peers)?)
 }
 
-/// A record as far as trust goes: the addresses it learns do not change
-/// whom it trusts, so they restart nothing.
 fn without_addresses(record: &PeerConfig) -> PeerConfig {
     PeerConfig {
         addresses: Vec::new(),
@@ -2149,10 +1952,8 @@ fn start_discovery(config: &Config, listen: SocketAddr) -> Option<Discovery> {
     if !config.transport.discovery {
         return None;
     }
-    // Browsing finds a paired computer whose address changed.
     let result = (|| {
         let mut discovery = Discovery::new()?;
-        // The name labels the shelf tile until its hello comes back.
         discovery.register(
             Advertisement::new(listen.port(), advertised_capabilities(config))?
                 .with_name(&crate::hello::local_name()),
@@ -2430,7 +2231,6 @@ impl Shared {
             let (applied_tx, applied_rx) = tokio::sync::oneshot::channel();
             let command = RuntimeCommand::ReceiverEffects {
                 effects: deliver,
-                // Read once per activation, so a change applies at the next one.
                 keyboard: opens.then_some(keyboard),
                 touch_captured_at,
                 applied: Some(applied_tx),
@@ -2450,12 +2250,6 @@ impl Shared {
                 rejected = true;
             } else {
                 session.record_receive_to_runtime_dispatch(received_at);
-                // Once accepted by the runtime queue, a local timeout cannot
-                // distinguish "not applied" from "will apply after timeout".
-                // Hold the policy barrier for the definitive ACK instead. An
-                // input thread that takes longer is wedged, so the daemon
-                // exits holding the barrier, as the service watchdog would
-                // make it, rather than block every other event behind it.
                 match tokio::time::timeout(RUNTIME_ACK_TIMEOUT, applied_rx).await {
                     Ok(Ok(applied_at)) => {
                         session.record_receive_to_inject(received_at, applied_at);
@@ -2479,7 +2273,6 @@ impl Shared {
                 .is_some_and(|(owner_peer, owner_id)| owner_peer == peer && *owner_id == session_id)
             {
                 *owner = None;
-                // The pointer went back to `peer`, so the clipboard goes along.
                 self.share_clipboard(peer);
             }
         }
@@ -2501,8 +2294,6 @@ impl Shared {
     async fn apply_config_locked(self: &Arc<Self>, config: Config, persist: bool) -> Result<()> {
         config.validate()?;
         validate_peer_identities(&config)?;
-        // SessionOptions performs the core duration/capability conversions
-        // that Config's schema-level validation deliberately does not.
         SessionOptions::from_config(&config)?;
         let runtime_config = LinuxRuntimeConfig::from_config(&config);
         runtime_config.validate()?;
@@ -2528,10 +2319,6 @@ impl Shared {
             self.reload_runtime(runtime_config).await?;
         }
         if persist && let Err(error) = self.save_config(&old, &config) {
-            // Runtime reload is acknowledged before persistence so a full or
-            // stopped command queue can never make disk claim a rejected
-            // configuration. Roll back the acknowledged runtime mutation if
-            // the atomic file replacement itself fails.
             if runtime_changed
                 && let Err(rollback) = self
                     .reload_runtime(LinuxRuntimeConfig::from_config(&old))
@@ -2576,11 +2363,8 @@ impl Shared {
                 session.close(SessionCloseReason::PermissionRevoked);
             }
         }
-        // A forgotten peer's link stops dialing, and a new one starts.
         self.sync_links().await;
 
-        // Pairing, forgetting or renaming a computer changes which tiles have
-        // a computer behind them here.
         self.move_reinstalled_tiles(&old).await;
         self.place_new_peers().await;
         self.apply_layout().await;
@@ -2627,8 +2411,6 @@ impl Shared {
         }
     }
 
-    /// The active desktop user's uid for desktop API callers; none while the
-    /// seat is Unknown.
     fn active_uid(&self) -> Option<u32> {
         self.seat.borrow().active_authenticated_uid()
     }
@@ -2644,8 +2426,6 @@ impl Shared {
     }
 }
 
-/// A daemon without an input thread, desktop or mDNS, with its files in a
-/// temporary directory, and what it needs kept alive.
 #[cfg(test)]
 fn test_daemon() -> (Arc<Shared>, Box<dyn std::any::Any>) {
     let directory = tempfile::tempdir().unwrap();
@@ -2687,8 +2467,6 @@ mod tests {
             .each_ref()
             .map(|dir| Identity::load_or_create(dir.path()).unwrap());
         let loopback = SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0));
-        // Another zflow computer nearby, which knows this one but is not
-        // the peer being dialed.
         let server = crate::transport::input_server_config(&other, this.spki()).unwrap();
         let other_endpoint = Endpoint::server(server.quinn_config(), loopback).unwrap();
         let other_address = other_endpoint.local_addr().unwrap();
@@ -2720,8 +2498,6 @@ mod tests {
         use crate::link::Fix;
         let address = "192.0.2.7:43119".parse().unwrap();
         let fix = |error, own| Fix::of(&dial_error(error, own, address));
-        // Found by its key somewhere it was never saved, the pinned key
-        // answered; nobody else could.
         assert_eq!(
             fix(TransportError::NotTrusted, false),
             Some(Fix::WaitingForThem)
@@ -2771,7 +2547,6 @@ mod tests {
         assert!(require_outbound_permission(&config, "mac", &record).is_err());
         assert!(eligible_outbound_peers(&config).is_empty());
         assert!(peer_name_for_spki(&config, identity.spki()).is_err());
-        // The port still answers hellos.
         assert!(build_server_config(&identity, &config).is_ok());
         assert_eq!(config.peers["mac"], record);
         config.daemon.sharing = true;
@@ -2786,7 +2561,6 @@ mod tests {
             names.iter().map(|name| name.to_string()).collect()
         }
         let eligible: Vec<String> = names(&["mac", "ubuntu", "xps"]);
-        // The Mac is online and xps is off: the chord goes to the Mac.
         let connected: BTreeSet<String> = names(&["mac"]);
         assert_eq!(
             chord_peer(&eligible, &connected, None).as_deref(),
@@ -2796,7 +2570,6 @@ mod tests {
             chord_peer(&eligible, &connected, Some("mac")).as_deref(),
             Some("mac")
         );
-        // With several online, each press moves to the next, in name order.
         let connected: BTreeSet<String> = names(&["mac", "xps"]);
         let mut last = None;
         let picked: Vec<String> = (0..4)
@@ -2807,15 +2580,11 @@ mod tests {
             })
             .collect();
         assert_eq!(picked, ["mac", "xps", "mac", "xps"]);
-        // A computer that went offline since the last press is skipped.
         assert_eq!(
             chord_peer(&eligible, &connected, Some("ubuntu")).as_deref(),
             Some("xps")
         );
-        // A connected computer that may not receive input is never picked.
         assert_eq!(chord_peer(&[], &connected, None), None);
-        // Nobody online: a sole paired computer is still dialed, but the
-        // chord cannot guess between several.
         let nobody = BTreeSet::new();
         assert_eq!(
             chord_peer(&names::<Vec<_>>(&["mac"]), &nobody, Some("mac")).as_deref(),
@@ -2826,7 +2595,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_stop_does_not_wait_for_a_stalled_runtime() {
-        // The loop waits on an input thread that never acknowledges.
         let (_never, unanswered) = tokio::sync::oneshot::channel::<Instant>();
         let (stop, stopping) = tokio::sync::oneshot::channel::<()>();
         let stalled = async move {
@@ -2838,8 +2606,6 @@ mod tests {
             .await
             .expect("a stop ends the loop at once");
         assert!(served.is_ok());
-        // The input thread's Stopped event can fail the loop just as the
-        // signal lands. That is still a clean stop.
         let failed = async { bail!("Linux input runtime stopped") };
         assert!(serve_until(async {}, failed).await.is_ok());
         let failed = async { bail!("Linux input runtime stopped") };
@@ -3117,7 +2883,6 @@ mod tests {
         assert_eq!(seat.state, greeter);
         assert_eq!(seat.deadline(), None);
 
-        // Nothing definite to fall back on: Unknown applies at once.
         let fresh = SeatGrace::new(unknown(), start);
         assert_eq!(
             fresh.gate(),
@@ -3140,7 +2905,6 @@ mod tests {
         seat.observe(unknown(), start + SEAT_UNKNOWN_GRACE);
         assert_eq!(admit(&config, "mac", seat.gate()), Admission::Refuse);
 
-        // A definite answer ends the hold either way.
         seat.observe(unlocked(), start + Duration::from_secs(2));
         assert_eq!(admit(&config, "mac", seat.gate()), Admission::Inject);
         seat.observe(unknown(), start + Duration::from_secs(3));
@@ -3150,7 +2914,6 @@ mod tests {
         seat.observe(locked, start + Duration::from_millis(3_100));
         assert_eq!(admit(&config, "mac", seat.gate()), Admission::Refuse);
 
-        // Base permissions still refuse during a hold.
         let mut paused = config.clone();
         paused.daemon.sharing = false;
         let held = SeatGate {
@@ -3209,7 +2972,6 @@ mod tests {
         let keys = BTreeMap::from([
             ("mac".to_owned(), fingerprint(2)),
             ("desk".to_owned(), fingerprint(3)),
-            // One computer paired twice gets one tile.
             ("mac again".to_owned(), fingerprint(2)),
         ]);
         let layout = initial_layout(&own, 2560, 1440, &keys).unwrap();
@@ -3256,8 +3018,6 @@ mod tests {
         let own = fingerprint(1);
         let keys = BTreeMap::from([("mac".to_owned(), fingerprint(2))]);
         let mut layout = initial_layout(&own, 2560, 1440, &keys).unwrap();
-        // A peer made the last version, and it still holds a computer that
-        // is not paired here.
         layout.version = 7;
         layout.editor = fingerprint(9);
         layout.tiles.push(crate::desktop::Tile {
@@ -3273,8 +3033,6 @@ mod tests {
             (tile.x, tile.y)
         };
 
-        // Dropped 20 units into this computer and 40 under its top, it snaps
-        // against its left edge, level with its top.
         let moved =
             with_tile_moved(&layout, &own, &keys, "peer:mac", (-1900, 40), 150, false).unwrap();
         assert_eq!((moved.version, &moved.editor), (8, &own));
@@ -3285,15 +3043,12 @@ mod tests {
             (0, 5000),
             "the unpaired computer stays where its peers placed it"
         );
-        // This computer's own tile moves by its view's id.
         let moved = with_tile_moved(&moved, &own, &keys, "local", (0, 1100), 0, true).unwrap();
         assert_eq!((moved.version, at(&moved, &own)), (9, (0, 1100)));
         assert_eq!(moved.tiles.len(), 3);
-        // A tile moved over one this computer cannot show replaces it.
         let covered = with_tile_moved(&moved, &own, &keys, "local", (0, 4900), 0, false).unwrap();
         assert!(covered.tiles.iter().all(|t| t.key != fingerprint(5)));
 
-        // A huge tolerance is capped rather than read as a negative one.
         assert!(
             with_tile_moved(
                 &layout,
@@ -3314,8 +3069,6 @@ mod tests {
         assert!(error.to_string().contains("overlap"), "{error}");
     }
 
-    /// A session from `shared` to a new computer `name` it may send to. The
-    /// computer applies nothing and reports each receiver effect it gets.
     async fn peer_session(
         shared: &Shared,
         name: &str,
@@ -3340,7 +3093,6 @@ mod tests {
         let options = SessionOptions::from_config(&Config::default()).unwrap();
         let generation = TransportGeneration(1);
         let (events, mut received) = mpsc::channel(64);
-        // Both ends negotiate at once.
         let (local, remote) = tokio::join!(
             start_session(
                 local.unwrap(),
@@ -3388,7 +3140,6 @@ mod tests {
         (applied, Box::new((directory, endpoint, remote)))
     }
 
-    /// The next activation that opens or closes among `effects`.
     async fn activation(effects: &mut mpsc::UnboundedReceiver<ReceiverEffect>) -> ReceiverEffect {
         loop {
             let effect = tokio::time::timeout(Duration::from_secs(2), effects.recv())
@@ -3435,7 +3186,6 @@ mod tests {
         ));
         let first = shared.active_outbound.lock().await.clone().unwrap().context;
 
-        // A key went down while c prepared its desktop: input stays on b.
         let remote = |neutral| crate::runtime::LinuxRuntimeStatus {
             ownership: OwnershipPhase::Remote,
             selected_peer: Some("b".into()),
@@ -3466,7 +3216,6 @@ mod tests {
             commands.try_recv().is_err(),
             "the runtime keeps its grabs: no Release"
         );
-        // And back to b, as the walk b, c, b goes.
         shared.switch_outbound("b").await.unwrap();
         assert!(matches!(
             activation(&mut c).await,
@@ -3501,7 +3250,6 @@ mod tests {
             });
         shared.begin_outbound("b").await.unwrap();
         activation(&mut b).await;
-        // The hop to c is under way when the escape chord asks for input back.
         let held = shared.policy.lock().await;
         let hop = tokio::spawn({
             let shared = shared.clone();

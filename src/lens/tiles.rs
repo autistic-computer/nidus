@@ -1,25 +1,14 @@
-//! Tiles that build to lossless. B tracks what A holds for every 64x64 tile and spends a byte
-//! budget on the lens first, then a ring around it, then the rest of the desktop. When the budget
-//! cannot cover the lens exactly, its tiles go out as downscaled previews, refined centre-out.
-
 use anyhow::{Result, bail, ensure};
 
 pub const TILE: usize = 64;
 pub const MAX_PIXELS: usize = 4096 * 2160;
 const HEADER: usize = 24;
-/// Band around the lens that is fetched ahead of the pointer, in desktop pixels.
 const RING: f64 = 256.;
-/// Background tiles compared per round, so a changed desktop never delays the lens for long.
 const SCAN: usize = 256;
-/// Changing content far from the lens is refreshed at most this often.
 const REFRESH_NS: u64 = 1_000_000_000;
-/// Changing content in the ring is refreshed at most this often.
 const RING_REFRESH_NS: u64 = 250_000_000;
-/// Waiting this long counts like being one lens radius closer to the centre, so an animation
-/// under the pointer cannot starve the edge of the lens.
 const PATIENCE_NS: f64 = 100_000_000.;
 
-/// A damaged region of a capture, in desktop pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Rect {
     pub x: usize,
@@ -55,7 +44,6 @@ impl View {
     }
 }
 
-/// Bytes the next packet may use: the lens may fill the window, the fill only its spare half.
 #[derive(Clone, Copy, Debug)]
 pub struct Budget {
     pub lens: usize,
@@ -64,15 +52,12 @@ pub struct Budget {
 
 pub struct Packet {
     pub body: Option<Vec<u8>>,
-    /// Every tile under the lens is exact on A once this packet lands.
     pub exact: bool,
-    /// The background scan stopped early; call again before waiting.
     pub more: bool,
 }
 
 #[derive(Clone, Copy, Default)]
 struct Tile {
-    /// 0: A has nothing. 1: exact. 2 or 4: a preview downscaled by that factor.
     level: u8,
     stale: bool,
     checked: u64,
@@ -92,14 +77,12 @@ enum Need {
 pub struct Encoder {
     width: usize,
     height: usize,
-    /// Source pixels behind what A shows, so a preview can be refined without a new capture.
     pixels: Vec<u8>,
     tiles: Vec<Tile>,
     generation: u64,
     round: u64,
     cursor: usize,
     clean: usize,
-    /// When the earliest far tile that changed may be refreshed.
     deferred: Option<u64>,
     sequence: u64,
     ratio: f64,
@@ -164,8 +147,6 @@ impl Encoder {
         })
     }
 
-    /// A new capture arrived. Tiles inside `damage` must be compared again before they count as
-    /// current; without damage, every tile must. Mutter reports up to 32 rectangles per frame.
     pub fn changed(&mut self, damage: Option<&[Rect]>) {
         self.generation += 1;
         self.clean = 0;
@@ -173,14 +154,12 @@ impl Encoder {
         for id in 0..self.tiles.len() {
             let tile = rect(self.width, self.height, id);
             let touched = damage.iter().any(|d| d.overlaps(tile));
-            // Only a tile known current at the previous capture stays current through this one.
             if !touched && self.tiles[id].checked + 1 == self.generation {
                 self.tiles[id].checked = self.generation;
             }
         }
     }
 
-    /// Compare a tile with the capture, unless it was compared less than `every` ago.
     fn need(&mut self, id: usize, pixels: &[u8], stride: usize, now: u64, every: u64) -> Need {
         let (x, y, w, h) = rect(self.width, self.height, id);
         if self.tiles[id].level == 0 {
@@ -203,13 +182,11 @@ impl Encoder {
         }
     }
 
-    /// Estimated compressed bytes for one tile at a level.
     fn cost(&self, id: usize, level: usize) -> usize {
         let (_, _, w, h) = rect(self.width, self.height, id);
         (record_size(w, h, level) as f64 * self.ratio) as usize + 5
     }
 
-    /// Input remains borrowed. Unchanged rows are compared without materializing tiles.
     pub fn encode(
         &mut self,
         pixels: &[u8],
@@ -218,7 +195,6 @@ impl Encoder {
         budget: Budget,
         now: u64,
     ) -> Result<Packet> {
-        // The last row needs no padding after it, as in a buffer read in place.
         ensure!(
             stride >= self.width * 4
                 && stride
@@ -254,8 +230,6 @@ impl Encoder {
             Some(view) => near(self, view),
             None => (0..count).map(|id| (0., id)).collect(),
         };
-        // Holes under the lens are always filled, as previews when the budget is short. Stale
-        // and preview tiles wait for budget, since A already shows something there.
         let mut work = Vec::new();
         for &(distance, id) in &lens {
             match self.need(id, pixels, stride, now, 0) {
@@ -313,7 +287,6 @@ impl Encoder {
             self.put(id, level, pixels, stride, now);
             records += 1;
         }
-        // The ring and the rest of the desktop only get exact tiles, from spare budget.
         let mut more = false;
         if let Some(view) = view {
             let mut fill = budget.fill.min(left);
@@ -338,7 +311,6 @@ impl Encoder {
             while self.clean < count && scanned < SCAN {
                 let id = self.cursor;
                 if self.tiles[id].picked == self.round {
-                    // Picked by the lens or ring; a preview still needs another visit.
                     if self.tiles[id].level > 1 {
                         self.clean = 0;
                     } else {
@@ -347,7 +319,6 @@ impl Encoder {
                 } else {
                     let need = self.need(id, pixels, stride, now, REFRESH_NS);
                     if self.tiles[id].checked != self.generation {
-                        // Compared too recently to look again; come back when it is due.
                         let due = self.tiles[id].compared_ns + REFRESH_NS;
                         self.deferred = Some(self.deferred.map_or(due, |d| d.min(due)));
                     }
@@ -391,7 +362,6 @@ impl Encoder {
         })
     }
 
-    /// Append one record and remember the source pixels A will be showing.
     fn put(&mut self, id: usize, level: usize, pixels: &[u8], stride: usize, now: u64) {
         let (x, y, w, h) = rect(self.width, self.height, id);
         for row in y..y + h {
@@ -409,7 +379,6 @@ impl Encoder {
         }
         for by in (0..h).step_by(level).filter(|_| level > 1) {
             for bx in (0..w).step_by(level) {
-                // Box-filter one block into a single pixel.
                 let mut sum = [0u32; 4];
                 let mut n = 0;
                 for row in y + by..(y + by + level).min(y + h) {
@@ -463,8 +432,6 @@ impl Decoder {
         })
     }
 
-    /// Parse and validate every record before publishing any changed pixels. Returns the
-    /// rectangles that changed.
     pub fn apply(&mut self, packet: &[u8]) -> Result<Vec<(usize, usize, usize, usize)>> {
         ensure!(
             packet.len() > HEADER && &packet[..4] == b"SPT4",
@@ -528,8 +495,6 @@ impl Decoder {
         Ok(changed)
     }
 
-    /// Blow a preview up into its tile by repeating pixels. The viewer shows B's desktop scaled
-    /// down, so a 2x block is about one screen pixel, and this costs no more than a copy.
     fn upscale(&mut self, data: &[u8], (x, y, w, h): (usize, usize, usize, usize), level: usize) {
         let columns = w.div_ceil(level);
         for row in 0..h {
@@ -577,7 +542,6 @@ mod tests {
             y: 80.,
             radius: 30.,
         });
-        // The first round also fills the rest of the desktop, since the budget allows it.
         dec.apply(&exact(&mut enc, &src, w * 4, left)?.unwrap())?;
         assert_eq!(dec.pixels, src);
         assert!(exact(&mut enc, &src, w * 4, left)?.is_none());
@@ -721,7 +685,6 @@ mod tests {
         let mut enc = Encoder::new(w, h)?;
         let mut dec = Decoder::new(w, h)?;
         dec.apply(&exact(&mut enc, &src, w * 4, None)?.unwrap())?;
-        // A change outside the reported damage is not looked for, so it is not sent.
         src[(10 * w + 10) * 4] = 9;
         src[(100 * w + 200) * 4] = 9;
         let damage = Rect {
@@ -734,7 +697,6 @@ mod tests {
         dec.apply(&exact(&mut enc, &src, w * 4, None)?.unwrap())?;
         assert_eq!(dec.pixels[(100 * w + 200) * 4], 9);
         assert_eq!(dec.pixels[(10 * w + 10) * 4], 1);
-        // Without damage, everything is compared.
         enc.changed(None);
         dec.apply(&exact(&mut enc, &src, w * 4, None)?.unwrap())?;
         assert_eq!(dec.pixels, src);
@@ -754,7 +716,6 @@ mod tests {
         }
         let length = u32::from_be_bytes(packet[20..24].try_into()?) as usize;
         let mut raw = zstd::bulk::decompress(&packet[HEADER..], length)?;
-        // Keep a valid compressed stream, but corrupt the final record after valid ones.
         let last_id = raw.len() - 64 * 4 - 5;
         raw[last_id..last_id + 4].copy_from_slice(&999u32.to_be_bytes());
         let mut malformed = packet[..HEADER].to_vec();

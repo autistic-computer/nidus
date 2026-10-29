@@ -1,29 +1,16 @@
-//! Pure per-peer keyboard modes: physical key edges in, injected edges out.
-//!
-//! The wire, the core receiver and its snapshots stay physical. This stage
-//! runs on the receiver after admission and before the input backend. It
-//! records which physical keys keep each injected key down, so a physical
-//! release only ever releases, and once every physical key is up nothing it
-//! injected is left down.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
 use super::HidUsage;
 
-/// How keys from one peer are interpreted on this machine.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyboardMode {
-    /// Keys as sent: a Mac's Cmd is Super and Option is Alt.
     #[default]
     Standard,
-    /// Option and Cmd trade places on both sides, so each key does what the
-    /// PC key in that spot does. The file also takes the CLI's spelling.
     #[serde(alias = "pc-positions")]
     PcPositions,
-    /// Cmd is Ctrl, plus a small table of macOS shortcuts.
     Mac,
 }
 
@@ -33,25 +20,14 @@ impl KeyboardMode {
     }
 }
 
-/// Remaps one peer's physical key edges to the edges to inject.
-///
-/// Every injected key has a set of physical owners and goes up when the last
-/// one is released. Presses happen only while handling a physical press or a
-/// pointer event.
 #[derive(Debug, Clone)]
 pub struct KeyRemap {
     mode: KeyboardMode,
     terminal: bool,
     pointer_busy: bool,
     physical: BTreeSet<HidUsage>,
-    /// Option keys held back until the next key or click, so a lone tap never
-    /// reaches the desktop as Alt and opens a menu bar.
     deferred: BTreeSet<HidUsage>,
-    /// Injected key to the physical keys keeping it down. A key is injected
-    /// exactly when it has an entry.
     owners: BTreeMap<HidUsage, BTreeSet<HidUsage>>,
-    /// Outputs of an active `Hold` rule. While set, keys skip the rules so the
-    /// app switcher stays open.
     bound: Option<BTreeSet<HidUsage>>,
 }
 
@@ -72,9 +48,6 @@ impl KeyRemap {
         self.mode
     }
 
-    /// Forgets every held key and switches mode. The caller has already
-    /// released every injected key. The terminal bit describes the desktop,
-    /// not this peer's keys, so it survives.
     pub fn reset(&mut self, mode: KeyboardMode) {
         *self = Self {
             terminal: self.terminal,
@@ -82,14 +55,10 @@ impl KeyRemap {
         };
     }
 
-    /// Whether the focused app is a terminal. It is read only when a key is
-    /// pressed; keys already down keep what they injected.
     pub fn set_terminal(&mut self, terminal: bool) {
         self.terminal = terminal;
     }
 
-    /// Maps one physical key edge to the edges to inject, in order. A repeated
-    /// press or a release of a key that is not held maps to nothing.
     pub fn key(&mut self, usage: HidUsage, pressed: bool) -> Vec<(HidUsage, bool)> {
         let mut edges = Vec::new();
         if !pressed {
@@ -105,9 +74,6 @@ impl KeyRemap {
         edges
     }
 
-    /// Call before a pointer button edge, a scroll, or a touch replacement.
-    /// `busy` says whether a button or touch contact is still held after that
-    /// event. Held-back Option keys are pressed now, so Option+click works.
     pub fn pointer(&mut self, busy: bool) -> Vec<(HidUsage, bool)> {
         let mut edges = Vec::new();
         for modifier in std::mem::take(&mut self.deferred) {
@@ -117,21 +83,15 @@ impl KeyRemap {
         edges
     }
 
-    /// Call after a button or touch release in place of [`Self::pointer`].
-    /// A release presses nothing: its press may never have been delivered,
-    /// as when the seat is on hold, so held-back Option keys stay back.
     pub fn pointer_released(&mut self, busy: bool) {
         self.pointer_busy = busy;
     }
 
-    /// Keys currently injected.
     pub fn injected(&self) -> impl Iterator<Item = HidUsage> + '_ {
         self.owners.keys().copied()
     }
 
     fn press_modifier(&mut self, modifier: HidUsage, class: u8, edges: &mut Vec<(HidUsage, bool)>) {
-        // With another key or a button already down, Option is part of a game
-        // or a drag and goes out at once.
         let hold_back = self.mode == KeyboardMode::Mac
             && class == OPT
             && !self.pointer_busy
@@ -145,8 +105,6 @@ impl KeyRemap {
 
     fn press_key(&mut self, key: HidUsage, edges: &mut Vec<(HidUsage, bool)>) {
         if self.bound.is_some() {
-            // The app switcher is open. Keep its Alt and send the key as is,
-            // so Tab, Esc and Q reach the switcher instead of a rule.
             let idle: Vec<_> = self
                 .physical
                 .iter()
@@ -194,9 +152,6 @@ impl KeyRemap {
         }
     }
 
-    /// Makes the injected modifiers exactly the wanted set: `mods` owned by the
-    /// held modifiers of the `consumed` classes, `key_mods` owned by `key`, and
-    /// every other held modifier's default owned by itself.
     fn set_modifiers(
         &mut self,
         consumed: u8,
@@ -253,8 +208,6 @@ impl KeyRemap {
             }
             !owners.is_empty()
         });
-        // Keys before modifiers, so a released chord never leaves its bare
-        // key down for the client to repeat.
         freed.sort_by_key(|&output| is_modifier(output));
         for output in freed {
             if self
@@ -297,7 +250,6 @@ impl KeyRemap {
     }
 }
 
-// Physical modifier classes. Each names the left and right key.
 const CMD: u8 = 1 << 0;
 const OPT: u8 = 1 << 1;
 const CTRL: u8 = 1 << 2;
@@ -317,7 +269,6 @@ fn is_modifier(usage: HidUsage) -> bool {
     modifier_class(usage).is_some()
 }
 
-/// What a held physical modifier injects when no rule consumes it.
 fn default_output(mode: KeyboardMode, modifier: HidUsage) -> HidUsage {
     match (mode, modifier) {
         (KeyboardMode::PcPositions, LALT) => LGUI,
@@ -339,7 +290,6 @@ enum Context {
 
 #[derive(Debug, Clone, Copy)]
 enum Out {
-    /// The physical key itself.
     Same,
     Key(HidUsage),
 }
@@ -355,31 +305,17 @@ impl Out {
 
 #[derive(Debug, Clone, Copy)]
 enum Action {
-    /// Press the modifiers, owned by the consumed physical modifiers, then
-    /// the output key, owned by the physical key.
     Press(&'static [HidUsage], Out),
-    /// `Press`, plus the second set of modifiers owned by the physical key, so
-    /// they lift with it.
     PressWith(&'static [HidUsage], &'static [HidUsage], Out),
-    /// `Press`, and keep the modifiers down for the keys that follow until
-    /// they are released.
     Hold(&'static [HidUsage], Out),
-    /// Press and release one key with no other modifier down.
     Tap(HidUsage),
-    /// Inject nothing.
     Block,
 }
 
-/// One row of the Mac shortcut table.
 #[derive(Debug, Clone, Copy)]
 struct Rule {
     context: Context,
-    /// Classes that must be held. Cmd, Option and Ctrl match exactly. Shift
-    /// passes through unless named here; then it must be held and the rule
-    /// consumes it.
     held: u8,
-    /// Physical keys the row matches. [`ANY_KEY`] matches every key that is
-    /// not a modifier.
     keys: &'static [HidUsage],
     action: Action,
 }
@@ -410,27 +346,18 @@ const fn rule(context: Context, held: u8, keys: &'static [HidUsage], action: Act
 
 const ANY_KEY: &[HidUsage] = &[];
 
-/// Mac mode shortcuts. The first matching row wins, so the row order is the
-/// lookup order: rows that need Shift, terminal rows, rows for every app, GUI
-/// rows, then the terminal catch-all.
 #[rustfmt::skip]
 const RULES: &[Rule] = {
     use Action::*;
     use Context::*;
     use Out::*;
     &[
-        // Rows that need Shift go first. They never shadow a terminal row, and
-        // the terminal Cmd+3 row would turn Shift+Cmd+3 into Alt+#, which
-        // comments out the shell's line and runs it.
         rule(Any, CMD | SHIFT, &[LBRACKET],                    Press(&[LCTRL], Key(PAGE_UP))),
         rule(Any, CMD | SHIFT, &[RBRACKET],                    Press(&[LCTRL], Key(PAGE_DOWN))),
         rule(Any, CMD | SHIFT, &[N3],                          Press(&[LSHIFT], Key(PRINT_SCREEN))),
         rule(Any, CMD | SHIFT, &[N4, N5],                      Press(&[], Key(PRINT_SCREEN))),
-        // Terminal copy, paste and tabs add Shift, so Cmd never sends a control byte.
-        // Not Cmd+A: GNOME Terminal binds nothing to Ctrl+Shift+A, so it would be ^A.
         rule(Terminal, CMD, &[C, V, T, N, W, F, Q],    PressWith(&[LCTRL], &[LSHIFT], Same)),
         rule(Terminal, CMD, &[K],                      Press(&[LCTRL], Key(L))),
-        // Zoom in is Ctrl+plus, and GTK only sees plus with Shift down.
         rule(Terminal, CMD, &[EQUAL],                  PressWith(&[LCTRL], &[LSHIFT], Same)),
         rule(Terminal, CMD, &[MINUS, N0],              Press(&[LCTRL], Same)),
         rule(Terminal, CMD, &[N1, N2, N3, N4, N5],     Press(&[LALT], Same)),
@@ -439,7 +366,6 @@ const RULES: &[Rule] = {
         rule(Terminal, OPT, &[RIGHT],                  Press(&[LALT], Key(F))),
         rule(Terminal, OPT, &[BACKSPACE],              Press(&[LCTRL], Key(W))),
         rule(Terminal, CMD, &[BACKSPACE],              Press(&[LCTRL], Key(U))),
-        // Every app.
         rule(Any, CMD,         &[TAB],                         Hold(&[LALT], Same)),
         rule(Any, CMD,         &[GRAVE, NON_US_BACKSLASH],     Hold(&[LALT], Key(GRAVE))),
         rule(Any, CMD,         &[SPACE],                       Tap(LGUI)),
@@ -452,8 +378,6 @@ const RULES: &[Rule] = {
         rule(Any, CTRL | CMD,  &[F],                           Press(&[], Key(F11))),
         rule(Any, CTRL | CMD,  ANY_KEY,                        Block),
         rule(Any, CTRL | CMD | OPT, ANY_KEY,                   Block),
-        // Ctrl+Alt+Fn switches VT, Ctrl+Alt+Delete logs out and Ctrl+Alt+arrows
-        // switch workspace. Cmd+Option+Left and Right change tabs instead.
         rule(Any, CMD | OPT,   &[LEFT],                        Press(&[LCTRL], Key(PAGE_UP))),
         rule(Any, CMD | OPT,   &[RIGHT],                       Press(&[LCTRL], Key(PAGE_DOWN))),
         rule(Any, CMD | OPT,   &[F1, F2, F3, F4, F5, F6],      Block),
@@ -462,7 +386,6 @@ const RULES: &[Rule] = {
         rule(Any, CTRL,        &[LEFT],                        Press(&[LGUI], Key(PAGE_UP))),
         rule(Any, CTRL,        &[RIGHT],                       Press(&[LGUI], Key(PAGE_DOWN))),
         rule(Any, CTRL,        &[UP],                          Tap(LGUI)),
-        // GUI apps. Physical Ctrl stays Ctrl in terminals.
         rule(Gui, OPT,  &[LEFT, RIGHT, BACKSPACE, DELETE], Press(&[LCTRL], Same)),
         rule(Gui, CTRL, &[A],                              Press(&[], Key(HOME))),
         rule(Gui, CTRL, &[E],                              Press(&[], Key(END))),
@@ -472,14 +395,11 @@ const RULES: &[Rule] = {
         rule(Gui, CTRL, &[P],                              Press(&[], Key(UP))),
         rule(Gui, CTRL, &[D],                              Press(&[], Key(DELETE))),
         rule(Gui, CTRL, &[H],                              Press(&[], Key(BACKSPACE))),
-        // Any other Cmd chord never reaches a terminal, so Cmd+D is not EOF and
-        // Cmd+Z does not suspend. Ctrl+Cmd is already blocked above.
         rule(Terminal, CMD,       ANY_KEY, Block),
         rule(Terminal, CMD | OPT, ANY_KEY, Block),
     ]
 };
 
-/// Every usage a rule can inject, so a backend can check it types them all.
 pub fn output_usages() -> BTreeSet<HidUsage> {
     let mut outputs = BTreeSet::new();
     for rule in RULES {
@@ -500,7 +420,6 @@ pub fn output_usages() -> BTreeSet<HidUsage> {
     outputs
 }
 
-// HID keyboard page usages. Mac Option is Alt and Cmd is GUI.
 const LCTRL: HidUsage = HidUsage::keyboard(0xe0);
 const LSHIFT: HidUsage = HidUsage::keyboard(0xe1);
 const LALT: HidUsage = HidUsage::keyboard(0xe2);
@@ -528,7 +447,6 @@ const U: HidUsage = HidUsage::keyboard(0x18);
 const V: HidUsage = HidUsage::keyboard(0x19);
 const W: HidUsage = HidUsage::keyboard(0x1a);
 
-// Number row.
 const N1: HidUsage = HidUsage::keyboard(0x1e);
 const N2: HidUsage = HidUsage::keyboard(0x1f);
 const N3: HidUsage = HidUsage::keyboard(0x20);
@@ -581,7 +499,6 @@ mod tests {
     use super::*;
     use Step::*;
 
-    // Physical Mac keys. Ctrl and Shift keep their own names.
     const LCMD: HidUsage = LGUI;
     const RCMD: HidUsage = RGUI;
     const LOPT: HidUsage = LALT;
@@ -597,9 +514,7 @@ mod tests {
         Down(HidUsage),
         Up(HidUsage),
         Terminal(bool),
-        /// A click, a scroll or a touch, with whether the pointer is busy after.
         Pointer(bool),
-        /// A button or touch release, with whether the pointer is busy after.
         PointerUp(bool),
     }
 
@@ -1131,14 +1046,11 @@ mod tests {
         assert!(!KeyboardMode::Mac.is_standard());
     }
 
-    /// Every modifier, keys the rules name, keys they don't, and a Consumer key.
     const POOL: &[HidUsage] = &[
         LCTRL, LSHIFT, LALT, LGUI, RCTRL, RSHIFT, RALT, RGUI, A, C, D, K, Q, F, H, X, N2, N4, TAB,
         GRAVE, SPACE, LEFT, UP, BACKSPACE, F2, LBRACKET, ESCAPE, VOLUME_UP,
     ];
 
-    /// Letters a terminal rule sends as Ctrl+letter on purpose: Cmd+K is
-    /// Ctrl+L, Option+Backspace is Ctrl+W, Cmd+Backspace is Ctrl+U.
     const CTRL_LETTERS: &[HidUsage] = &[L, W, U];
 
     #[derive(Debug, Clone, Copy)]
@@ -1170,10 +1082,6 @@ mod tests {
     }
 
     proptest! {
-        /// Required property: injected edges are well formed, a physical
-        /// release only releases, and once every physical key is up nothing
-        /// is injected. In a terminal, a letter never goes down under Ctrl
-        /// without Shift while Cmd is held, unless a rule sends it that way.
         #[test]
         fn injected_keys_follow_physical_keys(
             mode in mode(),
@@ -1189,8 +1097,6 @@ mod tests {
                 let (edges, released, check_ctrl) = match op {
                     Op::Key(key, pressed) => {
                         let usage = POOL[key];
-                        // While a Hold rule keeps Alt down the switcher has
-                        // the keyboard, so keys then never reach the terminal.
                         let check_ctrl = mode == KeyboardMode::Mac
                             && terminal
                             && (physical.contains(&LCMD) || physical.contains(&RCMD))
@@ -1233,8 +1139,6 @@ mod tests {
             prop_assert!(down.is_empty());
         }
 
-        /// Required property: standard maps every edge to itself, and
-        /// PC positions applied twice changes nothing.
         #[test]
         fn standard_is_identity_and_pc_positions_undoes_itself(ops in ops()) {
             let mut standard = KeyRemap::new(KeyboardMode::Standard);

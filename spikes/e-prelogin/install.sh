@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Install the spike E pre-login injection service. Run with sudo.
-# Reversible: uninstall.sh removes everything this touches.
 set -euo pipefail
 
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -10,7 +8,6 @@ UNIT=/etc/systemd/system/zflow-spike-e.service
 [[ $EUID -eq 0 ]] || { echo "run with sudo"; exit 1; }
 [[ -x "$BIN" ]] || { echo "build first: cargo build --release --manifest-path $DIR/Cargo.toml"; exit 1; }
 
-# ensure uinput is loadable at boot
 echo uinput > /etc/modules-load.d/zflow-spike-e.conf
 modprobe uinput || true
 

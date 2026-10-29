@@ -1,9 +1,3 @@
-//! Sender-to-receiver monotonic clock mapping.
-//!
-//! The mapper deliberately knows nothing about wall clocks or authentication.
-//! It fits a small, bounded affine model to probe observations and leaves all
-//! lifecycle decisions to its caller.
-
 use std::{collections::VecDeque, error::Error, fmt, time::Duration};
 
 use super::MonotonicTimeMicros;
@@ -11,12 +5,9 @@ use super::MonotonicTimeMicros;
 const DEFAULT_SAMPLE_WINDOW: usize = 64;
 const DEFAULT_MAXIMUM_SKEW_PPM: u32 = 1_000;
 
-/// Runtime-tunable limits for the affine clock fit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClockConfig {
-    /// Maximum absolute deviation from a 1:1 clock rate.
     pub maximum_skew_ppm: u32,
-    /// Number of recent probe observations retained by the fit.
     pub sample_window: usize,
 }
 
@@ -45,12 +36,10 @@ impl ClockConfig {
     }
 }
 
-/// One paired observation from the sender and receiver monotonic clocks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClockSample {
     pub sender_time: MonotonicTimeMicros,
     pub receiver_time: MonotonicTimeMicros,
-    /// Half of the probe's unexplained round-trip time, when known.
     pub uncertainty: Duration,
 }
 
@@ -67,10 +56,6 @@ impl ClockSample {
     }
 }
 
-/// Four timestamps from a receiver-originated probe and sender echo.
-///
-/// The timestamp ordering on each host is independently monotonic. The clock
-/// origins are unrelated, so only durations within one host are compared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProbeExchange {
     pub receiver_sent_at: MonotonicTimeMicros,
@@ -79,15 +64,11 @@ pub struct ProbeExchange {
     pub receiver_received_at: MonotonicTimeMicros,
 }
 
-/// A bounded snapshot suitable for metrics and diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClockStats {
-    /// Intercept of `receiver = offset + skew * sender`, in microseconds.
     pub offset_micros: Option<f64>,
-    /// Receiver clock ticks per sender clock tick.
     pub skew: Option<f64>,
     pub skew_ppm: Option<f64>,
-    /// Root-mean-square residual over the current fit window.
     pub residual_error_micros: Option<f64>,
 }
 
@@ -100,7 +81,6 @@ struct Fit {
     residual_error_micros: f64,
 }
 
-/// Recent-window affine sender-to-receiver clock estimator.
 #[derive(Debug, Clone)]
 pub struct ClockMapper {
     config: ClockConfig,
@@ -128,9 +108,6 @@ impl ClockMapper {
         self.arrival_bootstrap
     }
 
-    /// Establishes a temporary mapping from the first authenticated motion
-    /// arrival. The first valid probe replaces, rather than refits with, this
-    /// network-delay-biased observation.
     pub fn bootstrap_from_arrival(
         &mut self,
         sender_time: MonotonicTimeMicros,
@@ -146,7 +123,6 @@ impl ClockMapper {
         Ok(())
     }
 
-    /// Adds an already-paired clock observation.
     pub fn ingest_sample(&mut self, sample: ClockSample) -> Result<(), ClockError> {
         if sample.uncertainty.as_micros() > u128::from(u64::MAX) {
             return Err(ClockError::InvalidSample(
@@ -162,7 +138,6 @@ impl ClockMapper {
         Ok(())
     }
 
-    /// Converts an NTP-style four-timestamp exchange into one midpoint sample.
     pub fn ingest_probe(&mut self, probe: ProbeExchange) -> Result<(), ClockError> {
         let receiver_round_trip = probe
             .receiver_received_at
@@ -179,8 +154,6 @@ impl ClockMapper {
                 "sender probe clock moved backwards",
             ))?;
 
-        // Clock skew is bounded tightly enough that treating the two short
-        // durations as the same unit is conservative for malformed exchanges.
         if sender_processing > receiver_round_trip {
             return Err(ClockError::InvalidSample(
                 "sender processing exceeded receiver round trip",
@@ -201,7 +174,6 @@ impl ClockMapper {
         })
     }
 
-    /// Maps a sender timestamp into the receiver monotonic domain.
     pub fn map(&self, sender_time: MonotonicTimeMicros) -> Result<MonotonicTimeMicros, ClockError> {
         let fit = self.fit.ok_or(ClockError::NotReady)?;
         let mapped = mapped_micros(fit, sender_time);
@@ -231,9 +203,6 @@ impl ClockMapper {
         };
 
         let count = self.samples.len() as f64;
-        // A probe that sat in a queue has a wide uncertainty and a biased
-        // midpoint. Weighting by inverse variance lets clean round trips
-        // dominate the fit.
         let weight = |sample: &ClockSample| {
             let uncertainty = sample.uncertainty.as_micros().max(1) as f64;
             1.0 / (uncertainty * uncertainty)
@@ -399,8 +368,6 @@ mod tests {
 
     #[test]
     fn queued_probes_barely_move_a_fit_built_from_clean_ones() {
-        // The receiver clock runs 10 ms ahead; every other echo waits 8 ms in
-        // a queue, which skews its midpoint by 4 ms.
         let offset = 10_000;
         let mut mapper = ClockMapper::default();
         for second in 1..=8 {

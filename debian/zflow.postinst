@@ -5,5 +5,4 @@ if [[ "$1" == configure ]]; then
         /usr/share/zflow/71-zflow-capture.rules /usr/lib/udev/rules.d/70-zflow.rules
     /usr/lib/zflow/firewall.sh open
 fi
-# debhelper honors policy-rc.d and handles service enable/restart after setup.
 #DEBHELPER#

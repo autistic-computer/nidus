@@ -31,9 +31,6 @@ static CFMachPortRef fake_tap(CGEventTapLocation, CGEventTapPlacement,
 static void fake_tap_enable(CFMachPortRef, bool);
 static CFRunLoopRunResult fake_run_loop(CFRunLoopMode, CFTimeInterval, Boolean);
 
-// Replace cursor mutations and tap creation before including the bridge.
-// These tests do not capture, hide, disconnect, or post input on the host.
-// The capture thread runs its real run loop on a plain Mach port.
 #define dlsym fake_dlsym
 #define dlopen fake_dlopen
 #define dlclose fake_dlclose
@@ -68,7 +65,6 @@ static int tap_calls;
 static int motion_taps;
 static bool tap_available;
 static int tap_enables;
-// The window server's answer to the Accessibility probe's throwaway tap.
 static bool probe_allowed;
 static int probe_calls;
 static bool lose_stop;
@@ -129,15 +125,14 @@ static Boolean fake_trusted(void) { return false; }
 static bool secure_input;
 static Boolean fake_secure_input(void) { return secure_input; }
 
-// Keyboard types with the layouts HIToolbox reports for them.
 enum { ANSI_KEYBOARD = 40, ISO_KEYBOARD = 41, JIS_KEYBOARD = 42 };
 
 static OSType fake_layout_type(SInt16 keyboard) {
   switch (keyboard) {
-    case ANSI_KEYBOARD: return 0x414E5349; // 'ANSI'
+    case ANSI_KEYBOARD: return 0x414E5349;
     case ISO_KEYBOARD: return ZFLOW_KEYBOARD_ISO;
-    case JIS_KEYBOARD: return 0x4A495320; // 'JIS '
-    default: return 0x3F3F3F3F; // '????'
+    case JIS_KEYBOARD: return 0x4A495320;
+    default: return 0x3F3F3F3F;
   }
 }
 
@@ -157,7 +152,6 @@ static void desktop_and_permission_tests(void) {
   assert(rectangles[1].x == -1920 && rectangles[1].y == -200);
   assert(zflow_mac_desktop_rectangles(rectangles, 1) == -1);
   assert(zflow_mac_input_is_neutral());
-  // A key alone never blocks entry; macOS can report one long after release.
   held_key = 0; assert(zflow_mac_input_is_neutral()); held_key = -1;
   held_button = 0; assert(!zflow_mac_input_is_neutral()); held_button = -1;
   held_flags = kCGEventFlagMaskCommand; assert(!zflow_mac_input_is_neutral());
@@ -215,7 +209,6 @@ static void startup_release_tests(void) {
   assert(event_callback(NULL, kCGEventKeyDown, key, NULL) == NULL);
   assert(event_callback(NULL, kCGEventKeyUp, key, NULL) == NULL);
   CFRelease(key);
-  // A key held since before capture: repeats are dropped, the release stays local.
   CGEventRef repeat = CGEventCreateKeyboardEvent(NULL, 4, true);
   assert(repeat);
   CGEventSetIntegerValueField(repeat, kCGKeyboardEventAutorepeat, 1);
@@ -242,7 +235,6 @@ static void startup_release_tests(void) {
   assert(zflow_mac_capture_poll(&captured));
   assert(captured.kind == ZFLOW_EVENT_TOUCH && captured.contact_count == 1);
 
-  // Each Caps Lock toggle is one flagsChanged with no release report.
   CGEventRef caps = CGEventCreateKeyboardEvent(NULL, ZFLOW_CAPS_LOCK, true);
   assert(caps);
   CGEventSetIntegerValueField(caps, kCGKeyboardEventKeycode, ZFLOW_CAPS_LOCK);
@@ -277,7 +269,6 @@ static CGError fake_property(int source, int target, CFStringRef key,
   return error;
 }
 
-// A fake MultitouchSupport with one built-in (1) and one external (2) device.
 static int fake_multitouch;
 static int mt_registered, mt_unregistered, mt_started, mt_stopped;
 
@@ -312,7 +303,6 @@ static int fake_mt_stop(MTDeviceRef device) {
   return 0;
 }
 
-// The size lookup is optional: it can be missing or fail.
 static bool mt_size_missing;
 static int mt_size_status;
 
@@ -415,10 +405,8 @@ static void fake_tap_enable(CFMachPortRef tap, bool enable) {
 static CFRunLoopRunResult fake_run_loop(CFRunLoopMode mode, CFTimeInterval seconds,
                                         Boolean once) {
   atomic_fetch_add(&loop_runs, 1);
-  // With its tap invalidated, the mode has no sources left to run.
   if (atomic_load(&invalidate_tap)) return kCFRunLoopRunFinished;
   if (lose_stop) {
-    // A stop that lands just before the loop runs is dropped by CFRunLoopStop.
     lose_stop = false;
     atomic_store(&g_stop, true);
     stop_capture_run_loop();
@@ -428,7 +416,6 @@ static CFRunLoopRunResult fake_run_loop(CFRunLoopMode mode, CFTimeInterval secon
 
 static void reset(void) {
   assert(!g_cursor_hidden && !g_cursor_disconnected);
-  // A fresh process: the background cursor property is not set yet.
   g_cursor_background = false;
   call_count = 0;
   calls[0] = '\0';
@@ -461,7 +448,6 @@ static void start_capture(void) {
 }
 
 static void secure_input_tests(void) {
-  // With Secure Event Input the tap sees no keys, so capture must not start.
   reset();
   secure_input = true;
   assert(zflow_mac_secure_input_enabled() == 1);
@@ -475,7 +461,6 @@ static void secure_input_tests(void) {
 }
 
 static void admission_tests(void) {
-  // Capture always needs a crossing edge to check once its tap is installed.
   reset();
   int taps = tap_calls;
   assert(zflow_mac_capture_start(0, NULL, NULL) == -1);
@@ -493,7 +478,6 @@ static void admission_tests(void) {
 }
 
 static void wake_tests(void) {
-  // Each queued event and the end of capture wake the consumer.
   reset();
   atomic_store(&wakes, 0);
   start_capture();
@@ -507,7 +491,6 @@ static void wake_tests(void) {
 }
 
 static void invalidated_tap_tests(void) {
-  // macOS invalidating the tap ends the crossing as a failure, never a pause.
   reset();
   start_capture();
   atomic_store(&invalidate_tap, true);
@@ -526,7 +509,6 @@ static void lost_stop_tests(void) {
   atomic_store(&loop_runs, 0);
   start_capture();
   while (atomic_load(&loop_runs) == 0) sched_yield();
-  // The join returns only if the loop rechecks the flag it missed.
   assert(zflow_mac_capture_stop() == 0);
   assert(!g_thread_valid && !lose_stop);
   assert(strcmp(calls, "BHDSC") == 0);
@@ -588,7 +570,6 @@ static void cursor_lifecycle_tests(void) {
     assert(strcmp(calls, "BHDSC") == 0);
     assert(release_cursor());
     assert(strcmp(calls, "BHDSC") == 0);
-    // The property stays on, so the next capture only hides and disconnects.
     assert(capture_cursor());
     assert(strcmp(calls, "BHDSCHD") == 0);
     assert(release_cursor());
@@ -634,7 +615,6 @@ static void multitouch_tests(void) {
   assert(zflow_mac_capture_stop() == 0);
   assert(mt_stopped == 1 && mt_unregistered == 1);
 
-  // Without a size, raw touch still starts and reports the size as unknown.
   mt_size_status = -1;
   reset();
   assert(zflow_mac_capture_start(1, &entry, NULL) == 1);
@@ -662,7 +642,6 @@ static void touch_tests(void) {
   touches[1].state = 4;
   touches[1].identifier = 2;
   touches[1].normalized.pos = (MTPoint){0.5f, 0.25f};
-  // A contact just past the pad edge keeps the frame, clamped.
   contact_callback((MTDeviceRef)2, touches, 2, 0, 0);
   ZFlowMacEvent captured;
   assert(zflow_mac_capture_poll(&captured) && captured.kind == ZFLOW_EVENT_TOUCH);
@@ -670,7 +649,6 @@ static void touch_tests(void) {
   assert(captured.surface_width == 16030 && captured.surface_height == 11490);
   assert(captured.contacts[0].x == 1.0f && captured.contacts[0].y == 0.0f);
   assert(captured.contacts[1].x == 0.5f && captured.contacts[1].y == 0.25f);
-  // A device the bridge never sized reports an unknown size.
   contact_callback((MTDeviceRef)3, touches, 2, 0, 0);
   assert(zflow_mac_capture_poll(&captured));
   assert(captured.surface_width == 0 && captured.surface_height == 0);
@@ -695,7 +673,6 @@ static void event_tests(void) {
     assert(captured.kind == ZFLOW_EVENT_MOTION);
     assert(captured.dx == 17 && captured.dy == -9);
   }
-  // Up is positive on both sides; CoreGraphics counts left and the wire right.
   CGEventRef scroll = CGEventCreateScrollWheelEvent2(
       NULL, kCGScrollEventUnitPixel, 2, -40, 7, 0);
   assert(scroll);
@@ -711,7 +688,6 @@ static void event_tests(void) {
   ZFlowMacEvent captured;
   assert(zflow_mac_capture_poll(&captured) == 0);
 
-  // Media keys and native gestures stay off the Mac while capturing.
   const CGEventType swallowed[] = {NX_SYSDEFINED, 18, 19, 20, 29, 30, 31, 32, 33, 34};
   for (size_t i = 0; i < sizeof(swallowed) / sizeof(swallowed[0]); i++) {
     assert(event_callback(NULL, swallowed[i], event, NULL) == NULL);
@@ -728,8 +704,6 @@ static void event_tests(void) {
   assert(event_callback(NULL, kCGEventMouseMoved, event, NULL) == NULL);
   assert(zflow_mac_capture_poll(&captured) == 1);
 
-  // Releases made while the tap was off reached the Mac. Re-enabling sends
-  // them to the other computer for keys and buttons no longer down.
   reset();
   g_forwarded_keys[4] = g_forwarded_keys[55] = true;
   g_forwarded_codes[4] = 4;
@@ -746,8 +720,6 @@ static void event_tests(void) {
   assert(!g_forwarded_keys[4] && g_forwarded_keys[55]);
   assert(!g_forwarded_buttons[1] && g_forwarded_buttons[2]);
 
-  // With Accessibility removed, a re-enabled tap would hold the Mac's input,
-  // so a timeout then ends remote control instead.
   reset();
   probe_allowed = false;
   enables = tap_enables;
@@ -774,7 +746,6 @@ static void event_tests(void) {
   assert(event);
   CGEventSetIntegerValueField(event, kCGKeyboardEventKeycode, 51);
   CGEventSetFlags(event, kCGEventFlagMaskControl | kCGEventFlagMaskCommand);
-  // The chord must not reach the frontmost Mac app.
   assert(event_callback(NULL, kCGEventKeyDown, event, NULL) == NULL);
   assert(zflow_mac_capture_stop_requested() == 1);
   assert(zflow_mac_capture_pause_requested() == 1);
@@ -795,7 +766,6 @@ static void event_tests(void) {
   }
   CFRelease(event);
 
-  // A release that does not fit must end capture instead of vanishing.
   reset();
   for (size_t i = 0; i < ZFLOW_QUEUE_CAPACITY - 1; i++) {
     assert(enqueue(&motion_event));
@@ -810,8 +780,6 @@ static void event_tests(void) {
   CFRelease(event);
 }
 
-// Sends a key from a keyboard of that type through the tap and returns the
-// code the bridge forwarded for it.
 static uint16_t tap_key(uint16_t keycode, bool down, int64_t keyboard) {
   CGEventRef event = CGEventCreateKeyboardEvent(NULL, keycode, down);
   assert(event);
@@ -826,8 +794,6 @@ static uint16_t tap_key(uint16_t keycode, bool down, int64_t keyboard) {
 }
 
 static void iso_key_tests(void) {
-  // macOS swaps 10 and 50 on ISO keyboards only. Swapped back, each code
-  // names one position on every layout.
   reset();
   const uint16_t swapped[] = {10, 50};
   const int64_t unswapped[] = {ANSI_KEYBOARD, JIS_KEYBOARD, 0};
@@ -844,16 +810,12 @@ static void iso_key_tests(void) {
   assert(tap_key(42, true, ISO_KEYBOARD) == 42);
   assert(tap_key(42, false, ISO_KEYBOARD) == 42);
 
-  // A repeat or release from after a keyboard type change keeps the code the
-  // press chose.
   assert(tap_key(10, true, ISO_KEYBOARD) == 50);
   assert(tap_key(10, true, ANSI_KEYBOARD) == 50);
   assert(tap_key(10, false, ANSI_KEYBOARD) == 50);
   assert(tap_key(50, true, ANSI_KEYBOARD) == 50);
   assert(tap_key(50, false, ISO_KEYBOARD) == 50);
 
-  // A release lost while the tap was off has no event to read the type from.
-  // Sending the raw code would release a key the other computer never got.
   assert(tap_key(10, true, ISO_KEYBOARD) == 50);
   assert(tap_key(50, true, ISO_KEYBOARD) == 10);
   g_event_tap = CFMachPortCreate(NULL, idle_port, NULL, NULL);
@@ -878,7 +840,6 @@ static CGEventRef move_by(int64_t dx, int64_t dy) {
   assert(move);
   CGEventSetIntegerValueField(move, kCGMouseEventDeltaX, dx);
   CGEventSetIntegerValueField(move, kCGMouseEventDeltaY, dy);
-  // The HID system's own events carry no process.
   CGEventSetIntegerValueField(move, kCGEventSourceUnixProcessID, 0);
   return move;
 }
@@ -895,22 +856,16 @@ static void edge_guard_tests(void) {
   cursor_position = CGPointMake(1800, 400);
   g_motion_position_valid = false;
   zflow_mac_edge_guards(&guard, 1);
-  // A fast diagonal jump onto the adjacent local monitor stops at the
-  // intersection, before the move is delivered to an app on that monitor.
   CGEventRef move = move_by(400, 200);
   cursor_position = CGPointMake(2200, 600);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == NULL);
   assert(warped_position.x == 1919 && warped_position.y == 459.5);
-  // Reversing into the original monitor stays local.
   cursor_position = CGPointMake(1800, 450);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  // A drag or modifier is not trapped at a configured edge.
   held_button = 0;
   cursor_position = CGPointMake(2200, 600);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   held_button = -1;
-  // Drag locations are tracked too: releasing on the adjacent display
-  // must not use a stale position from before the drag and jump backward.
   g_motion_position = (ZFlowMacPosition){1800, 400};
   assert(motion_callback(NULL, kCGEventLeftMouseDragged, move, NULL) == move);
   cursor_position = CGPointMake(2210, 600);
@@ -931,7 +886,6 @@ static void edge_guard_tests(void) {
   secure_input = true;
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   secure_input = false;
-  // No stale barrier survives a stopped worker or a display reconfiguration.
   g_motion_position = (ZFlowMacPosition){1800, 400};
   g_edge_guard_until = 0;
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
@@ -939,7 +893,6 @@ static void edge_guard_tests(void) {
   g_motion_position = (ZFlowMacPosition){1800, 400};
   atomic_fetch_add(&g_display_generation, 1);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  // Each orientation and partial edge range uses the full motion segment.
   ZFlowMacPosition held;
   for (uint32_t edge = 0; edge < 4; edge++) {
     guard = (ZFlowMacEdgeGuard){{0, 0, 100, 100}, 25, 75, edge};
@@ -966,11 +919,9 @@ static void edge_guard_tests(void) {
 static void motion_tests(void) {
   ZFlowMacMotion motion;
   assert(!zflow_mac_motion_take(&motion) && !zflow_mac_motion_take(NULL));
-  // The Mac's own moves add up until the next take.
   CGEventRef move = move_by(-2, 1);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  // A peer's moves, which inject.c marks, are not the Mac's own.
   CGEventRef posted = move_by(-100, 0);
   CGEventSetIntegerValueField(posted, kCGEventSourceUserData, ZFLOW_POSTED_MARK);
   assert(motion_callback(NULL, kCGEventMouseMoved, posted, NULL) == posted);
@@ -983,7 +934,6 @@ static void motion_tests(void) {
   assert(zflow_mac_motion_take(&motion) == 1 && motion.dx == 3.0 && motion.dy == 0.0);
   assert(motion_callback(NULL, kCGEventMouseMoved, posted, NULL) == posted);
   assert(!zflow_mac_motion_take(&motion));
-  // One this process posted is a peer's even if it lost the mark.
   CGEventRef unmarked = move_by(50, 0);
   CGEventSetIntegerValueField(unmarked, kCGEventSourceUnixProcessID, getpid());
   assert(motion_callback(NULL, kCGEventMouseMoved, unmarked, NULL) == unmarked);
@@ -993,21 +943,18 @@ static void motion_tests(void) {
   CFRelease(right);
   CFRelease(unmarked);
 
-  // One motion tap on its own thread; a refusal starts nothing.
   tap_available = false;
   assert(zflow_mac_motion_watch() == -1 && !atomic_load(&g_motion_watching));
   assert(motion_taps == 1 && g_motion_tap == NULL);
   tap_available = true;
   assert(zflow_mac_motion_watch() == 0 && zflow_mac_motion_watch() == 0);
   assert(motion_taps == 2);
-  // macOS invalidates the tap after sleep; the next watch starts over.
   wait_for_motion_watch_to_end();
   assert(zflow_mac_motion_watch() == 0 && motion_taps == 3);
   wait_for_motion_watch_to_end();
 }
 
 int main(void) {
-  // A capture thread that misses its stop hangs the join. Fail instead.
   alarm(30);
   desktop_and_permission_tests();
   startup_release_tests();
@@ -1031,7 +978,6 @@ int main(void) {
   assert(zflow_mac_capture_pause_requested() == 0);
   assert(tap_calls == taps + 1 && call_count == 0);
   assert(!g_thread_valid);
-  // Last: its thread runs the faked run loop, which other tests count.
   motion_tests();
   puts("macOS cursor lifecycle and event-filter tests passed (fake cursor APIs)");
   return 0;

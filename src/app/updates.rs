@@ -1,5 +1,3 @@
-//! Release checks and the Linux install transaction used by GTK settings,
-//! and the desktop agent's reminder when a release comes out.
 use std::{collections::HashMap, path::Path, process::Command, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
@@ -18,7 +16,6 @@ struct Check {
     reason: Option<String>,
 }
 
-/// Only stable tags produced by the release workflow are automatic updates.
 fn release_version(tag: &str) -> Result<Version> {
     let version = Version::parse(tag.strip_prefix('v').context("Invalid release tag")?)?;
     ensure!(
@@ -103,8 +100,6 @@ fn install_reason(path: &Path, owner: Option<(&str, &str)>) -> Option<String> {
 
 fn installation() -> Result<Option<String>> {
     let path = std::env::current_exe()?;
-    // Ask who owns the executable, rather than assuming that a package manager
-    // installed on this computer owns zflow too.
     for (program, arguments, manager) in [
         ("rpm", &["-qf", "--qf", "%{NAME}"][..], "rpm"),
         ("pacman", &["-Qqo"][..], "pacman"),
@@ -138,10 +133,7 @@ pub fn check() -> Result<()> {
     Ok(())
 }
 
-/// The settings window checks only while it is open, so the agent checks on
-/// the same schedule and posts one notification for each new release.
 pub async fn remind(connection: zbus::Connection) {
-    // Login and the network get a minute to settle first.
     let start = tokio::time::Instant::now() + Duration::from_secs(60);
     let mut timer = tokio::time::interval_at(start, Duration::from_secs(6 * 60 * 60));
     timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -159,8 +151,6 @@ pub async fn remind(connection: zbus::Connection) {
             }
             Err(_) => continue,
         };
-        // A local build, or a copy another package manager owns, updates
-        // some other way.
         if !check.available || !check.can_install || announced.as_ref() == Some(&check.latest) {
             continue;
         }
@@ -176,15 +166,12 @@ fn read_settings() -> Option<Vec<u8>> {
     std::fs::read(config.join("zflow/updates.json")).ok()
 }
 
-/// The window's "Check Automatically" switch, which is on until turned off.
 fn automatic(settings: Option<&[u8]>) -> bool {
     settings
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok())
         .is_none_or(|settings| settings["automatic"] != false)
 }
 
-/// The window skips automatic checks on a metered connection, as GLib
-/// reports it from NetworkManager. Without NetworkManager nothing is metered.
 async fn metered() -> bool {
     async {
         let system = zbus::Connection::system().await?;
@@ -195,7 +182,6 @@ async fn metered() -> bool {
             "org.freedesktop.NetworkManager",
         )
         .await?;
-        // NM_METERED_YES and NM_METERED_GUESS_YES.
         Ok::<_, zbus::Error>(matches!(
             manager.get_property::<u32>("Metered").await?,
             1 | 3
@@ -218,7 +204,6 @@ async fn notify(connection: &zbus::Connection, tag: &str) -> zbus::Result<()> {
                 .build(),
         )
     };
-    // Subscribe first, so a quick click is not missed.
     let mut clicks =
         MessageStream::for_match_rule(signal("ActionInvoked")?, connection, None).await?;
     let mut closes =
@@ -264,8 +249,6 @@ type Notification<'a> = (
     i32,
 );
 
-/// The arguments of org.freedesktop.Notifications.Notify. Clicking the
-/// notification invokes its "default" action.
 fn notification(tag: &str) -> Notification<'static> {
     (
         "zflow",
@@ -300,8 +283,6 @@ pub fn install(tag: &str, gui: bool) -> Result<()> {
     if let Some(reason) = installation()? {
         bail!("{reason}");
     }
-    // Run the install code bundled with this binary. The only downloads are
-    // the selected release and its checksums, both from the fixed repository.
     let mut command = Command::new("bash");
     command.args([
         "-c",
@@ -363,9 +344,6 @@ mod tests {
     #[test]
     fn the_notification_matches_the_notify_signature() {
         use zbus::zvariant::Type;
-        // GNOME refuses any other signature, and an array of a fixed size
-        // would go out as a struct. A tuple's signature has parentheses
-        // around the fields of the message body.
         assert_eq!(
             Notification::SIGNATURE.to_string(),
             "(susssasa{sv}i)",

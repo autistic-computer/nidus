@@ -1,7 +1,3 @@
-//! Lets paired computers control this Mac, and keeps its input going one
-//! way at a time: out to a peer while this Mac sends, or in from one peer's
-//! session while that peer controls it.
-
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex, MutexGuard, PoisonError},
@@ -25,31 +21,24 @@ use crate::{
     session::{SessionEvent, SessionEventKind, SessionHandle},
 };
 
-// The Linux daemon's words for the same refusals.
 pub(crate) const SENDING: &str = "This computer is sending its own input";
 pub(crate) const OWNED: &str = "Another computer owns input";
 pub(crate) const HANDOFF_ACTIVE: &str = "A desktop handoff is already active";
 const NOT_ALLOWED: &str =
     "Desktop control requires the active unlocked local session and an authorized paired peer";
 const REJECTED: &str = "receiver effects were rejected before backend application";
-/// How often the screen lock is checked while a peer controls this Mac.
 const LOCK_CHECK: Duration = Duration::from_millis(250);
-/// How long taking AWDL down may take while a peer controls this Mac.
 const AWDL_LIMIT: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 struct State {
-    /// A crossing to a peer holds this Mac's input.
     outbound: bool,
-    /// The peer and session controlling this Mac, and the claim that holds it.
     inbound: Option<(String, u64, u64)>,
-    /// The peer and session holding a desktop handoff.
     lease: Option<(String, u64)>,
     claims: u64,
 }
 
 impl State {
-    /// Another peer or session controls this Mac or holds its desktop.
     fn taken(&self, peer: &str, session_id: u64) -> bool {
         let other = |owner: &str, id: u64| owner != peer || id != session_id;
         self.inbound
@@ -72,8 +61,6 @@ impl State {
     }
 }
 
-/// Who owns this Mac's input. Link tasks, the handoff server and the app
-/// thread share it, and nobody holds it across an await.
 #[derive(Clone, Default)]
 pub(crate) struct Ownership(Arc<Mutex<State>>);
 
@@ -82,9 +69,6 @@ impl Ownership {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Reserves this Mac's input for a crossing, from the edge until input
-    /// is back. None while a peer controls this Mac or holds a desktop
-    /// handoff, or another crossing runs.
     pub fn begin_outbound(&self) -> Option<OutboundGuard> {
         let mut state = self.state();
         if state.outbound || state.inbound.is_some() || state.lease.is_some() {
@@ -94,10 +78,6 @@ impl Ownership {
         Some(OutboundGuard(self.clone()))
     }
 
-    /// Gives this Mac's input to `peer`'s session for an activation, or
-    /// says why not: this Mac sends, or another peer or session controls it
-    /// or holds its desktop. The same session may claim again, and the
-    /// newest claim holds it.
     pub fn claim_inbound(&self, peer: &str, session_id: u64) -> Result<InboundClaim, &'static str> {
         let mut state = self.state();
         state.check(peer, session_id)?;
@@ -110,7 +90,6 @@ impl Ownership {
         })
     }
 
-    /// Reserves this Mac's desktop for `peer`'s handoff, or says why not.
     pub fn begin_lease(&self, peer: &str, session_id: u64) -> Result<LeaseGuard, &'static str> {
         let mut state = self.state();
         state.check(peer, session_id)?;
@@ -121,12 +100,10 @@ impl Ownership {
         Ok(LeaseGuard(self.clone()))
     }
 
-    /// Whether `peer`'s session may ask about this Mac's desktop, or why not.
     pub fn desktop_allowed(&self, peer: &str, session_id: u64) -> Result<(), &'static str> {
         self.state().check(peer, session_id)
     }
 
-    /// The peer controlling this Mac, or about to.
     pub fn controller(&self) -> Option<String> {
         let state = self.state();
         let inbound = state.inbound.as_ref().map(|(peer, ..)| peer);
@@ -136,8 +113,6 @@ impl Ownership {
     }
 }
 
-/// Holds this Mac's input for one crossing. Dropping it lets a peer take
-/// control again.
 pub(crate) struct OutboundGuard(Ownership);
 
 impl Drop for OutboundGuard {
@@ -146,7 +121,6 @@ impl Drop for OutboundGuard {
     }
 }
 
-/// Holds this Mac's input for a peer's activation.
 pub(crate) struct InboundClaim {
     ownership: Ownership,
     claim: u64,
@@ -165,7 +139,6 @@ impl Drop for InboundClaim {
     }
 }
 
-/// Holds this Mac's desktop for a peer's handoff.
 pub(crate) struct LeaseGuard(Ownership);
 
 impl Drop for LeaseGuard {
@@ -174,17 +147,12 @@ impl Drop for LeaseGuard {
     }
 }
 
-/// Whether a peer's input reaches this Mac. Unlike Linux, there is no hold
-/// while the seat is unknown: the Mac always knows whether it is locked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Admission {
     Inject,
     Refuse,
 }
 
-/// A peer may control this Mac if its record lets it connect and send,
-/// macOS lets zflow post events, and the screen is unlocked. Its session
-/// only exists while sharing is on.
 pub(crate) fn admit(
     permissions: Option<&PeerPermissions>,
     post_allowed: bool,
@@ -198,9 +166,6 @@ pub(crate) fn admit(
     }
 }
 
-/// Splits a batch into what reaches this Mac and whether any of it was
-/// refused. A refused peer's safety releases still get through, so nothing
-/// stays held.
 pub(crate) fn admitted_effects(
     effects: Vec<ReceiverEffect>,
     admission: Admission,
@@ -218,8 +183,6 @@ pub(crate) fn admitted_effects(
 }
 
 pub(crate) fn is_safety_release(effect: &ReceiverEffect) -> bool {
-    // A synthetic touch replacement can carry peer-supplied contacts; only a
-    // replacement with no contacts is a release.
     if let ReceiverEffect::TouchReplaced { state, synthetic } = effect {
         return *synthetic && state.is_empty();
     }
@@ -237,10 +200,6 @@ pub(crate) fn is_safety_release(effect: &ReceiverEffect) -> bool {
     )
 }
 
-/// Answers a peer while this Mac sends its own input. Its desktop is not
-/// available and no activation may open, which closes the peer's session.
-/// A batch that only lets go of input succeeds: nothing is held, because
-/// a claim cannot exist while this Mac sends and dropping one released it.
 pub(super) fn answer_while_sending(kind: SessionEventKind) {
     match kind {
         SessionEventKind::Desktop { reply, .. } => {
@@ -267,9 +226,6 @@ pub(super) fn answer_while_sending(kind: SessionEventKind) {
     }
 }
 
-/// Answers events that arrived while the link was idle, including the
-/// OutboundEnded that trails the previous crossing's release. A peer's
-/// layout goes to `layout`, and its clipboard to `clip`.
 pub(super) fn answer_waiting_events(
     events: &mut mpsc::Receiver<SessionEvent>,
     mut layout: impl FnMut(SharedLayout),
@@ -289,8 +245,6 @@ pub(super) fn answer_waiting_events(
     }
 }
 
-/// Turns a peer's scrolling around, as the daemon does for a Mac with
-/// natural scrolling against a desktop without it. Pointer motion stays.
 fn reverse_scrolling(effects: &mut [ReceiverEffect]) {
     for effect in effects {
         if let ReceiverEffect::Motion { delta, .. } = effect {
@@ -300,17 +254,12 @@ fn reverse_scrolling(effects: &mut [ReceiverEffect]) {
     }
 }
 
-/// What receiving reads from this Mac. Tests use `FakeBackend`.
 pub(crate) trait Screen: Send + Sync + 'static {
     fn geometry(&self) -> Result<Geometry>;
-    /// Changes whenever macOS reconfigures a display.
     fn generation(&self) -> u32;
     fn cursor(&self) -> Result<CursorPosition>;
-    /// macOS lets zflow post events.
     fn post_allowed(&self) -> bool;
-    /// The screen lock is up, or another user has the console.
     fn locked(&self) -> bool;
-    /// Wakes the display, as local input would.
     fn wake(&self);
 }
 
@@ -387,8 +336,6 @@ impl Screen for inject::FakeBackend {
     }
 }
 
-/// Each peer's current session, so a revoked peer or a lapsed handoff can
-/// end it.
 #[derive(Clone, Default)]
 struct Sessions(Arc<Mutex<BTreeMap<String, SessionHandle>>>);
 
@@ -397,7 +344,6 @@ impl Sessions {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Closes `peer`'s session, if it is still `session_id` when one is given.
     fn close(&self, peer: &str, session_id: Option<u64>, reason: SessionCloseReason) {
         let sessions = self.lock();
         if let Some(session) = sessions.get(peer)
@@ -408,7 +354,6 @@ impl Sessions {
     }
 }
 
-/// This Mac as the handoff server sees it.
 pub(crate) struct MacDesk {
     screen: Arc<dyn Screen>,
     injector: Arc<Injector>,
@@ -456,19 +401,13 @@ impl Desk for MacDesk {
     }
 }
 
-/// Who may control this Mac, and how.
 #[derive(Default)]
 struct Policy {
-    /// Every paired computer, while sharing is on.
     peers: BTreeMap<String, PeerConfig>,
-    /// Accessibility, as the app last saw it.
     accessibility: bool,
-    /// AWDL goes down while a peer controls this Mac.
     reduce_wifi_latency: bool,
 }
 
-/// Lets paired computers control this Mac. The links share one, with the
-/// injector and the handoff server.
 pub(crate) struct Receiving {
     ownership: Ownership,
     screen: Arc<dyn Screen>,
@@ -480,7 +419,6 @@ pub(crate) struct Receiving {
 }
 
 impl Receiving {
-    /// Posts on this Mac, and shares its pasteboard.
     pub fn mac() -> Result<Arc<Self>> {
         let pasteboard = Arc::new(MacPasteboard);
         Ok(Self::new(Injector::mac()?, Arc::new(MacScreen), pasteboard))
@@ -500,8 +438,6 @@ impl Receiving {
             sessions: sessions.clone(),
         };
         let handoff = Arc::new(HandoffServer::new(desk, ownership.clone()));
-        // Weak, so the injector thread does not keep the server alive, and
-        // through it the injector itself.
         let server = Arc::downgrade(&handoff);
         injector.watch(Box::new(move |from, to| {
             server
@@ -531,8 +467,6 @@ impl Receiving {
         self.policy.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Who may control this Mac, and how their keys and scrolling act. A
-    /// controlling peer that may no longer loses control at once.
     pub fn set_peers(&self, peers: BTreeMap<String, PeerConfig>) {
         let mut policy = self.policy();
         if policy.peers != peers {
@@ -549,12 +483,10 @@ impl Receiving {
         }
     }
 
-    /// Takes effect the next time a peer takes control.
     pub fn set_reduce_wifi_latency(&self, reduce: bool) {
         self.policy().reduce_wifi_latency = reduce;
     }
 
-    /// Ends the session of a controlling peer the policy no longer admits.
     fn revoke(&self, policy: &Policy) {
         let Some(peer) = self.ownership.controller() else {
             return;
@@ -567,11 +499,6 @@ impl Receiving {
         }
     }
 
-    /// Whether `peer` may control this Mac, with how its keys act and
-    /// whether its scrolling turns around. `fresh` also asks macOS whether
-    /// zflow may post and whether the screen is locked, as a new activation
-    /// or a desktop request does; the injector checks the lock on every
-    /// batch.
     fn admission(&self, peer: &str, fresh: bool) -> (Admission, KeyboardMode, bool) {
         let (permissions, keyboard, reverse, accessibility) = {
             let policy = self.policy();
@@ -589,7 +516,6 @@ impl Receiving {
         (admission, keyboard, reverse)
     }
 
-    /// Starts taking `peer`'s input over `session`.
     pub fn inbound(self: &Arc<Self>, peer: &str, session: &SessionHandle) -> Inbound {
         self.sessions
             .lock()
@@ -603,16 +529,10 @@ impl Receiving {
         }
     }
 
-    /// Ends handoffs whose peer stopped polling or whose displays changed,
-    /// and control when the screen locks. Runs until dropped.
     pub async fn watch(&self) {
         tokio::join!(self.handoff.watch(), self.watch_lock());
     }
 
-    /// Ends control when the screen locks, as the Linux daemon does when its
-    /// seat changes. A modifier the peer holds would otherwise stay down on
-    /// the lock screen, and a peer that sends nothing would keep control
-    /// through it.
     async fn watch_lock(&self) {
         let mut check = tokio::time::interval(LOCK_CHECK);
         check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -643,20 +563,15 @@ impl Receiving {
     }
 }
 
-/// One session's input from its peer. Dropping it lets go of whatever the
-/// peer still holds on this Mac.
 pub(crate) struct Inbound {
     receiving: Arc<Receiving>,
     peer: String,
     session: SessionHandle,
     claim: Option<InboundClaim>,
-    /// Keeps AWDL down while the claim lasts.
     wifi: Option<awdl::Wanted>,
 }
 
 impl Inbound {
-    /// Answers a desktop request on its own task. A Poll can wait 200 ms,
-    /// and the session's input must not wait behind it.
     pub fn desktop(&self, request: DesktopRequest, reply: oneshot::Sender<DesktopResponse>) {
         let (receiving, peer, id) = (self.receiving.clone(), self.peer.clone(), self.session.id());
         tokio::spawn(async move {
@@ -664,13 +579,10 @@ impl Inbound {
         });
     }
 
-    /// The clipboard this Mac shares, which the session's clips go to.
     pub fn clipboard(&self) -> Arc<Clipboard> {
         self.receiving.clipboard.clone()
     }
 
-    /// Whether this session's peer controls this Mac, or holds its desktop
-    /// for a handoff.
     pub fn controls(&self) -> bool {
         self.receiving
             .ownership
@@ -678,8 +590,6 @@ impl Inbound {
             .is_some_and(|peer| peer == self.peer)
     }
 
-    /// Posts one batch of the peer's input, or says why not, which closes
-    /// the session.
     pub async fn effects(
         &mut self,
         effects: Vec<ReceiverEffect>,
@@ -688,8 +598,6 @@ impl Inbound {
         let opens = effects
             .iter()
             .any(|effect| matches!(effect, ReceiverEffect::ActivationOpened(_)));
-        // A batch can close one activation and open the next, so the last
-        // one says whether the peer still holds this Mac afterwards.
         let closes = effects.iter().rev().find_map(|effect| match effect {
             ReceiverEffect::ActivationOpened(_) => Some(false),
             ReceiverEffect::ActivationClosed { .. } => Some(true),
@@ -708,9 +616,6 @@ impl Inbound {
             match claim {
                 Ok(claim) => {
                     let first = self.claim.replace(claim).is_none();
-                    // A revocation between the check above and the claim
-                    // found no controller to end, so check again now that
-                    // the claim is there for the next one to see.
                     if self.receiving.admission(&self.peer, false).0 == Admission::Refuse {
                         self.release();
                         return Err(NOT_ALLOWED.into());
@@ -726,7 +631,6 @@ impl Inbound {
                 }
             }
         } else if self.claim.is_none() {
-            // Only an activation this session claimed reaches the Mac.
             admission = Admission::Refuse;
         }
         let (mut deliver, refused) = admitted_effects(effects, admission);
@@ -750,10 +654,8 @@ impl Inbound {
         if refused || applied.is_err() {
             self.release();
         } else if closes && self.claim.take().is_some() {
-            // Closing the activation already let go of everything.
             self.wifi = None;
             tracing::info!(peer = %self.peer, "peer let go of this Mac");
-            // The pointer went back to the peer, so the clipboard goes along.
             self.receiving.clipboard.share(&self.session);
         }
         if refused {
@@ -762,23 +664,17 @@ impl Inbound {
         applied
     }
 
-    /// Wakes the display, since the chord sends no Prepare that would,
-    /// and takes AWDL down when the app asks for less Wi-Fi lag.
     fn take_control(&mut self) {
         self.receiving.screen.wake();
         if self.receiving.policy().reduce_wifi_latency {
             self.wifi = Some(awdl::shared().want());
             let peer = self.peer.clone();
-            // On its own task, so the peer's input does not wait for the helper.
             tokio::spawn(async move { awdl::shared().down(&peer, AWDL_LIMIT).await });
         }
     }
 
-    /// Lets go of whatever the peer holds, and of its claim on this Mac.
     fn release(&mut self) {
         if let Some(claim) = self.claim.take() {
-            // Sent before the claim goes, so it reaches the injector ahead
-            // of the next peer's input.
             self.receiving.injector.release_all();
             drop(claim);
             self.wifi = None;
@@ -800,8 +696,6 @@ impl Drop for Inbound {
                 sessions.remove(&self.peer);
             }
         }
-        // After the session is gone, so a Prepare still on its way either
-        // started its handoff before this ends it, or finds the session gone.
         self.receiving.handoff.closed(&self.peer, id);
     }
 }
@@ -856,7 +750,6 @@ mod tests {
         assert_eq!(ownership.begin_lease("desk", 1).err(), Some(OWNED));
         assert_eq!(ownership.desktop_allowed("linux", 1), Ok(()));
 
-        // The newest claim holds input, so dropping an older one keeps it.
         let second = ownership.claim_inbound("linux", 1).unwrap();
         drop(first);
         assert_eq!(ownership.controller().as_deref(), Some("linux"));

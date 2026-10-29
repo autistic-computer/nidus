@@ -13,7 +13,7 @@ public partial class App : Application
         catch (Exception error) { NativeWindow.ShowStartupError(error.Message); Exit(); return; }
         bool created;
         try { single = new Mutex(true, @"Local\Zflow.WinUI." + Environment.UserName, out created); }
-        catch (UnauthorizedAccessException) { NativeWindow.ShowExisting(); Exit(); return; } // Already running elevated.
+        catch (UnauthorizedAccessException) { NativeWindow.ShowExisting(); Exit(); return; }
         if (!created) { NativeWindow.ShowExisting(); Exit(); return; }
         Installation.RefreshStartupPath();
         window = new MainWindow();

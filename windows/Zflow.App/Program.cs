@@ -8,7 +8,6 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        // Installer hooks must finish before WinUI, the instance mutex, or input hooks start.
         VelopackApp.Build().SetAutoApplyOnStartup(false)
             .OnAfterInstallFastCallback(_ => Installation.RefreshStartupPath())
             .OnBeforeUninstallFastCallback(_ => Installation.RemoveStartupPath()).Run();

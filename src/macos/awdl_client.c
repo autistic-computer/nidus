@@ -34,7 +34,6 @@ static int request_lease(int *input, int *output, char *error, size_t error_size
   } else {
     *input = xpc_dictionary_dup_fd(reply, "input");
     *output = xpc_dictionary_dup_fd(reply, "output");
-    // A write after the helper ends must fail with EPIPE, not kill the app.
     if (*input >= 0 && *output >= 0 && fcntl(*input, F_SETNOSIGPIPE, 1) == 0) {
       status = 0;
     } else {
@@ -50,9 +49,6 @@ static int request_lease(int *input, int *output, char *error, size_t error_size
   return status;
 }
 
-// Asks the privileged helper for an AWDL lease. The helper answers only the
-// signed zflow app, and this side accepts only the helper from the same team.
-// On success the caller owns both pipe ends of the helper's lease protocol.
 int zflow_awdl_lease(int *input, int *output, char *error, size_t error_size) {
   *input = -1;
   *output = -1;

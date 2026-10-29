@@ -1,26 +1,11 @@
-//! One live session to each paired computer this one may send to, so the
-//! first crossing does not wait for a handshake. A session the other
-//! computer dialed counts, and while one is up nothing is dialed.
-//!
-//! A link dials only where a hello proved the peer's key: an mDNS record or
-//! an added address that answered with it, whatever address it has now. A
-//! computer that does not listen is never dialed, and its own link to this
-//! computer is the session. When both computers dial at once, both keep the
-//! same session. Crossings and the chord still dial on demand when no
-//! session is up.
-
 use super::*;
 use crate::{
     link::{STABLE_SESSION, retry_delay},
     peer_view::LinkStatus,
 };
 
-/// What a link uses from the daemon, so tests can stand in for it.
 pub(super) trait Sessions: Send + Sync + 'static {
-    /// The id of the peer's session, whichever computer dialed it.
     fn current(&self, peer: &str) -> impl Future<Output = Option<u64>> + Send;
-    /// Dials the peer and returns the session it keeps, which is the
-    /// peer's own if its dial wins.
     fn dial(
         &self,
         peer: &str,
@@ -41,17 +26,11 @@ impl Sessions for Shared {
 
 pub(super) struct Link {
     record: PeerConfig,
-    /// Dropping it stops the link at its next wait.
     retry: mpsc::UnboundedSender<()>,
-    /// None while the peer has a session or the link has nothing to dial.
     status: watch::Receiver<Option<LinkStatus>>,
 }
 
 impl Shared {
-    /// Keeps one link per peer this computer may send to, and stops the
-    /// others. A peer whose record changed starts over, so a computer paired
-    /// again is dialed at once; one that only learned an address carries on.
-    /// Pausing sharing stops every link.
     pub(super) async fn sync_links(self: &Arc<Self>) {
         let wanted = linked_peers(&*self.config.read().await);
         let mut links = self.links.lock().await;
@@ -72,14 +51,12 @@ impl Shared {
         }
     }
 
-    /// Ends each link's wait, so it dials now.
     pub(super) async fn retry_links(&self) {
         for link in self.links.lock().await.values() {
             let _ = link.retry.send(());
         }
     }
 
-    /// The links that have no session yet, for the settings window.
     pub(super) async fn link_status(&self) -> BTreeMap<String, LinkStatus> {
         self.links
             .lock()
@@ -90,8 +67,6 @@ impl Shared {
     }
 }
 
-/// The peers that get a link: those this computer may send to, as for the
-/// chord. Empty while sharing is paused.
 fn linked_peers(config: &Config) -> BTreeMap<String, PeerConfig> {
     eligible_outbound_peers(config)
         .into_iter()
@@ -128,8 +103,6 @@ fn start<S: Sessions>(
     }
 }
 
-/// What a link acts on: the peer's session while it has one, or else where
-/// it can be dialed.
 #[derive(Debug, PartialEq)]
 enum View {
     Session(u64),
@@ -139,7 +112,6 @@ enum View {
 struct Task<S> {
     sessions: Arc<S>,
     peer: String,
-    /// The fingerprint of the peer's key, which finds it among the neighbors.
     key: String,
     record: PeerConfig,
     retries: mpsc::UnboundedReceiver<()>,
@@ -148,9 +120,6 @@ struct Task<S> {
 }
 
 impl<S: Sessions> Task<S> {
-    /// Without a session, the link dials wherever a hello proved the key.
-    /// That is nowhere while the peer is off, out of mDNS reach, or a Mac
-    /// that is not listening.
     async fn view(&self) -> View {
         match self.sessions.current(&self.peer).await {
             Some(id) => View::Session(id),
@@ -158,8 +127,6 @@ impl<S: Sessions> Task<S> {
         }
     }
 
-    /// Waits until the view differs from `seen`, a retry asks for an attempt
-    /// now, or `delay` passes. False once the link is stopped.
     async fn wait(&mut self, seen: &View, delay: Option<Duration>) -> bool {
         let sleep = async {
             match delay {
@@ -176,7 +143,6 @@ impl<S: Sessions> Task<S> {
                 () = &mut sleep => return true,
                 retry = self.retries.recv() => match retry {
                     None => return false,
-                    // A live session has nothing to retry.
                     Some(()) if matches!(seen, View::Session(_)) => {}
                     Some(()) => return true,
                 },
@@ -191,15 +157,12 @@ impl<S: Sessions> Task<S> {
     }
 }
 
-/// Keeps the peer's session up, with the Mac app's retry schedule.
 async fn run<S: Sessions>(mut task: Task<S>, status: watch::Sender<Option<LinkStatus>>) {
     let mut failures = 0_u32;
     loop {
         let view = task.view().await;
         let session = match &view {
             View::Session(id) => *id,
-            // No hello found its key: it is off, out of mDNS reach, or a
-            // Mac that is not listening. A crossing can still dial it.
             View::Dial(addresses) if addresses.is_empty() => {
                 status.send_replace(None);
                 if !task.wait(&view, None).await {
@@ -208,7 +171,6 @@ async fn run<S: Sessions>(mut task: Task<S>, status: watch::Sender<Option<LinkSt
                 continue;
             }
             View::Dial(addresses) => {
-                // Retries keep showing why the last attempt failed.
                 if !matches!(*status.borrow(), Some(LinkStatus::Unreachable { .. })) {
                     status.send_replace(Some(LinkStatus::Connecting));
                 }
@@ -218,7 +180,6 @@ async fn run<S: Sessions>(mut task: Task<S>, status: watch::Sender<Option<LinkSt
                     .await
                 {
                     Ok(id) => id,
-                    // The peer's own dial landed meanwhile and won.
                     Err(_) if task.sessions.current(&task.peer).await.is_some() => continue,
                     Err(error) => {
                         failures += 1;
@@ -226,7 +187,6 @@ async fn run<S: Sessions>(mut task: Task<S>, status: watch::Sender<Option<LinkSt
                             reason: crate::link::reason(&error),
                             needs_fix: crate::link::Fix::of(&error).is_some(),
                         });
-                        // Repeats of the same failure stay out of the journal.
                         if *status.borrow() != down {
                             tracing::info!(peer = %task.peer, error = %format_args!("{error:#}"),
                                 failures, "input link could not connect");
@@ -245,8 +205,6 @@ async fn run<S: Sessions>(mut task: Task<S>, status: watch::Sender<Option<LinkSt
         if !task.wait(&View::Session(session), None).await {
             return;
         }
-        // A session that keeps dropping right after it opens backs off like
-        // a failed attempt.
         failures = if opened.elapsed() >= STABLE_SESSION {
             0
         } else {
@@ -286,7 +244,6 @@ mod tests {
         .unwrap()
     }
 
-    /// The computers around: each mDNS record, with the key its hello proved.
     fn around(records: &[(&str, &[u8], &str)]) -> Neighbors {
         let mut neighbors = Neighbors::new(&[0]);
         let hello = crate::hello::make_hello("desk", 43119, Vec::new(), false);
@@ -301,8 +258,6 @@ mod tests {
 
     type Dial = (Vec<SocketAddr>, oneshot::Sender<Result<u64>>);
 
-    /// Stands in for the daemon: the test answers each dial, and sets the
-    /// peer's session the way an inbound connection would.
     struct Fake {
         session: std::sync::Mutex<Option<u64>>,
         changes: watch::Sender<()>,
@@ -398,14 +353,12 @@ mod tests {
         let failed = Clock::now();
         let (_, answer) = test.dials.recv().await.unwrap();
         assert_eq!(failed.elapsed(), Duration::from_secs(1));
-        // The retry keeps showing why the last attempt failed.
         assert_eq!(
             *test.link.status.borrow(),
             unreachable("Different zflow version. Update both computers.", true)
         );
         answer.send(Err(anyhow!("timed out"))).unwrap();
 
-        // Retry skips the two seconds the second failure waits.
         let failed = Clock::now();
         test.link.retry.send(()).unwrap();
         let (_, answer) = test.dials.recv().await.unwrap();
@@ -414,7 +367,6 @@ mod tests {
         answer.send(Ok(7)).unwrap();
         test.link.status.wait_for(Option::is_none).await.unwrap();
 
-        // A session that worked for a while is redialed at once.
         tokio::time::sleep(STABLE_SESSION).await;
         test.fake.set_session(None);
         let lost = Clock::now();
@@ -422,7 +374,6 @@ mod tests {
         assert_eq!(lost.elapsed(), Duration::ZERO);
         answer.send(Ok(8)).unwrap();
 
-        // One that drops right away waits like a failed attempt.
         test.link.status.wait_for(Option::is_none).await.unwrap();
         test.fake.set_session(None);
         let lost = Clock::now();
@@ -432,8 +383,6 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_link_dials_its_key_wherever_it_is_and_nowhere_else() {
-        // Another computer took the peer's saved address, and the peer, a
-        // Mac that is not listening, advertises nothing.
         let mut test = harness(around(&[("zf-other", OTHER, SAVED)]), None);
         test.link.retry.send(()).unwrap();
         tokio::time::sleep(Duration::from_secs(60)).await;
@@ -443,13 +392,10 @@ mod tests {
         );
         assert_eq!(*test.link.status.borrow(), None);
 
-        // The Mac's own link arrives; it is the session.
         test.fake.set_session(Some(3));
         tokio::time::sleep(Duration::from_secs(60)).await;
         assert!(test.dials.try_recv().is_err());
 
-        // Without a session, the peer is dialed where its hello says it is
-        // now, an address it was never saved at.
         test.fake.set_session(None);
         let moved = "192.0.2.70:43119";
         test.neighbors.send_replace(around(&[
@@ -466,7 +412,6 @@ mod tests {
         let (shared, _kept) = test_daemon();
         let directory = tempfile::tempdir().unwrap();
         let desk = Identity::load_or_create(directory.path()).unwrap();
-        // Saved where nothing listens, so the link dials nothing real.
         let saved: SocketAddr = "127.0.0.1:9".parse().unwrap();
         {
             let _mutation = shared.config_mutation.lock().await;
@@ -483,7 +428,6 @@ mod tests {
         assert_eq!(config.peers["desk"].addresses, [moved, saved]);
         assert_eq!(Config::load(&shared.config_path).unwrap(), config);
         assert_eq!(shared.policy_generation.load(Ordering::Acquire), generation);
-        // The next change of something else syncs the links again.
         let mut paused = config;
         paused.switching.pause_at_edges = true;
         let _mutation = shared.config_mutation.lock().await;
@@ -499,8 +443,6 @@ mod tests {
         let down =
             |status: &Option<LinkStatus>| matches!(status, Some(LinkStatus::Unreachable { .. }));
         test.link.status.wait_for(down).await.unwrap();
-        // As when the peer is forgotten or sharing pauses, mid-backoff. The
-        // task ends, which drops its side of the status.
         let Link {
             retry, mut status, ..
         } = test.link;

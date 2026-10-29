@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Publish the committed Cargo version after CI passes on GitHub.
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$root"
@@ -47,7 +46,6 @@ secret_names=$(gh secret list --repo "$repo" --json name --jq '.[].name')
 printf '%s\n' "$secret_names" | grep -qx SPARKLE_PRIVATE_ED_KEY \
     || die 'SPARKLE_PRIVATE_ED_KEY is missing; run just release setup on Linux or macOS.'
 
-# Read the remote without changing local tracking refs, including during --dry-run.
 remote_refs=$(git ls-remote origin refs/heads/main "refs/tags/$tag")
 [[ -z "$(printf '%s\n' "$remote_refs" | awk -v tag="refs/tags/$tag" '$2 == tag {print $1}')" ]] \
     || die "$tag already exists on GitHub. Inspect its release workflow instead of retagging it."
@@ -92,7 +90,6 @@ wait_for_run() {
 
 git push origin "$commit:refs/heads/main"
 wait_for_run ci.yml push main
-# Do not tag a different checkout if another process changed it while CI ran.
 [[ "$(git rev-parse HEAD)" == "$commit" && -z "$(git status --porcelain)" ]] \
     || die 'The checkout changed while CI ran; no release tag was pushed.'
 if ! git show-ref --verify --quiet "refs/tags/$tag"; then

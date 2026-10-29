@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// Says hello to a computer this Mac cannot find on the network, such as
-/// one across Tailscale. It then shows up on the shelf like any other.
 struct AddAddressView: View {
   var model: AppModel
   @Environment(\.dismiss) private var dismiss
