@@ -1,9 +1,9 @@
 use std::{collections::HashMap, path::PathBuf, process::Command, time::Duration};
 
+use ala::{App, AppContext as _, Context, Entity, Task};
 use anyhow::{Context as _, Result, anyhow, bail};
 use serde::Deserialize;
 use zbus::zvariant::OwnedValue;
-use zz_gpui::{App, AppContext as _, Context, Entity, Task};
 
 use super::Updates;
 
@@ -489,7 +489,7 @@ pub fn may_close(cx: &App) -> bool {
         .is_none_or(|services| !services.0.read(cx).installing)
 }
 
-pub fn notification_response(_: &zz_gpui::SystemNotificationResponse, _: &mut App) {}
+pub fn notification_response(_: &ala::SystemNotificationResponse, _: &mut App) {}
 
 pub fn restart(cx: &mut App) {
     if let Some((bus, _)) = INSTANCE.get() {
@@ -700,15 +700,15 @@ fn parse_strv(text: &str) -> Vec<String> {
         .collect()
 }
 
-use zflow::app::api::{Action, Health, Peer, Request};
-use zz_gpui::{AnyElement, IntoElement, ParentElement as _, Styled as _, Window, div, px};
-use zz_gpui_kit::{
+use ala::{AnyElement, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use penna::{
     Disableable as _, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
 };
+use zflow::app::api::{Action, Health, Peer, Request};
 
 use crate::{model::Snapshot, widgets, window::ZflowWindow};
 

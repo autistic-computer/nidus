@@ -10,6 +10,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use ala::{
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, Menu, MenuItem,
+    ParentElement as _, Styled as _, SystemNotification, SystemNotificationResponse, Task, Window,
+    actions, div, px,
+};
 use objc2::{MainThreadMarker, rc::Retained, runtime::ProtocolObject};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSPasteboard, NSPasteboardAccessBehavior,
@@ -17,18 +22,13 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSActivityOptions, NSBundle, NSObjectProtocol, NSProcessInfo, NSString};
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
-use zflow::app::api::{Action, Health, Peer, Request};
-use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, Menu, MenuItem,
-    ParentElement as _, Styled as _, SystemNotification, SystemNotificationResponse, Task, Window,
-    actions, div, px,
-};
-use zz_gpui_kit::{
+use penna::{
     Disableable as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
 };
+use zflow::app::api::{Action, Health, Peer, Request};
 
 use super::{LocalNetwork, Updates};
 use crate::{
@@ -903,7 +903,7 @@ pub fn settings_stacks(
                 }))
         });
         entry = entry.control(
-            zz_gpui_kit::h_flex().gap(px(8.0)).children(fix).child(
+            penna::h_flex().gap(px(8.0)).children(fix).child(
                 Switch::new("block-awdl")
                     .checked(enabled)
                     .on_click(cx.listener(|this, on: &bool, _, cx| {
@@ -921,11 +921,11 @@ pub fn settings_stacks(
                    cx: &mut Context<ZflowWindow>,
                    allow: fn(&mut ZflowWindow, &mut Context<ZflowWindow>)| {
         SettingEntry::new(title, if allowed { "" } else { detail }).control(if allowed {
-            zz_gpui_kit::h_flex()
+            penna::h_flex()
                 .gap(px(6.0))
                 .child(
                     Icon::new(IconName::CircleCheck)
-                        .text_color(zz_gpui_kit::ActiveTheme::theme(&**cx).success),
+                        .text_color(penna::ActiveTheme::theme(&**cx).success),
                 )
                 .child(widgets::muted("Allowed", 12.0, cx))
                 .into_any_element()
@@ -1053,13 +1053,13 @@ pub fn this_computer_entries(
     ]
 }
 
-pub fn tray_look(healthy: bool, update: bool) -> zz_gpui_tray::TrayIcon {
+pub fn tray_look(healthy: bool, update: bool) -> penna::tray::TrayIcon {
     let svg = if update {
         UPDATE_SVG.to_owned()
     } else {
         MARK_SVG.replace("OPACITY", if healthy { "1" } else { "0.45" })
     };
-    zz_gpui_tray::TrayIcon {
+    penna::tray::TrayIcon {
         png: crate::tray::rasterize(&svg, 36),
         template: true,
     }

@@ -1,9 +1,9 @@
+use ala::{
+    AppContext as _, Modifiers, MouseButton, Point, TestAppContext, VisualTestContext, point, px,
+};
 use zflow::app::{
     api::{self, PeerState, Request, State, Status},
     layout_model::{Layout, Monitor, Seam},
-};
-use zz_gpui::{
-    AppContext as _, Modifiers, MouseButton, Point, TestAppContext, VisualTestContext, point, px,
 };
 
 use super::{Board, geometry::Fit, monitors};
@@ -95,7 +95,7 @@ fn board(cx: &mut TestAppContext) -> (Requests, &mut VisualTestContext, Fit) {
     (requests, cx, fit)
 }
 
-fn middle(fit: &Fit, x: i32) -> Point<zz_gpui::Pixels> {
+fn middle(fit: &Fit, x: i32) -> Point<ala::Pixels> {
     let rect = fit.rect(&screen("probe", None, x), (0.0, 0.0));
     point(
         px(rect.x + rect.width / 2.0),
@@ -103,7 +103,7 @@ fn middle(fit: &Fit, x: i32) -> Point<zz_gpui::Pixels> {
     )
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn dragging_a_computer_asks_where_it_lands_then_moves_it(cx: &mut TestAppContext) {
     let (requests, cx, fit) = board(cx);
     let start = middle(&fit, 1920);
@@ -154,7 +154,7 @@ fn dragging_a_computer_asks_where_it_lands_then_moves_it(cx: &mut TestAppContext
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_click_selects_and_arrow_keys_move_the_selected_computer(cx: &mut TestAppContext) {
     let (requests, cx, fit) = board(cx);
     let local = middle(&fit, 0);

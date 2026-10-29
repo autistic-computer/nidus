@@ -2,22 +2,22 @@ pub mod geometry;
 
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
-use zflow::app::{
-    api::{PeerState, Request},
-    layout_model::{Monitor, Preview, Seam},
-};
-use zz_gpui::{
+use ala::{
     App, BorderStyle, Bounds, Context, Corners, DispatchPhase, Edges, Entity, FocusHandle,
     Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point,
     Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point,
     prelude::FluentBuilder as _, px, quad, size,
 };
-use zz_gpui_kit::{
+use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, Sizable as _, StyledExt as _,
     Surface,
     button::{Button, ButtonVariants as _},
     h_flex, rems_from_px, v_flex,
+};
+use zflow::app::{
+    api::{PeerState, Request},
+    layout_model::{Monitor, Preview, Seam},
 };
 
 use self::geometry::{
@@ -785,12 +785,12 @@ pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Sea
 }
 
 fn chip_width(name: &str, dot: bool, window: &mut Window, cx: &App) -> f32 {
-    let mut font = zz_gpui::font(cx.theme().font_family.clone());
-    font.weight = zz_gpui::FontWeight::MEDIUM;
+    let mut font = ala::font(cx.theme().font_family.clone());
+    font.weight = ala::FontWeight::MEDIUM;
     let line = window.text_system().shape_line(
         SharedString::from(name.to_owned()),
         px(CHIP_TEXT),
-        &[zz_gpui::TextRun {
+        &[ala::TextRun {
             len: name.len(),
             font,
             color: cx.theme().foreground,
@@ -863,7 +863,7 @@ impl Render for Board {
             .unwrap_or_default();
 
         let mat_theme = theme.clone();
-        let ring_radius = theme.shape_radius(BOARD, zz_gpui_kit::Shape::Round);
+        let ring_radius = theme.shape_radius(BOARD, penna::Shape::Round);
         let backdrop = canvas(
             move |area, _, _| {
                 bounds.set(area);
@@ -908,11 +908,11 @@ impl Render for Board {
                     window.paint_quad(quad(
                         to_bounds(area, *hull),
                         Corners::all(ring_radius),
-                        zz_gpui::transparent_black(),
+                        ala::transparent_black(),
                         Edges::all(if *selected {
                             px(2.0)
                         } else {
-                            zz_gpui_kit::FOCUS_RING_WIDTH
+                            penna::FOCUS_RING_WIDTH
                         }),
                         color,
                         if *adjusting {
@@ -1015,7 +1015,7 @@ impl Render for Board {
                     window.paint_quad(quad(
                         to_bounds(area, rect),
                         Corners::all(px(6.0)),
-                        zz_gpui::transparent_black(),
+                        ala::transparent_black(),
                         Edges::all(px(1.5)),
                         seam_theme.accent,
                         BorderStyle::Dashed,
@@ -1060,9 +1060,9 @@ impl Render for Board {
                         .overflow_hidden()
                         .surface_at(
                             Surface::new(SCREEN).tone(if moving && refused {
-                                zz_gpui_kit::Tone::Danger
+                                penna::Tone::Danger
                             } else {
-                                zz_gpui_kit::Tone::Neutral
+                                penna::Tone::Neutral
                             }),
                             state,
                             cx,
@@ -1089,7 +1089,7 @@ impl Render for Board {
                             |this| {
                                 this.child(
                                     div().m(px(5.0)).min_w_0().child(
-                                        zz_gpui_kit::badge::Badge::new(
+                                        penna::badge::Badge::new(
                                             monitor
                                                 .display
                                                 .as_ref()
@@ -1105,7 +1105,7 @@ impl Render for Board {
                         .tooltip({
                             let label = SharedString::from(monitor.label.clone());
                             move |window, cx| {
-                                zz_gpui_kit::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                                penna::tooltip::Tooltip::new(label.clone()).build(window, cx)
                             }
                         }),
                 );
@@ -1153,7 +1153,7 @@ impl Render for Board {
                             None => island.name.clone(),
                         };
                         move |window, cx| {
-                            zz_gpui_kit::tooltip::Tooltip::new(text.clone()).build(window, cx)
+                            penna::tooltip::Tooltip::new(text.clone()).build(window, cx)
                         }
                     })
                     .into_any_element(),
@@ -1190,7 +1190,7 @@ impl Render for Board {
                 .right(px(SHELF_GAP))
                 .top(px(BOARD_HEIGHT))
                 .h(px(shelf_height - SHELF_GAP))
-                .surface(Surface::new(zz_gpui_kit::roles::SETTINGS_PREVIEW), cx)
+                .surface(Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
                 .child(
                     v_flex()
                         .px(px(12.0))
@@ -1271,7 +1271,7 @@ fn found_tile(
     placeable: bool,
     carried: bool,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     v_flex()
         .id(SharedString::from(format!("found-{}", computer.id)))
         .absolute()

@@ -12,12 +12,12 @@ pub use macos::*;
 #[cfg(windows)]
 pub use windows::*;
 
+use ala::Entity;
 use serde::Deserialize;
-use zz_gpui::Entity;
 
 pub struct SharedServices(pub Entity<Services>);
 
-impl zz_gpui::Global for SharedServices {}
+impl ala::Global for SharedServices {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]

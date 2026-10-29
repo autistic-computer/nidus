@@ -1,11 +1,11 @@
 use std::{path::PathBuf, sync::mpsc, time::Duration};
 
+use ala::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 use serde::Deserialize;
 use zflow::app::{
     api::{self, Request},
     client::Client,
 };
-use zz_gpui::{App, AsyncApp, Context, Entity, Task, WeakEntity};
 
 use crate::platform::Platform;
 
@@ -377,7 +377,7 @@ impl Requests {
 
 pub struct Shared(pub Entity<Model>);
 
-impl zz_gpui::Global for Shared {}
+impl ala::Global for Shared {}
 
 pub fn model(cx: &App) -> Entity<Model> {
     cx.global::<Shared>().0.clone()
@@ -385,8 +385,8 @@ pub fn model(cx: &App) -> Entity<Model> {
 
 #[cfg(test)]
 mod tests {
+    use ala::{AppContext as _, TestAppContext};
     use zflow::hello::{Notice, NoticeKind};
-    use zz_gpui::{AppContext as _, TestAppContext};
 
     use super::Model;
 
@@ -399,7 +399,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn notices_come_once_and_only_about_paired_computers(cx: &mut TestAppContext) {
         let mut snapshot = crate::board::tests::snapshot();
         snapshot.notices = vec![joined(4, "mac", "996615")];

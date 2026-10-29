@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "zflow's window and menu, on zz-gpui"
+description = "zflow's window and menu, on ala and penna"
 publish = false
 
 [[bin]]
@@ -19,14 +19,13 @@ serde.workspace = true
 serde_json.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 zflow-kvm = { path = "../.." }
-zz-gpui = { workspace = true, features = ["default"] }
-zz-gpui-kit.workspace = true
-zz-gpui-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
-zz-gpui-tray = { path = "../zz-gpui-tray" }
+ala = { workspace = true, features = ["default"] }
+ala-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+penna.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2.workspace = true
-zz-gpui-platform = { workspace = true, features = ["runtime_shaders"] }
+ala-platform = { workspace = true, features = ["runtime_shaders"] }
 image.workspace = true
 libc.workspace = true
 objc2.workspace = true
@@ -44,7 +43,7 @@ windows-registry.workspace = true
 zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
 
 [dev-dependencies]
-zz-gpui = { workspace = true, features = ["test-support"] }
+ala = { workspace = true, features = ["test-support"] }
 
 [build-dependencies]
 embed-resource = "3.0"

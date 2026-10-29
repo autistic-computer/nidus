@@ -12,6 +12,17 @@ use std::{
     time::Duration,
 };
 
+use ala::{
+    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
+    Styled as _, SystemNotificationResponse, Task, Window, div, px,
+};
+use penna::{
+    Disableable as _, WindowExt as _,
+    button::{Button, ButtonVariants as _},
+    dialog::DialogButtonProps,
+    settings::{SettingEntry, SettingsStack, settings_card_ground},
+    switch::Switch,
+};
 use windows::{
     Win32::{
         Foundation::{
@@ -37,17 +48,6 @@ use windows::{
     core::{HSTRING, PCWSTR, w},
 };
 use zflow::app::api::{Action, Health, Peer, Request};
-use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Styled as _, SystemNotificationResponse, Task, Window, div, px,
-};
-use zz_gpui_kit::{
-    Disableable as _, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dialog::DialogButtonProps,
-    settings::{SettingEntry, SettingsStack, settings_card_ground},
-    switch::Switch,
-};
 
 use super::Updates;
 use crate::{
@@ -395,7 +395,7 @@ impl Engine {
 
 struct EngineHandle(Arc<Mutex<Engine>>);
 
-impl zz_gpui::Global for EngineHandle {}
+impl ala::Global for EngineHandle {}
 
 enum Release {
     None,
@@ -792,8 +792,8 @@ pub fn quit(cx: &mut App) {
     cx.quit();
 }
 
-pub fn tray_look(_: bool, _: bool) -> zz_gpui_tray::TrayIcon {
-    zz_gpui_tray::TrayIcon {
+pub fn tray_look(_: bool, _: bool) -> penna::tray::TrayIcon {
+    penna::tray::TrayIcon {
         png: include_bytes!("../../../../assets/windows/zflow.png").to_vec(),
         template: false,
     }

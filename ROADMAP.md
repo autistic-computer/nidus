@@ -307,7 +307,7 @@ The baseline is CGEventPost from the logged-in app, which is what Deskflow and l
 
 ## 5. Unified GUI
 
-Rust produces one `Snapshot` and accepts one `Request` set on both platforms. The zz-gpui app renders them on every system. The top section is always shared. The bottom section comes from `snapshot.platform`. Health is a list of `{id, level, title, detail, action}` built in Rust.
+Rust produces one `Snapshot` and accepts one `Request` set on both platforms. The ala app renders them on every system. The top section is always shared. The bottom section comes from `snapshot.platform`. Health is a list of `{id, level, title, detail, action}` built in Rust.
 
 ### Top section (shared, in this order)
 

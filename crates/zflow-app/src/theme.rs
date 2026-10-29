@@ -1,5 +1,5 @@
-use zz_gpui::{App, Window};
-use zz_gpui_kit::{
+use ala::{App, Window};
+use penna::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Highlight, Kind, Shadow, StylePatch, SurfaceRole,
     Theme, interface_theme,
 };
@@ -44,8 +44,8 @@ pub const BANNER: SurfaceRole = SurfaceRole::new(
 const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP, SHELF_TILE, BANNER];
 
 pub fn init(cx: &mut App) {
-    zz_gpui_kit::roles::register(ROLES);
-    zz_gpui_kit::init(cx);
+    penna::roles::register(ROLES);
+    penna::init(cx);
     apply(None, cx);
 }
 

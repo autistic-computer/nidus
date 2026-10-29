@@ -1,15 +1,8 @@
-use zflow::{
-    app::{
-        api::{Peer, Request},
-        layout_model::Seam,
-    },
-    core::KeyboardMode,
-};
-use zz_gpui::{
+use ala::{
     AnyElement, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_gpui_kit::{
+use penna::{
     Disableable as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
@@ -18,6 +11,13 @@ use zz_gpui_kit::{
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
     v_flex,
+};
+use zflow::{
+    app::{
+        api::{Peer, Request},
+        layout_model::Seam,
+    },
+    core::KeyboardMode,
 };
 
 use crate::{
@@ -414,7 +414,7 @@ fn peer_settings(
                         .button_props(
                             DialogButtonProps::default()
                                 .ok_text("Forget")
-                                .ok_variant(zz_gpui_kit::button::ButtonVariant::Paint(zz_gpui_kit::Tone::Danger, zz_gpui_kit::Emphasis::Solid))
+                                .ok_variant(penna::button::ButtonVariant::Paint(penna::Tone::Danger, penna::Emphasis::Solid))
                                 .show_cancel(true),
                         )
                         .on_ok(move |_, _, cx| {

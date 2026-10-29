@@ -1,10 +1,9 @@
-use zflow::app::api::Request;
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
     Subscription, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
-use zz_gpui_kit::{
+use penna::{
     ActiveTheme as _, Disableable as _, IconName, Root, WindowControls, WindowExt as _, h_flex,
     input::InputState,
     settings::{settings_navigation_button, settings_navigation_row},
@@ -13,6 +12,7 @@ use zz_gpui_kit::{
     switch::Switch,
     v_flex,
 };
+use zflow::app::api::Request;
 
 use crate::{
     board::Board,
@@ -53,7 +53,7 @@ impl ZflowWindow {
             cx.observe_in(&model, window, |_, model, window, cx| {
                 if let Some(failure) = model.update(cx, |model, _| model.take_failure()) {
                     window.push_notification(
-                        zz_gpui_kit::notification::Notification::warning(failure)
+                        penna::notification::Notification::warning(failure)
                             .title("That didn’t work"),
                         cx,
                     );

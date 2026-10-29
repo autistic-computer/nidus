@@ -71,8 +71,10 @@ fn decode_text(bytes: &[u8]) -> Result<String> {
         "Windows clipboard text has an incomplete UTF-16 character"
     );
     let words: Vec<_> = bytes
-        .chunks_exact(2)
-        .map(|p| u16::from_le_bytes([p[0], p[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&p| u16::from_le_bytes(p))
         .take_while(|&w| w != 0)
         .collect();
     Ok(String::from_utf16(&words)?)

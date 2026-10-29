@@ -1,12 +1,12 @@
-use zflow::app::api::{Level, PeerState, State};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Hsla, ParentElement as _, SharedString, Styled as _, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_gpui_kit::{
+use penna::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, Sizable as _, StyledExt as _, Surface,
     Tone, h_flex, rems_from_px, sidebar::status_dot, v_flex,
 };
+use zflow::app::api::{Level, PeerState, State};
 
 use crate::theme::BANNER;
 
@@ -16,7 +16,7 @@ pub fn banner(
     detail: impl Into<SharedString>,
     action: Option<AnyElement>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let tone = tone_of(level);
     let icon = match level {
         Level::Error => IconName::CircleX,
@@ -39,11 +39,7 @@ pub fn banner_ground(level: Level, cx: &App) -> Ground {
         .ground_of(Surface::new(BANNER).tone(tone_of(level)))
 }
 
-pub fn note(
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    cx: &App,
-) -> zz_gpui::Div {
+pub fn note(title: impl Into<SharedString>, detail: impl Into<SharedString>, cx: &App) -> ala::Div {
     callout(Tone::Primary, IconName::Info, title, detail, None, cx)
 }
 
@@ -54,7 +50,7 @@ fn callout(
     detail: impl Into<SharedString>,
     action: Option<AnyElement>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let detail = detail.into();
     h_flex()
         .w_full()
@@ -119,18 +115,18 @@ pub fn mark_indices(mark: &str) -> Vec<usize> {
     clippy::disallowed_methods,
     reason = "a key's mark is an identity, drawn in the same colors on every computer and in every theme"
 )]
-pub fn key_mark(mark: &str) -> zz_gpui::Div {
+pub fn key_mark(mark: &str) -> ala::Div {
     h_flex()
         .gap(px(2.0))
         .children(mark_indices(mark).into_iter().map(|index| {
             div()
                 .size(px(7.0))
                 .rounded(px(2.0))
-                .bg(zz_gpui::rgb(MARK_COLORS[index]))
+                .bg(ala::rgb(MARK_COLORS[index]))
         }))
 }
 
-pub fn state_dot(state: Option<PeerState>, cx: &App) -> zz_gpui::Div {
+pub fn state_dot(state: Option<PeerState>, cx: &App) -> ala::Div {
     let theme = cx.theme();
     status_dot(match state {
         None | Some(PeerState::Connected) => theme.success,
@@ -151,7 +147,7 @@ pub fn status_color(state: State, cx: &App) -> Hsla {
     }
 }
 
-pub fn muted(text: impl Into<SharedString>, size: f32, cx: &App) -> zz_gpui::Div {
+pub fn muted(text: impl Into<SharedString>, size: f32, cx: &App) -> ala::Div {
     div()
         .text_size(rems_from_px(size))
         .text_color(cx.theme().foreground.muted())

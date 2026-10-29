@@ -1,12 +1,12 @@
-use zflow::app::api::Level;
-use zz_gpui::{
+use ala::{
     AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_gpui_kit::{
+use penna::{
     ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _, button::Button, h_flex,
     rems_from_px, settings::settings_scroll_column, sidebar::status_dot, v_flex,
 };
+use zflow::app::api::Level;
 
 use super::{fix_button, inspector};
 use crate::{copy, model::Snapshot, platform, widgets, window::ZflowWindow};
@@ -108,10 +108,7 @@ fn first_run(
                 .pl(px(12.0))
                 .pr(px(6.0))
                 .py(px(6.0))
-                .surface(
-                    zz_gpui_kit::Surface::new(zz_gpui_kit::roles::SETTINGS_PREVIEW),
-                    cx,
-                )
+                .surface(penna::Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
                 .child(widgets::muted("Not listed? Run on it:", 12.0, cx).flex_none())
                 .child(
                     div()
@@ -125,10 +122,10 @@ fn first_run(
                 .child(
                     Button::new("copy-install")
                         .small()
-                        .on(cx.theme().ground_of(zz_gpui_kit::roles::SETTINGS_PREVIEW))
+                        .on(cx.theme().ground_of(penna::roles::SETTINGS_PREVIEW))
                         .label(if copied { "Copied" } else { "Copy" })
                         .on_click(cx.listener(|this, _, _, cx| {
-                            cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(
+                            cx.write_to_clipboard(ala::ClipboardItem::new_string(
                                 copy::INSTALL_COMMAND.to_owned(),
                             ));
                             this.copied = true;
@@ -149,6 +146,6 @@ pub fn host_name() -> String {
 }
 
 #[allow(dead_code)]
-fn muted_ink(cx: &zz_gpui::App) -> zz_gpui::Hsla {
+fn muted_ink(cx: &ala::App) -> ala::Hsla {
     cx.theme().foreground.muted()
 }
