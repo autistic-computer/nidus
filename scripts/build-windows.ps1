@@ -8,8 +8,6 @@ try {
     $metadata = & cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Cargo metadata failed' }
     $built = Join-Path $metadata.target_directory "$target/release"
-    # Cargo chooses one flag source. Append to the active environment override,
-    # or merge the target flags through Cargo's own configuration support.
     $flagVariable = @('CARGO_ENCODED_RUSTFLAGS', 'RUSTFLAGS', 'CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS') |
         Where-Object { $null -ne [Environment]::GetEnvironmentVariable($_) } | Select-Object -First 1
     $previousFlags = if ($flagVariable) { [Environment]::GetEnvironmentVariable($flagVariable) } else { $null }
@@ -21,20 +19,16 @@ try {
             $flags = @($previousFlags, '-C', 'target-feature=+crt-static') | Where-Object { $_ -ne '' }
             [Environment]::SetEnvironmentVariable($flagVariable, ($flags -join $separator))
         } else {
-            # A config file avoids native argument quote differences in Windows PowerShell.
             $configFile = [IO.Path]::GetTempFileName()
             [IO.File]::WriteAllText($configFile, 'target.x86_64-pc-windows-msvc.rustflags=["-C","target-feature=+crt-static"]', [Text.UTF8Encoding]::new($false))
             $cargoConfig = @('--config', $configFile)
         }
-        # An explicit target keeps these flags off host build scripts and proc macros.
         & cargo build --locked --release --target $target -p zflow-kvm -p zflow-app --bin zflow --bin zflow-app @cargoConfig
         if ($LASTEXITCODE -ne 0) { throw 'Rust build failed' }
     } finally {
         if ($flagVariable) { [Environment]::SetEnvironmentVariable($flagVariable, $previousFlags) }
         if ($configFile) { Remove-Item -LiteralPath $configFile -Force }
     }
-    # Existing installs, Velopack's main executable and the Run key all use the
-    # name Zflow.App.exe, so the app keeps it.
     $binaries = [ordered]@{ 'zflow-app.exe' = 'Zflow.App.exe'; 'zflow.exe' = 'zflow.exe' }
     $output = Join-Path $repo 'windows/dist'
     if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }

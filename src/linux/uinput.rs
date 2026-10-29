@@ -22,12 +22,9 @@ use super::{
 };
 
 const WHEEL_CLICK_UNITS: i64 = 120;
-// 200 x 150 mm holds the largest real trackpads (a Magic Trackpad is about
-// 160 x 115 mm) with margin, so contacts are placed by millimetres, not clipped.
 const TOUCHPAD_MAX_X: i32 = 5_999;
 const TOUCHPAD_MAX_Y: i32 = 4_499;
 const TOUCHPAD_RESOLUTION: i32 = 30;
-/// Assumed for a contact that arrives without a source size: the old 100 x 73 mm pad.
 const UNSIZED_SOURCE: SourceDimensions = SourceDimensions {
     width: 10_000,
     height: 7_300,
@@ -103,9 +100,7 @@ fn build_virtual_device(
 #[derive(Debug)]
 pub struct VirtualKeyboard {
     device: VirtualDevice,
-    /// Turns the peer's physical key edges into the edges injected here.
     remap: KeyRemap,
-    /// Injected usages, after the remap.
     held: BTreeSet<HidUsage>,
 }
 
@@ -123,27 +118,21 @@ impl VirtualKeyboard {
         })
     }
 
-    /// Starts an activation in `mode`, with nothing from the last one down.
     pub fn begin(&mut self, mode: KeyboardMode) -> Result<(), InjectionError> {
         self.release_all()?;
         self.remap.reset(mode);
         Ok(())
     }
 
-    /// The mode the current activation started in.
     pub fn mode(&self) -> KeyboardMode {
         self.remap.mode()
     }
 
-    /// Whether the focused app is a terminal. Only keys pressed after this
-    /// see it.
     pub fn set_terminal(&mut self, terminal: bool) {
         self.remap.set_terminal(terminal);
     }
 
-    /// Applies one physical key edge from the peer.
     pub fn set_key(&mut self, usage: HidUsage, pressed: bool) -> Result<(), InjectionError> {
-        // Refuse a key this device cannot type before the remap records it.
         hid_to_evdev_key(usage)?;
         for (output, pressed) in self.remap.key(usage, pressed) {
             self.inject(output, pressed)?;
@@ -151,9 +140,6 @@ impl VirtualKeyboard {
         Ok(())
     }
 
-    /// Call before a button press, a scroll or a touch replacement with
-    /// contacts. `busy` says whether a button or contact is still down after
-    /// it.
     pub fn pointer(&mut self, busy: bool) -> Result<(), InjectionError> {
         for (output, pressed) in self.remap.pointer(busy) {
             self.inject(output, pressed)?;
@@ -161,14 +147,10 @@ impl VirtualKeyboard {
         Ok(())
     }
 
-    /// Call before a button release or a touch replacement with no
-    /// contacts. It presses nothing.
     pub fn pointer_released(&mut self, busy: bool) {
         self.remap.pointer_released(busy);
     }
 
-    /// Each edge is its own report, so a modifier change lands before the
-    /// key it goes with.
     fn inject(&mut self, usage: HidUsage, pressed: bool) -> Result<(), InjectionError> {
         let key = hid_to_evdev_key(usage)?;
         if self.held.contains(&usage) == pressed {
@@ -191,8 +173,6 @@ impl VirtualKeyboard {
         &self.held
     }
 
-    /// Releases every injected key and forgets the peer's held keys. The
-    /// mode stays.
     pub fn release_all(&mut self) -> Result<(), InjectionError> {
         self.remap.reset(self.remap.mode());
         if self.held.is_empty() {
@@ -289,8 +269,6 @@ impl VirtualPointer {
         Ok(())
     }
 
-    /// Emits one complete pointer report. High-resolution wheel events are
-    /// always paired with the accumulated legacy detent event Linux requires.
     pub fn motion(&mut self, motion: MotionDelta) -> Result<(), InjectionError> {
         let scroll_x = relative_value(motion.scroll_x);
         let scroll_y = relative_value(motion.scroll_y);
@@ -483,7 +461,6 @@ fn monotonic_time() -> io::Result<Duration> {
         tv_sec: 0,
         tv_nsec: 0,
     };
-    // CLOCK_MONOTONIC matches both Rust Instant and libinput's evdev clock.
     if unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut time) } != 0 {
         return Err(io::Error::last_os_error());
     }
@@ -491,7 +468,6 @@ fn monotonic_time() -> io::Result<Duration> {
 }
 
 fn touch_report_time(now: Duration, age: Option<Duration>, previous: Duration) -> Duration {
-    // uinput rejects future timestamps and timestamps older than ten seconds.
     let capture = age
         .filter(|age| *age < Duration::from_secs(10))
         .map_or(now, |age| now.saturating_sub(age));
@@ -649,8 +625,6 @@ fn plan_touchpad_report(
     (events, next)
 }
 
-/// Places a contact by millimetres with the source surface centered on the pad,
-/// so libinput sees the finger travel the source measured.
 fn touch_axis(contact: &TouchContact, horizontal: bool) -> i32 {
     let source = contact.source_dimensions.unwrap_or(UNSIZED_SOURCE);
     let (value, extent, maximum) = if horizontal {
@@ -658,8 +632,6 @@ fn touch_axis(contact: &TouchContact, horizontal: bool) -> i32 {
     } else {
         (contact.y, source.height, TOUCHPAD_MAX_Y)
     };
-    // maximum / 2 + (value - extent / 2) * TOUCHPAD_RESOLUTION / 100, doubled
-    // to stay in integers, then rounded.
     let doubled = i64::from(maximum) * 100
         + (2 * i64::from(value) - i64::from(extent)) * i64::from(TOUCHPAD_RESOLUTION);
     (doubled + 100).div_euclid(200).clamp(0, maximum.into()) as i32
@@ -696,8 +668,6 @@ pub struct VirtualInput {
 
 impl VirtualInput {
     pub fn create(experimental_touchpad: bool) -> Result<Self, InjectionError> {
-        // If pointer creation fails, keyboard drops immediately and uinput
-        // removes it; callers never observe half a virtual device pair.
         let keyboard = VirtualKeyboard::create()?;
         let pointer = VirtualPointer::create()?;
         let touchpad = experimental_touchpad
@@ -710,7 +680,6 @@ impl VirtualInput {
         })
     }
 
-    /// Whether a contact is down on the virtual touchpad.
     pub fn touching(&self) -> bool {
         self.touchpad
             .as_ref()
@@ -766,8 +735,6 @@ fn push_relative(events: &mut Vec<InputEvent>, axis: RelativeAxisCode, value: i3
     }
 }
 
-/// Peers choose motion deltas and input_event carries an i32. Clamping an
-/// absurd delta keeps it from stopping the receiver for every peer.
 fn relative_value(value: i64) -> i32 {
     value.clamp(i32::MIN.into(), i32::MAX.into()) as i32
 }
@@ -775,7 +742,6 @@ fn relative_value(value: i64) -> i32 {
 fn legacy_wheel_delta(remainder: &mut i64, high_resolution: i32) -> i32 {
     let total = *remainder + i64::from(high_resolution);
     *remainder = total % WHEEL_CLICK_UNITS;
-    // The remainder is under one click, so the quotient fits an i32.
     (total / WHEEL_CLICK_UNITS) as i32
 }
 
@@ -794,7 +760,6 @@ mod tests {
             minor: None,
             orientation_millidegrees: None,
             tool: TouchTool::Finger,
-            // A Magic Trackpad, in hundredths of a millimetre.
             source_dimensions: Some(SourceDimensions {
                 width: 16_000,
                 height: 11_500,
@@ -929,7 +894,6 @@ mod tests {
                     12 => 214_000,
                     _ => capture + 1_000,
                 };
-                // 2 mm per frame, ending at the middle of the trackpad.
                 let contact = touch(1, (5_000 + sequence * 200) as i32, 5_750);
                 (
                     arrival,
@@ -987,8 +951,6 @@ mod tests {
             "fixture must reproduce a compressed delivery burst"
         );
         assert_eq!(tenth.2 - ninth.2, Duration::from_millis(16));
-        // libinput normalizes this 2mm movement to 12ms. Arrival timing gives
-        // 24mm (>20mm jump threshold); preserved capture timing gives 1.5mm.
         assert_eq!(2.0 * 12_000.0 / (tenth.1 - ninth.1) as f64, 24.0);
         assert_eq!(2.0 * 12_000.0 / (tenth.2 - ninth.2).as_micros() as f64, 1.5);
         assert_eq!(state.contacts[&ContactId(1)].x, 3_000);
@@ -1031,19 +993,15 @@ mod tests {
             (touch_axis(&contact, true), touch_axis(&contact, false))
         };
         let millimetre = TOUCHPAD_RESOLUTION;
-        // The middle of the trackpad lands in the middle of the pad.
         assert_eq!(at(8_000, 5_750), (3_000, 2_250));
-        // 20 mm across and 10 mm down stay 20 mm and 10 mm: no stretch.
         let (x0, y0) = at(4_000, 3_000);
         let (x1, y1) = at(6_000, 4_000);
         assert_eq!((x1 - x0, y1 - y0), (20 * millimetre, 10 * millimetre));
-        // The whole 160 x 115 mm surface fits, with equal margins.
         assert_eq!(at(0, 0), (600, 525));
         assert_eq!(at(16_000, 11_500), (5_400, 3_975));
         assert_eq!(at(-100_000, i32::MIN), (0, 0));
         assert_eq!(at(i32::MAX, 100_000), (TOUCHPAD_MAX_X, TOUCHPAD_MAX_Y));
 
-        // A smaller Linux pad is centered too.
         let mut small = touch(1, 5_000, 3_000);
         small.source_dimensions = Some(SourceDimensions {
             width: 10_000,

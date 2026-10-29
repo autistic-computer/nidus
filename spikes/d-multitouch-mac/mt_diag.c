@@ -1,7 +1,3 @@
-// Spike D diag: is this process allowed to listen to raw HID input?
-//   clang -O2 -o mt_diag mt_diag.c -framework IOKit -framework CoreFoundation
-//   ./mt_diag            # check only
-//   ./mt_diag --request  # trigger the Input Monitoring TCC prompt
 #include <IOKit/hidsystem/IOHIDLib.h>
 #include <stdbool.h>
 #include <stdio.h>

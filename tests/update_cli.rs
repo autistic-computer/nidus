@@ -20,9 +20,8 @@ fn check_is_read_only_and_reports_the_running_version() {
     fixture(
         directory.path(),
         "curl",
-        "printf https://github.com/demfabris/zflow/releases/tag/v999.0.0",
+        "printf https://github.com/autistic-computer/zflow/releases/tag/v999.0.0",
     );
-    // No bash, sudo, pkexec or package manager exists on this command's PATH.
     let output = command(directory.path()).arg("check").output().unwrap();
     assert!(
         output.status.success(),
@@ -49,8 +48,8 @@ fn unavailable_or_invalid_releases_are_errors_without_installing() {
     for script in [
         "printf offline >&2; exit 7",
         "printf https://github.com/another/zflow/releases/tag/v999.0.0",
-        "printf https://github.com/demfabris/zflow/releases/tag/v999.0.0-rc.1",
-        "printf https://github.com/demfabris/zflow/releases/latest",
+        "printf https://github.com/autistic-computer/zflow/releases/tag/v999.0.0-rc.1",
+        "printf https://github.com/autistic-computer/zflow/releases/latest",
     ] {
         fixture(directory.path(), "curl", script);
         let output = command(directory.path()).arg("check").output().unwrap();

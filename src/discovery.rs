@@ -1,9 +1,3 @@
-//! Privacy-preserving local discovery.
-//!
-//! mDNS records are hints for locating a QUIC endpoint. They are never peer
-//! identities and must not grant authority before the transport authenticates
-//! the peer.
-
 use std::{
     collections::BTreeSet,
     fmt,
@@ -25,22 +19,16 @@ use crate::{
 
 pub const SERVICE_TYPE: &str = "_zflow._udp.local.";
 pub const MAX_DISCOVERY_CANDIDATES: usize = 16;
-/// What a record may carry. zflow sends three; the room is for keys a newer
-/// version adds, which this one skips so it can still list that computer.
 pub const MAX_TXT_PROPERTIES: usize = 8;
 pub const MAX_TXT_BYTES: usize = 384;
 
 const INSTANCE_PREFIX: &str = "zf-";
 const INSTANCE_ENTROPY_BYTES: usize = 16;
 const INSTANCE_HEX_BYTES: usize = INSTANCE_ENTROPY_BYTES * 2;
-/// Carries the input ALPN, the only protocol version zflow has.
 const TXT_PROTOCOL: &str = "v";
 const TXT_CAPABILITIES: &str = "cap";
-/// The computer's name, so its tile has one before its hello arrives.
 const TXT_NAME: &str = "name";
 
-/// Lists this host's current addresses. Loopback and non-unicast addresses
-/// never help another machine connect.
 pub fn local_unicast_addresses() -> Result<Vec<IpAddr>, DiscoveryError> {
     let addresses = if_addrs::get_if_addrs()
         .map_err(DiscoveryError::Interfaces)?
@@ -49,18 +37,12 @@ pub fn local_unicast_addresses() -> Result<Vec<IpAddr>, DiscoveryError> {
     Ok(select_advertisable_addresses(addresses))
 }
 
-/// Every address on this host's interfaces, with none left out. A
-/// connection from one of them, or from loopback, comes from a process here
-/// rather than another computer. Empty if they cannot be listed.
 pub fn this_host_addresses() -> Vec<IpAddr> {
     if_addrs::get_if_addrs()
         .map(|interfaces| interfaces.iter().map(if_addrs::Interface::ip).collect())
         .unwrap_or_default()
 }
 
-/// A record's addresses without this computer's own, `local`. Browsing
-/// finds this computer's own record too, and two computers can share an
-/// address, such as a container bridge's; dialing one reaches this one.
 pub fn remote_addresses(addresses: &[SocketAddr], local: &[IpAddr]) -> Vec<SocketAddr> {
     addresses
         .iter()
@@ -82,10 +64,6 @@ fn select_advertisable_addresses(addresses: impl IntoIterator<Item = IpAddr>) ->
         .collect()
 }
 
-/// A per-process random name used only for multicast discovery.
-///
-/// It deliberately contains no certificate, machine, account, or configured
-/// peer identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EphemeralInstanceId([u8; INSTANCE_ENTROPY_BYTES]);
 
@@ -126,7 +104,6 @@ impl fmt::Display for EphemeralInstanceId {
     }
 }
 
-/// The small, fixed-schema record zflow publishes over multicast DNS.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Advertisement {
     quic_port: u16,
@@ -135,7 +112,6 @@ pub struct Advertisement {
 }
 
 impl Advertisement {
-    /// mdns-sd follows the host's interfaces itself, so no addresses are taken.
     pub fn new(
         quic_port: u16,
         capabilities: impl IntoIterator<Item = InputCapability>,
@@ -160,14 +136,12 @@ impl Advertisement {
         })
     }
 
-    /// Names the computer in the record, in the plain form a tile shows.
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = Some(peer_name(Some(name)));
         self
     }
 }
 
-/// A bounded endpoint hint which has not been authenticated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UntrustedCandidate {
     ephemeral_instance_id: Option<EphemeralInstanceId>,
@@ -178,7 +152,6 @@ pub struct UntrustedCandidate {
 }
 
 impl UntrustedCandidate {
-    /// Creates a candidate from a user-provided address without starting mDNS.
     pub fn explicit(address: SocketAddr) -> Result<Self, CandidateParseError> {
         validate_socket_address(address).map_err(CandidateParseError::InvalidAddress)?;
         Ok(Self {
@@ -194,7 +167,6 @@ impl UntrustedCandidate {
         self.ephemeral_instance_id
     }
 
-    /// Whether the record advertises the ALPN this build speaks.
     pub fn is_compatible(&self) -> bool {
         self.compatible
     }
@@ -207,8 +179,6 @@ impl UntrustedCandidate {
         &self.socket_addresses
     }
 
-    /// The name the record claims, already plain. Versions before arrange
-    /// to pair send none.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
     }
@@ -221,7 +191,6 @@ pub enum DiscoveryEvent {
     Stopped,
 }
 
-/// Owns one mDNS daemon, one zflow registration, and one zflow browser.
 pub struct Discovery {
     daemon: ServiceDaemon,
     monitor: Receiver<DaemonEvent>,
@@ -257,8 +226,6 @@ impl Discovery {
         Ok(())
     }
 
-    /// The instance this computer's own record has, which its browser
-    /// finds like any other.
     pub fn instance_id(&self) -> EphemeralInstanceId {
         self.instance_id
     }
@@ -273,8 +240,6 @@ impl Discovery {
         Ok(())
     }
 
-    /// Receives the next valid bounded event. Malformed multicast records are
-    /// ignored rather than allowed to terminate discovery.
     pub async fn next_event(&self) -> Result<DiscoveryEvent, DiscoveryError> {
         let receiver = self
             .browser
@@ -309,10 +274,6 @@ impl Discovery {
         }
     }
 
-    /// Waits for the next error reported by the mdns-sd daemon thread.
-    ///
-    /// Daemon initialization errors such as multicast socket failures are
-    /// asynchronous in mdns-sd and surface here.
     pub async fn next_daemon_error(&self) -> Result<mdns_sd::Error, DiscoveryError> {
         loop {
             let event = self
@@ -384,7 +345,6 @@ impl Drop for Discovery {
     }
 }
 
-/// Strictly validates one resolved DNS-SD record into an untrusted hint.
 pub fn parse_resolved_service(
     service: &ResolvedService,
 ) -> Result<UntrustedCandidate, CandidateParseError> {
@@ -396,9 +356,6 @@ pub fn parse_resolved_service(
             "QUIC port must be non-zero",
         ));
     }
-    // Receivers advertise every interface address, and IPv6 privacy addresses
-    // pile up, so keep the first few in sort order (IPv4, then global IPv6)
-    // instead of dropping the whole record.
     let mut addresses = BTreeSet::new();
     for scoped in &service.addresses {
         let address = match scoped {
@@ -476,8 +433,6 @@ fn build_service_info(
     }
     debug_assert!(txt_size(&properties) <= MAX_TXT_BYTES);
 
-    // No address list: with addr_auto, mdns-sd adds and drops addresses as
-    // interfaces change, including ones that only appear after boot.
     ServiceInfo::new(
         SERVICE_TYPE,
         &instance_id.to_string(),
@@ -527,8 +482,6 @@ fn parse_txt(properties: &TxtProperties) -> Result<ParsedTxt, CandidateParseErro
             TXT_PROTOCOL | TXT_CAPABILITIES | TXT_NAME => {
                 return Err(CandidateParseError::DuplicateTxtProperty);
             }
-            // Another version's key. Rejecting the record would hide that
-            // computer instead of showing that it needs an update.
             _ => {}
         }
     }
@@ -554,7 +507,6 @@ fn parse_capabilities(value: &str) -> Result<InputCapabilities, CandidateParseEr
         return Err(CandidateParseError::InvalidCapabilities);
     }
     let mut capabilities = BTreeSet::new();
-    // A name this version does not know is a capability from a newer one.
     for capability in value.split(',').filter_map(capability_from_name) {
         if !capabilities.insert(capability) {
             return Err(CandidateParseError::InvalidCapabilities);
@@ -754,8 +706,6 @@ mod tests {
             properties.get_property_val_str("cap"),
             Some("keyboard,pointer,scroll")
         );
-        // The name is the one thing that says which computer this is, and
-        // the hello repeats it over TLS, where the key is proven.
         assert_eq!(
             properties.get_property_val_str("name"),
             Some("Fabricios-MacBook-Pro")
@@ -776,7 +726,6 @@ mod tests {
         ] {
             assert!(!rendered.contains(forbidden), "leaked marker {forbidden}");
         }
-        // Nothing in the record looks like a key's hash either.
         assert!(
             properties
                 .iter()
@@ -813,7 +762,6 @@ mod tests {
     #[test]
     fn advertisement_needs_a_port_but_no_addresses() {
         assert!(Advertisement::new(0, [InputCapability::Keyboard]).is_err());
-        // Registering before the network is up is fine; mdns-sd adds addresses later.
         assert!(Advertisement::new(43_119, [InputCapability::Keyboard]).is_ok());
     }
 
@@ -886,8 +834,6 @@ mod tests {
 
     #[test]
     fn computers_on_other_versions_stay_listed_as_incompatible() {
-        // What v0.1.0 announces. Rejecting its extra key hid it from the
-        // pairing list, so nobody was told to update it.
         let old = parse_txt_record(&[
             ("v", "1"),
             ("cap", "keyboard,pointer,scroll"),
@@ -924,7 +870,6 @@ mod tests {
             43_119,
             &[("v", "1"), ("cap", oversized_value.as_str())][..],
         );
-        // mdns-sd itself refuses a single DNS-SD string over 255 bytes.
         assert!(oversized.is_err());
     }
 

@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""Controlled-jitter validation of the receiver's playout modes.
-
-Streams a synthetic sine motion (cursor wiggles +-300px horizontally, returns
-near start) through a deterministic spike schedule: delivery freezes for 120 ms
-at fixed points, then the backlog arrives at once, mimicking a WiFi power-save
-burst. Runs each mode against the same schedule and reports, per mode:
-
-  conservation   injected displacement == sent displacement?
-  stall          longest gap between injections during motion
-  burst10ms      max displacement inside any 10 ms window (teleport-ness)
-  pacing p95     inter-injection interval during steady motion
-
-Usage: python3 jitter_lab.py [receiver-binary] [outdir]
-"""
 
 import math
 import os
@@ -30,7 +16,7 @@ DUR = 8.0
 RATE = 250
 AMP = 300.0
 PERIOD = 1.5
-SPIKES = [(2.0, 0.12), (4.5, 0.12), (6.5, 0.12)]  # (start_s, hold_s)
+SPIKES = [(2.0, 0.12), (4.5, 0.12), (6.5, 0.12)]
 
 
 def run_mode(mode: str) -> tuple[str, int]:
@@ -71,7 +57,7 @@ def run_mode(mode: str) -> tuple[str, int]:
             time.sleep(1.0 / RATE)
         for p in held:
             sock.sendto(p, ("127.0.0.1", PORT))
-        time.sleep(1.0)  # let playout drain
+        time.sleep(1.0)
     finally:
         recv.terminate()
         recv.wait()
@@ -88,12 +74,10 @@ def analyze(log: str, final_total: int, mode: str) -> None:
         print(f"{mode:9s} FAILED: only {len(rows)} injections logged")
         return
     injected = sum(dx for _, dx in rows)
-    # skip the first injection when measuring gaps (session baseline timing)
     gaps = [(rows[i][0] - rows[i - 1][0]) / 1000.0 for i in range(2, len(rows))]
     stall = max(gaps)
     gaps.sort()
     p95_pace = gaps[int(len(gaps) * 0.95)]
-    # max |displacement| within any 10ms sliding window
     burst, j = 0, 0
     acc = 0
     for i in range(len(rows)):

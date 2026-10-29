@@ -1,7 +1,3 @@
-//! The home page: how sharing is going, the problems in its way, and the
-//! arrangement with each computer's inspector under it. Until a computer is
-//! paired, it shows how to add the first one instead.
-
 use zflow::app::api::Level;
 use zz_gpui::{
     AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
@@ -61,8 +57,6 @@ fn status(snapshot: &Snapshot, cx: &mut Context<ZflowWindow>) -> impl IntoElemen
         ))
 }
 
-/// A banner for each check that is not fine, with its fix. `skip` leaves
-/// out a row another card stands in for.
 fn problems(
     snapshot: &Snapshot,
     skip: Option<&str>,
@@ -82,7 +76,6 @@ fn problems(
         .collect()
 }
 
-/// The first computer, while nothing is paired.
 fn first_run(
     this: &mut ZflowWindow,
     snapshot: &Snapshot,
@@ -98,7 +91,6 @@ fn first_run(
     let copied = this.copied;
     settings_scroll_column("first-run")
         .children(platform::first_run_cards(this, snapshot, window, cx))
-        // The cards above stand in for the sharing row.
         .children(problems(snapshot, Some("sharing"), cx))
         .child(super::heading(
             "Add your other computers",
@@ -147,7 +139,6 @@ fn first_run(
         .into_any_element()
 }
 
-/// The name other computers know this one by, as its hellos give it.
 pub fn host_name() -> String {
     let name = zflow::hello::local_name();
     if name.is_empty() {

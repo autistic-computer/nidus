@@ -2,8 +2,6 @@
 
 import PackageDescription
 
-// The privileged helper that keeps AirDrop's radio down while input is
-// shared. The app itself is Rust (crates/zflow-app).
 let package = Package(
   name: "Zflow",
   platforms: [.macOS(.v26)],

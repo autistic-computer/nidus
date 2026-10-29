@@ -10,11 +10,10 @@ try {
     } else {
         $temporary = Join-Path ([IO.Path]::GetTempPath()) ('zflow-install-' + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $temporary | Out-Null
-        $release = Invoke-RestMethod 'https://api.github.com/repos/demfabris/zflow/releases/latest' -Headers @{ 'User-Agent' = 'zflow-installer' }
+        $release = Invoke-RestMethod 'https://api.github.com/repos/autistic-computer/zflow/releases/latest' -Headers @{ 'User-Agent' = 'zflow-installer' }
         $installerAsset = @($release.assets | Where-Object { $_.name -eq $assetName })
         $checksumsAsset = @($release.assets | Where-Object { $_.name -eq 'SHA256SUMS' })
         if ($installerAsset.Count -ne 1 -or $checksumsAsset.Count -ne 1) { throw 'The latest release has no complete Windows installer. Try again after the release finishes.' }
-        # Resolve both files from one release so publication cannot mix versions.
         $setup = Join-Path $temporary $assetName
         Invoke-WebRequest -UseBasicParsing -Uri $installerAsset[0].browser_download_url -OutFile $setup
         $checksumsPath = Join-Path $temporary 'SHA256SUMS'

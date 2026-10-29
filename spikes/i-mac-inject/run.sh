@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# Launches the probe through LaunchServices, so macOS checks the probe's own
-# Accessibility grant and not the terminal's, waits for it to quit, then
-# prints what it wrote. Output is kept in out/.
-#
-# usage: run.sh <test>... [--secs N]
-#        STDIN=/path/to/fifo run.sh feel --secs 45
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

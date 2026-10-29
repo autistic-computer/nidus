@@ -1,6 +1,4 @@
 [CmdletBinding()]
-# -PackVersion packs under another version, as CI does to update an
-# installed release to this build.
 param([string]$SignParameters, [string]$PackVersion)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
@@ -16,8 +14,6 @@ $localSdk = Join-Path $env:LOCALAPPDATA 'zflow-dev/dotnet/dotnet.exe'
 $dotnet = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { (Get-Command dotnet -ErrorAction Stop).Source }
 $tools = Join-Path $repo 'target/velopack-tools'
 if (Test-Path -LiteralPath $tools) { Remove-Item -LiteralPath $tools -Recurse -Force }
-# vpk bundles the Update.exe that the app's velopack crate drives, so both
-# come from the same Velopack release.
 $lock = Get-Content -LiteralPath (Join-Path $repo 'Cargo.lock') -Raw
 $velopack = [regex]::Match($lock, '(?m)^name = "velopack"\r?\nversion = "([^"]+)"').Groups[1].Value
 if (-not $velopack) { throw 'Cargo.lock does not pin the velopack crate' }
@@ -43,7 +39,6 @@ Move-Item -LiteralPath $setup[0].FullName -Destination (Join-Path $output 'zflow
 $feed = Get-Content -LiteralPath (Join-Path $output 'releases.win-x64.json') -Raw | ConvertFrom-Json
 $full = @($feed.Assets | Where-Object { $_.PackageId -eq 'Zflow.App' -and $_.Version -eq $version -and $_.Type -eq 'Full' })
 if ($full.Count -ne 1 -or -not (Test-Path -LiteralPath (Join-Path $output $full[0].FileName))) { throw 'The Windows update feed must reference the packaged full release' }
-# Publication uses the feed and full package directly, not Velopack upload commands.
 Get-ChildItem -LiteralPath $output -Filter 'assets.*.json' | Remove-Item
 Remove-Item -LiteralPath (Join-Path $output 'RELEASES') -ErrorAction SilentlyContinue
 $archive = Join-Path $output "zflow-v$version-windows-x86_64.zip"

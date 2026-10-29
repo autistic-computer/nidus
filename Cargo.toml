@@ -4,7 +4,7 @@ version = "0.7.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Low-latency, loss-resilient input sharing for Linux, macOS and Windows"
-repository = "https://github.com/demfabris/zflow"
+repository = "https://github.com/autistic-computer/zflow"
 rust-version = "1.97"
 
 [lib]
@@ -61,22 +61,17 @@ windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Secur
 [dev-dependencies]
 proptest = "1.11.0"
 tempfile = "3.23"
-# Paused time for handoff server tests.
 tokio = { version = "1.53.1", features = ["test-util"] }
 
 [profile.release]
 lto = "thin"
 strip = "symbols"
 
-# macOS 27 rejects malformed proc-macro dylibs produced by Rust's stripping pass.
-# https://github.com/rust-lang/rust/issues/157750
 [profile.release.build-override]
 strip = "none"
 
 [workspace]
 members = [".", "crates/*"]
-# zflow's own crates and the kit it adds to; the rest of zz-gpui is vendored
-# as is and tested in zz.
 default-members = [".", "crates/zflow-app", "crates/zz-gpui-kit", "crates/zz-gpui-tray"]
 resolver = "3"
 
@@ -86,7 +81,6 @@ license = "GPL-3.0-or-later"
 rust-version = "1.97"
 version = "0.7.0"
 
-# The zz-gpui stack, vendored from github.com/demfabris/zz (see crates/README.md).
 [workspace.dependencies]
 accesskit = { version = "0.24.0", features = ["enumn"] }
 accesskit_macos = "0.26.0"
@@ -241,8 +235,6 @@ unused_self = "allow"
 [profile.dev]
 debug = 1
 
-# The UI stack is slow unoptimized. "*" reaches only crates outside the
-# workspace, so the vendored ones are named.
 [profile.dev.package]
 "*" = { opt-level = 2 }
 taffy = { opt-level = 3 }

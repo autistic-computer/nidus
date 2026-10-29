@@ -69,9 +69,6 @@ impl LinuxRuntimeConfig {
     }
 }
 
-/// Commands are deliberately content-opaque at the runtime boundary. This
-/// type has no `Debug` implementation so an accidental command trace cannot
-/// print receiver key effects.
 pub enum RuntimeCommand {
     Activate {
         peer: String,
@@ -84,18 +81,14 @@ pub enum RuntimeCommand {
     },
     ReceiverEffects {
         effects: Vec<ReceiverEffect>,
-        /// The sending peer's keyboard mode, only in the batch that opens an
-        /// activation.
         keyboard: Option<KeyboardMode>,
         touch_captured_at: Option<Instant>,
-        /// Sent only after every effect reaches the uinput backend.
         applied: Option<tokio::sync::oneshot::Sender<Instant>>,
     },
     Reload {
         config: LinuxRuntimeConfig,
         applied: tokio::sync::oneshot::Sender<Result<(), LinuxRuntimeError>>,
     },
-    /// Whether the focused desktop app is a terminal.
     DesktopFocus {
         terminal: bool,
     },
@@ -135,8 +128,6 @@ pub enum RuntimeEvent {
         phase: OwnershipPhase,
         selected_peer: Option<String>,
         changed_at: Instant,
-        /// Mappable evdev events observed after activation was requested but
-        /// before EVIOCGRAB completed.
         arming_leakage_events: u64,
     },
     TerminalRequested,
@@ -146,23 +137,13 @@ pub enum RuntimeEvent {
     Stopped,
 }
 
-/// What the daemon reads back from the input thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinuxRuntimeStatus {
     pub ownership: OwnershipPhase,
     pub selected_peer: Option<String>,
-    /// No key or button is down across the capture set, as the input
-    /// thread tracks it; a finger resting on a touchpad does not count. A
-    /// crossing moves on to another computer only then.
     pub neutral: bool,
 }
 
-/// Read-only capture resolution used by setup diagnostics.
-///
-/// This deliberately shares the runtime's exact all-or-none selector rules,
-/// so `zflow doctor` cannot claim a configuration is usable when the daemon
-/// would refuse to grab it. With no selectors it lists every keyboard and
-/// pointer the scan could open.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureSelectionDiagnostic {
     pub selected_paths: Vec<PathBuf>,
@@ -266,16 +247,11 @@ impl LinuxRuntimeControl {
         }
     }
 
-    /// Delivers a fail-safe lifecycle command through temporary queue
-    /// backpressure. Callers must tear down the daemon if this bounded wait
-    /// still fails, because the descriptor-owning thread cannot otherwise know
-    /// that a terminal write completed.
     pub async fn send_critical(
         &self,
         command: RuntimeCommand,
         timeout: Duration,
     ) -> Result<(), RuntimeCommandError> {
-        // A full queue drains only while the input thread runs.
         self.wake()?;
         match tokio::time::timeout(timeout, self.commands.send(command)).await {
             Ok(Ok(())) => self.wake(),
@@ -288,8 +264,6 @@ impl LinuxRuntimeControl {
         lock_status(&self.status).clone()
     }
 
-    /// Tells the input thread to let go of every device and end. A flag
-    /// rather than a queued command, so a full queue cannot delay it.
     pub fn request_stop(&self) {
         self.stop.store(true, Ordering::Release);
         let _ = self.waker.wake();
@@ -302,8 +276,6 @@ impl LinuxRuntimeControl {
 
 #[cfg(test)]
 impl LinuxRuntimeControl {
-    /// A control whose commands wait in the returned queue, with the poll its
-    /// sends wake in place of the input thread.
     pub(crate) fn queue(capacity: usize) -> (Self, mpsc::Receiver<RuntimeCommand>, Poll) {
         let poll = Poll::new().unwrap();
         let waker = Arc::new(Waker::new(poll.registry(), WAKE_TOKEN).unwrap());
@@ -317,14 +289,11 @@ impl LinuxRuntimeControl {
         (control, receiver, poll)
     }
 
-    /// Says what the input thread would, for a control made by [`Self::queue`].
     pub(crate) fn set_status(&self, status: LinuxRuntimeStatus) {
         *lock_status(&self.status) = status;
     }
 }
 
-/// The input thread plus the queues it fills. The daemon awaits both
-/// receivers; the thread never blocks on them.
 pub struct LinuxRuntime {
     control: LinuxRuntimeControl,
     pub events: mpsc::Receiver<RuntimeEvent>,
@@ -332,7 +301,6 @@ pub struct LinuxRuntime {
     thread: Option<InputThread>,
 }
 
-/// The input thread, and a channel that closes once it ends, even by panic.
 struct InputThread {
     handle: JoinHandle<()>,
     exited: tokio::sync::oneshot::Receiver<()>,
@@ -356,9 +324,6 @@ impl InputThread {
             .map_err(|_| LinuxRuntimeError::ThreadPanicked)
     }
 
-    /// Waits up to `timeout` for the thread to end. One that overruns is left
-    /// running, since joining it could block for good, and the process exit
-    /// closes its descriptors.
     async fn join_within(mut self, timeout: Duration) -> Result<(), LinuxRuntimeError> {
         if tokio::time::timeout(timeout, &mut self.exited)
             .await
@@ -437,8 +402,6 @@ impl LinuxRuntime {
         self.stop_and_join()
     }
 
-    /// Stops the input thread and waits up to `timeout` for it to let go of
-    /// every device, so a wedged thread cannot hold up the daemon's exit.
     pub async fn stop(mut self, timeout: Duration) -> Result<(), LinuxRuntimeError> {
         self.control.request_stop();
         match self.thread.take() {
@@ -548,7 +511,6 @@ impl ChordTracker {
         triggered
     }
 
-    /// Closed descriptors report no more releases, so forget what they held.
     fn clear(&mut self) {
         self.held_by_device.clear();
         self.latched = false;
@@ -582,14 +544,11 @@ struct RuntimeLoop {
     capture: CaptureSet,
     ownership: SourceOwnership,
     virtual_input: VirtualInput,
-    /// Mode for the next activation that opens.
     next_keyboard: KeyboardMode,
-    /// Kept here too so a replaced virtual keyboard starts with it.
     terminal: bool,
     activation_chord: ChordTracker,
     escape_chord: ChordTracker,
     selected_peer: Option<String>,
-    /// What the shared status last said about held keys and buttons.
     neutral: bool,
     arming_leakage_events: u64,
     capture_selection_complete: bool,
@@ -671,8 +630,6 @@ impl RuntimeLoop {
 
     fn run(&mut self) {
         while !self.stopping {
-            // Also inspect the queue without relying on a distinct Waker edge:
-            // mio coalesces wakes, and a capped drain may leave work queued.
             self.drain_commands();
             self.service_timers();
             if self.stopping {
@@ -776,8 +733,6 @@ impl RuntimeLoop {
                 break;
             }
             if index + 1 == MAX_COMMANDS_PER_TICK {
-                // Do not let a permanently busy producer starve descriptor
-                // reads or the watchdog. The next zero-time poll handles more.
                 self.commands_pending = true;
             }
         }
@@ -827,8 +782,6 @@ impl RuntimeLoop {
         if self.ownership.request_activation().is_err() {
             return;
         }
-        // Nothing is grabbed yet, so an event read after this only brings
-        // the tracked state closer to the kernel's.
         self.capture.resync_held();
         self.arming_leakage_events = 0;
         self.selected_peer = Some(peer);
@@ -876,14 +829,8 @@ impl RuntimeLoop {
             ) {
                 self.diagnostic(diagnostic);
                 if diagnostic == RuntimeDiagnostic::InjectionRejected {
-                    // Without an acknowledgement the daemon closes only the
-                    // sending peer, whose cleanup releases what it holds.
                     return false;
                 }
-                // A failed emit followed by a failed release can leave kernel
-                // key state behind. Stop the descriptor-owning thread so Drop
-                // closes the uinput pair. The systemd watchdog then restarts
-                // the daemon; manual launchers remain safely unable to inject.
                 self.release_receiver_state(RuntimeCloseReason::BackendFault);
                 self.stopping = true;
                 return false;
@@ -907,8 +854,6 @@ impl RuntimeLoop {
         );
         if config.experimental_touchpad != self.config.experimental_touchpad {
             self.release_receiver_state(RuntimeCloseReason::LocalRelease);
-            // The session stays open, so its activation keeps its keyboard
-            // mode on the new devices.
             let mode = self.virtual_input.keyboard.mode();
             let mut replacement = VirtualInput::create(config.experimental_touchpad)
                 .map_err(LinuxRuntimeError::ReloadVirtualInput)?;
@@ -1027,9 +972,6 @@ impl RuntimeLoop {
                 self.emit(RuntimeEvent::ActivationChord);
             }
             OwnershipPhase::Remote if escape => {
-                // The completing frame is consumed locally. Any chord prefix
-                // already forwarded is reconciled by the terminal receiver
-                // close, so the escape key itself never reaches the peer.
                 match self.ownership.request_release(true) {
                     OwnershipEffect::QueueTerminal => self.queue_terminal_or_fail_closed(),
                     _ => unreachable!("Remote release always queues a terminal"),
@@ -1052,8 +994,6 @@ impl RuntimeLoop {
         self.publish_neutral();
     }
 
-    /// Tells the daemon when keys and buttons all come up or one goes down,
-    /// without taking the status lock for every frame.
     fn publish_neutral(&mut self) {
         let neutral = self.capture.aggregate_state().nothing_pressed();
         if neutral != self.neutral {
@@ -1096,9 +1036,6 @@ impl RuntimeLoop {
                     self.emit_ownership();
                 }
                 Err(_) => {
-                    // An EVIOCGRAB transaction can fail to roll back an
-                    // earlier node, and post-grab neutrality rollback can fail
-                    // too. Descriptor close is the only reliable recovery.
                     self.deregister_capture_descriptors();
                     self.suspend_capture();
                     self.next_rescan = Instant::now();
@@ -1180,8 +1117,6 @@ impl RuntimeLoop {
     fn release_receiver_state(&mut self, reason: RuntimeCloseReason) {
         if self.virtual_input.release_all().is_err() {
             self.diagnostic(RuntimeDiagnostic::InjectionFailed);
-            // Do not accept another injection command on a backend that may
-            // still hold kernel state. RuntimeLoop drop closes both devices.
             self.stopping = true;
         }
         self.emit(RuntimeEvent::ReceiverStateReleased(reason));
@@ -1212,8 +1147,6 @@ impl RuntimeLoop {
         }
     }
 
-    /// Every ownership or peer change goes through here, so the shared status
-    /// is updated before the daemon hears about it.
     fn emit_ownership(&mut self) {
         let phase = self.ownership.phase();
         self.neutral = self.capture.aggregate_state().nothing_pressed();
@@ -1232,8 +1165,6 @@ impl RuntimeLoop {
 
     fn queue_terminal_or_fail_closed(&mut self) {
         if !self.emit(RuntimeEvent::TerminalRequested) {
-            // The daemon cannot acknowledge an event it never received. Drop
-            // grabs now instead of leaving ownership stuck in Releasing.
             self.force_source_release(RuntimeCloseReason::Backpressure);
         }
     }
@@ -1263,8 +1194,6 @@ struct CaptureSelection {
 }
 
 impl CaptureSelection {
-    /// Every selector resolved to one node, or, with no selectors, at least
-    /// one keyboard or pointer was found.
     fn is_complete(&self) -> bool {
         !self.selected.is_empty() && self.unmatched == 0 && self.ambiguous == 0
     }
@@ -1283,9 +1212,6 @@ fn select_configured<'a>(
     devices: impl Iterator<Item = &'a DeviceInfo>,
 ) -> CaptureSelection {
     if selectors.is_empty() {
-        // No selectors captures every keyboard and pointer. zflow's own
-        // devices are left out by identity; other programs' virtual devices,
-        // such as a remapper's output, are captured like hardware.
         return CaptureSelection {
             selected: devices
                 .filter(|device| device.class.is_some() && !device.is_zflow_virtual())
@@ -1317,9 +1243,6 @@ fn select_configured<'a>(
         }
     }
 
-    // Two logical selectors resolving to one event node is also ambiguous.
-    // Silently deduplicating would make the configured all-or-none contract
-    // claim success for a set different from the one the operator named.
     let mut path_counts = BTreeMap::<PathBuf, usize>::new();
     for device in resolved.iter().flatten() {
         *path_counts.entry(device.path.clone()).or_default() += 1;
@@ -1345,11 +1268,6 @@ fn select_configured<'a>(
     }
 }
 
-/// Returns whether one physical device has the stable identity named by a
-/// configured capture selector.
-///
-/// Device listings use this same predicate so an event-node renumber cannot
-/// make their capture-set membership disagree with the runtime.
 pub fn capture_selector_matches(selector: &ConfigDeviceSelector, device: &DeviceInfo) -> bool {
     if device.is_zflow_virtual() {
         return false;
@@ -1411,11 +1329,6 @@ fn apply_receiver_effect(
     touch_captured_at: Option<Instant>,
     keyboard: KeyboardMode,
 ) -> Result<(), RuntimeDiagnostic> {
-    // Keys the keyboard held back go down before a click, a scroll or a
-    // touch, so Option+click works. `pointer` is whether this effect presses
-    // something, and whether a button or contact is still down after it. A
-    // release presses nothing: a seat hold lets it through after dropping its
-    // press.
     let pointer = match &effect {
         ReceiverEffect::Button {
             button, pressed, ..
@@ -1469,9 +1382,6 @@ fn apply_receiver_effect(
     result.map_err(|error| injection_diagnostic(&error))
 }
 
-/// Only a failed device write leaves kernel state uncertain. Any other error
-/// is input the backend cannot represent, such as touch after the touchpad
-/// was disabled, and rejects just the peer that sent it.
 fn injection_diagnostic(error: &InjectionError) -> RuntimeDiagnostic {
     match error {
         InjectionError::Emit { .. } | InjectionError::Create { .. } => {
@@ -1567,7 +1477,6 @@ mod tests {
         let (control, mut receiver, mut poll) = LinuxRuntimeControl::queue(1);
         control.send(release()).unwrap();
         let drain = std::thread::spawn(move || {
-            // The input thread sleeps in poll until the sender wakes it.
             let mut events = Events::with_capacity(4);
             poll.poll(&mut events, Some(Duration::from_secs(5)))
                 .unwrap();
@@ -1606,7 +1515,6 @@ mod tests {
             vendor,
             product,
             version: 1,
-            // Configured selectors never look at the class.
             class: None,
         }
     }
@@ -1644,8 +1552,6 @@ mod tests {
 
     #[test]
     fn suspended_capture_forgets_a_half_held_chord() {
-        // After SYN_DROPPED or a read fault the descriptors close, so the
-        // release of a held chord key is never seen.
         let chord = ConfiguredChord::parse(&["KEY_LEFTCTRL".into(), "KEY_F12".into()]).unwrap();
         let mut tracker = ChordTracker::new(chord);
         tracker.observe(Path::new("one"), &frame(&[(KeyCode::KEY_LEFTCTRL, 1)]));
@@ -1815,7 +1721,6 @@ mod tests {
 
     #[test]
     fn uniq_separates_identical_devices_behind_one_bluetooth_adapter() {
-        // Bluetooth devices report the adapter address as phys.
         let keyboard = |path: &str, uniq: &str| DeviceInfo {
             unique_name: Some(uniq.into()),
             ..device(path, "BT Keyboard", "aa:aa:aa:aa:aa:aa", 0x1234, 0x5678)

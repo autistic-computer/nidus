@@ -35,16 +35,12 @@ const SESSION_COMMAND_CAPACITY: usize = 512;
 const NEGOTIATION_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CONTROL_MESSAGES_PER_SECOND: u32 = 20_000;
 const MAX_DATAGRAMS_PER_SECOND: u32 = 50_000;
-// QUIC only guarantees 1200-byte packets, which leave Quinn about 1162 bytes
-// of datagram payload until an MTU probe succeeds. The largest real frame (five
-// touch contacts) is about 330 bytes.
 const OFFER_DATAGRAM_SIZE: u32 = 1_024;
 
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
     offer: NegotiationOffer,
     playout: PlayoutConfig,
-    /// The peer posts raw touchpad contacts on a virtual touchpad.
     peer_takes_contacts: bool,
 }
 
@@ -64,8 +60,6 @@ impl SessionOptions {
         playout.maximum_delay = Duration::from_millis(config.playout.maximum_delay_ms);
         playout.adaptive_percentile = (config.playout.percentile * 100.0).round() as u8;
         playout.validate()?;
-        // Snapshot acks wait for playout. A delay near the lease makes every
-        // held-key renewal miss its ack deadline.
         if playout
             .fixed_delay
             .max(playout.maximum_delay)
@@ -118,9 +112,6 @@ impl SessionOptions {
         })
     }
 
-    /// Only a Linux peer posts raw touchpad contacts, and only with touch
-    /// negotiated. Any other gets a Linux touchpad as pointer motion,
-    /// clicks and scrolling; a Mac would drop the contacts.
     pub fn for_peer_os(mut self, os: Option<crate::wire::Os>) -> Self {
         self.peer_takes_contacts = os == Some(crate::wire::Os::Linux);
         self
@@ -145,15 +136,12 @@ pub enum SessionEventKind {
         applied: oneshot::Sender<Result<(), String>>,
     },
     OutboundEnded,
-    /// The peer's layout. It has been validated but may be older than ours.
     Layout {
         layout: crate::desktop::SharedLayout,
     },
-    /// What the peer had on its clipboard when the pointer left it.
     Clipboard {
         clip: crate::clipboard::Clip,
     },
-    /// The peer opened a lens onto this computer's screen. Dropping the stream refuses it.
     Lens {
         stream: crate::transport::LensStream,
     },
@@ -189,7 +177,6 @@ pub struct SessionHandle {
     desktop_id: Arc<std::sync::atomic::AtomicU64>,
     capabilities: InputCapabilities,
     clipboard: crate::transport::ClipboardChannel,
-    /// The clip being sent, if any. A newer one cancels it.
     sending_clip: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
     lens: crate::transport::LensChannel,
 }
@@ -217,7 +204,6 @@ pub(crate) fn desktop_response_kind(response: &crate::desktop::DesktopResponse) 
 }
 
 impl SessionHandle {
-    /// Opens a lens onto the peer's screen. The peer refuses it unless this computer may view it.
     pub async fn open_lens(&self) -> Result<crate::transport::LensStream> {
         Ok(self.lens.open().await?)
     }
@@ -234,7 +220,6 @@ impl SessionHandle {
         self.generation
     }
 
-    /// Capabilities both peers agreed on during negotiation.
     pub fn capabilities(&self) -> &InputCapabilities {
         &self.capabilities
     }
@@ -294,16 +279,12 @@ impl SessionHandle {
             .map_err(anyhow::Error::msg)
     }
 
-    /// True once the session has stopped, whatever the reason.
     pub fn is_closed(&self) -> bool {
         self.commands.is_closed()
     }
 
     pub fn close(&self, reason: SessionCloseReason) {
         let _ = self.commands.try_send(SessionCommand::Close(reason));
-        // Revocation and backend teardown cannot wait for a peer to drain its
-        // critical stream. Transport closure wakes the actor; its single exit
-        // path runs receiver lifecycle cleanup and reports synthetic releases.
         self.connection.close();
     }
 }
@@ -384,8 +365,6 @@ async fn run_session(
     options: SessionOptions,
     ready: oneshot::Sender<Result<InputCapabilities, String>>,
 ) -> Result<()> {
-    // Clips arrive on their own streams, apart from input, for as long as
-    // this session runs.
     let clips = tokio::spawn(receive_clips(channels.clipboard.clone(), reporter.clone()));
     let _clips = AbortOnDrop(clips.abort_handle());
     let lenses = tokio::spawn(receive_lenses(channels.lens.clone(), reporter.clone()));
@@ -470,15 +449,11 @@ async fn run_session(
                         sender = Some(next);
                     }
                     SessionCommand::Capture(mut frame) => {
-                        // Frames queued before the activation ended are stale.
                         let Some(active) = sender.as_mut() else {
                             reporter.count_stale();
                             continue;
                         };
                         let captured_at = frame.captured_at;
-                        // Stamp input with when it was captured, not when this
-                        // actor got to it. Clamp so sender time never runs
-                        // backwards or ahead of now.
                         let at = clock
                             .at(captured_at)
                             .min(clock.now())
@@ -512,9 +487,6 @@ async fn run_session(
                         }
                     }
                     SessionCommand::Close(reason) => {
-                        // The caller closes the transport right away. Connection
-                        // loss releases the peer's receiver state; a SessionClose
-                        // sent here would race that close and usually be lost.
                         tracing::debug!(peer = %reporter.peer, session_id = reporter.session_id, ?reason, "input session closed locally");
                         sender = None;
                         break;
@@ -533,7 +505,6 @@ async fn run_session(
                         validate_negotiated_control(&message.payload, &negotiated)?;
                         match message.payload {
                             ReliableControl::SnapshotAck(ack) => {
-                                // An ack can trail a return or a quick re-entry.
                                 let Some(active) = sender
                                     .as_mut()
                                     .filter(|active| active.session() == message.session)
@@ -584,9 +555,6 @@ async fn run_session(
                         }
                         SenderTick::ExitRemote(_, close) => {
                             sender = None;
-                            // The receiver may still hold the activation open
-                            // if only its acks were lost; it has to close for
-                            // the desktop handoff to finish.
                             channels.control_send.send_control(&close).await?;
                             reporter.emit(SessionEventKind::OutboundEnded)?;
                         }
@@ -632,8 +600,6 @@ struct CaptureMerger {
 }
 
 impl CaptureMerger {
-    /// Takes the frame's transitions and returns the presses and releases of
-    /// the union of all devices. Repeats never change it.
     fn merge(&mut self, captured: &mut CapturedDeviceFrame) -> Vec<(CaptureMember, bool)> {
         let mut aggregate = Vec::with_capacity(captured.frame.transitions.len());
         for transition in captured.frame.transitions.drain(..) {
@@ -782,7 +748,6 @@ async fn receive_lenses(lens: crate::transport::LensChannel, reporter: Reporter)
     }
 }
 
-/// Where one session reports events and metrics.
 #[derive(Clone)]
 struct Reporter {
     session_id: u64,
@@ -806,7 +771,6 @@ impl Reporter {
             .map_err(|error| anyhow!("daemon session event queue is unavailable: {error}"))
     }
 
-    /// Waits for queue space instead of failing when the queue is full.
     async fn send(&self, kind: SessionEventKind) -> Result<()> {
         self.events
             .send(self.event(kind))
@@ -1689,7 +1653,6 @@ mod tests {
         let (_right_directory, right_identity) = identity();
         let client = input_client_config(&left_identity, right_identity.spki()).unwrap();
         let server = input_server_config(&right_identity, left_identity.spki()).unwrap();
-        // A lost MTU probe leaves the path at QUIC's 1200-byte floor.
         let mut transport = quinn::TransportConfig::default();
         transport.mtu_discovery_config(None);
         let mut floor = server.quinn_config();
@@ -1736,7 +1699,6 @@ mod tests {
                 }
                 Err(error) => {
                     assert!(!fits, "default offer failed at the QUIC floor: {error}");
-                    // The real cause reaches the caller instead of a generic stop.
                     assert!(error.to_string().contains("path maximum"), "{error}");
                 }
             }
@@ -1872,7 +1834,6 @@ mod tests {
         let viewer = Arc::new(Viewer::default());
         let input = client::start(&viewer);
         let (copied, mut copies) = mpsc::unbounded_channel();
-        // A session closes with its last handle, so the test keeps `left`.
         let opener = left.clone();
         let running = tokio::spawn(client::run(
             async move { opener.open_lens().await },
@@ -2037,7 +1998,6 @@ mod tests {
             usage: HidUsage::keyboard(4),
             state,
         };
-        // The Mac bridge reports buttons up to 32; Linux injects 1 through 8.
         let button = |state| CaptureTransition::Button {
             button: PointerButton(9),
             state,
@@ -2421,7 +2381,6 @@ mod tests {
                 .await
                 .unwrap();
             end_outbound().await;
-            // The checkpoint ack and a queued capture land after the return.
             peer.control_send.send_control(&late_ack).await.unwrap();
             commands
                 .send(SessionCommand::Capture(CapturedDeviceFrame {
@@ -2439,7 +2398,6 @@ mod tests {
                 .unwrap();
             stale(2).await;
 
-            // A quick re-entry must also survive the old activation's ack.
             commands
                 .send(SessionCommand::BeginOutbound(second))
                 .await
@@ -2500,7 +2458,6 @@ mod tests {
                 })
             };
             let mut response = ControlSequence(0);
-            // Ack every held-state snapshot, up to and including `until`.
             let mut ack_until =
                 async |peer: &mut InputChannels, until: fn(&ReliableControl) -> bool| loop {
                     let InputControlMessage::Reliable(message) =
@@ -2540,8 +2497,6 @@ mod tests {
             })
             .await;
 
-            // The receiver closed the activation during a stall, so neutral
-            // checkpoints go unanswered from here on.
             let released = Instant::now();
             loop {
                 match event_rx.recv().await.unwrap().kind {
@@ -2556,8 +2511,6 @@ mod tests {
                 released.elapsed()
             );
             assert!(!actor.is_finished(), "returning must not end the session");
-            // If only the acks were lost, the receiver still holds the
-            // activation open until the sender says it is gone.
             loop {
                 let InputControlMessage::Reliable(message) =
                     peer.control_receive.receive().await.unwrap()
@@ -2634,7 +2587,6 @@ mod tests {
                     break anchor.sender_capture_time.0;
                 }
             };
-            // Captured 8 ms apart, handled together after a stall.
             let base = Instant::now();
             tokio::time::sleep(Duration::from_millis(20)).await;
             for (target, state, offset) in [
@@ -2688,8 +2640,6 @@ mod tests {
             source_dimensions: None,
         }])
         .unwrap();
-        // What a Linux touchpad frame carries: the contact, and the same
-        // input as pointer motion.
         let frame = CaptureFrame {
             touch_snapshot: Some(contact.clone()),
             as_pointer: Some(PointerFrame {
@@ -2703,8 +2653,6 @@ mod tests {
             ..CaptureFrame::default()
         };
 
-        // Both computers turned touch forwarding on, so touch is negotiated
-        // either way. Returns the contacts and motion the peer was sent.
         async fn sent_to(os: Option<Os>, frame: CaptureFrame) -> (Option<TouchState>, i64) {
             let (channels, mut peer, _client, _server) = input_channel_pair().await;
             let mut config = Config::default();
@@ -2742,8 +2690,6 @@ mod tests {
                 .await
                 .unwrap();
 
-            // One frame sends both kinds at once, so wait a little past the
-            // first for the other.
             let (mut touch, mut dx) = (None, 0);
             let mut until = tokio::time::Instant::now() + Duration::from_secs(3);
             loop {
@@ -2784,7 +2730,6 @@ mod tests {
         .expect("touchpad routing test timed out");
     }
 
-    // Only Linux posts touch; the Mac backend drops it before this looks.
     #[cfg(target_os = "linux")]
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn touch_capture_times_survive_datagrams_and_checkpoint_recovery() {
@@ -2880,8 +2825,6 @@ mod tests {
             peer.datagrams.send_motion(&motion).unwrap();
             let (motion_time, motion_applied) = next_touch(&mut event_rx, &touch(200)).await;
             let motion_time = motion_time.expect("datagram touch lost its capture timestamp");
-            // Delay backend application so arrival/injection timestamps cannot
-            // accidentally satisfy the eight-millisecond source spacing below.
             tokio::time::sleep(Duration::from_millis(40)).await;
             motion_applied.send(Ok(())).unwrap();
 

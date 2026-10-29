@@ -1,6 +1,3 @@
-//! Under the arrangement: every computer, or the one selected with where the
-//! pointer crosses from it, its screens and its settings.
-
 use zflow::{
     app::{
         api::{Peer, Request},
@@ -108,9 +105,6 @@ fn overview(
         .into_any_element()
 }
 
-/// The computers found on the network, each with a button that adds it
-/// beside this one: the arrangement's drag, for the keyboard and screen
-/// readers.
 fn found(
     this: &ZflowWindow,
     snapshot: &Snapshot,

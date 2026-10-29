@@ -7,14 +7,14 @@ set working-directory := ".."
 default:
     @just --list release
 
-# Configure Sparkle update signing from a macOS or Linux maintainer computer.
+[doc("Configure Sparkle update signing from a macOS or Linux maintainer computer.")]
 setup:
     ./scripts/setup-updates.sh
 
-# Check the committed version and GitHub state without pushing or tagging.
+[doc("Check the committed version and GitHub state without pushing or tagging.")]
 check:
     ./scripts/release.sh --dry-run
 
-# Push main, wait for CI, tag the Cargo version, and wait for GitHub publication.
+[doc("Push main, wait for CI, tag the Cargo version, and wait for GitHub publication.")]
 publish *args:
     ./scripts/release.sh "$@"

@@ -14,18 +14,10 @@ pub enum OwnershipPhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnershipEffect {
     None,
-    /// Take every configured EVIOCGRAB transactionally, then report the result
-    /// with `grab_succeeded` or `grab_failed`.
     AcquireGrabs,
-    /// Queue the reliable terminal state. Ungrabbing still waits for a complete
-    /// physical SYN_REPORT boundary.
     QueueTerminal,
-    /// Ungrab the complete capture set, then call `release_completed`.
     ReleaseGrabs,
-    /// A lifecycle failure cannot wait for network or another input frame.
-    /// Close the activation and ungrab immediately.
     CloseActivationAndReleaseGrabs,
-    /// Cancel an activation which never acquired physical ownership.
     CancelActivation,
 }
 
@@ -78,11 +70,6 @@ impl SourceOwnership {
         Ok(OwnershipEffect::None)
     }
 
-    /// Advances ownership only when every device is between complete evdev
-    /// frames. Arming additionally needs no key or button down, in both
-    /// tracked aggregate state and a fresh EVIOCGKEY observation. A finger on
-    /// a touchpad is not a press: an edge push made with the touchpad still
-    /// has it down.
     pub fn at_complete_boundary(
         &mut self,
         aggregate: &AggregateInputState,
@@ -153,8 +140,6 @@ impl SourceOwnership {
         }
     }
 
-    /// Confirms that the reliable terminal state reached the transport write
-    /// boundary. Physical grabs may be released only after this point.
     pub fn terminal_sent(&mut self) -> Result<(), OwnershipError> {
         if self.phase != OwnershipPhase::Releasing || !self.terminal_pending {
             return Err(OwnershipError::NoTerminalPending);
@@ -175,7 +160,6 @@ impl SourceOwnership {
         Ok(())
     }
 
-    /// Ends ownership now, without waiting for a terminal or a frame boundary.
     pub fn force_release(&mut self) -> OwnershipEffect {
         match self.phase {
             OwnershipPhase::Idle => OwnershipEffect::None,
@@ -202,8 +186,6 @@ struct DeviceInputState {
     in_frame: bool,
 }
 
-/// The codes a touchpad or tablet holds while a finger or tool touches it,
-/// which are not presses. Stylus buttons are, so they are not here.
 const CONTACTS: [KeyCode; 13] = [
     KeyCode::BTN_TOUCH,
     KeyCode::BTN_TOOL_PEN,
@@ -220,9 +202,6 @@ const CONTACTS: [KeyCode; 13] = [
     KeyCode::BTN_TOOL_QUADTAP,
 ];
 
-/// Physical key/button state is kept per evdev node so overlapping composite
-/// nodes do not release each other's keys. Neutrality is the union of all held
-/// state, and ownership changes only while no node has a partial frame.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AggregateInputState {
     devices: BTreeMap<PathBuf, DeviceInputState>,
@@ -248,7 +227,6 @@ impl AggregateInputState {
         self.devices.remove(path).is_some()
     }
 
-    /// Replaces what `path` holds with what the kernel reports it holds.
     pub fn resync_held(&mut self, path: &std::path::Path, held: impl IntoIterator<Item = KeyCode>) {
         if let Some(device) = self.devices.get_mut(path) {
             device.held = held.into_iter().collect();
@@ -289,10 +267,6 @@ impl AggregateInputState {
         self.devices.values().all(|device| device.held.is_empty())
     }
 
-    /// Whether no key or button is down, leaving out a finger or pen that
-    /// only touches a pad. A touchpad reports those as keys, so with one
-    /// finger resting on it the pointer could never move on to another
-    /// computer.
     pub fn nothing_pressed(&self) -> bool {
         self.devices
             .values()
@@ -312,7 +286,6 @@ impl AggregateInputState {
     }
 }
 
-/// Whether a held `key` only says that a finger or tool touches a pad.
 pub fn is_contact(key: KeyCode) -> bool {
     CONTACTS.contains(&key)
 }
@@ -347,7 +320,6 @@ mod tests {
             "the raw key state still lists the finger"
         );
         assert!(state.nothing_pressed());
-        // Clicking the pad is.
         state.observe(pad, key(KeyCode::BTN_LEFT, 1));
         state.observe(pad, report());
         assert!(!state.nothing_pressed());
@@ -358,8 +330,6 @@ mod tests {
 
     #[test]
     fn the_kernel_clears_a_key_whose_release_never_arrived() {
-        // A node keyd grabbed sends zflow no events, so a key held when
-        // zflow opened it only comes up in the kernel's state.
         let one = std::path::Path::new("/dev/input/event1");
         let mut aggregate = AggregateInputState::default();
         aggregate.add_device(one, [KeyCode::KEY_A]);
@@ -513,7 +483,6 @@ mod tests {
         );
         ownership.grab_failed().unwrap();
 
-        // Pressing the clickpad is a press.
         ownership.request_activation().unwrap();
         aggregate.observe(pad, key(KeyCode::BTN_LEFT, 1));
         aggregate.observe(pad, report());

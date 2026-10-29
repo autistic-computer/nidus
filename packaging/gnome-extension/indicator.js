@@ -15,8 +15,6 @@ export class Indicator {
         this._sharing = new PopupMenu.PopupSwitchMenuItem('Input Sharing', false);
         this._sharing.setSensitive(false);
         this._button.menu.addMenuItem(this._sharing);
-        // GNOME 50 emits toggled for setToggleState too, so only a person's
-        // flip may change sharing.
         this._updating = false;
         this._sharing.connect('toggled', (_item, enabled) => {
             if (!this._updating) this._run({command: 'set_sharing', enabled});
@@ -25,7 +23,6 @@ export class Indicator {
         this._busy = false;
         this._destroyed = false;
         this._client = new Client(snapshot => this._update(snapshot));
-        // Shell destroys the panel at session end without calling disable().
         this._button.connect('destroy', () => {
             this._destroyed = true;
             this._client.destroy();
@@ -38,7 +35,6 @@ export class Indicator {
         const title = statusText(snapshot);
         this._status.label.text = title;
         this._button.accessible_name = `zflow, ${title}`;
-        // The service answers sharing as null while it cannot be reached.
         const sharing = compatible(snapshot) ? snapshot.sharing : null;
         this._updating = true;
         this._sharing.setToggleState(sharing ?? false);

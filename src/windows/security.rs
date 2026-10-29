@@ -8,8 +8,6 @@ use windows_sys::Win32::{
     },
 };
 
-/// Private per-user engine state, including inherited permissions for new keys.
-/// Administrators retain their OS-level ability to take ownership.
 pub fn protect(path: &Path, directory: bool) -> Result<()> {
     ensure!(
         !std::fs::symlink_metadata(path)?.file_type().is_symlink(),

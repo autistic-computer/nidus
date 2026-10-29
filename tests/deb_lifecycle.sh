@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Exercise the real Debian lifecycle inside a disposable Ubuntu container.
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 architecture=$(dpkg --print-architecture)

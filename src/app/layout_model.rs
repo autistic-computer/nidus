@@ -12,7 +12,6 @@ use crate::desktop::{Display, Edge, MAX_SHARED_TILES, SharedLayout, Tile};
 pub const MAX_MONITORS: usize = MAX_SHARED_TILES;
 pub const MAX_COORDINATE: i32 = 100_000;
 pub const MAX_DIMENSION: u32 = 16_384;
-/// The farthest a move reaches for an edge to snap to.
 pub const MAX_SNAP: u32 = 2048;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,36 +46,23 @@ pub struct Transition {
     pub target_end: f64,
 }
 
-/// Where two screens touch: the line the settings window draws between
-/// them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Seam {
-    /// The screen left of the line, or above it.
     pub a: String,
-    /// The screen right of the line, or below it.
     pub b: String,
-    /// Whether the screens sit side by side, so the line stands upright.
     pub vertical: bool,
-    /// The line's x when it stands upright, else its y.
     pub at: i32,
-    /// Where the line starts and ends along its length.
     pub start: i32,
     pub end: i32,
-    /// Whether both screens belong to one computer. The pointer goes
-    /// between those as that computer's own display settings say, so it
-    /// crosses to another computer only at the other seams.
     pub same_computer: bool,
 }
 
-/// What a move would do, for the window to show while a screen is dragged.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Preview {
-    /// Where the dragged screen would land.
     pub x: i32,
     pub y: i32,
-    /// The seams of the layout the move would make.
     pub seams: Vec<Seam>,
 }
 
@@ -143,10 +129,6 @@ impl Layout {
         Ok(())
     }
 
-    /// The shared form of this layout. `keys` maps each paired computer's
-    /// name here to its key fingerprint. A tile for a computer that is not
-    /// paired is left out; `SharedLayout::with_others_from` puts back the
-    /// ones other computers placed.
     pub fn to_shared(
         &self,
         version: u64,
@@ -181,9 +163,6 @@ impl Layout {
         }
     }
 
-    /// This computer's view of a shared layout: its own tile is the local
-    /// one, and paired computers get their names here. Tiles of computers
-    /// that are not paired here are left out.
     pub fn from_shared(
         shared: &SharedLayout,
         own: &str,
@@ -260,9 +239,6 @@ impl Layout {
                 let start = a_start.max(b_start);
                 let end = a_end.min(b_end);
                 if start < end {
-                    // The desk arrangement takes priority even when the OS has
-                    // another local display across this edge. Native adapters
-                    // intercept these crossings before the cursor leaves it.
                     transitions.push(Transition {
                         source,
                         target,
@@ -278,7 +254,6 @@ impl Layout {
         transitions
     }
 
-    /// Where screens touch, each pair once. Inactive screens touch nothing.
     pub fn seams(&self) -> Vec<Seam> {
         if self.validate().is_err() {
             return Vec::new();
@@ -305,7 +280,6 @@ impl Layout {
                 if start >= end {
                     continue;
                 }
-                // Valid geometry keeps every edge well inside i32.
                 seams.push(Seam {
                     a: a.id.clone(),
                     b: b.id.clone(),
@@ -320,7 +294,6 @@ impl Layout {
         seams
     }
 
-    /// Snap to a nearby shared edge, or keep a valid free position. Reject overlap.
     pub fn snap_move(&self, index: usize, x: i32, y: i32, tolerance: i32) -> Option<(i32, i32)> {
         let moving = self.monitors.get(index)?;
         let (dx, dy) = self.snap(
@@ -332,10 +305,6 @@ impl Layout {
         Some((moving.x + dx, moving.y + dy))
     }
 
-    /// How far to move the screens at `members`, all alike, to go `(dx, dy)`
-    /// or against an edge of another screen within `tolerance` of there, as
-    /// [`Layout::snap_move`] does for one. The members keep where they are
-    /// to each other, so a computer moves with its own arrangement.
     pub fn snap_group(
         &self,
         members: &[usize],
@@ -346,10 +315,6 @@ impl Layout {
         self.snap(members, i64::from(dx), i64::from(dy), tolerance)
     }
 
-    /// The nearest edge within `tolerance` where nothing overlaps wins, else
-    /// `(dx, dy)` itself where nothing overlaps there. Each member is tried
-    /// against each side of each other screen, lined up with that side's
-    /// start, end or middle when one is within `tolerance` too.
     fn snap(&self, members: &[usize], dx: i64, dy: i64, tolerance: i32) -> Option<(i32, i32)> {
         if !(0..=MAX_COORDINATE).contains(&tolerance) || members.is_empty() {
             return None;
@@ -369,7 +334,6 @@ impl Layout {
             .map(|(_, other)| other.bounds())
             .collect();
         let range = i64::from(-MAX_COORDINATE)..=i64::from(MAX_COORDINATE);
-        // Bounds, not clones: a drag asks this for every pointer motion.
         let fits = |ex: i64, ey: i64| {
             moving
                 .iter()
@@ -394,8 +358,6 @@ impl Layout {
             let (width, height) = (i64::from(monitor.width), i64::from(monitor.height));
             let (to_x, to_y) = (x + dx, y + dy);
             for &(left, top, right, bottom) in &others {
-                // Each side of the other screen: where the dragged one would
-                // touch it, and the span along that side.
                 let sides = [
                     (true, left - width, top, bottom, height, to_y),
                     (true, right, top, bottom, height, to_y),
@@ -403,8 +365,6 @@ impl Layout {
                     (false, bottom, left, right, width, to_x),
                 ];
                 for (upright, across, start, end, size, dragged) in sides {
-                    // Lined up with the side's start, end or middle beats
-                    // where it was dragged, when that is near enough.
                     let mut lined_up = [start, end - size, start + (end - start - size) / 2];
                     lined_up.sort_by_key(|along| (along - dragged).abs());
                     let along = lined_up
@@ -440,9 +400,6 @@ impl Layout {
         best.map(|(_, delta)| delta).or_else(|| fits(dx, dy))
     }
 
-    /// This layout with screen `id` at `(x, y)`, or against an edge within
-    /// `tolerance` of there. With `computer`, every screen of its computer
-    /// moves alike.
     pub fn moved(&self, id: &str, x: i32, y: i32, tolerance: u32, computer: bool) -> Result<Self> {
         let index = self
             .monitors
@@ -473,8 +430,6 @@ impl Layout {
         Ok(moved)
     }
 
-    /// What [`Layout::moved`] would make, without keeping it. None where
-    /// the screens cannot go.
     pub fn preview(
         &self,
         id: &str,
@@ -508,7 +463,6 @@ impl Contents for Layout {
 }
 
 impl LayoutDocument {
-    /// Opens the layout saved beside the configuration as `NAME.layout.toml`.
     pub fn beside(config_path: &Path) -> Result<Self> {
         let mut file_name = config_path
             .file_name()
@@ -540,7 +494,6 @@ mod tests {
     #[test]
     fn a_shared_layout_reads_the_same_arrangement_on_both_computers() {
         let (mac, ubuntu) = (format!("{:064x}", 1), format!("{:064x}", 2));
-        // The Mac's layout, with a computer it paired and one it forgot.
         let on_mac = Layout {
             monitors: vec![
                 monitor("local", 0, 0, 3008, 1692),
@@ -554,7 +507,6 @@ mod tests {
         assert_eq!((shared.version, &shared.editor), (7, &mac));
         assert_eq!(shared.tiles.len(), 2, "the forgotten computer is left out");
 
-        // Ubuntu calls the Mac "MacBook"; its own tile becomes the local one.
         let ubuntu_keys = BTreeMap::from([("MacBook".to_owned(), mac.clone())]);
         let on_ubuntu = Layout::from_shared(&shared, &ubuntu, "This computer", &ubuntu_keys);
         let local = on_ubuntu
@@ -581,14 +533,12 @@ mod tests {
             "one edge in each direction"
         );
 
-        // A computer Ubuntu has not paired is not placed there.
         let stranger = Layout::from_shared(&shared, &ubuntu, "This computer", &BTreeMap::new());
         assert_eq!(stranger.monitors.len(), 1);
     }
 
     #[test]
     fn a_peers_layout_adds_no_trust() {
-        // A peer placed a computer this one has only found on its shelf.
         let [own, desk, found] = [1, 2, 3].map(|n| format!("{n:064x}"));
         let tile = |key: &String, x| Tile {
             display: None,
@@ -604,8 +554,6 @@ mod tests {
             tiles: vec![tile(&own, 0), tile(&desk, 1920), tile(&found, -1920)],
         };
         let keys = BTreeMap::from([("desk".to_owned(), desk)]);
-        // Its tile is not shown here, so no crossing leads to it. The next
-        // layout this computer writes keeps it where the peer put it.
         let here = Layout::from_shared(&from_desk, &own, "This computer", &keys);
         let ids: Vec<&str> = here.monitors.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids, ["local", "peer:desk"]);
@@ -773,9 +721,7 @@ mod tests {
                 monitor("laptop", 1000, 1000, 100, 60),
             ],
         };
-        // Under the monitor, a little off its middle.
         assert_eq!(layout.snap_move(1, 104, 205, 10), Some((100, 200)));
-        // Beside it, level with its middle.
         assert_eq!(layout.snap_move(1, 303, 66, 10), Some((300, 70)));
     }
 
@@ -809,7 +755,6 @@ mod tests {
                 seam("local/2", "laptop", false, 100, 100, 150, false),
             ]
         );
-        // An unplugged screen keeps its place but touches nothing.
         layout.monitors[1].display = Some(Display {
             id: "2".into(),
             name: "Studio Display".into(),
@@ -828,7 +773,6 @@ mod tests {
 
     #[test]
     fn a_computer_moves_with_its_own_arrangement() {
-        // This computer has two screens side by side; the laptop is apart.
         let mut layout = Layout {
             monitors: vec![
                 monitor("local", 0, 0, 100, 100),
@@ -837,8 +781,6 @@ mod tests {
             ],
         };
         layout.monitors[1].peer = None;
-        // Dragged by its first screen, the second one lands against the
-        // laptop and pulls the first along.
         let moved = layout.moved("local", 296, 470, 10, true).unwrap();
         let at = |layout: &Layout, id: &str| {
             let screen = layout.monitors.iter().find(|m| m.id == id).unwrap();
@@ -852,13 +794,11 @@ mod tests {
             Some((300, 470)),
             "the same, by index"
         );
-        // One screen alone leaves its neighbor where it was.
         let alone = layout.moved("local/2", 420, 20, 0, false).unwrap();
         assert_eq!(
             (at(&alone, "local"), at(&alone, "local/2")),
             ((0, 0), (420, 20))
         );
-        // The whole computer cannot go where any of its screens overlaps.
         let error = layout.moved("local", 420, 450, 0, true).unwrap_err();
         assert!(error.to_string().contains("overlap"), "{error}");
         let error = layout.moved("gone", 0, 0, 0, true).unwrap_err();
@@ -885,9 +825,6 @@ mod tests {
 
     #[test]
     fn a_step_shorter_than_the_tolerance_leaves_a_seam() {
-        // Arrow keys move 100 units and snap within 99, so a step away from
-        // the seam is not pulled back to it, and a step into a neighbor
-        // stops against it.
         let layout = Layout {
             monitors: vec![
                 monitor("local", 0, 0, 100, 100),
@@ -899,7 +836,6 @@ mod tests {
         assert!(away.seams().is_empty());
         let back = away.moved("desk", 130, 0, 99, true).unwrap();
         assert_eq!(back.monitors[1].x, 100);
-        // The old tolerance snapped the step straight back.
         assert_eq!(
             layout.moved("desk", 200, 0, 150, true).unwrap().monitors[1].x,
             100

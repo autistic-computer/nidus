@@ -1,8 +1,3 @@
-//! Linux: the desktop agent keeps the login item and the service log, the
-//! `zflow update` command checks and installs releases, and GNOME Shell
-//! runs the extension the window helps set up. GNOME's panel menu comes from
-//! that extension, so there is no tray icon here.
-
 use std::{collections::HashMap, path::PathBuf, process::Command, time::Duration};
 
 use anyhow::{Context as _, Result, anyhow, bail};
@@ -13,19 +8,15 @@ use zz_gpui::{App, AppContext as _, Context, Entity, Task};
 use super::Updates;
 
 const UUID: &str = "zflow@demfabris";
-/// How often the window checks on the extension.
 const SETUP_POLL: Duration = Duration::from_secs(2);
-/// How often it checks for a release while it is open.
 const UPDATE_INTERVAL: Duration = Duration::from_hours(6);
 
-/// GNOME Shell's `ExtensionState` values.
 const ACTIVE: f64 = 1.0;
 const INACTIVE: f64 = 2.0;
 const ERROR: f64 = 3.0;
 const OUT_OF_DATE: f64 = 4.0;
 const INITIALIZED: f64 = 6.0;
 
-/// What the extension still needs before zflow works here.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Setup {
     Install,
@@ -64,23 +55,16 @@ impl Setup {
     }
 }
 
-/// What GNOME Shell reports for the extension and what is on disk, read off
-/// the UI thread.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ExtensionFacts {
-    /// None while GNOME Shell does not know the extension.
     pub state: Option<f64>,
-    /// The version GNOME Shell loaded.
     pub loaded_version: Option<String>,
     pub loaded_from_store: bool,
-    /// The copy on disk, which GNOME loads at the next login.
     pub installed: bool,
     pub installed_version: Option<String>,
     pub installed_from_store: bool,
 }
 
-/// The step the window offers, from what GNOME and the disk say, and whether
-/// the agent finds the extension older than itself.
 pub fn setup_step(facts: &ExtensionFacts, older_extension: bool) -> Option<Setup> {
     let Some(state) = facts.state else {
         return Some(if facts.installed {
@@ -90,8 +74,6 @@ pub fn setup_step(facts: &ExtensionFacts, older_extension: bool) -> Option<Setup
         });
     };
     let from_store = facts.loaded_from_store || facts.installed_from_store;
-    // Shell reports its loaded metadata, which stays old until a new login.
-    // Copies from extensions.gnome.org follow GNOME's own updates.
     let pending = !facts.loaded_from_store
         && !facts.installed_from_store
         && facts
@@ -131,12 +113,9 @@ struct UpdatePreference {
 pub struct Services {
     pub updates: Updates,
     pub setup: Option<Setup>,
-    /// Why the last setup step failed.
     pub setup_error: Option<String>,
     pub setup_busy: bool,
-    /// A release that can be installed here, by its tag.
     pub installable: Option<String>,
-    /// A newer zflow is installed; the window has to restart to use it.
     pub restart_needed: bool,
     pub installing: bool,
     older_extension: bool,
@@ -197,8 +176,6 @@ impl Services {
         }
     }
 
-    /// The agent says when the extension is older than itself, which the
-    /// extension's own state does not show.
     pub fn observe(&mut self, snapshot: &crate::model::Snapshot) {
         self.older_extension = snapshot.health.iter().any(|row| {
             row.id == "desktop" && row.detail.contains("GNOME extension is older than the app")
@@ -215,7 +192,6 @@ impl Services {
         cx.notify();
     }
 
-    /// Checks for a release. An automatic check skips a metered connection.
     pub fn check(&mut self, automatic: bool, cx: &mut Context<Self>) {
         if self.updates.checking || self.installing || self.restart_needed {
             return;
@@ -276,7 +252,6 @@ impl Services {
         }
     }
 
-    /// Installs `tag` with the system's approval, then restarts the window.
     pub fn install(&mut self, tag: String, cx: &mut Context<Self>) {
         if self.installing {
             return;
@@ -308,7 +283,6 @@ impl Services {
         .detach();
     }
 
-    /// Takes the extension's next setup step.
     pub fn act(&mut self, model: &Entity<crate::model::Model>, cx: &mut Context<Self>) {
         let Some(step) = self.setup else { return };
         self.setup_busy = true;
@@ -321,7 +295,6 @@ impl Services {
         });
         cx.spawn(async move |this, cx| {
             let result = match install {
-                // GNOME asks before it downloads, so this waits for the person.
                 Some(answer) => answer
                     .recv()
                     .await
@@ -349,24 +322,17 @@ pub fn init(cx: &mut App) -> Entity<Services> {
     services
 }
 
-/// The window is the app here: closing it quits, and GNOME's panel menu
-/// comes from the extension.
 pub const LIVES_IN_TRAY: bool = false;
 
-/// The session bus name one running copy owns, as GTK apps do: opening zflow
-/// again shows that copy's window, and `--quit` asks it to quit.
 const BUS_NAME: &str = "io.zflow.zflow";
 const BUS_PATH: &str = "/io/zflow/zflow";
 const APPLICATION: &str = "org.freedesktop.Application";
 
 enum Ask {
-    /// With the activation token the other copy's launcher gave it, which
-    /// Wayland needs to raise this window.
     Show(Option<String>),
     Quit,
 }
 
-/// The token GTK and launchers put in an activation's platform data.
 const ACTIVATION_TOKEN: &str = "activation-token";
 
 fn activation_token(mut platform_data: HashMap<String, OwnedValue>) -> Option<String> {
@@ -375,11 +341,9 @@ fn activation_token(mut platform_data: HashMap<String, OwnedValue>) -> Option<St
         .and_then(|value| String::try_from(value).ok())
 }
 
-/// The bus connection that owns [`BUS_NAME`], and what other copies ask.
 static INSTANCE: std::sync::OnceLock<(zbus::blocking::Connection, async_channel::Receiver<Ask>)> =
     std::sync::OnceLock::new();
 
-/// freedesktop's application interface, which launchers also call.
 struct Instance(async_channel::Sender<Ask>);
 
 #[zbus::interface(name = "org.freedesktop.Application")]
@@ -407,8 +371,6 @@ impl Instance {
     }
 }
 
-/// Runs before the app starts. False ends it there: another copy runs and
-/// was asked to show its window or quit.
 pub fn before_start(arguments: &crate::Arguments) -> bool {
     match claim_instance() {
         Ok(true) => !arguments.quit,
@@ -418,7 +380,6 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
             }
             false
         }
-        // Without a session bus, run alone.
         Err(error) => {
             log::warn!("zflow runs without checking for another copy: {error:#}");
             !arguments.quit
@@ -426,7 +387,6 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
     }
 }
 
-/// Serves [`Instance`] and takes [`BUS_NAME`]. False if another copy has it.
 fn claim_instance() -> Result<bool> {
     zflow::app::client::on_bus_runtime(|| {
         let bus = zbus::blocking::Connection::session()?;
@@ -471,7 +431,6 @@ fn ask_running(quit: bool) -> Result<()> {
     Ok(())
 }
 
-/// Answers other copies once the app runs.
 fn answer_other_copies(cx: &mut App) {
     let Some((_, inbox)) = INSTANCE.get() else {
         return;
@@ -499,7 +458,6 @@ fn answer_other_copies(cx: &mut App) {
     .detach();
 }
 
-/// The agent keeps the configuration; the window only names it.
 pub fn default_config() -> PathBuf {
     "/etc/zflow/zflow.toml".into()
 }
@@ -526,8 +484,6 @@ pub fn start(
 
 pub fn window_shown(_: &mut App) {}
 
-/// Closing the window quits, which would cut off an update mid-install and
-/// the restart after it.
 pub fn may_close(cx: &App) -> bool {
     cx.try_global::<super::SharedServices>()
         .is_none_or(|services| !services.0.read(cx).installing)
@@ -535,10 +491,7 @@ pub fn may_close(cx: &App) -> bool {
 
 pub fn notification_response(_: &zz_gpui::SystemNotificationResponse, _: &mut App) {}
 
-/// Starts this window again from the newly installed zflow.
 pub fn restart(cx: &mut App) {
-    // The new copy must find the name free, or it would ask this one to
-    // show its window and end.
     if let Some((bus, _)) = INSTANCE.get() {
         let _ = zflow::app::client::on_bus_runtime(|| Ok(bus.release_name(BUS_NAME)?));
     }
@@ -548,7 +501,6 @@ pub fn restart(cx: &mut App) {
     }
 }
 
-/// The `zflow` command beside this app, or the one `zflow settings` named.
 fn zflow_executable() -> PathBuf {
     if let Some(path) = std::env::var_os("ZFLOW_EXECUTABLE") {
         return path.into();
@@ -601,7 +553,6 @@ fn save_automatic(automatic: bool) -> Result<()> {
     Ok(())
 }
 
-/// Whether `NetworkManager` says the connection is metered.
 fn metered() -> bool {
     let Ok(bus) = zflow::app::client::system_bus() else {
         return false;
@@ -617,7 +568,6 @@ fn metered() -> bool {
         .ok()
         .and_then(|reply| reply.body().deserialize::<OwnedValue>().ok())
         .and_then(|value| u32::try_from(value).ok());
-    // NM_METERED_YES and NM_METERED_GUESS_YES.
     matches!(metered, Some(1 | 3))
 }
 
@@ -652,7 +602,6 @@ fn extension_facts() -> Result<ExtensionFacts> {
     })
 }
 
-/// The extension's metadata on disk, where GNOME looks at login.
 fn installed_metadata() -> Option<serde_json::Value> {
     let data = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -694,7 +643,6 @@ fn take_step(step: Setup) -> Result<()> {
             if step != Setup::Update {
                 enable_at_login()?;
             }
-            // GNOME shows its own confirmation first.
             bus.call_method(
                 Some("org.gnome.SessionManager"),
                 "/org/gnome/SessionManager",
@@ -708,7 +656,6 @@ fn take_step(step: Setup) -> Result<()> {
     Ok(())
 }
 
-/// Makes GNOME turn the extension on when it loads it at the next login.
 fn enable_at_login() -> Result<()> {
     let read = |key: &str| -> Result<Vec<String>> {
         let output = Command::new("gsettings")
@@ -743,7 +690,6 @@ fn enable_at_login() -> Result<()> {
     Ok(())
 }
 
-/// A `GVariant` string array as `gsettings get` prints it.
 fn parse_strv(text: &str) -> Vec<String> {
     let text = text.trim().trim_start_matches("@as ");
     text.trim_start_matches('[')
@@ -753,8 +699,6 @@ fn parse_strv(text: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .collect()
 }
-
-// What the pages show for Linux.
 
 use zflow::app::api::{Action, Health, Peer, Request};
 use zz_gpui::{AnyElement, IntoElement, ParentElement as _, Styled as _, Window, div, px};
@@ -768,15 +712,12 @@ use zz_gpui_kit::{
 
 use crate::{model::Snapshot, widgets, window::ZflowWindow};
 
-/// Linux computers can be looked at through a Mac's lens.
 pub const CAN_SHARE_SCREEN: bool = true;
-/// Each computer's control of this one can be turned off.
 pub const CAN_REFUSE_CONTROL: bool = true;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this computer’s own screens, the pointer follows GNOME’s display settings.";
 
-/// The extension's next setup step, above every page.
 pub fn banner(
     this: &mut ZflowWindow,
     _: &mut Window,
@@ -816,7 +757,6 @@ pub fn banner(
     )
 }
 
-/// Handles a fix that opens something here. Returns whether it did.
 pub fn fix(_: &mut ZflowWindow, _: &str, _: &mut Window, _: &mut Context<ZflowWindow>) -> bool {
     false
 }
@@ -834,7 +774,6 @@ pub fn first_run_cards(
     Vec::new()
 }
 
-/// GNOME's own display settings, where this computer's screens are arranged.
 pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     which("gnome-control-center")?;
     Some(
@@ -868,7 +807,6 @@ pub fn peer_entries(
     Vec::new()
 }
 
-/// Start at login, which the agent keeps.
 pub fn login_entry(
     _: &mut ZflowWindow,
     snapshot: &Snapshot,

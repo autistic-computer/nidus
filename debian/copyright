@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: zflow
-Source: https://github.com/demfabris/zflow
+Source: https://github.com/autistic-computer/zflow
 
 Files: *
 Copyright: 2026 Fabricio Dematte and contributors

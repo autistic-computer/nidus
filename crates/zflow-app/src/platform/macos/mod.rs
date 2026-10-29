@@ -1,6 +1,3 @@
-//! macOS: the engine runs in this process, zflow lives in the menu bar, and
-//! the app keeps what only it can: the login item, the Wi-Fi helper,
-//! Sparkle's updates and the permissions macOS asks about.
 #![allow(
     unsafe_code,
     reason = "ServiceManagement and AppKit calls the objc2 bindings mark unsafe"
@@ -41,24 +38,17 @@ use crate::{
     window::ZflowWindow,
 };
 
-/// A Mac can look at another computer's screen, not be looked at.
 pub const CAN_SHARE_SCREEN: bool = false;
-/// Each computer's control of this Mac can be turned off.
 pub const CAN_REFUSE_CONTROL: bool = true;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this Mac’s own screens, the pointer follows System Settings › Displays.";
 
-/// zflow lives in the menu bar; closing the window keeps it running.
 pub const LIVES_IN_TRAY: bool = true;
 
 const UPDATE_TAG: &str = "update";
-/// How often the login item and the helper are checked.
 const SERVICES_TICK: Duration = Duration::from_secs(10);
-/// How long Local Network may read blocked before the window says so: it
-/// reads blocked until the person answers macOS.
 const NETWORK_GRACE: Duration = Duration::from_secs(5);
-/// How long quitting waits for the engine to stop.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(5);
 
 actions!(
@@ -74,9 +64,6 @@ actions!(
     ]
 );
 
-/// Where zflow runs from. Gatekeeper runs a quarantined app from a temporary
-/// read-only copy until Finder moves it, and a disk image goes away when it
-/// is ejected, so both need a move to Applications first.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppLocation {
     pub path: String,
@@ -86,11 +73,9 @@ pub struct AppLocation {
 }
 
 impl AppLocation {
-    /// Where this process runs from, which can't change while it runs.
     pub fn main() -> Self {
         let path = NSBundle::mainBundle().bundlePath().to_string();
         let c_path = std::ffi::CString::new(path.clone()).unwrap_or_default();
-        // SAFETY: a NUL-terminated path and a size-only query.
         let quarantined = unsafe {
             libc::getxattr(
                 c_path.as_ptr(),
@@ -101,7 +86,6 @@ impl AppLocation {
                 0,
             ) >= 0
         };
-        // SAFETY: `statfs` fills the zeroed struct for a NUL-terminated path.
         let read_only = unsafe {
             let mut stats: libc::statfs = std::mem::zeroed();
             libc::statfs(c_path.as_ptr(), &raw mut stats) == 0
@@ -115,7 +99,6 @@ impl AppLocation {
         }
     }
 
-    /// Local builds under target/ carry no quarantine flag, so they stay put.
     pub fn needs_move(&self) -> bool {
         if self.path.contains("/AppTranslocation/") {
             return true;
@@ -134,10 +117,8 @@ impl AppLocation {
     }
 }
 
-/// How macOS treats zflow reading what other apps copied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PasteAccess {
-    /// macOS has not asked yet.
     Default,
     Ask,
     AlwaysAllow,
@@ -157,12 +138,10 @@ fn paste_access() -> PasteAccess {
     }
 }
 
-/// What the Reduce Wi-Fi lag row says about its helper.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Helper {
     pub ready: bool,
     pub note: String,
-    /// The row's fix, when there is one.
     pub action: Option<&'static str>,
     pub busy: bool,
 }
@@ -172,32 +151,25 @@ pub struct Services {
     sparkle: Option<sparkle::Sparkle>,
     pub login: bool,
     pub helper: Helper,
-    /// Only a build signed by a team can install the helper.
     pub has_team: bool,
     pub paste: PasteAccess,
     pub location: AppLocation,
-    /// Since when Local Network has read blocked.
     network_blocked: Option<Instant>,
-    /// The first-run page asked to look for computers.
     discovered: bool,
-    /// The Mac stays out of App Nap while it shares input.
     activity: Option<Retained<ProtocolObject<dyn NSObjectProtocol>>>,
     watching_accessibility: Option<Task<()>>,
     _tasks: Vec<Task<()>>,
 }
 
 fn login_status() -> SMAppServiceStatus {
-    // SAFETY: a class method with no arguments.
     unsafe { SMAppService::mainAppService().status() }
 }
 
 fn helper_service() -> Retained<SMAppService> {
-    // SAFETY: a class method taking the plist's name.
     unsafe { SMAppService::daemonServiceWithPlistName(&NSString::from_str("io.zflow.awdl.plist")) }
 }
 
 fn open_login_items() {
-    // SAFETY: a class method with no arguments.
     unsafe { SMAppService::openSystemSettingsLoginItems() };
 }
 
@@ -220,8 +192,6 @@ impl Services {
                 let Ok(()) = this.update(cx, |services, cx| {
                     match event {
                         sparkle::Event::Found { version, shown } => {
-                            // A menu bar icon is easy to miss, so a
-                            // notification goes with a background find.
                             if !shown {
                                 cx.show_system_notification(SystemNotification {
                                     tag: UPDATE_TAG.into(),
@@ -286,7 +256,6 @@ impl Services {
 
     pub fn set_login(&mut self, on: bool, cx: &mut Context<Self>) {
         let service = unsafe { SMAppService::mainAppService() };
-        // SAFETY: registering or unregistering this app's own login item.
         let result = unsafe {
             if on && service.status() != SMAppServiceStatus::RequiresApproval {
                 service.registerAndReturnError()
@@ -310,8 +279,6 @@ impl Services {
         cx.notify();
     }
 
-    /// Reads the helper's state; `ready` comes from a check off the UI
-    /// thread.
     fn read_helper(&mut self, answered: Option<bool>) {
         if !self.has_team {
             self.helper = Helper {
@@ -352,7 +319,6 @@ impl Services {
         };
     }
 
-    /// Installs the helper, or sends the person to approve it.
     pub fn fix_helper(&mut self, model: Entity<Model>, cx: &mut Context<Self>) {
         if self.helper.busy || !self.has_team {
             return;
@@ -364,10 +330,7 @@ impl Services {
         if status == SMAppServiceStatus::RequiresApproval {
             open_login_items();
         } else if status == SMAppServiceStatus::Enabled && self.helper.ready {
-            // Unregistering disables the item, and macOS refuses an
-            // immediate register, so a working helper is left alone.
         } else {
-            // SAFETY: (re)registering this app's own launch daemon.
             let result = unsafe {
                 if status == SMAppServiceStatus::Enabled {
                     let _ = service.unregisterAndReturnError();
@@ -399,8 +362,6 @@ impl Services {
         .detach();
     }
 
-    /// The services' slow checks: the login item always, the helper only
-    /// while Reduce Wi-Fi lag is on, since checking it means a call to it.
     fn tick(&mut self, model: &Entity<Model>, cx: &mut Context<Self>) {
         self.login = login_status() == SMAppServiceStatus::Enabled;
         self.refresh_updates();
@@ -413,11 +374,7 @@ impl Services {
         cx.notify();
     }
 
-    /// Follows the snapshot: App Nap while sharing, paste access, and how
-    /// long Local Network has read blocked.
     fn observe(&mut self, snapshot: &Snapshot, cx: &mut Context<Self>) {
-        // The engine polls input on 1 to 12 ms timers. App Nap and timer
-        // coalescing would stutter the pointer and delay crossings.
         let sharing = snapshot.sharing == Some(true);
         let info = NSProcessInfo::processInfo();
         match (sharing, self.activity.take()) {
@@ -482,12 +439,10 @@ fn set_policy(regular: bool) {
     }
 }
 
-/// The app gets its Dock icon while the window is open.
 pub fn window_shown(_: &mut App) {
     set_policy(true);
 }
 
-/// The app stays in the menu bar, so the window always closes.
 pub fn may_close(_: &App) -> bool {
     true
 }
@@ -508,7 +463,6 @@ pub fn start(
     arguments: &crate::Arguments,
     cx: &mut App,
 ) {
-    // Without a window, zflow lives in the menu bar only.
     set_policy(false);
     cx.on_window_closed(|cx, _| {
         if cx.windows().is_empty() {
@@ -540,8 +494,6 @@ pub fn start(
         })
         .detach();
     }
-    // A receiver can drop the session while the Mac sleeps, and the link
-    // would still look ready until its next keep-alive.
     {
         let model = model.clone();
         cx.on_system_wake(move |cx| model.read(cx).send(Request::Retry))
@@ -552,8 +504,6 @@ pub fn start(
     crate::lens::init(model, cx);
     {
         let model = model.clone();
-        // GPUI gives quit handlers 200 ms, too little for the engine to let
-        // go of keys it holds for a peer, so this waits here instead.
         cx.on_app_quit(move |cx| {
             let done = model.read(cx).shutdown();
             let deadline = Instant::now() + SHUTDOWN_WAIT;
@@ -566,8 +516,6 @@ pub fn start(
         })
         .detach();
     }
-    // The engine's first answer says whether any computer is paired; the
-    // window opens on its own only when there is something to do.
     let show_settings = arguments.show_settings;
     let needs_move = services.read(cx).location.needs_move();
     let model = model.clone();
@@ -654,7 +602,6 @@ fn install_menus(cx: &mut App) {
     ]);
 }
 
-/// Opens Sparkle's check, from the menu.
 pub fn check_updates(cx: &mut App) {
     if let Some(services) = cx
         .try_global::<super::SharedServices>()
@@ -664,7 +611,6 @@ pub fn check_updates(cx: &mut App) {
     }
 }
 
-/// Quits: the engine lets go of any input a peer holds first.
 pub fn quit(cx: &mut App) {
     cx.quit();
 }
@@ -686,8 +632,6 @@ fn open_accessibility(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
     watch_accessibility(this, cx);
 }
 
-/// While Accessibility is missing, checks it faster than the engine's own
-/// ticks, and comes back from System Settings once it is on.
 fn watch_accessibility(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
     let model = this.model.clone();
     let task = cx.spawn(async move |_, cx| {
@@ -709,8 +653,6 @@ fn watch_accessibility(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
     });
 }
 
-/// Looking for computers is what makes macOS ask; once it has, the switch is
-/// in System Settings.
 fn allow_local_network(this: &ZflowWindow, cx: &App) {
     if this
         .model
@@ -726,11 +668,8 @@ fn allow_local_network(this: &ZflowWindow, cx: &App) {
     }
 }
 
-/// The first read makes macOS ask, which also lists zflow in System
-/// Settings; after that, the switch is there.
 fn allow_paste(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
     if paste_access() == PasteAccess::Default {
-        // SAFETY: reading the general pasteboard's string, as any copy does.
         let _ = unsafe { NSPasteboard::generalPasteboard().stringForType(NSPasteboardTypeString) };
         this.services.update(cx, |services, cx| {
             services.paste = paste_access();
@@ -741,8 +680,6 @@ fn allow_paste(this: &mut ZflowWindow, cx: &mut Context<ZflowWindow>) {
     }
 }
 
-/// "Move zflow to Applications", above every page while it runs from a
-/// disk image or a temporary copy.
 #[allow(
     clippy::unnecessary_wraps,
     reason = "every platform answers with the same signature"
@@ -776,7 +713,6 @@ pub fn banner(
     )
 }
 
-/// The app handles the fixes that open something here.
 pub fn fix(
     this: &mut ZflowWindow,
     command: &str,
@@ -792,8 +728,6 @@ pub fn fix(
     true
 }
 
-/// A health row's fix: the engine's own, or, for the clipboard row while
-/// macOS keeps zflow from reading the pasteboard, one the app adds.
 pub fn health_action(row: &Health, cx: &App) -> Option<Action> {
     if let Some(action) = &row.action {
         return Some(action.clone());
@@ -809,7 +743,6 @@ pub fn health_action(row: &Health, cx: &App) -> Option<Action> {
     })
 }
 
-/// A step that still needs the person, with the button that does it.
 fn card(
     id: &'static str,
     icon: IconName,
@@ -838,7 +771,6 @@ pub fn first_run_cards(
     _: &mut Window,
     cx: &mut Context<ZflowWindow>,
 ) -> Vec<AnyElement> {
-    // Looking for computers is what makes macOS ask for Local Network access.
     if !this.services.read(cx).discovered {
         this.services
             .update(cx, |services, _| services.discovered = true);
@@ -928,7 +860,6 @@ pub fn login_entry(
             "Start at login",
             "Open zflow in the menu bar when you log in.",
         )
-        // A login item would point at the disk image or a temporary copy.
         .disabled(needs_move)
         .control(Switch::new("login").checked(on).on_click(cx.listener(
             |this, on: &bool, _, cx| {
@@ -948,7 +879,6 @@ pub fn settings_stacks(
     let platform = snapshot.platform.clone().unwrap_or_default();
     let services = this.services.read(cx);
     let mut stacks = Vec::new();
-    // Only a signed build can install the helper this needs.
     if services.has_team {
         let enabled = platform.block_awdl == Some(true);
         let helper = services.helper.clone();
@@ -1123,8 +1053,6 @@ pub fn this_computer_entries(
     ]
 }
 
-/// The menu bar icon: the zflow mark as a template image the bar tints,
-/// dimmed while zflow needs the person, or the update arrow.
 pub fn tray_look(healthy: bool, update: bool) -> zz_gpui_tray::TrayIcon {
     let svg = if update {
         UPDATE_SVG.to_owned()
@@ -1137,9 +1065,7 @@ pub fn tray_look(healthy: bool, update: bool) -> zz_gpui_tray::TrayIcon {
     }
 }
 
-/// The zflow mark from assets/logo.svg.
 const MARK_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="166 149 640 640" fill-opacity="OPACITY"><path d="M766 212C780 208 792 220 788 234L680 640C676 655 655 657 648 643L590 530L414 706C402 718 382 718 370 706L318 654C306 642 306 622 318 610L494 434L381 376C367 369 369 348 384 344Z"/><path d="M188 474L274 388C283 379 297 379 306 388L324 406C333 415 333 429 324 438L238 524C229 533 215 533 206 524L188 506C179 497 179 483 188 474ZM204 670L234 640C243 631 257 631 266 640L284 658C293 667 293 681 284 690L254 720C245 729 231 729 222 720L204 702C195 693 195 679 204 670Z"/></svg>"#;
-/// A circled arrow pointing down, while an update waits.
 const UPDATE_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v9M8 12.5l4 4 4-4"/></svg>"#;
 
 #[cfg(test)]

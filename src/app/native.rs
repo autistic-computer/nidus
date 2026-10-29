@@ -31,27 +31,14 @@ use std::{
 
 const MAINTENANCE: Duration = Duration::from_secs(2);
 const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(5);
-/// Once allowed, the probe only watches for access being turned off, and each
-/// probe that goes through is a packet on the network.
 const LOCAL_NETWORK_RECHECK: Duration = Duration::from_secs(60);
-/// Each refused tap leaks a Mach port inside CoreGraphics.
 const TAP_RECHECK: Duration = Duration::from_secs(10);
-/// A paired computer's tile until it writes its own size, as the Linux
-/// daemon starts one.
 const PEER_TILE_SIZE: (u32, u32) = (1920, 1080);
-/// How often the computers around are weighed: who to say hello to, where
-/// paired ones are now, and whether the pairing window lets one join.
 const NEIGHBORS_TICK: Duration = Duration::from_secs(1);
-/// Hellos this Mac sends at once.
 const MAX_HELLOS: usize = 4;
-/// Joined notices kept for the window to post.
 const MAX_NOTICES: usize = 8;
-/// Present in the state directory once setup asked to look for computers,
-/// so a Mac with nothing paired yet keeps listening after a restart.
 const DISCOVER_FILE: &str = "discover";
 
-/// The layout every paired computer keeps, saved beside the configuration
-/// as `NAME.shared-layout.toml`. Empty until this Mac first connects.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 struct Kept {
@@ -80,8 +67,6 @@ fn shared_layout_path(config_path: &Path) -> Result<PathBuf> {
     Ok(config_path.with_file_name(file_name))
 }
 
-/// The rows under the shared ones in the Mac settings window. The app adds
-/// what only it knows: the helper, the login item and where it runs from.
 #[derive(Serialize)]
 pub(super) struct MacPlatform {
     accessibility: bool,
@@ -91,37 +76,24 @@ pub(super) struct MacPlatform {
 
 pub(crate) struct NativeApp {
     document: ConfigDocument,
-    /// What the window arranges. Once a shared layout exists, this Mac's
-    /// view of it.
     layout: LayoutDocument,
     shared: Document<Kept>,
-    // The observer drops first, so a live crossing is told to return input
-    // before the links wait for their sessions to close.
     observer: Observer,
     links: Links,
-    /// Tells the local network where peers connect, while this Mac listens.
     advertiser: Option<Advertiser>,
     nearby: NearbyBrowser,
-    /// The computers around and what their hellos said.
     neighbors: Neighbors,
-    /// The records last given to `neighbors`.
     instances: BTreeSet<String>,
     neighbors_at: Instant,
-    /// This Mac's key, read once, and the hello client made with it.
     identity: Option<Identity>,
     hello_client: Option<HelloClientConfig>,
     window: PairingWindow,
-    /// Computers that joined, newest last, for the window to post once.
     notices: Vec<Notice>,
-    /// Computers a person forgot here, which no introduction adds back.
     forgotten: Forgotten,
-    /// Receiver desktop sizes read over each peer's session.
     desktops: BTreeMap<String, (u32, u32)>,
     accessibility: bool,
     tap_refused: Option<Instant>,
-    /// Set once setup asks to look for computers, and kept across restarts.
     discover: bool,
-    /// Whether the links were last told to answer hellos.
     welcome: bool,
     local_network: LocalNetwork,
     local_network_checked: Instant,
@@ -132,7 +104,6 @@ pub(crate) struct NativeApp {
     crossing_error: Option<String>,
     maintenance: Instant,
     retry_at: Instant,
-    /// The lens this Mac looks through, shared with the UI thread.
     lens: Arc<crate::lens::viewer::Viewer>,
 }
 
@@ -147,7 +118,6 @@ impl NativeApp {
         let state_dir = document.saved().daemon.state_dir.clone();
         if document.is_new() {
             document.save()?;
-            // A fresh install may let one computer join on its own, once.
             if let Err(error) = PairingWindow::mark_eligible(&state_dir) {
                 tracing::warn!(%error, "the pairing window cannot open");
             }
@@ -194,7 +164,6 @@ impl NativeApp {
         if let Some(kept) = &app.shared.draft.layout {
             app.links.share_layout(kept.clone());
         }
-        // A computer paired while zflow was not running has no tile yet.
         app.place_new_peers();
         app.sync_links();
         Ok(app)
@@ -219,8 +188,6 @@ impl NativeApp {
                 self.save_config()?;
                 self.restart();
             }
-            // Readiness only gates the next arming in tick(). One failed
-            // helper check must not pull input back from a live session.
             Request::HelperReady { ready } => self.helper_ready = ready,
             Request::MoveTile {
                 id,
@@ -234,7 +201,6 @@ impl NativeApp {
                 tracing::info!(%id, computer, "tile moved");
                 self.restart();
             }
-            // Asked at every step of a drag, so it answers alone.
             Request::Preview {
                 id,
                 x,
@@ -254,7 +220,6 @@ impl NativeApp {
             Request::AddAddress { address } => {
                 let address = input_address(&address)?;
                 self.neighbors.add_address(address);
-                // Says hello on the next tick rather than in a second.
                 self.neighbors_at = Instant::now() - NEIGHBORS_TICK;
             }
             Request::Forget { name } => {
@@ -315,19 +280,15 @@ impl NativeApp {
                     share_screen,
                 );
                 self.save_config()?;
-                // Links take who may control this Mac without reconnecting,
-                // so a crossing in progress carries on.
                 self.sync_links();
             }
             Request::SetSwitching { pause_at_edges } => {
                 self.document.draft.switching.pause_at_edges = pause_at_edges;
                 self.save_config()?;
-                // The observer reads it on its next tick, so nothing restarts.
             }
             Request::SetClipboard { share } => {
                 self.document.draft.clipboard.share = share;
                 self.save_config()?;
-                // Links take it without reconnecting, like peer settings.
                 self.sync_links();
             }
             Request::Lens { name } => {
@@ -336,7 +297,6 @@ impl NativeApp {
                 self.links
                     .open_lens(&name, self.lens.clone(), reduce_wifi_latency)?
             }
-            // The app keeps the login item.
             Request::SetAutostart { .. }
             | Request::OpenSettings
             | Request::OpenLogs
@@ -347,11 +307,6 @@ impl NativeApp {
         Ok(serde_json::to_value(self.snapshot())?)
     }
 
-    /// AXIsProcessTrusted can stay true after zflow is removed from the
-    /// Accessibility list. A crossing's tap then blocks the Mac's input, new
-    /// crossings fail, and a peer's input is silently dropped. The window
-    /// server knows, so ask it for a tap while sharing is armed, while a peer
-    /// controls this Mac, and until access comes back.
     fn accessibility_granted(&mut self) -> bool {
         if !crate::macos::accessibility_authorized(false) {
             return false;
@@ -370,9 +325,6 @@ impl NativeApp {
         allowed
     }
 
-    /// macOS asks for Local Network access on the first send to the network,
-    /// so nothing is sent until the setup step that explains it, or until a
-    /// paired computer needs the network anyway.
     fn discovers(&self) -> bool {
         let config = self.document.saved();
         config.transport.discovery && (self.discover || !config.peers.is_empty())
@@ -385,7 +337,6 @@ impl NativeApp {
             self.nearby.stop();
             self.local_network = LocalNetwork::Unknown;
         }
-        // While it looks for computers, this Mac also answers their hellos.
         if self.discovers() != self.welcome {
             self.sync_links();
         } else {
@@ -393,9 +344,6 @@ impl NativeApp {
         }
     }
 
-    /// Advertises the port computers connect to while this Mac listens, and
-    /// only once it may use the network. One that failed waits for Retry or
-    /// a new port.
     fn sync_advertiser(&mut self) {
         let port = self.links.listen_port().filter(|_| self.discovers());
         if self.advertiser.as_ref().map(Advertiser::port) != port {
@@ -409,8 +357,6 @@ impl NativeApp {
             crate::macos::local_network_access(),
         );
         self.local_network_checked = Instant::now();
-        // Queries sent while access was off were dropped, and the browser
-        // waits longer before each retry. A new one asks again at once.
         if previous == LocalNetwork::Blocked && self.local_network == LocalNetwork::Allowed {
             self.nearby.stop();
             self.sync_discovery();
@@ -426,8 +372,6 @@ impl NativeApp {
         Ok(())
     }
 
-    /// Disarms and rearms on the next tick with the saved settings. Links
-    /// reconnect only when their peer or session settings changed.
     fn restart(&mut self) {
         self.observer.stop();
         self.retry_at = Instant::now();
@@ -445,9 +389,6 @@ impl NativeApp {
     fn reload(&mut self) {
         match ConfigDocument::open(self.document.path.clone()).and_then(|doc| {doc.validate()?; Ok(doc)}) {
             Ok(document) if !document.is_new() => {
-                // A computer added to the file by hand gets its tile once the
-                // change is read. Links find each computer by key, so new
-                // addresses alone change nothing.
                 if without_addresses(document.saved())!=without_addresses(self.document.saved()) { self.document=document; self.restart(); self.place_new_peers(); }
                 else { self.document=document; }
                 self.config_error=None;
@@ -474,7 +415,6 @@ impl NativeApp {
     }
 
     pub fn tick(&mut self) {
-        // A missing helper only costs Wi-Fi latency, as when sending.
         let reduce_wifi_latency = self.document.saved().macos.block_awdl && self.helper_ready;
         self.links
             .set_receive_policy(self.accessibility, reduce_wifi_latency);
@@ -485,7 +425,6 @@ impl NativeApp {
             if self.observer.pause_requested {
                 self.emergency_paused = true;
                 self.document.draft.macos.sharing = false;
-                // A conflicting external edit must never re-arm an emergency pause.
                 if self.save_config().is_err() {
                     self.document.draft.macos.sharing = false;
                 }
@@ -498,12 +437,9 @@ impl NativeApp {
         if self.maintenance.elapsed() >= MAINTENANCE {
             self.maintenance = Instant::now();
             self.reload();
-            // The port can be held for a moment, as by a session still
-            // closing after sharing went off and on, so listen again.
             if self.links.listen_error().is_some() {
                 self.sync_links();
             }
-            // Also a fallback for display and permission changes that sent no callback.
             macos::forget_desktop_geometry();
             let accessibility = self.accessibility_granted();
             if accessibility != self.accessibility {
@@ -546,8 +482,6 @@ impl NativeApp {
             self.layout_error = Some(format!("{error:#}"));
         }
         if self.observer.has_session() {
-            // Without Accessibility the crossing's tap stalls the Mac's input,
-            // so end the crossing, which removes the tap.
             if !self.accessibility && self.observer.is_enabled() {
                 self.observer.stop();
             }
@@ -561,8 +495,6 @@ impl NativeApp {
             self.observer.stop();
             return;
         }
-        // A missing helper only costs Wi-Fi latency, so it never holds sharing back.
-        // Crossings read this when they start, so a later helper needs no restart.
         self.observer.reduce_wifi_latency = config.macos.block_awdl && self.helper_ready;
         self.observer.pause_at_edges = config.switching.pause_at_edges;
         if !self.observer.is_enabled() && Instant::now() >= self.retry_at && self.any_ready() {
@@ -582,7 +514,6 @@ impl NativeApp {
             .any(|(_, state)| matches!(state, LinkState::Ready(_)))
     }
 
-    /// What this Mac says in a hello, or None without its key.
     fn greeting(&self) -> Option<Greeting> {
         let config = self.document.saved();
         let trusted = config
@@ -605,8 +536,6 @@ impl NativeApp {
         }
     }
 
-    /// Answers a knock, within its address's share, keeps what a hello
-    /// told, and saves where a trusted computer's session came from.
     fn hear(&mut self, heard: Heard, now: tokio::time::Instant) {
         match heard {
             Heard::Knock(knock) => {
@@ -637,11 +566,6 @@ impl NativeApp {
         }
     }
 
-    /// Saves where a paired computer's session came from, to dial it there
-    /// next, as the Linux service does. A hello's addresses are only its
-    /// word and are never saved. A computer that connected here dialed from
-    /// any port, so its address gets the input port its hello named, else
-    /// the one saved with it. Links find it by key, so nothing reconnects.
     fn learn(&mut self, key: &str, address: SocketAddr, dialed: bool) {
         let listen = self.document.saved().transport.listen.port();
         let mut peers = self.document.draft.peers.values_mut();
@@ -667,9 +591,6 @@ impl NativeApp {
         }
     }
 
-    /// Feeds the records found to `neighbors`, says hello to the ones that
-    /// need it, tells the links where paired computers are, and lets the
-    /// pairing window weigh who is around.
     fn tick_neighbors(&mut self, now: tokio::time::Instant) {
         let nearby = self.nearby.snapshot();
         if nearby.turned_away {
@@ -719,8 +640,6 @@ impl NativeApp {
         self.introduce();
     }
 
-    /// Trusts a computer a peer placed, one a tick, as if a person here had
-    /// placed it. See [`Neighbors::introduced`].
     fn introduce(&mut self) {
         let Some(layout) = &self.shared.draft.layout else {
             return;
@@ -744,8 +663,6 @@ impl NativeApp {
         }
     }
 
-    /// Opens a fresh install's pairing window once this Mac can reach the
-    /// network, and trusts the lone computer it settles on.
     fn tick_window(&mut self, now: tokio::time::Instant) {
         if self.discovers() && self.local_network == LocalNetwork::Allowed {
             self.window
@@ -770,8 +687,6 @@ impl NativeApp {
         }
     }
 
-    /// Saves the computer whose hello proved `key` as trusted, and tells
-    /// people it joined. Returns its name here.
     fn trust(&mut self, key: &str) -> Result<String> {
         let neighbor = self.neighbors.neighbor(key).context("That computer left")?;
         let addresses = self.neighbors.addresses_for_key(key);
@@ -799,10 +714,6 @@ impl NativeApp {
         }
     }
 
-    /// Trusts the computer dropped from the shelf, with its tile where it
-    /// landed: `(x, y)` is the tile's corner at the size a new tile gets.
-    /// Dropped onto the tile of a computer with its name, it takes that
-    /// computer's place, as one that was reset or reinstalled.
     fn place(&mut self, id: &str, x: i32, y: i32, tolerance: u32) -> Result<()> {
         let config = self.document.saved();
         let tile = self
@@ -870,9 +781,6 @@ impl NativeApp {
         Ok(())
     }
 
-    /// Gives a computer just placed its tile at `(x, y)`, snapped to an edge
-    /// nearby. Where it does not fit, it gets one beside this Mac as any new
-    /// computer does.
     fn put_tile(&mut self, name: &str, x: i32, y: i32, tolerance: u32) {
         let (width, height) = PEER_TILE_SIZE;
         let mut next = self.layout.draft.clone();
@@ -897,8 +805,6 @@ impl NativeApp {
         }
     }
 
-    /// Uses `next` as the arrangement: this Mac's own until it first
-    /// connects, then the next version of the shared layout.
     fn rearrange(&mut self, next: Layout) -> Result<()> {
         match self.shared.draft.layout.clone() {
             None => {
@@ -926,7 +832,6 @@ impl NativeApp {
         Ok(())
     }
 
-    /// Takes the layouts peers sent. Returns whether one was kept.
     fn take_layouts(&mut self) -> bool {
         let mut adopted = false;
         for (peer, layout) in self.links.take_layouts() {
@@ -935,7 +840,6 @@ impl NativeApp {
         adopted
     }
 
-    /// Keeps a peer's layout if it is newer than the kept one.
     fn take_layout(&mut self, peer: &str, layout: SharedLayout) -> bool {
         let kept = self.shared.draft.layout.as_ref();
         if kept.is_some_and(|kept| !layout.is_newer_than(kept)) {
@@ -943,12 +847,10 @@ impl NativeApp {
         }
         tracing::info!(%peer, version = layout.version, "layout adopted");
         self.keep_layout(layout);
-        // A computer paired here but not there has no tile in it yet.
         self.place_new_peers();
         true
     }
 
-    /// Uses `layout` from now on, saves it, and gives it to every peer.
     fn keep_layout(&mut self, layout: SharedLayout) {
         self.links.share_layout(layout.clone());
         self.shared.draft.layout = Some(layout);
@@ -958,16 +860,11 @@ impl NativeApp {
         }
     }
 
-    /// This Mac's key fingerprint, which names its tile in the shared layout.
     fn own_key(&self) -> Option<String> {
         let state = &self.document.saved().daemon.state_dir;
         Some(Identity::load_or_create(state).ok()?.fingerprint_hex())
     }
 
-    /// Gives each paired computer the kept layout lacks a tile beside this
-    /// Mac, such as one paired after the computers were arranged, and tells
-    /// the other computers, as the Linux daemon does. Without a kept layout
-    /// there is nothing to add to: the first one places every computer.
     fn place_new_peers(&mut self) {
         let Some(kept) = &self.shared.draft.layout else {
             return;
@@ -991,10 +888,6 @@ impl NativeApp {
         }
     }
 
-    /// Arranges the computers on this Mac until it first connects. The
-    /// arrangement then becomes the shared layout, and from there on this
-    /// Mac only writes its own tile's size, adding its tile if a peer's
-    /// layout lacks it.
     fn sync_layout(&mut self) -> Result<()> {
         if self.layout_error.is_some() {
             return Ok(());
@@ -1018,7 +911,6 @@ impl NativeApp {
             None => next_version(None).and_then(|version| {
                 let keys = peer_keys(self.document.saved());
                 let first = self.layout.draft.to_shared(version, &own, &keys);
-                // Computers whose desktop is not known yet were not arranged.
                 let first = first
                     .with_tiles_for(&own, keys.values().map(String::as_str), PEER_TILE_SIZE)
                     .unwrap_or(first);
@@ -1033,7 +925,6 @@ impl NativeApp {
         self.show_shared()
     }
 
-    /// Shows this Mac's view of the kept layout, and rearms sharing with it.
     fn show_shared(&mut self) -> Result<()> {
         let (Some(kept), Some(own)) = (&self.shared.draft.layout, self.own_key()) else {
             return Ok(());
@@ -1053,8 +944,6 @@ impl NativeApp {
         Ok(())
     }
 
-    /// Arms sharing again with a changed layout. A crossing in progress,
-    /// perhaps the one a peer's edit arrived during, finishes first.
     fn rearm(&mut self) {
         if self.observer.is_active() {
             self.observer.disarm();
@@ -1062,8 +951,6 @@ impl NativeApp {
         }
     }
 
-    /// Places this Mac and each paired computer with a known desktop size,
-    /// keeping where each already was.
     fn arrange(&mut self, (width, height): (u32, u32)) -> Result<()> {
         let previous = self.layout.draft.clone();
         let mut monitors = Vec::new();
@@ -1123,7 +1010,6 @@ impl NativeApp {
         Ok(())
     }
 
-    /// What the settings window and the menu show.
     fn snapshot(&self) -> api::Snapshot<MacPlatform> {
         let config = self.document.saved();
         let sharing = config.macos.sharing && !self.emergency_paused;
@@ -1145,7 +1031,6 @@ impl NativeApp {
         if sharing {
             let refused = refusals(self.links.states(), controller.as_deref());
             health.extend(link_health(&peers, &refused));
-            // The Mac still dials, so peers can control it over that.
             if let Some(error) = self.links.listen_error() {
                 health.push(Health::new(
                     "listen",
@@ -1154,7 +1039,6 @@ impl NativeApp {
                     error,
                 ));
             }
-            // Only Wi-Fi lag, so it never stops a crossing; this says why.
             if let Some(trouble) = macos::awdl_trouble().filter(|_| config.macos.block_awdl) {
                 health.push(Health::new(
                     "awdl",
@@ -1164,8 +1048,6 @@ impl NativeApp {
                 ));
             }
         }
-        // A computer gets its tile once it connects, so until then there is
-        // nothing to drag.
         let layout_issue = macos::desktop_geometry()
             .and_then(|g| handoff::validate(&self.layout.draft, &g))
             .err()
@@ -1231,8 +1113,6 @@ impl NativeApp {
         }
     }
 
-    /// Whether this Mac can send its input right now. The window shows a row
-    /// that is not fine as a banner, so this one carries the Allow button.
     fn sharing_health(&self, sharing: bool) -> Health {
         let row = |level, detail: &str| Health::new("sharing", level, "Sharing", detail);
         if !self.accessibility {
@@ -1272,7 +1152,6 @@ fn fits(width: u32, height: u32) -> bool {
         && (1..=layout_model::MAX_DIMENSION).contains(&height)
 }
 
-/// Each paired computer's key fingerprint, by its name here.
 fn peer_keys(config: &Config) -> BTreeMap<String, String> {
     config
         .peers
@@ -1281,15 +1160,10 @@ fn peer_keys(config: &Config) -> BTreeMap<String, String> {
         .collect()
 }
 
-/// The version of this Mac's next edit: one past the newest it has seen.
-/// A layout newer than the kept one would have been kept, so that is the
-/// kept one's.
 fn next_version(kept: Option<&SharedLayout>) -> Option<u64> {
     kept.map_or(0, |kept| kept.version).checked_add(1)
 }
 
-/// The configuration without the addresses saved for each computer, which
-/// change as computers move and are learned without reconnecting.
 fn without_addresses(config: &Config) -> Config {
     let mut config = config.clone();
     for peer in config.peers.values_mut() {
@@ -1298,8 +1172,6 @@ fn without_addresses(config: &Config) -> Config {
     config
 }
 
-/// Where a computer typed in by address takes input. A bare IP address
-/// means the port zflow listens on unless told otherwise.
 fn input_address(input: &str) -> Result<SocketAddr> {
     let input = input.trim();
     let address = match input.parse::<SocketAddr>() {
@@ -1324,9 +1196,6 @@ fn retry() -> Action {
     }
 }
 
-/// Each paired computer, from its link, the crossing in progress, and the
-/// peer controlling this Mac. A computer without a link may not connect, or
-/// sharing is off.
 fn peer_rows<'a>(
     config: &Config,
     links: impl Iterator<Item = (&'a str, LinkState)>,
@@ -1357,8 +1226,6 @@ fn peer_rows<'a>(
         .collect()
 }
 
-/// Why connected computers take no input from this Mac right now. The one
-/// controlling this Mac refuses while it sends, so it is left out.
 fn refusals<'a>(
     links: impl Iterator<Item = (&'a str, LinkState)>,
     controller: Option<&str>,
@@ -1374,9 +1241,6 @@ fn refusals<'a>(
         .collect()
 }
 
-/// One row for the links to paired computers, with a retry when one is down
-/// or `refused` input from this Mac. Called only while sharing is on, so a
-/// computer without a link is one that does not take input from this Mac.
 fn link_health(peers: &[Peer], refused: &[String]) -> Option<Health> {
     if peers.is_empty() {
         return None;
@@ -1393,7 +1257,6 @@ fn link_health(peers: &[Peer], refused: &[String]) -> Option<Health> {
             ..Health::new("computers", Level::Error, title, down.join("\n"))
         }
     } else if !refused.is_empty() {
-        // Connected all the same, so they can still control this Mac.
         Health {
             action: Some(retry()),
             ..Health::new("computers", Level::Warning, title, refused.join("\n"))
@@ -1439,14 +1302,12 @@ mod tests {
     fn network_waits_for_setup_or_a_paired_computer() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("zflow.toml");
-        // Discovery is on by default; only the missing peers hold it back.
         std::fs::write(&path, "[macos]\nsharing = true\n").unwrap();
         let mut app = NativeApp::open(path).unwrap();
         app.tick();
         assert!(!app.discovers());
         assert!(!app.nearby.is_running());
         assert_eq!(app.local_network, LocalNetwork::Unknown);
-        // With discovery off, setup's request sends nothing either.
         app.document.draft.transport.discovery = false;
         app.save_config().unwrap();
         let snapshot = app.request(Request::Discover).unwrap();
@@ -1500,8 +1361,6 @@ mod tests {
         assert_eq!(value["share_clipboard"], false);
         assert_eq!(value["autostart"], Value::Null);
         assert_eq!(value["config_path"], path.to_str().unwrap());
-        // Key order depends on serde_json's preserve_order, which zz-gpui
-        // turns on when it is in the same build.
         let mut platform = value["platform"]
             .as_object()
             .unwrap()
@@ -1558,7 +1417,6 @@ mod tests {
         assert_eq!(row["keyboard"], "pc_positions");
         assert_eq!(row["reverse_scroll"], true);
 
-        // The clipboard and pause switches apply without a restart too.
         let value = app.request(Request::SetClipboard { share: true }).unwrap();
         assert_eq!(app.retry_at, armed_at, "sharing did not restart");
         assert_eq!(value["share_clipboard"], true);
@@ -1580,7 +1438,6 @@ mod tests {
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.transport.discovery = false;
-        // A free port, since a saved configuration cannot ask for any.
         let free = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
         config.transport.listen = free.local_addr().unwrap();
         drop(free);
@@ -1599,12 +1456,9 @@ mod tests {
             "{:?}",
             app.links.listen_error()
         );
-        // Discovery is off, so nothing goes out even after setup asks.
         assert!(app.advertiser.is_none());
         app.request(Request::Discover).unwrap();
         assert!(!app.discovers() && app.advertiser.is_none());
-        // Paused, it still listens, so its computers are not told it never
-        // added them.
         app.request(Request::SetSharing { enabled: false }).unwrap();
         assert_eq!(
             app.links.listen_port(),
@@ -1672,7 +1526,6 @@ mod tests {
         assert_eq!(tile(&app, "local"), ("This Mac".into(), 0));
         assert_eq!(tile(&app, "peer:desk"), ("desk".into(), 3008));
 
-        // A preview during the drag says where it lands and moves nothing.
         let preview = app
             .request(Request::Preview {
                 id: "peer:desk".into(),
@@ -1697,7 +1550,6 @@ mod tests {
         .unwrap();
         assert_eq!(tile(&app, "peer:desk"), ("desk".into(), -1920));
         drop(app);
-        // Kept beside the configuration, across a restart.
         let app = NativeApp::open(path).unwrap();
         let kept = app.shared.draft.layout.clone().unwrap();
         assert_eq!((kept.version, &kept.editor), (4, &own));
@@ -1739,13 +1591,11 @@ mod tests {
         assert!(app.take_layout("desk", arranged.clone()));
         assert_eq!(kept(&app), arranged, "nothing missing");
 
-        // A computer added to the file by hand reaches the app from there.
         config.peers.insert("laptop".into(), record(&laptop));
         config.save(&path).unwrap();
         app.reload();
         let placed = kept(&app);
         assert_eq!((placed.version, &placed.editor), (4, &own));
-        // Desk is right of this Mac, so the laptop goes left.
         let laptop_tile = tile(&laptop.fingerprint_hex(), -1920);
         assert_eq!(placed.tiles[2], laptop_tile);
         let shown = app.layout.draft.monitors.iter();
@@ -1755,8 +1605,6 @@ mod tests {
                 .any(|peer| peer == Some("laptop"))
         );
 
-        // Desk's newer layout, with desk below, lacks the laptop, which
-        // gets its tile back on the right.
         let below = SharedLayout {
             version: 9,
             tiles: vec![
@@ -1779,7 +1627,6 @@ mod tests {
             }
         );
 
-        // A computer paired while the app was closed is placed at startup.
         drop(app);
         config.peers.insert("tablet".into(), record(&tablet));
         config.save(&path).unwrap();
@@ -1789,8 +1636,6 @@ mod tests {
         assert_eq!(placed.tiles[3], tile(&tablet.fingerprint_hex(), -1920));
     }
 
-    /// A Mac on its own state directory with sharing off, so nothing
-    /// listens, and with `peers` trusted.
     fn mac_with(directory: &Path, peers: &[(&str, &Identity)]) -> NativeApp {
         let mut config = Config::default();
         config.daemon.state_dir = directory.join("state");
@@ -1806,7 +1651,6 @@ mod tests {
         NativeApp::open(path).unwrap()
     }
 
-    /// `identity` says hello to `app` as `name`, and returns its shelf id.
     fn says_hello(app: &mut NativeApp, identity: &Identity, name: &str) -> String {
         let hello = hello::make_hello(name, 43119, Vec::new(), false);
         let remote = "192.0.2.7:50000".parse().unwrap();
@@ -1817,7 +1661,6 @@ mod tests {
         format!("key:{}", key.unwrap())
     }
 
-    /// `identity` answers the hello this Mac sent to its mDNS record.
     fn answers_hello(app: &mut NativeApp, identity: &Identity, name: &str) {
         let (record, remote) = (format!("zf-{name}"), "192.0.2.7:43119".parse().unwrap());
         let now = tokio::time::Instant::now();
@@ -1842,7 +1685,6 @@ mod tests {
         let own = Identity::load_or_create(&directory.path().join("state")).unwrap();
         assert_eq!(value["own_mark"], mark(own.spki()));
 
-        // One still being identified, or gone, cannot be placed.
         app.request(Request::AddAddress {
             address: "100.64.0.7".into(),
         })
@@ -1886,7 +1728,6 @@ mod tests {
         assert_eq!(value["notices"][0]["mark"], mark(desk.spki()));
         assert_eq!(value["notices"][0]["id"], 1);
 
-        // Forgotten, it is back on the shelf at once.
         let value = app
             .request(Request::Forget {
                 name: "desk".into(),
@@ -1930,7 +1771,6 @@ mod tests {
         let value = app.request(Request::Snapshot).unwrap();
         assert_eq!(value["unplaced"][0]["state"], "duplicate_name");
 
-        // Its corner a little off the old tile's, so its middle is on it.
         let request = Request::Place {
             id,
             x: 2000,
@@ -1960,19 +1800,15 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("zflow.toml");
         let mut app = NativeApp::open(path.clone()).unwrap();
-        // Nothing listens on the real port while this runs.
         app.document.draft.macos.sharing = false;
         app.save_config().unwrap();
         let start = tokio::time::Instant::now();
         let window = |app: &NativeApp| app.snapshot().pairing_window;
-        // It waits for Local Network access before it opens.
         app.tick_window(start);
         assert_eq!(window(&app).state, crate::pairing_window::State::Eligible);
         app.discover = true;
         app.local_network = LocalNetwork::Allowed;
         let desk = Identity::load_or_create(&directory.path().join("desk")).unwrap();
-        // A hello that only came in, maybe from off the network, is not
-        // enough to join.
         says_hello(&mut app, &desk, "desk");
         app.tick_window(start);
         let open = window(&app);
@@ -1990,7 +1826,6 @@ mod tests {
         );
         drop(app);
 
-        // Once only, even across a restart.
         let app = NativeApp::open(path).unwrap();
         assert_eq!(window(&app).state, crate::pairing_window::State::Closed);
     }
@@ -2008,7 +1843,6 @@ mod tests {
         let start = tokio::time::Instant::now();
         app.tick_window(start);
         assert_eq!(app.snapshot().pairing_window.holding.unwrap().name, "desk");
-        // Too many handshakes at once: the one refused could be a rival.
         app.hear(Heard::TurnedAway, start);
         app.tick_window(start + crate::pairing_window::HOLD_OFF);
         let window = app.snapshot().pairing_window;
@@ -2025,7 +1859,6 @@ mod tests {
         drop(app);
         let app = NativeApp::open(directory.path().join("zflow.toml")).unwrap();
         assert!(app.discover);
-        // Discovery is off in this configuration, so nothing goes out.
         assert!(!app.discovers() && app.links.listen_port().is_none());
     }
 
@@ -2038,7 +1871,6 @@ mod tests {
         let saved = || Config::load(&path).unwrap().peers["desk"].addresses.clone();
         let armed_at = app.retry_at;
         let now = tokio::time::Instant::now();
-        // Its hello names addresses, which are only its word.
         let claimed = vec!["198.51.100.9:43200".parse().unwrap()];
         let hello = hello::make_hello("desk", 43200, claimed, true);
         let heard = Heard::Hello {
@@ -2050,7 +1882,6 @@ mod tests {
         app.hear(heard, now);
         assert!(saved().is_empty());
 
-        // A session this Mac dialed saves the address that answered.
         let key = app.document.saved().peers["desk"].spki_der_hex.clone();
         let connected = |address: &str, dialed| Heard::Connected {
             key: key.clone(),
@@ -2060,11 +1891,9 @@ mod tests {
         app.hear(connected("192.0.2.70:43119", true), now);
         let moved: SocketAddr = "192.0.2.70:43119".parse().unwrap();
         assert_eq!(saved(), [moved]);
-        // One it opened from a passing port gets the port its hello named.
         app.hear(connected("[::ffff:192.0.2.7]:50000", false), now);
         let inbound: SocketAddr = "192.0.2.7:43200".parse().unwrap();
         assert_eq!(saved(), [inbound, moved]);
-        // Another computer's key teaches nothing.
         let other = Heard::Connected {
             key: "01".into(),
             address: "192.0.2.9:43119".parse().unwrap(),
@@ -2072,7 +1901,6 @@ mod tests {
         };
         app.hear(other, now);
         assert_eq!(saved(), [inbound, moved]);
-        // Nor does an edit of the file that only moves it.
         let mut config = Config::load(&path).unwrap();
         config.peers.get_mut("desk").unwrap().addresses = vec!["192.0.2.71:43119".parse().unwrap()];
         config.save(&path).unwrap();
@@ -2160,12 +1988,10 @@ mod tests {
         let fine = &peers[..2];
         assert_eq!(link_health(fine, &[]).unwrap().level, Level::Ok);
         assert!(link_health(&[], &[]).is_none());
-        // Sharing is on, but no computer takes input from this Mac.
         let unlinked = link_health(&peers[4..], &[]).unwrap();
         assert_eq!(unlinked.level, Level::Error);
         assert!(unlinked.action.is_none());
 
-        // One peer controls this Mac, and another only may.
         let links = [("busy", ready()), ("desk", LinkState::Connected)];
         let peers = peer_rows(&config, links.into_iter(), None, Some("busy"));
         let states: Vec<_> = peers.iter().map(|peer| peer.state).collect();
@@ -2176,7 +2002,6 @@ mod tests {
         let status = Status::new(Some(true), &peers[..2], &[], false);
         assert_eq!(status.title, "Controlled by busy");
 
-        // A computer that takes no input from this Mac can still control it.
         let links = [
             ("busy", LinkState::Refused("sending".into())),
             ("desk", LinkState::Refused("locked".into())),

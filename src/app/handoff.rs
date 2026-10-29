@@ -1,8 +1,3 @@
-//! Where a crossing enters the other computer and where it comes back.
-//! The Mac finds the edge by watching its cursor and its own pointer's
-//! pushes; Linux by a GNOME barrier. The computer whose input it is routes
-//! every way off the other computer: home, or on to a third one.
-
 use anyhow::{Context, Result, bail, ensure};
 
 use crate::desktop::{
@@ -23,24 +18,15 @@ pub(crate) struct Handoff {
     pub position: u32,
     pub expected_width: u32,
     pub expected_height: u32,
-    /// Where the Mac's cursor may travel while the crossing is prepared.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub entry_region: Rect,
-    /// The edge here the crossing left from, and its range on the first
-    /// computer it entered. A hop keeps it.
     pub return_mapping: ReturnMapping,
-    /// Where the crossing entered that first computer, in
-    /// `return_mapping`'s remote range. A hop keeps it too.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub origin: u32,
-    /// The ways off this computer's desktop, in the order Prepare lists
-    /// their exits.
     pub routes: Vec<Route>,
-    /// The layout the routes come from, which plans the next hop.
     pub layout: Layout,
 }
 
-/// One way off the other computer's desktop, and where it leads.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Route {
     pub exit: Exit,
@@ -49,21 +35,16 @@ pub(crate) struct Route {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Onward {
-    /// Back to this computer, at the matching point of one of its edges.
     Home(ReturnMapping),
-    /// On to another computer, through this transition of the layout.
     Peer {
         peer: String,
         transition: Transition,
     },
 }
 
-/// Where the pointer goes once it left the other computer.
 #[derive(Debug)]
 pub(crate) enum Next {
-    /// Back here, to this point.
     Home(Point),
-    /// On to another computer. Windows only routes home.
     Hop(#[cfg_attr(windows, allow(dead_code))] Box<Handoff>),
 }
 
@@ -73,8 +54,6 @@ impl Handoff {
         self.source_geometry == *geometry
     }
 
-    /// Asks the other computer to put its cursor at the entry point and to
-    /// watch every route's exit.
     pub fn prepare(&self, token: u64) -> DesktopRequest {
         DesktopRequest::Prepare {
             monitor: self.monitor.clone(),
@@ -87,8 +66,6 @@ impl Handoff {
         }
     }
 
-    /// Keeps the routes home, and those on to the computers `reachable`
-    /// says input can go to now.
     pub fn keep_routes(&mut self, reachable: impl Fn(&str) -> bool) {
         self.routes.retain(|route| match &route.onward {
             Onward::Home(_) => true,
@@ -96,8 +73,6 @@ impl Handoff {
         });
     }
 
-    /// Where the pointer goes after it left the other computer through the
-    /// route `exit` at `position`, a fraction of that exit's edge.
     pub fn next(&self, exit: u32, position: u32) -> Result<Next> {
         let route = self
             .routes
@@ -111,8 +86,6 @@ impl Handoff {
             Onward::Home(mapping) => return Ok(Next::Home(mapping.position(position)?)),
             Onward::Peer { transition, .. } => transition,
         };
-        // The same linear map as a return: along the exit, then onto the
-        // next computer's part of that edge.
         let along = f64::from(position) / f64::from(FRACTION_MAX);
         let progress = ((along - transition.source_start)
             / (transition.source_end - transition.source_start))
@@ -132,15 +105,11 @@ impl Handoff {
         Ok(Next::Hop(Box::new(next)))
     }
 
-    /// Where the pointer comes back here when the crossing ends without
-    /// leaving through an exit: where it left this computer.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn home(&self) -> Result<Point> {
         self.return_mapping.position(self.origin)
     }
 
-    /// Checks that the other computer prepared a desktop of the size the
-    /// layout expects, so the crossing lands where the layout shows it.
     pub fn check_prepared(&self, response: DesktopResponse) -> Result<()> {
         response.validate()?;
         match response {
@@ -160,7 +129,6 @@ impl Handoff {
     }
 }
 
-/// A token for one crossing's desktop requests.
 pub(crate) fn token() -> Result<u64> {
     let mut random = [0_u8; 8];
     getrandom::fill(&mut random)
@@ -168,7 +136,6 @@ pub(crate) fn token() -> Result<u64> {
     Ok((u64::from_ne_bytes(random) & MAX_TOKEN).max(1))
 }
 
-/// Checks the other computer's answer to Finish.
 pub(crate) fn check_finished(response: Result<DesktopResponse>) -> Result<()> {
     match response? {
         DesktopResponse::Finished => Ok(()),
@@ -212,8 +179,6 @@ pub(crate) fn validate(layout: &Layout, geometry: &Geometry) -> Result<()> {
     Ok(())
 }
 
-/// The crossing for a push against `edge` at `position`, a fraction of this
-/// desktop along that edge, as a GNOME barrier reports it.
 #[cfg_attr(any(target_os = "macos", windows), allow(dead_code))]
 pub(crate) fn from_edge(
     layout: &Layout,
@@ -258,13 +223,9 @@ pub(crate) fn from_edge(
         .and_then(|transition| handoff_at(layout, geometry, transition, current))
 }
 
-/// How far from the desktop's corners a crossing stops, so a push into a
-/// corner, such as a hot corner, stays here. GNOME's barriers stop as far.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 const DEAD_CORNER: i32 = 8;
 
-/// The crossing for a pointer that moves from `previous` onto an edge at
-/// `current`.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn crossing(
     layout: &Layout,
@@ -280,9 +241,6 @@ pub(crate) fn crossing(
     })
 }
 
-/// The crossing for a pointer held on an edge at `current` while it pushes
-/// on by `dx` and `dy`. macOS keeps reporting motion when the cursor cannot
-/// move, as GNOME reports a push against a barrier.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn pushed(
     layout: &Layout,
@@ -299,7 +257,6 @@ pub(crate) fn pushed(
     })
 }
 
-/// The crossing for a pointer at `current` on this desktop's `edge`.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn on_edge(
     layout: &Layout,
@@ -310,7 +267,6 @@ pub(crate) fn on_edge(
     reaching(layout, geometry, current, |_, wanted| wanted == edge)
 }
 
-/// Whether `point` is on any of this desktop's outer edges.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn on_any_edge(geometry: &Geometry, point: Point) -> bool {
     geometry.monitors.iter().any(|bounds| {
@@ -320,8 +276,6 @@ pub(crate) fn on_any_edge(geometry: &Geometry, point: Point) -> bool {
     })
 }
 
-/// The crossing for a pointer at `current` on one of the `wanted` edges,
-/// clear of the corners, where the layout puts another computer.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn reaching(
     layout: &Layout,
@@ -363,7 +317,6 @@ fn reaching(
     None
 }
 
-/// Whether `point` is on `edge`'s outermost two points.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn touches(bounds: &Rect, edge: Edge, point: Point) -> bool {
     match edge {
@@ -374,7 +327,6 @@ fn touches(bounds: &Rect, edge: Edge, point: Point) -> bool {
     }
 }
 
-/// The crossing through `transition` for a cursor at `current` on its edge.
 fn handoff_at(
     layout: &Layout,
     geometry: &Geometry,
@@ -411,8 +363,6 @@ fn handoff_at(
     )
 }
 
-/// The crossing through `transition` onto its target computer, at
-/// `position` of the target's range.
 fn entering(
     layout: &Layout,
     geometry: &Geometry,
@@ -447,8 +397,6 @@ fn entering(
     })
 }
 
-/// Every way off `peer`'s monitors that the layout shows: back to one of
-/// this computer's, or on to another computer's. The ways home come first.
 fn routes(layout: &Layout, geometry: &Geometry, peer: &str) -> Vec<Route> {
     let id = |index: usize| {
         layout.monitors[index]
@@ -472,7 +420,6 @@ fn routes(layout: &Layout, geometry: &Geometry, peer: &str) -> Vec<Route> {
                     peer: next.clone(),
                     transition: t.clone(),
                 },
-                // A monitor here that is gone takes nothing back.
                 None => Onward::Home(ReturnMapping {
                     geometry: geometry.for_monitor(id(t.target).as_deref()).ok()?,
                     edge: opposite(t.edge),
@@ -502,8 +449,6 @@ fn entry_region(
         .monitors
         .iter()
         .find(|monitor| monitor.contains(entry))?;
-    // Keep the original eight-pixel inward allowance, but let the pointer
-    // travel along the connected part of this monitor during preparation.
     let vertical = matches!(edge, Edge::Left | Edge::Right);
     let span = if vertical {
         bounds.height
@@ -792,7 +737,6 @@ mod tests {
         .unwrap();
         assert_eq!(h.start, 0);
         assert_eq!(h.end, 1000000);
-        // Gaps and same-computer neighbors continue to use native navigation.
         layout.monitors[2].x += 1;
         assert!(layout.transitions().is_empty());
         layout.monitors[2].x -= 1;
@@ -926,7 +870,6 @@ mod tests {
             Point { x: 999, y: 550 },
         )
         .unwrap();
-        // Ubuntu touches the lower half of the right edge; y 550 is 75% down.
         let pushed = from_edge(&layout, &geometry, None, Edge::Right, 750_000).unwrap();
         assert_eq!(pushed.peer, watched.peer);
         assert_eq!(
@@ -998,8 +941,6 @@ mod tests {
     #[test]
     fn the_desktop_corners_stay_here() {
         let (layout, geometry) = setup();
-        // The Mac's lower right corner is at y 799; eight points up still
-        // counts as the corner.
         let from = |y| Point { x: 990, y };
         let to = |y| Point { x: 999, y };
         assert!(crossing(&layout, &geometry, from(792), to(792)).is_none());
@@ -1007,7 +948,6 @@ mod tests {
         assert!(crossing(&layout, &geometry, from(791), to(791)).is_some());
         assert!(pushed(&layout, &geometry, to(791), 1.0, 0.0).is_some());
 
-        // Every corner of a desktop with a computer all along each edge.
         let mut layout = layout;
         layout.monitors[0].width = 1000;
         let geometry = Geometry {
@@ -1019,8 +959,6 @@ mod tests {
                 height: 1000,
             }],
         };
-        // Where the other computer is, a corner, and the first point clear
-        // of it.
         let cases = [
             ((-1000, 0), (-200, -300), (-200, -292)),
             ((1000, 0), (799, 699), (799, 691)),
@@ -1184,8 +1122,6 @@ mod tests {
             Point { x: 999, y: 0 },
         )
         .unwrap();
-        // Only the upper display touches the right edge, but the receiver's
-        // barrier covers the whole shared range.
         assert_eq!(
             handoff.return_mapping.position(750_000).unwrap(),
             Point { x: 996, y: 99 }
@@ -1202,8 +1138,6 @@ mod tests {
         assert!(!handoff.entry_region.contains(Point { x: 999, y: 100 }));
     }
 
-    /// This computer, `b` to its right, and `c` below `b`, shifted right so
-    /// that only the right half of b's bottom edge touches it.
     fn three() -> (Layout, Geometry) {
         let (mut layout, geometry) = setup();
         layout.monitors[1].y = 0;
@@ -1238,8 +1172,6 @@ mod tests {
         let DesktopRequest::Prepare { exits, .. } = b.prepare(1) else {
             panic!("not a Prepare");
         };
-        // Home through the edge it came in at, and on to c from the right
-        // half of its bottom edge.
         assert_eq!(
             exits,
             [
@@ -1261,7 +1193,6 @@ mod tests {
     fn a_hop_enters_the_next_computer_where_the_pointer_left() {
         let (layout, geometry) = three();
         let b = from_edge(&layout, &geometry, None, Edge::Right, 500_000).unwrap();
-        // Three quarters along b's bottom edge is halfway along c's top.
         let Next::Hop(c) = b.next(1, 750_000).unwrap() else {
             panic!("not a hop");
         };
@@ -1271,10 +1202,8 @@ mod tests {
             (Edge::Top, 0, 500_000, 250_000)
         );
         assert_eq!((c.expected_width, c.expected_height), (1000, 500));
-        // c's only way off is back up to b; nothing touches this computer.
         assert_eq!(c.routes.len(), 1);
         assert_eq!(c.routes[0].exit, exit(Edge::Top, 0, 500_000));
-        // The way home keeps pointing where the crossing left.
         assert_eq!(c.return_mapping, b.return_mapping);
         assert_eq!(c.home().unwrap(), b.home().unwrap());
         c.prepare(2).validate().unwrap();
@@ -1299,7 +1228,6 @@ mod tests {
             (Edge::Bottom, 500_000, FRACTION_MAX, 900_000)
         );
         assert_eq!(back.routes, b.routes, "b offers the same ways off");
-        // Home at y 300 on b's left edge is y 100 here, three points in.
         let Next::Home(point) = back.next(0, 300_000).unwrap() else {
             panic!("not home");
         };

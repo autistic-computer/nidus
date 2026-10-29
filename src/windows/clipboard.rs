@@ -1,4 +1,3 @@
-//! Windows text and registered-PNG clipboard formats, bounded before allocation.
 use crate::clipboard::{Clip, ClipKind, MAX_CLIP_BYTES};
 use anyhow::{Result, ensure};
 use windows_sys::Win32::{
@@ -19,8 +18,6 @@ impl Drop for Open {
     }
 }
 fn open() -> Result<Open> {
-    // The capture window lives for the entire engine lifetime and gives
-    // SetClipboardData a non-null owner. Never claim a user's foreground window.
     ensure!(
         unsafe { OpenClipboard(zflow_clipboard_window()) } != 0,
         "Clipboard is busy; it stayed on this computer"
@@ -51,8 +48,6 @@ fn read_format(kind: u32, limit: usize) -> Result<Option<Vec<u8>>> {
 }
 pub fn read() -> Result<Option<Clip>> {
     let _open = open()?;
-    // Password managers use this convention to mark content that should not
-    // enter clipboard history or another device.
     if unsafe { IsClipboardFormatAvailable(format("ExcludeClipboardContentFromMonitorProcessing")) }
         != 0
     {
@@ -109,7 +104,6 @@ pub fn write(clip: &Clip) -> Result<()> {
             GlobalFree(handle);
             anyhow::bail!("Could not write the Windows clipboard");
         }
-        // Successful SetClipboardData transfers ownership to Windows.
     }
     Ok(())
 }

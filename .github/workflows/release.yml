@@ -60,14 +60,12 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-          # One Apple silicon runner builds, signs and notarizes the app for both CPUs.
           - runner: macos-26
             target: universal-apple-darwin
     runs-on: ${{ matrix.runner }}
-    # The Mac job waits up to 20 minutes each for Apple to notarize the app and the disk image.
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Check release version
@@ -80,8 +78,6 @@ jobs:
           fi
       - name: Install Rust build toolchain
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-      # CI already ran the code checks on the main commit this tag points at,
-      # so a release only builds, packages, signs and verifies.
       - name: Linux binaries and package
         if: runner.os == 'Linux'
         run: |
@@ -95,8 +91,6 @@ jobs:
         if: runner.os == 'macOS'
         env:
           SPARKLE_PUBLIC_ED_KEY: ${{ vars.SPARKLE_PUBLIC_ED_KEY }}
-        # Build with an ad-hoc signature before the signing keychain exists, so
-        # no build script in this job can sign with the Developer ID.
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
           ./scripts/build-macos-app.sh --universal --updates
@@ -142,7 +136,6 @@ jobs:
           xcrun notarytool store-credentials zflow-ci --keychain "$keychain" \
             --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
           ./scripts/notarize-macos-app.sh zflow-ci "$keychain"
-      # The disk image wraps the stapled app, so it is signed and notarized after it.
       - name: Build and notarize macOS disk image
         if: runner.os == 'macOS'
         env:
@@ -190,13 +183,13 @@ jobs:
           spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
       - name: Preserve notarization results
         if: always() && runner.os == 'macOS'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: notarization-${{ matrix.target }}
           path: target/notarization/**/*.json
           if-no-files-found: ignore
           retention-days: 7
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-${{ matrix.target }}
           path: target/dist/*
@@ -209,18 +202,17 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      # vpk, Velopack's packager, is a .NET tool.
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: '10.0.x'
       - name: Install Rust build toolchain
         run: rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
       - name: Package Windows
         run: ./scripts/package-windows.ps1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-windows-x86_64
           path: target/windows-release/*
@@ -230,16 +222,15 @@ jobs:
   publish:
     name: Publish verified artifacts
     needs: [build, windows]
-    # A manual publish only releases main; other branches can still build.
     if: startsWith(github.ref, 'refs/tags/v') || (inputs.publish && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: target/dist
           pattern: release-*
@@ -251,8 +242,6 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
           tag="v$version"
-          # Recheck here: a direct tag push or rerun can bypass the local command,
-          # and a newer release may have appeared while its CI was running.
           if [[ "$version" != *-* ]]; then
             latest=$(gh release view --json tagName --jq .tagName)
             python3 - "$version" "$latest" <<'PY'
@@ -266,8 +255,6 @@ jobs:
               sys.exit("Refusing to replace latest with an older or equal release: " + latest)
           PY
           fi
-          # Never overwrite a published release. A draft is what a run that
-          # failed before publishing left behind, so this run replaces it.
           if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
             if [[ "$draft" != true ]]; then
               echo "Release $tag is already published; inspect it before retrying." >&2

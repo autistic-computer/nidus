@@ -1,5 +1,4 @@
 #!/bin/sh
-# Drop every input handle and clock model across system sleep.
 set -eu
 
 marker=/run/zflowd-resume-after-sleep
@@ -18,7 +17,6 @@ case "${1:-}" in
     post)
         if [ -f "$marker" ] && [ ! -L "$marker" ]; then
             rm -f -- "$marker"
-            # Queue the start so resume does not wait for the daemon to become ready.
             systemctl start --no-block zflowd.service
         fi
         ;;

@@ -26,25 +26,17 @@ const LOGIND: &str = "org.freedesktop.login1";
 const MANAGER_PATH: &str = "/org/freedesktop/login1";
 
 const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_millis(200);
-/// Logind sends several signals for one change, such as a lock or a VT switch.
 const SIGNAL_DEBOUNCE: Duration = Duration::from_millis(25);
 const SIGNAL_QUEUE: usize = 64;
-/// No signal may follow an Unknown caused by a slow reply, so Unknown is
-/// retried on its own, backing off for a seat that stays unsupported.
 const RETRY_MIN: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(5);
 
 type Properties = BTreeMap<String, String>;
 
-/// The permission class required before remote input may reach the active
-/// Linux seat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InjectionGate {
-    /// An unlocked, authenticated local user session is active.
     Normal { uid: u32 },
-    /// The active seat is in a known greeter, lock, or login state.
     PreLogin,
-    /// Logind did not provide a complete and self-consistent answer.
     Denied,
 }
 
@@ -63,22 +55,12 @@ pub struct AuthenticatedSession {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RestrictedSeatState {
-    /// No logind session owns the foreground VT. This includes a getty login
-    /// prompt and the period before a display manager starts.
     NoActiveSession,
-    Greeter {
-        session_id: String,
-    },
-    LockScreen {
-        session_id: String,
-    },
+    Greeter { session_id: String },
+    LockScreen { session_id: String },
     LockedUser(AuthenticatedSession),
 }
 
-/// A point-in-time classification of the local Linux seat.
-///
-/// `Unknown` is intentionally different from `Restricted`: pre-login
-/// permission can authorize only states logind identified conclusively.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SeatState {
     Unlocked(AuthenticatedSession),
@@ -95,10 +77,6 @@ impl SeatState {
         }
     }
 
-    /// Returns the interactive user's UID for local IPC authorization.
-    ///
-    /// A locked user remains the authenticated owner of their session. A
-    /// greeter or lock-screen pseudo-session is not an interactive user.
     pub fn active_authenticated_uid(&self) -> Option<u32> {
         match self {
             Self::Unlocked(session)
@@ -113,8 +91,6 @@ impl SeatState {
     }
 }
 
-/// Injectable boundary around logind. Tests and simulators do not need a
-/// desktop or a running system bus.
 pub trait LogindQuery {
     type Error: fmt::Display;
 
@@ -169,8 +145,6 @@ impl LogindBusQuery {
                     .await?
                     .body()
                     .deserialize()?;
-                // GetAll bypasses proxy property caches: both confirmation reads
-                // must observe logind, including lock changes without a signal.
                 let properties = connection
                     .call_method(
                         Some(LOGIND),
@@ -189,7 +163,6 @@ impl LogindBusQuery {
                 .map_err(|_| LogindError::Timeout(self.timeout))
                 .and_then(|result| result.map_err(LogindError::Bus));
             if result.is_err() {
-                // A lost bus or cancelled request must not poison later polls.
                 *connection = None;
             }
             result
@@ -301,24 +274,14 @@ fn validate_identifier(kind: &'static str, value: &str) -> Result<(), LogindErro
     Ok(())
 }
 
-/// Classifies the primary Linux seat. Query failure is represented as
-/// `SeatState::Unknown`, which always denies input.
 pub fn query_primary_seat() -> SeatState {
     static QUERY: OnceLock<Result<LogindBusQuery, std::io::Error>> = OnceLock::new();
-    // Use the system socket directly, as the old env-cleared loginctl did.
-    // User-provided bus-address environment variables cannot authorize input.
     match QUERY.get_or_init(|| LogindBusQuery::new(SYSTEM_BUS_ADDRESS, DEFAULT_QUERY_TIMEOUT)) {
         Ok(query) => inspect_seat(query, PRIMARY_SEAT),
         Err(error) => unknown_query("runtime", error),
     }
 }
 
-/// Follows the primary seat through logind signals.
-///
-/// Every burst of logind signals triggers the same full, double-checked
-/// inspection as [`query_primary_seat`]; nothing is inferred from the signal
-/// itself. The watch starts Unknown and returns to Unknown whenever the
-/// subscription is lost, so a stale answer never outlives its source.
 pub fn watch_primary_seat() -> watch::Receiver<SeatState> {
     let (sender, receiver) = watch::channel(SeatState::Unknown {
         reason: "logind was not queried yet".to_owned(),
@@ -359,15 +322,10 @@ fn publish(sender: &watch::Sender<SeatState>, state: SeatState) {
     });
 }
 
-/// A source of change notifications. `next` resolves on any signal and
-/// returns false once the subscription is gone.
 trait SeatSignals {
     async fn next(&mut self) -> bool;
 }
 
-/// Inspects the seat, publishes the answer, then waits for a signal, or for
-/// the retry delay while the answer is Unknown. Returns when the signals end
-/// or nobody watches anymore.
 async fn follow_seat<S, I, F>(sender: &watch::Sender<SeatState>, signals: &mut S, inspect: I)
 where
     S: SeatSignals,
@@ -393,7 +351,6 @@ where
             () = tokio::time::sleep(wait.unwrap_or_default()), if wait.is_some() => {}
             () = sender.closed() => return,
         }
-        // Signals queued during the pause are covered by the next inspection.
         tokio::time::sleep(SIGNAL_DEBOUNCE).await;
         loop {
             tokio::select! {
@@ -407,8 +364,6 @@ where
     }
 }
 
-/// Every signal logind sends plus changes of its bus name owner. Seat
-/// `Sessions` has no change signal, but SessionNew and SessionRemoved cover it.
 struct LogindSignals {
     logind: MessageStream,
     owner: MessageStream,
@@ -416,7 +371,6 @@ struct LogindSignals {
 
 impl LogindSignals {
     async fn subscribe() -> zbus::Result<Self> {
-        // The system socket directly, as for queries.
         let connection = zbus::connection::Builder::address(SYSTEM_BUS_ADDRESS)?
             .build()
             .await?;
@@ -444,7 +398,6 @@ impl SeatSignals for LogindSignals {
             item = next_message(&mut self.logind) => item,
             item = next_message(&mut self.owner) => item,
         };
-        // A bus error ends the subscription; the caller reconnects.
         matches!(item, Some(Ok(_)))
     }
 }
@@ -924,8 +877,6 @@ mod tests {
             Duration::from_millis(20),
         )
         .unwrap();
-        // A listening socket that never answers authentication must be bounded,
-        // too. Each failed poll must attempt a fresh connection.
         for _ in 0..2 {
             let started = std::time::Instant::now();
             let error = query.show_seat("seat0").unwrap_err();
@@ -1016,14 +967,12 @@ mod tests {
         });
         let within = Duration::from_secs(2);
 
-        // A slow reply is retried without waiting for a signal.
         tokio::time::timeout(within, seat.wait_for(|state| *state == unlocked))
             .await
             .unwrap()
             .unwrap();
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
 
-        // A lock sends several signals; they cost one inspection.
         for _ in 0..5 {
             signal.send(()).unwrap();
         }
@@ -1034,7 +983,6 @@ mod tests {
         tokio::time::sleep(RETRY_MIN * 2).await;
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 3);
 
-        // A lost subscription hands control back to the reconnect loop.
         drop(signal);
         tokio::time::timeout(within, follower)
             .await

@@ -1,9 +1,3 @@
-//! The arrangement: each computer's screens as one island under its name,
-//! lit seams where the pointer crosses to another computer, and the
-//! computers found on the network on a shelf underneath. Dragging a
-//! computer asks the engine where it would land and shows that; dropping it
-//! moves it. Double-clicking a computer moves its screens one by one.
-
 pub mod geometry;
 
 use std::{cell::Cell, collections::HashMap, rc::Rc};
@@ -37,18 +31,14 @@ use crate::{
     widgets,
 };
 
-/// This computer's island: its screens have no peer.
 pub const LOCAL: &str = "local";
 const CHIP_HEIGHT: f32 = 24.0;
 const CHIP_TEXT: f32 = 12.0;
-/// The shelf of computers found on the network, under the board.
 const FOUND_SIZE: (f32, f32) = (132.0, 64.0);
 const SHELF_TOP: f32 = 48.0;
 const SHELF_GAP: f32 = 8.0;
-/// A seam this long or longer gets arrows across it.
 const BADGE_ROOM: f32 = 34.0;
 
-/// Whose screen a layout monitor is.
 pub fn owner_of(monitor: &Monitor) -> String {
     monitor
         .peer
@@ -56,18 +46,13 @@ pub fn owner_of(monitor: &Monitor) -> String {
         .map_or_else(|| LOCAL.to_owned(), |peer| format!("peer:{peer}"))
 }
 
-/// A drag of a computer's screens, or of one of them.
 #[derive(Clone, Debug)]
 struct Drag {
     owner: String,
     anchor: Monitor,
-    /// Whether the whole computer moves.
     computer: bool,
-    /// The fit the drag began with, so nothing rescales under the pointer.
     fit: Fit,
-    /// How far the pointer went, in pixels.
     pixels: (f32, f32),
-    /// The move the engine last answered for, and its answer.
     asked: Option<(i32, i32)>,
     landing: Landing,
     dropped: bool,
@@ -75,10 +60,8 @@ struct Drag {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Landing {
-    /// No answer yet: the screens follow the pointer.
     Unknown,
     At(Preview),
-    /// The engine says they cannot go there.
     Refused,
 }
 
@@ -100,7 +83,6 @@ struct Pressed {
     dragging: bool,
 }
 
-/// A found computer carried off the shelf, by id, with its middle.
 #[derive(Clone, Debug)]
 struct Carried {
     id: String,
@@ -110,27 +92,21 @@ struct Carried {
 pub struct Board {
     model: Entity<Model>,
     focus: FocusHandle,
-    /// The computer whose inspector shows, by owner.
     pub selection: Option<String>,
-    /// The computer whose screens move one by one.
     pub adjusting: Option<String>,
     hovered: Option<String>,
     drag: Option<Drag>,
     pressed: Option<Pressed>,
     carried: Option<Carried>,
-    /// Where the board was last painted, in window pixels.
     bounds: Rc<Cell<Bounds<Pixels>>>,
-    /// Which of its spots each computer's name took, kept while dragging.
     spots: HashMap<String, usize>,
     asking: bool,
 }
 
-/// One computer on the board as this frame draws it.
 struct Island {
     owner: String,
     name: SharedString,
     state: Option<PeerState>,
-    /// The layout's monitors, with where they are and where they show.
     screens: Vec<(Monitor, Rect, Rect)>,
     hull: Option<Rect>,
     chip: Rect,
@@ -174,8 +150,6 @@ impl Board {
         cx.notify();
     }
 
-    /// A forgotten computer lets go of the selection; a drop ends once the
-    /// snapshot has its screen somewhere else.
     fn forget_missing(&mut self, model: &Entity<Model>, cx: &App) {
         let Some(snapshot) = &model.read(cx).snapshot else {
             return;
@@ -220,8 +194,6 @@ impl Board {
         }
     }
 
-    /// How far the moving screens show from their spot: where the engine
-    /// says they land, else under the pointer.
     fn shift(drag: &Drag) -> (f32, f32) {
         match &drag.landing {
             Landing::At(preview) => (
@@ -259,7 +231,6 @@ impl Board {
         }
     }
 
-    /// The islands as this frame draws them.
     fn islands(
         &mut self,
         snapshot: &Snapshot,
@@ -313,7 +284,6 @@ impl Board {
         for island in &mut islands {
             island.hull = hull(island.screens.iter().map(|(_, _, at)| *at));
         }
-        // Names go where they cover the least of the others.
         let mut taken: Vec<Rect> = Vec::new();
         let hulls: Vec<Option<Rect>> = islands.iter().map(|island| island.hull).collect();
         for (index, island) in islands.iter_mut().enumerate() {
@@ -352,8 +322,6 @@ impl Board {
         (Some(fit), islands)
     }
 
-    /// What a press at board point (`x`, `y`) picked up: the Done button, a
-    /// computer's name, one of its screens, or a found computer.
     fn hit(
         &self,
         islands: &[Island],
@@ -383,7 +351,6 @@ impl Board {
                 });
             }
         }
-        // Later screens draw on top.
         for island in islands.iter().rev() {
             for (monitor, _, at) in island.screens.iter().rev() {
                 if at.contains(x, y) {
@@ -422,8 +389,6 @@ impl Board {
             self.pressed = None;
             return;
         }
-        // A double-click on a found computer puts it beside this one, the
-        // way a keyboard does elsewhere; a single click never places one.
         if clicks == 2
             && let Some(Hit::Found(id)) = &hit
         {
@@ -437,8 +402,6 @@ impl Board {
                 owner, computer, ..
             }) = &mut hit
         {
-            // A second press soon after the first adjusts its screens, or
-            // stops adjusting them.
             let on = self.adjusting.as_deref() != Some(owner.as_str());
             let owner = owner.clone();
             self.adjust(&owner, on, cx);
@@ -517,8 +480,6 @@ impl Board {
         }
     }
 
-    /// Asks the engine where the drag lands, one question at a time, the
-    /// newest travel next.
     fn ask(&mut self, cx: &mut Context<Self>) {
         let Some(drag) = &self.drag else { return };
         if drag.dropped || self.asking {
@@ -566,7 +527,6 @@ impl Board {
         if !pressed.dragging {
             match pressed.hit {
                 Some(Hit::Island { owner, .. }) => self.select(Some(owner), cx),
-                // A click beside the computers lets go of the selected one.
                 None if y < BOARD_HEIGHT => self.select(None, cx),
                 _ => {}
             }
@@ -584,8 +544,6 @@ impl Board {
         cx.spawn(async move |board, cx| {
             let failed = done.recv().await.map_or(true, |result| result.is_err());
             let _ = board.update(cx, |board, cx| {
-                // A refused move goes back; a done one ends with the next
-                // snapshot that has the screens somewhere else.
                 if failed {
                     board.drag = None;
                 }
@@ -596,9 +554,6 @@ impl Board {
         cx.notify();
     }
 
-    /// A found computer let go with its middle at (`x`, `y`) joins the
-    /// layout there, with a new screen's size. Let go on the shelf, it goes
-    /// back.
     fn drop_found(
         &mut self,
         id: &str,
@@ -628,7 +583,6 @@ impl Board {
         self.model.read(cx).send(request);
     }
 
-    /// Keyboard people put a found computer beside this one.
     pub fn place_beside(&self, id: &str, cx: &App) {
         let Some(snapshot) = &self.model.read(cx).snapshot else {
             return;
@@ -664,8 +618,6 @@ impl Board {
         }
     }
 
-    /// Arrow keys move the selected computer, or its screen while it is
-    /// being adjusted. Escape lets go of it.
     fn key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
         let step = match event.keystroke.key.as_str() {
             "escape" => {
@@ -703,8 +655,6 @@ impl Board {
         });
     }
 
-    /// The found computers' tiles on the shelf: id, where, and whether one
-    /// can be placed.
     fn found_tiles(&self, snapshot: &Snapshot) -> Vec<(String, Rect, bool)> {
         let (width, height) = self.size();
         let per_row = ((width - 2.0 * SHELF_GAP - 16.0) / (FOUND_SIZE.0 + SHELF_GAP))
@@ -732,8 +682,6 @@ impl Board {
             .map_or(0.0, |rect| rect.bottom() - BOARD_HEIGHT + SHELF_GAP)
     }
 
-    /// The seams to draw: while a drag waits for the engine, only those it
-    /// cannot change.
     fn shown_seams(&self, snapshot: &Snapshot) -> Vec<Seam> {
         let Some(drag) = &self.drag else {
             return snapshot.seams.clone();
@@ -760,7 +708,6 @@ impl Focusable for Board {
     }
 }
 
-/// The layout's screens that are on, in its order.
 pub fn monitors(snapshot: &Snapshot) -> impl Iterator<Item = &Monitor> {
     snapshot
         .layout
@@ -769,7 +716,6 @@ pub fn monitors(snapshot: &Snapshot) -> impl Iterator<Item = &Monitor> {
         .filter(|monitor| monitor.active())
 }
 
-/// A computer the inspector can show.
 #[derive(Clone, Debug)]
 pub struct Computer {
     pub owner: String,
@@ -779,8 +725,6 @@ pub struct Computer {
     pub mark: Option<String>,
 }
 
-/// The computers on the arrangement, in its order, then any paired one with
-/// no screen there.
 pub fn computers(snapshot: &Snapshot) -> Vec<Computer> {
     let mut list: Vec<Computer> = Vec::new();
     for monitor in monitors(snapshot) {
@@ -824,7 +768,6 @@ pub fn computers(snapshot: &Snapshot) -> Vec<Computer> {
     list
 }
 
-/// Where the pointer goes from `computer`'s screens to another's.
 pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Seam> {
     let mine: Vec<&str> = computer
         .screens
@@ -919,9 +862,7 @@ impl Render for Board {
             })
             .unwrap_or_default();
 
-        // The mat, the computers' outlines, and the pointer's handlers.
         let mat_theme = theme.clone();
-        // The outline follows the theme's radius, as the well it sits in does.
         let ring_radius = theme.shape_radius(BOARD, zz_gpui_kit::Shape::Round);
         let backdrop = canvas(
             move |area, _, _| {
@@ -968,8 +909,6 @@ impl Render for Board {
                         to_bounds(area, *hull),
                         Corners::all(ring_radius),
                         zz_gpui::transparent_black(),
-                        // The kit's chosen ring when selected, its focus ring
-                        // width when hovered.
                         Edges::all(if *selected {
                             px(2.0)
                         } else {
@@ -1099,7 +1038,6 @@ impl Render for Board {
                 );
             for (monitor, _, at) in &island.screens {
                 let moving = moving_ids.contains(&monitor.id);
-                // A computer that is away draws its screens disabled.
                 let state = if moving && refused {
                     PaintState::Focused
                 } else if moving {
@@ -1328,7 +1266,6 @@ impl Render for Board {
     }
 }
 
-/// A found computer on the shelf. One that cannot be placed yet says why.
 fn found_tile(
     computer: &zflow::neighbors::Unplaced,
     placeable: bool,
@@ -1414,8 +1351,6 @@ fn stroke(
     }
 }
 
-/// A seam's badge: arrows each way across it on an accent dot, ⇄ across an
-/// upright seam and ⇅ across one lying flat.
 fn badge(window: &mut Window, at: Point<Pixels>, vertical: bool, fill: Hsla, ink: Hsla) {
     window.paint_quad(quad(
         Bounds::new(at - point(px(9.0), px(9.0)), size(px(18.0), px(18.0))),

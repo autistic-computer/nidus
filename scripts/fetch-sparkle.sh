@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Print a directory with Sparkle's framework and tools, downloading and
-# checking them the first time.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 readonly version=2.10.0
-# The checksum Sparkle's Package.swift pins for this release.
 readonly checksum=17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959
 readonly url="https://github.com/sparkle-project/Sparkle/releases/download/$version/Sparkle-for-Swift-Package-Manager.zip"
 die() { printf 'fetch-sparkle: %s\n' "$*" >&2; exit 1; }

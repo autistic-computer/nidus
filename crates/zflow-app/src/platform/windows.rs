@@ -1,6 +1,3 @@
-//! Windows: the app keeps the input engine running beside it, lives in the
-//! notification area, starts at sign-in through the Run key, restarts as
-//! administrator on request, and updates itself through Velopack.
 #![allow(
     unsafe_code,
     reason = "Win32 handles, events and the handshake window have no safe binding"
@@ -59,30 +56,23 @@ use crate::{
     window::ZflowWindow,
 };
 
-/// Windows computers are not looked at through a lens yet.
 pub const CAN_SHARE_SCREEN: bool = false;
-/// The Windows engine lets every trusted computer take control.
 pub const CAN_REFUSE_CONTROL: bool = false;
 
 pub const OWN_SCREENS_NOTE: &str =
     "Between this PC’s own screens, the pointer follows Windows display settings.";
 
-/// Closing the window hides it to the notification area.
 pub const LIVES_IN_TRAY: bool = true;
 
-/// Messages the handshake window takes from other copies of the app.
 const WM_QUIT_APP: u32 = 0x8002;
 const WM_SHOW_APP: u32 = 0x8003;
-/// The handshake window's class, which `--quit` looks for.
 const HANDSHAKE_CLASS: PCWSTR = w!("Zflow.App");
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const PREFERENCES_KEY: &str = r"Software\zflow";
 const UPDATE_INTERVAL: Duration = Duration::from_hours(6);
-/// How often the app makes sure the engine runs.
 const SUPERVISE: Duration = Duration::from_secs(5);
 
 fn message_box(text: &str) {
-    // SAFETY: an owner-less message box with two NUL-terminated strings.
     unsafe {
         MessageBoxW(None, &HSTRING::from(text), w!("zflow"), MB_ICONERROR);
     }
@@ -92,8 +82,6 @@ pub fn default_config() -> PathBuf {
     zflow::windows::config_path()
 }
 
-/// The stable launcher Velopack keeps beside each version, which survives
-/// updates, else this copy.
 fn startup_executable() -> PathBuf {
     let current = std::env::current_exe().unwrap_or_default();
     current
@@ -130,7 +118,6 @@ fn set_starts_at_sign_in(on: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Points an existing Run value at this install, after an update moves it.
 fn refresh_startup_path() {
     if installed() && starts_at_sign_in() {
         let _ = set_starts_at_sign_in(true);
@@ -157,8 +144,6 @@ fn checks_for_updates() -> bool {
         != Ok(0)
 }
 
-/// Velopack's install and uninstall hooks, which end the process when
-/// Velopack started it for them.
 pub fn velopack_hooks() {
     velopack::VelopackApp::build()
         .set_auto_apply_on_startup(false)
@@ -167,8 +152,6 @@ pub fn velopack_hooks() {
         .run();
 }
 
-/// Runs before the app: `--quit`, a restart as administrator taking over,
-/// and the one-copy rule. False ends it.
 pub fn before_start(arguments: &crate::Arguments) -> bool {
     if arguments.quit {
         post_to_running(WM_QUIT_APP);
@@ -181,10 +164,8 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
         r"Local\Zflow.WinUI.{}",
         std::env::var("USERNAME").unwrap_or_default()
     ));
-    // SAFETY: a named mutex the process holds until it exits.
     let mutex = unsafe { CreateMutexW(None, true, &name) };
     let running = match mutex {
-        // An elevated copy owns it, which this one cannot open.
         Err(_) => true,
         Ok(_) => (unsafe { GetLastError() }) == ERROR_ALREADY_EXISTS,
     };
@@ -196,10 +177,7 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
     true
 }
 
-/// Finds the running app by its handshake window, or the `WinUI` app that
-/// came before it by its window title.
 fn post_to_running(message: u32) {
-    // SAFETY: looking up and posting to another process's top-level window.
     unsafe {
         let window = FindWindowW(HANDSHAKE_CLASS, PCWSTR::null())
             .or_else(|_| FindWindowW(PCWSTR::null(), w!("zflow")));
@@ -209,8 +187,6 @@ fn post_to_running(message: u32) {
     }
 }
 
-/// An administrator copy started by "Restart as administrator" takes over
-/// once the copy that asked has gone.
 fn wait_for_previous(arguments: &crate::Arguments) -> bool {
     let Some(pid) = arguments.replace_process else {
         return true;
@@ -229,8 +205,6 @@ fn wait_for_previous(arguments: &crate::Arguments) -> bool {
             .restart_ready
             .as_ref()
             .ok_or("The restart request is incomplete.")?;
-        // SAFETY: opening and setting the event the asking copy waits on,
-        // then waiting for it to exit.
         unsafe {
             let event = OpenEventW(EVENT_MODIFY_STATE, false, &HSTRING::from(ready.as_str()))
                 .map_err(|error| error.to_string())?;
@@ -257,8 +231,6 @@ fn wait_for_previous(arguments: &crate::Arguments) -> bool {
     }
 }
 
-/// Starts this app again as administrator, so input reaches administrator
-/// windows. Keeps running if the person says no.
 fn restart_as_administrator(cx: &mut App) {
     let ready = format!(r"Local\Zflow.Restart.{:032x}", rand_id());
     let arguments = format!(
@@ -267,8 +239,6 @@ fn restart_as_administrator(cx: &mut App) {
         zflow::windows::user_sid().unwrap_or_default()
     );
     let result = (|| -> Result<bool, String> {
-        // SAFETY: a named event, and an elevated launch of this executable
-        // that signals it once it has taken over.
         unsafe {
             let event = CreateEventW(None, true, false, &HSTRING::from(ready.as_str()))
                 .map_err(|error| error.to_string())?;
@@ -285,7 +255,6 @@ fn restart_as_administrator(cx: &mut App) {
             };
             if ShellExecuteExW(&raw mut info).is_err() {
                 let _ = CloseHandle(event);
-                // Cancelled at the prompt: keep the current app.
                 return Ok(false);
             }
             if !info.hProcess.is_invalid() {
@@ -309,7 +278,6 @@ fn restart_as_administrator(cx: &mut App) {
     }
 }
 
-/// A name no other restart uses at the same time.
 fn rand_id() -> u128 {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -318,11 +286,9 @@ fn rand_id() -> u128 {
     nanos ^ (u128::from(std::process::id()) << 96)
 }
 
-/// The engine process this app keeps running.
 struct Engine {
     config: PathBuf,
     child: Option<Child>,
-    /// The last lines it wrote to stderr, for when it fails to start.
     errors: Arc<Mutex<Vec<String>>>,
     quitting: bool,
 }
@@ -332,8 +298,6 @@ impl Engine {
         zflow::app::windows_view::Pipe::new(&self.config)
     }
 
-    /// Starts the engine unless one answers. An administrator app does not
-    /// reuse a normal engine, which could not reach administrator windows.
     fn ensure(&mut self) -> Result<(), String> {
         let pipe = self.pipe().map_err(|error| format!("{error:#}"))?;
         if let Some(status) = pipe.probe(Duration::from_millis(400)) {
@@ -405,7 +369,6 @@ impl Engine {
         Err("The input engine did not start. Check that UDP port 43119 is available.".into())
     }
 
-    /// Stops the engine, which lets go of input a peer holds.
     fn stop(&mut self) {
         let Ok(pipe) = self.pipe() else { return };
         let pid = pipe
@@ -414,7 +377,6 @@ impl Engine {
             .and_then(|pid| u32::try_from(pid).ok());
         let _ = pipe.quit();
         if let Some(pid) = pid {
-            // SAFETY: waiting on a process handle opened for that alone.
             unsafe {
                 if let Ok(process) = OpenProcess(PROCESS_SYNCHRONIZE, false, pid) {
                     WaitForSingleObject(process, 8_000);
@@ -435,7 +397,6 @@ struct EngineHandle(Arc<Mutex<Engine>>);
 
 impl zz_gpui::Global for EngineHandle {}
 
-/// What the Updates rows know.
 enum Release {
     None,
     Available(Box<velopack::UpdateInfo>),
@@ -453,8 +414,11 @@ pub struct Services {
 }
 
 fn update_manager() -> Option<velopack::UpdateManager> {
-    let source =
-        velopack::sources::GithubSource::new("https://github.com/demfabris/zflow", None, false);
+    let source = velopack::sources::GithubSource::new(
+        "https://github.com/autistic-computer/zflow",
+        None,
+        false,
+    );
     let options = velopack::UpdateOptions {
         ExplicitChannel: Some("win-x64".into()),
         ..Default::default()
@@ -612,8 +576,6 @@ impl Services {
         .detach();
     }
 
-    /// Stops the engine first, so the updater can replace it, then hands
-    /// over to Velopack, which restarts zflow.
     fn restart_and_update(&mut self, cx: &mut Context<Self>) {
         let Release::Downloaded(asset) = &self.release else {
             return;
@@ -653,14 +615,11 @@ pub fn start(
         quitting: false,
     }));
     cx.set_global(EngineHandle(engine.clone()));
-    // Keeps the engine running, and starts it again if it stops.
     let (errors, inbox) = async_channel::unbounded::<Option<String>>();
     std::thread::Builder::new()
         .name("zflow-engine".into())
         .spawn(move || {
             loop {
-                // Stopped for quitting or an update: waits, since a failed
-                // update starts the engine again.
                 let outcome = {
                     let mut engine = engine
                         .lock()
@@ -724,8 +683,6 @@ fn stop_engine(cx: &App) {
     }
 }
 
-/// Starts the engine, or stops it and starts it again, off the main thread:
-/// waiting for it to answer takes seconds. The supervisor reports failures.
 fn start_engine(restart: bool, cx: &App) {
     if let Some(engine) = engine(cx) {
         cx.background_executor()
@@ -743,17 +700,12 @@ fn start_engine(restart: bool, cx: &App) {
     }
 }
 
-/// A hidden window other copies find: `--quit` asks this one to quit, and a
-/// second launch asks it to show the window. Listens from the start, so a
-/// copy started in the background answers too.
 fn handshake_window(cx: &mut App) {
     let (events, inbox) = async_channel::unbounded::<u32>();
     std::thread::Builder::new()
         .name("zflow-handshake".into())
         .spawn(move || {
             let _ = HANDSHAKE.set(events);
-            // SAFETY: a plain window class and window on this thread, and its
-            // message loop.
             unsafe {
                 let Ok(instance) = GetModuleHandleW(None) else {
                     return;
@@ -814,13 +766,11 @@ unsafe extern "system" fn handshake_procedure(
         let _ = events.try_send(message);
         return LRESULT(0);
     }
-    // SAFETY: the default procedure for everything else.
     unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
 }
 
 pub fn window_shown(_: &mut App) {}
 
-/// The app stays in the notification area, so the window always closes.
 pub fn may_close(_: &App) -> bool {
     true
 }
@@ -837,7 +787,6 @@ pub fn check_updates(cx: &mut App) {
     }
 }
 
-/// Stops the engine and quits.
 pub fn quit(cx: &mut App) {
     stop_engine(cx);
     cx.quit();
@@ -1002,7 +951,7 @@ pub fn settings_stacks(
                 .label("Get installer")
                 .on(settings_card_ground(cx))
                 .on_click(|_, _, cx| {
-                    cx.open_url("https://github.com/demfabris/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe");
+                    cx.open_url("https://github.com/autistic-computer/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe");
                 }),
         ));
     } else {

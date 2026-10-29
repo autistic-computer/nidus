@@ -1,8 +1,3 @@
-//! Mutter's remote desktop session on B. One session records a monitor over PipeWire for the
-//! lens and takes A's pointer, buttons, keys and scroll through the same compositor, so input
-//! lands exactly where the recorded pixels are. Its clipboard side reads what B copied without
-//! going through the GNOME extension.
-
 use anyhow::{Context, Result, ensure};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Mutex, MutexGuard};
@@ -18,16 +13,10 @@ const SCREEN_CAST: &str = "org.gnome.Mutter.ScreenCast";
 const SCREEN_CAST_PATH: &str = "/org/gnome/Mutter/ScreenCast";
 const CAST_SESSION: &str = "org.gnome.Mutter.ScreenCast.Session";
 const STREAM: &str = "org.gnome.Mutter.ScreenCast.Stream";
-/// Mutter answers on its main thread, so a busy compositor can take a few frames to reply.
 const CALL: Duration = Duration::from_secs(2);
-/// Mutter names the PipeWire node only after the session starts recording.
 const NODE: Duration = Duration::from_secs(5);
-/// Copied text past this is refused instead of buffered; it matches what A accepts.
 const MAX_SELECTION: usize = 3 << 20;
-/// Text targets in order of preference. The first two promise UTF-8.
 const TEXT_TYPES: [&str; 3] = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain"];
-/// NotifyPointerAxis source for a device that moves to scroll. GNOME scrolls smoothly and adds
-/// no kinetic tail, which A's deltas already carry, and it needs no finish event.
 const AXIS_CONTINUOUS: u32 = 8;
 
 #[derive(Default)]
@@ -39,11 +28,9 @@ struct Held {
 #[derive(Clone, Default)]
 struct Selection {
     generation: u64,
-    /// What the new owner offers; empty when this session owns the selection.
     types: Vec<String>,
 }
 
-/// A started remote desktop session recording one monitor.
 pub struct Desk {
     session: zbus::Proxy<'static>,
     stream: OwnedObjectPath,
@@ -91,7 +78,6 @@ async fn signals(
     Ok(zbus::MessageStream::for_match_rule(rule, bus, None).await?)
 }
 
-/// The strings in a `mime-types` option, which Mutter has sent both bare and wrapped in a tuple.
 fn strings(value: &Value<'_>) -> Vec<String> {
     match value {
         Value::Array(array) => array
@@ -150,7 +136,6 @@ async fn watch_selection(mut owners: zbus::MessageStream, selection: watch::Send
 }
 
 impl Desk {
-    /// Starts a remote desktop session recording the primary monitor (connector ""), cursor hidden.
     pub async fn start(bus: &zbus::Connection) -> Result<Desk> {
         let remote =
             zbus::Proxy::new(bus, REMOTE_DESKTOP, REMOTE_DESKTOP_PATH, REMOTE_DESKTOP).await?;
@@ -188,7 +173,6 @@ impl Desk {
         let options = HashMap::from([("cursor-mode", Value::U32(0))]);
         let stream: OwnedObjectPath = call(&cast, "RecordMonitor", &("", options)).await?;
 
-        // Subscribe before starting, so neither signal can fall in between.
         let names = zbus::fdo::DBusProxy::new(bus).await?;
         let caster = names.get_name_owner(SCREEN_CAST.try_into()?).await?;
         let desktop = names.get_name_owner(REMOTE_DESKTOP.try_into()?).await?;
@@ -224,7 +208,6 @@ impl Desk {
         Ok(desk)
     }
 
-    /// PipeWire node id from PipeWireStreamAdded.
     pub fn node(&self) -> u32 {
         self.node
     }
@@ -239,8 +222,6 @@ impl Desk {
             .with_context(|| format!("Mutter refused {method}"))
     }
 
-    /// Moves the pointer to `x`, `y` in stream pixels. Nothing waits for Mutter's reply, so
-    /// motion never adds a round trip.
     pub async fn pointer(&self, x: f64, y: f64) -> Result<()> {
         ensure!(
             x.is_finite() && y.is_finite(),
@@ -250,7 +231,6 @@ impl Desk {
             .await
     }
 
-    /// Presses or releases the evdev button `code` (BTN_LEFT is 272).
     pub async fn button(&self, code: u32, pressed: bool) -> Result<()> {
         let button = i32::try_from(code).context("button code out of range")?;
         call::<_, ()>(&self.session, "NotifyPointerButton", &(button, pressed)).await?;
@@ -263,7 +243,6 @@ impl Desk {
         Ok(())
     }
 
-    /// Presses or releases the evdev key `code`, which B's keymap turns into a character.
     pub async fn key(&self, code: u32, pressed: bool) -> Result<()> {
         call::<_, ()>(&self.session, "NotifyKeyboardKeycode", &(code, pressed)).await?;
         let mut held = lock(&self.held);
@@ -275,8 +254,6 @@ impl Desk {
         Ok(())
     }
 
-    /// Scrolls by smooth deltas where 10 is one wheel notch and positive `dy` scrolls down.
-    /// Like motion, nothing waits for the reply.
     pub async fn scroll(&self, dx: f64, dy: f64) -> Result<()> {
         ensure!(
             dx.is_finite() && dy.is_finite(),
@@ -289,12 +266,10 @@ impl Desk {
             .await
     }
 
-    /// Bumps each time another program takes the clipboard.
     pub fn selection_generation(&self) -> u64 {
         self.selection.borrow().generation
     }
 
-    /// Waits until the selection owner changed after `generation`, then reads it as UTF-8 text.
     pub async fn read_selection(&self, generation: u64, timeout: Duration) -> Result<String> {
         let deadline = tokio::time::Instant::now() + timeout;
         let mut changes = self.selection.clone();
@@ -345,7 +320,6 @@ impl Desk {
         Ok(text)
     }
 
-    /// Releases every key and button this session pressed.
     pub async fn release(&self) -> Result<()> {
         let (buttons, keys) = {
             let held = lock(&self.held);
@@ -360,7 +334,6 @@ impl Desk {
         Ok(())
     }
 
-    /// Releases what is held and ends the session, which also ends its recording.
     pub async fn stop(mut self) -> Result<()> {
         let released = self.release().await;
         self.stopped = true;
@@ -371,7 +344,6 @@ impl Desk {
 }
 
 impl Drop for Desk {
-    /// A session dropped without `stop` would keep recording until the bus connection closes.
     fn drop(&mut self) {
         self.watcher.abort();
         if self.stopped {

@@ -1,6 +1,3 @@
-//! zflow's small pieces: banners for problems, notes, a key's mark and a
-//! computer's state light.
-
 use zflow::app::api::{Level, PeerState, State};
 use zz_gpui::{
     AnyElement, App, Hsla, ParentElement as _, SharedString, Styled as _, div,
@@ -13,7 +10,6 @@ use zz_gpui_kit::{
 
 use crate::theme::BANNER;
 
-/// Something that needs a look, with its fix when there is one.
 pub fn banner(
     level: Level,
     title: impl Into<SharedString>,
@@ -38,13 +34,11 @@ const fn tone_of(level: Level) -> Tone {
     }
 }
 
-/// What a banner's button sits on, so it draws for that ground.
 pub fn banner_ground(level: Level, cx: &App) -> Ground {
     cx.theme()
         .ground_of(Surface::new(BANNER).tone(tone_of(level)))
 }
 
-/// Something worth knowing that needs nothing done.
 pub fn note(
     title: impl Into<SharedString>,
     detail: impl Into<SharedString>,
@@ -99,8 +93,6 @@ fn callout(
         .children(action)
 }
 
-/// The colors a key's mark picks from, by the low three bits of each of its
-/// first four hex digits, so a key looks the same on every computer.
 const MARK_COLORS: [u32; 8] = [
     0x00E5_484D,
     0x00F7_6B15,
@@ -112,7 +104,6 @@ const MARK_COLORS: [u32; 8] = [
     0x00D6_409F,
 ];
 
-/// The palette index of each of a mark's squares.
 pub fn mark_indices(mark: &str) -> Vec<usize> {
     if mark.len() != 6 || !mark.chars().all(|c| c.is_ascii_hexdigit()) {
         return Vec::new();
@@ -124,8 +115,6 @@ pub fn mark_indices(mark: &str) -> Vec<usize> {
         .collect()
 }
 
-/// A key's mark: four small squares, so two computers with one name look
-/// different.
 #[allow(
     clippy::disallowed_methods,
     reason = "a key's mark is an identity, drawn in the same colors on every computer and in every theme"
@@ -141,20 +130,16 @@ pub fn key_mark(mark: &str) -> zz_gpui::Div {
         }))
 }
 
-/// A paired computer's state as a small light: filled while it is linked,
-/// hollow while it is not.
 pub fn state_dot(state: Option<PeerState>, cx: &App) -> zz_gpui::Div {
     let theme = cx.theme();
     status_dot(match state {
         None | Some(PeerState::Connected) => theme.success,
         Some(PeerState::ControllingThis | PeerState::ControlledFromHere) => theme.accent,
         Some(PeerState::Connecting) => theme.warning,
-        // Offline is a faint dot.
         Some(PeerState::Paired | PeerState::Unreachable) => theme.foreground.faint(),
     })
 }
 
-/// The status light's color.
 pub fn status_color(state: State, cx: &App) -> Hsla {
     let theme = cx.theme();
     match state {
@@ -166,7 +151,6 @@ pub fn status_color(state: State, cx: &App) -> Hsla {
     }
 }
 
-/// Muted text at `size`.
 pub fn muted(text: impl Into<SharedString>, size: f32, cx: &App) -> zz_gpui::Div {
     div()
         .text_size(rems_from_px(size))

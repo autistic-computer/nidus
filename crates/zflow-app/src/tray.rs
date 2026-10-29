@@ -1,6 +1,3 @@
-//! The menu bar icon on a Mac and the notification-area icon on Windows:
-//! how sharing goes, the computers, and the way into the window.
-
 use zflow::app::api::Request;
 use zz_gpui::{App, Entity};
 use zz_gpui_tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
@@ -11,7 +8,6 @@ use crate::{
     platform::{self, SharedServices},
 };
 
-/// The live icon, kept as long as the app runs.
 struct AppTray {
     tray: Option<Tray>,
     menu: Menu,
@@ -20,7 +16,6 @@ struct AppTray {
 
 impl zz_gpui::Global for AppTray {}
 
-/// The menu for `snapshot`. `update` is a newer version, once one is found.
 pub fn entries(
     snapshot: Option<&Snapshot>,
     update: Option<&str>,
@@ -50,7 +45,6 @@ pub fn entries(
                     format!("computer:{}", peer.name),
                 ));
             }
-            // Placing one happens on the arrangement.
             for computer in found {
                 entries.push(MenuEntry::item(
                     format!("{} — Place…", computer.name),
@@ -103,8 +97,6 @@ pub fn init(model: &Entity<Model>, cx: &mut App) {
             id: crate::APP_ID.into(),
             tooltip: "zflow".into(),
             icon: platform::tray_look(true, false),
-            // A Mac's menu bar icon opens its menu on any click; on Windows
-            // the icon opens the window and its menu is a right click away.
             menu_on_click: cfg!(target_os = "macos"),
         },
         menu.clone(),
@@ -211,7 +203,6 @@ fn handle(event: &TrayEvent, model: &Entity<Model>, cx: &mut App) {
     }
 }
 
-/// An SVG drawn as a square PNG `size` pixels across.
 #[cfg(target_os = "macos")]
 pub fn rasterize(svg: &str, size: u32) -> Vec<u8> {
     let Ok(tree) = resvg::usvg::Tree::from_str(svg, &resvg::usvg::Options::default()) else {

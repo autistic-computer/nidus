@@ -9,7 +9,7 @@ zflow's app and the UI stack it is built on.
 | `zz-gpui-kit` | zz's widget kit, vendored, with the additions listed below. |
 | `zz-gpui-tray` | New: a tray or menu bar icon with a menu, for any zz-gpui app. |
 
-The zz-gpui crates were copied from [demfabris/zz](https://github.com/demfabris/zz) at `32ee3ab37`. They follow zz's design language: colors come from the theme, surfaces from roles, and the app draws zz's Default interface theme in the system's light or dark mode.
+The zz-gpui crates were copied from [autistic-computer/zz](https://github.com/autistic-computer/zz) at `32ee3ab37`. They follow zz's design language: colors come from the theme, surfaces from roles, and the app draws zz's Default interface theme in the system's light or dark mode.
 
 ## Backport to zz
 

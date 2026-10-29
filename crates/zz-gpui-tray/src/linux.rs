@@ -3,11 +3,8 @@ use ksni::blocking::TrayMethods as _;
 
 use super::{Menu, MenuEntry, TrayEvent, TrayIcon, TrayOptions, decode, send};
 
-/// The largest edge sent to the host; panels draw the icon at 16 to 32 px.
 const ICON_SIZE: u32 = 48;
 
-/// A live `StatusNotifierItem`. Dropping it shuts the service down, which is
-/// what removes the icon.
 pub(super) struct Service {
     handle: ksni::blocking::Handle<SniTray>,
 }
@@ -95,8 +92,6 @@ impl ksni::Tray for SniTray {
         self.icon.clone()
     }
 
-    // GNOME's AppIndicator extension opens the menu on every click instead
-    // of delivering this, so an app should repeat its activation in the menu.
     fn activate(&mut self, _x: i32, _y: i32) {
         if !self.menu_on_click {
             send(&self.events, TrayEvent::Activate);
@@ -145,7 +140,6 @@ fn activate(action: Option<String>) -> Box<dyn Fn(&mut SniTray) + Send + 'static
     })
 }
 
-// SNI pixel data is ARGB32 in network byte order.
 fn pixmap(icon: &TrayIcon) -> Vec<ksni::Icon> {
     let Some(rgba) = decode(icon) else {
         return Vec::new();

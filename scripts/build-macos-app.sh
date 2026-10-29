@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Build a Finder-launchable app without installing or starting it.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -67,9 +66,6 @@ if [[ "$explicit_sign" == true ]]; then
     command -v codesign >/dev/null 2>&1 || die 'codesign is required for --sign'
 elif development_identity="$(security find-identity -v -p codesigning 2>/dev/null |
     awk '/"Apple Development: / { print $2; exit }')" && [[ -n "$development_identity" ]]; then
-    # macOS keys Accessibility grants to the signature. An ad-hoc signature changes
-    # on every build, so each rebuild would need a fresh grant. Sign by hash
-    # because renewed certificates share a name.
     sign_identity="$development_identity"
 fi
 
@@ -77,7 +73,6 @@ readonly output_dir="$REPO_ROOT/target/$profile"
 bin_dir="$output_dir"
 cargo_args=(build --locked --manifest-path "$REPO_ROOT/Cargo.toml"
     --target-dir "$REPO_ROOT/target" -p zflow-app)
-# The AWDL helper is a small Swift daemon; the app itself is Rust.
 swift_args=(--package-path "$REPO_ROOT/macos" --configuration "$profile")
 if [[ "$profile" == release ]]; then
     cargo_args+=(--release)
@@ -110,7 +105,6 @@ install -d -m 0755 "$app/Contents/MacOS" "$app/Contents/Library/LaunchDaemons" \
     "$app/Contents/Resources" "$app/Contents/Frameworks"
 install -m 0755 "$binary" "$app/Contents/MacOS/zflow-app"
 install -m 0755 "$swift_output/zflow-awdl-daemon" "$app/Contents/MacOS/zflow-awdl-daemon"
-# The app loads Sparkle from its Frameworks folder when it starts.
 sparkle="$sparkle_dir/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 [[ -d "$sparkle" ]] || die "missing Sparkle framework: $sparkle"
 ditto "$sparkle" "$app/Contents/Frameworks/Sparkle.framework"
@@ -124,7 +118,6 @@ if [[ "$universal" == true ]]; then
 fi
 install -m 0644 "$REPO_ROOT/packaging/macOS/io.zflow.awdl.plist" "$app/Contents/Library/LaunchDaemons/io.zflow.awdl.plist"
 install -m 0644 "$REPO_ROOT/packaging/macOS/Info.plist" "$app/Contents/Info.plist"
-# Keep the layered light, dark and tinted Icon Composer appearances in the app.
 xcrun actool "$REPO_ROOT/assets/zflow.icon" \
     --compile "$app/Contents/Resources" \
     --output-format human-readable-text --notices --warnings \
@@ -151,7 +144,6 @@ printf 'Built %s\n' "$bundle"
 printf 'Open it in Finder, or run: open "%s"\n' "$bundle"
 if [[ "$dmg" == true ]]; then
     dmg_args=("$bundle" "$output_dir/zflow.dmg")
-    # An ad-hoc signature on the image would prove nothing.
     if [[ "$sign_identity" != - ]]; then dmg_args+=(--sign "$sign_identity"); fi
     "$SCRIPT_DIR/build-macos-dmg.sh" "${dmg_args[@]}"
 fi

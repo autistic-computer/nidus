@@ -1,6 +1,3 @@
-# Opens zflow on a fresh configuration and checks that it shows its window,
-# starts the engine, and quits with the engine when asked. Leaves a picture of
-# the screen and the app's log in -Out.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$App,
@@ -11,8 +8,6 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $log = Join-Path $Out 'app.log'
 $config = Join-Path $Out 'config/config.toml'
 $env:RUST_LOG = 'warn,zflow=debug'
-# The app is found by name below, which also covers a launcher that hands
-# its arguments over and exits.
 Start-Process -FilePath $App -ArgumentList '--config', "`"$config`"", '--show-settings' -RedirectStandardError $log
 Start-Sleep -Seconds 20
 

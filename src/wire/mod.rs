@@ -1,8 +1,3 @@
-//! Framing for the protocol domain model: two magic bytes, a family byte, then
-//! the payload. Payloads are the core types in postcard, except desktop
-//! metadata, which is JSON. The format has no version field of its own: the
-//! QUIC ALPN names the protocol, so a peer on another version never gets here.
-
 mod bounds;
 mod codec;
 mod error;
@@ -29,12 +24,9 @@ pub const MAX_RELIABLE_PAYLOAD_BYTES: usize = 32 * 1_024;
 pub const MAX_MOTION_PAYLOAD_BYTES: usize = 8 * 1_024;
 pub const MAX_PROBE_PAYLOAD_BYTES: usize = 128;
 pub const MAX_HELLO_PAYLOAD_BYTES: usize = 1_024;
-/// A copied selection, the largest lens message. Tile packets travel outside the frame.
 pub const MAX_LENS_PAYLOAD_BYTES: usize = crate::lens::wire::MAX_TEXT_BYTES + 64;
-/// A computer's name fits one DNS label, so the mDNS record can carry it.
 pub const MAX_NAME_BYTES: usize = 63;
 pub const MAX_VERSION_BYTES: usize = 32;
-/// Vouches a hello carries, real or random padding.
 pub const HELLO_VOUCHES: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,7 +37,6 @@ pub enum Family {
     ReliableControl = 3,
     Motion = 4,
     Probe = 5,
-    // 6 was the code pairing offer, before 0.3.0.
     Desktop = 7,
     Hello = 8,
     Lens = 9,
@@ -110,22 +101,14 @@ impl WireMessage {
     }
 }
 
-/// What a computer says about itself before either side trusts the other.
-/// TLS proves the key that sent it; every field is only the sender's word.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Hello {
-    /// Its host name, already reduced to plain text by the sender.
     pub name: String,
     pub os: Os,
-    /// Its zflow version, so a person knows which computer to update.
     pub version: String,
     pub input_port: u16,
-    /// Addresses it says it has, tried after the one it spoke from.
     pub candidates: Vec<SocketAddr>,
-    /// Whether it already trusts the receiver's key. Anyone can claim it,
-    /// so the receiver neither shows nor obeys it.
     pub trusts_you: bool,
-    /// Room for introducing a third computer later. Random until then.
     pub vouches: [[u8; 16]; HELLO_VOUCHES],
 }
 
@@ -134,7 +117,6 @@ pub struct Hello {
 pub enum Os {
     Linux,
     Macos,
-    // Append only: postcard encodes the existing variants by ordinal.
     Windows,
 }
 
@@ -147,8 +129,6 @@ pub fn decode(bytes: &[u8]) -> Result<WireMessage, WireError> {
     decode_inner(bytes, None)
 }
 
-/// Decodes only one family, rejecting a mismatch before the payload is read.
-/// Fuzz targets use this to keep each decoder family independent.
 pub fn decode_family(bytes: &[u8], expected: Family) -> Result<WireMessage, WireError> {
     decode_inner(bytes, Some(expected))
 }
@@ -465,8 +445,6 @@ mod tests {
         );
     }
 
-    /// A hostile peer skips validation, so every limit must hold again after
-    /// decoding.
     #[test]
     fn decoded_messages_over_a_limit_are_rejected() {
         let crowd = || TouchState::new((0..=bounds::MAX_CONTACTS as u32).map(contact)).unwrap();
@@ -545,7 +523,6 @@ mod tests {
         });
         let bytes = encode(&largest).unwrap();
         assert!(bytes.len() - HEADER_BYTES <= MAX_HELLO_PAYLOAD_BYTES);
-        // Family 6 carried the code pairing offer and is no longer read.
         let mut retired = bytes.clone();
         retired[2] = 6;
         assert_eq!(decode(&retired), Err(WireError::UnknownFamily(6)));
@@ -563,8 +540,6 @@ mod tests {
 
     #[test]
     fn repeated_touch_contact_ids_are_rejected() {
-        // A motion frame is its fields in order, so a tuple can carry a
-        // contact list that TouchState itself cannot hold.
         let raw = |contacts: Vec<TouchContact>| {
             let frame = motion(None);
             let body = (
@@ -625,7 +600,6 @@ mod tests {
         let bytes = encode(&message).unwrap();
         assert_eq!(decode(&bytes).unwrap(), message);
         let mut invalid = bytes;
-        // Unknown families fail before metadata is interpreted.
         invalid[2] = 255;
         assert!(matches!(
             decode(&invalid),

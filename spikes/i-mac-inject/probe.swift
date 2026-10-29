@@ -1,16 +1,3 @@
-// Spike I probe: can the logged-in app post input with CGEventPost well
-// enough to be a zflow receiver? README.md says how to run it and RESULT.md
-// records the answer. Throwaway code: the evidence matters, not this file.
-//
-// Safety rules this file keeps:
-// - Every posted event carries MARK in kCGEventSourceUserData, so the taps
-//   and the window log can tell posted input from the owner's hands.
-// - A click or scroll goes out only after a hit test finds the probe window
-//   under that point. A key goes out only while the probe window is key.
-// - Held buttons, keys, modifiers and the Caps Lock state are tracked and
-//   put back when a test ends, when the 60 s watchdog fires, on SIGINT,
-//   SIGTERM and SIGHUP, and (best effort) when the process crashes.
-
 import AppKit
 import ApplicationServices
 import Carbon
@@ -19,31 +6,27 @@ import IOKit
 import IOKit.hidsystem
 import IOKit.pwr_mgt
 
-let MARK: Int64 = 0x7A_666C_6F77 // "zflow" in ASCII
+let MARK: Int64 = 0x7A_666C_6F77
 let WATCHDOG_SECONDS = 60.0
 let ALL_TESTS = ["suppress", "delta", "click", "flags", "iso", "caps", "scroll", "keys"]
 let OPT_IN_TESTS = ["media", "wake"]
 let KNOWN_TESTS = ALL_TESTS + OPT_IN_TESTS + ["feel"]
 
-// Mac virtual keycodes. The numbers match src/macos/mod.rs:867-988.
 enum Key {
     static let a: CGKeyCode = 0
     static let l: CGKeyCode = 37
     static let k: CGKeyCode = 40
-    // Positions as mod.rs names them after capture_bridge.c's ISO swap. An ISO
-    // keyboard itself reports 10 for the key left of 1 and 50 for left of Z.
-    static let leftOfOne: CGKeyCode = 50 // HID 0x35
-    static let leftOfZ: CGKeyCode = 10 // HID 0x64
+    static let leftOfOne: CGKeyCode = 50
+    static let leftOfZ: CGKeyCode = 10
     static let leftCommand: CGKeyCode = 55
     static let capsLock: CGKeyCode = 57
-    static let f13: CGKeyCode = 105 // stands in for PrintScreen
-    static let f14: CGKeyCode = 107 // stands in for ScrollLock
-    static let f15: CGKeyCode = 113 // stands in for Pause
+    static let f13: CGKeyCode = 105
+    static let f14: CGKeyCode = 107
+    static let f15: CGKeyCode = 113
 }
 
-let deviceLeftCommand: UInt64 = 0x08 // NX_DEVICELCMDKEYMASK
+let deviceLeftCommand: UInt64 = 0x08
 
-// NX_KEYTYPE_* from IOKit's ev_keymap.h.
 enum MediaKey {
     static let soundUp = 0
     static let soundDown = 1
@@ -54,8 +37,6 @@ enum MediaKey {
 let permitAll: CGEventFilterMask = [
     .permitLocalMouseEvents, .permitLocalKeyboardEvents, .permitSystemDefinedEvents,
 ]
-
-// MARK: - Output
 
 enum Out {
     static let lock = NSLock()
@@ -111,7 +92,6 @@ func scalars(_ s: String) -> String {
     s.isEmpty ? "-" : s.unicodeScalars.map { String(format: "U+%04X", $0.value) }.joined(separator: "+")
 }
 
-// The string itself when every character prints on one line, else "-".
 func printable(_ s: String) -> String {
     let ok = !s.isEmpty && s.unicodeScalars.allSatisfy { $0.value > 32 && $0.value < 0xF700 && $0.value != 127 }
     return ok ? s : "-"
@@ -121,8 +101,6 @@ struct Abort: Error, CustomStringConvertible {
     let description: String
     init(_ description: String) { self.description = description }
 }
-
-// MARK: - Time and threads
 
 func now() -> Double { ProcessInfo.processInfo.systemUptime }
 
@@ -134,8 +112,6 @@ func onMain<T>(_ body: () -> T) -> T {
     if Thread.isMainThread { return body() }
     return DispatchQueue.main.sync(execute: body)
 }
-
-// MARK: - Environment
 
 func sysctlString(_ name: String) -> String {
     var size = 0
@@ -151,7 +127,6 @@ func fourcc(_ value: UInt32) -> String {
     return String(decoding: bytes, as: UTF8.self).trimmingCharacters(in: .whitespaces)
 }
 
-// "ANSI", "ISO", "JIS" or "????" for a kCGKeyboardEventKeyboardType value.
 func layoutName(_ keyboardType: Int) -> String {
     fourcc(KBGetLayoutType(Int16(truncatingIfNeeded: keyboardType)))
 }
@@ -183,7 +158,6 @@ func inputSourceID() -> String {
     return Unmanaged<CFString>.fromOpaque(raw).takeUnretainedValue() as String
 }
 
-// System Settings stores both in units of 15 ms.
 func globalPreference(_ key: String) -> Int? {
     (CFPreferencesCopyAppValue(key as CFString, kCFPreferencesAnyApplication) as? NSNumber)?.intValue
 }
@@ -192,8 +166,6 @@ func registryValue(_ entry: io_registry_entry_t, _ key: String) -> Any? {
     IORegistryEntryCreateCFProperty(entry, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue()
 }
 
-// Each keyboard's own layout from IOHIDFamily's StandardType (0 ANSI, 1 ISO,
-// 2 JIS). Unlike LMGetKbdType, this does not depend on the last key pressed.
 func keyboardsReport() {
     var iterator: io_iterator_t = 0
     guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("AppleHIDKeyboardEventDriverV2"),
@@ -297,8 +269,6 @@ func environmentReport(_ context: String) {
     report("env", ["cursor": cursor()])
 }
 
-// MARK: - Geometry
-
 func cursor() -> CGPoint { CGEvent(source: nil)?.location ?? .zero }
 
 func primaryHeight() -> CGFloat { CGDisplayBounds(CGMainDisplayID()).height }
@@ -307,8 +277,6 @@ func onDisplay(_ p: CGPoint) -> Bool { displays().contains { $0.contains(p) } }
 
 func displayUnion() -> CGRect { displays().reduce(CGRect.null) { $0.union($1) } }
 
-// Keeps a point on some display: unchanged when it is on one, else moved to
-// the nearest point of the nearest display. Returns whether it moved.
 func snap(_ p: CGPoint) -> (CGPoint, Bool) {
     let rects = displays()
     if rects.contains(where: { $0.contains(p) }) { return (p, false) }
@@ -337,7 +305,6 @@ func titleBarPoint() -> CGPoint {
     }
 }
 
-// True when a mouse-down at this point would hit the probe window.
 func probeWindowAt(_ p: CGPoint) -> Bool {
     onMain {
         let cocoa = NSPoint(x: p.x, y: primaryHeight() - p.y)
@@ -371,7 +338,6 @@ func ensureFront(_ why: String) throws {
         if probeFront() { return }
         nap(0.05)
     }
-    // A posted click on the window body activates it on macOS 27 (click test).
     let center = targetCenter()
     if probeWindowAt(center), let source = try? receiverSource(),
        (try? click(center, source, state: 1, number: Clicks.next())) != nil {
@@ -387,8 +353,6 @@ func ensureFront(_ why: String) throws {
     throw Abort("the probe window never became key (\(why))")
 }
 
-// Gets focus back without waiting for a person: activate, then a posted
-// title-bar click on the probe window, which deskflow#9852 says still works.
 func tryFront(_ source: CGEventSource) -> String? {
     if probeFront() { return "already" }
     onMain { NSApp.activate() }
@@ -400,13 +364,9 @@ func tryFront(_ source: CGEventSource) -> String? {
     return probeFront() ? "titlebar_click" : nil
 }
 
-// MARK: - Posting
-
 enum Clicks {
     static var number: Int64 = 0
 
-    // Deskflow's rule for macOS 27: start just past the system's own count of
-    // button presses, add one per press, and reuse it for the release and drags.
     static func next() -> Int64 {
         if number == 0 { number = systemCounter() }
         number += 1
@@ -431,7 +391,6 @@ func post(_ event: CGEvent, at tap: CGEventTapLocation = .cghidEventTap) {
     event.post(tap: tap)
 }
 
-// The source ROADMAP section 4 plans for the receiver.
 func receiverSource() throws -> CGEventSource {
     guard let source = CGEventSource(stateID: .hidSystemState) else {
         throw Abort("could not create an HID system-state event source")
@@ -463,8 +422,6 @@ func moveTo(_ p: CGPoint, _ source: CGEventSource?) throws {
     post(try moveEvent(to: p, delta: CGPoint(x: p.x - c.x, y: p.y - c.y), source))
 }
 
-// Posts a left click after the hit test passes. Returns the flags the down
-// event was created with, before any override.
 @discardableResult
 func click(_ p: CGPoint, _ source: CGEventSource?, state: Int64?, number: Int64?,
            flags: CGEventFlags? = nil) throws -> CGEventFlags {
@@ -494,8 +451,6 @@ func flagsEvent(_ code: CGKeyCode, _ flags: CGEventFlags, _ source: CGEventSourc
     return event
 }
 
-// Posts a key press and release while the probe window is key. Returns the
-// flags the down event was created with, before any override.
 @discardableResult
 func tapKey(_ code: CGKeyCode, _ source: CGEventSource?, flags: CGEventFlags? = nil,
             keyboardType: Int64? = nil, hold: Double = 0.03) throws -> CGEventFlags {
@@ -512,8 +467,6 @@ func tapKey(_ code: CGKeyCode, _ source: CGEventSource?, flags: CGEventFlags? = 
     post(up)
     return created
 }
-
-// MARK: - Safety
 
 enum Safety {
     static let lock = NSLock()
@@ -555,8 +508,6 @@ enum Safety {
         return modifiers.contains(code)
     }
 
-    // Releases everything still held and puts Caps Lock back. The crash path
-    // skips a busy lock and writes without the output lock.
     static func releaseAll(crashing: Bool = false) {
         if crashing {
             guard lock.try() else { return }
@@ -605,8 +556,8 @@ enum Safety {
 }
 
 enum Caps {
-    static var original: Bool? // Caps flag in the HID system state before the test
-    static var originalIOHID: Bool? // IOHIDSystem lock state before the test
+    static var original: Bool?
+    static var originalIOHID: Bool?
     static var connect: io_connect_t = 0
     static var openResult: kern_return_t = -1
 
@@ -639,8 +590,6 @@ enum Caps {
         originalIOHID = ioState()
     }
 
-    // Puts the lock back the way the test found it. IOHIDSystem holds the real
-    // lock, so it gets the last word. Returns what it did.
     static func restore() -> String {
         guard let want = original else { return "none" }
         var steps: [String] = []
@@ -726,8 +675,6 @@ enum Signals {
     }
 }
 
-// MARK: - What the window receives
-
 struct Seen {
     var type: NSEvent.EventType
     var marked = false
@@ -808,7 +755,6 @@ enum Log {
         lock.unlock()
     }
 
-    // Runs on the main thread for every event the app receives.
     static func record(_ event: NSEvent) {
         let type = event.type
         let cg = event.cgEvent
@@ -873,8 +819,6 @@ enum Log {
     }
 }
 
-// MARK: - Window
-
 final class TargetView: NSView {
     var banner = "zflow inject probe"
     var lines: [String] = []
@@ -882,7 +826,6 @@ final class TargetView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
 
-    // The local monitor already logged these; swallowing them stops the beep.
     override func keyDown(with event: NSEvent) {}
     override func keyUp(with event: NSEvent) {}
     override func flagsChanged(with event: NSEvent) {}
@@ -921,8 +864,6 @@ func say(_ text: String) {
         UI.view?.needsDisplay = true
     }
 }
-
-// MARK: - Test 1: suppress
 
 struct MoveCounts {
     var hidLocal = 0
@@ -966,7 +907,6 @@ enum Taps {
         return counts
     }
 
-    // Main thread only. Returns an error, or nil once both taps run.
     static func start() -> String? {
         let mask = [CGEventType.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
             .reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
@@ -1011,12 +951,10 @@ let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
     return Unmanaged.passUnretained(event)
 }
 
-// The process-wide calls Deskflow makes. Deprecated since 10.6, so they are
-// looked up at runtime instead of linked.
 func setGlobalSuppression() -> String {
     typealias SetInterval = @convention(c) (Double) -> Int32
     typealias SetFilter = @convention(c) (UInt32, UInt32) -> Int32
-    let everywhere = UnsafeMutableRawPointer(bitPattern: -2) // RTLD_DEFAULT
+    let everywhere = UnsafeMutableRawPointer(bitPattern: -2)
     guard let interval = dlsym(everywhere, "CGSetLocalEventsSuppressionInterval"),
           let filter = dlsym(everywhere, "CGSetLocalEventsFilterDuringSuppressionState")
     else { return "missing" }
@@ -1045,7 +983,6 @@ func testSuppress() throws {
             .eventSuppressionStateRemoteMouseDrag).rawValue ?? 0),
     ])
     let permit = try receiverSource()
-    // global_permit runs last: its process-wide setting may outlive the arm.
     let arms: [(name: String, source: CGEventSource?, posts: Bool)] = [
         ("baseline", nil, false),
         ("default_source", nil, true),
@@ -1116,8 +1053,6 @@ func testSuppress() throws {
     verdict("suppress.feel", "MANUAL", "did the cursor keep following your finger in arms 3 and 4? did it stall in arm 2?")
 }
 
-// MARK: - Test 2: delta
-
 func testDelta() throws {
     let source = try receiverSource()
     say("delta: hands off the trackpad and mouse for 5 s")
@@ -1179,8 +1114,6 @@ func testDelta() throws {
     verdict("delta.no_acceleration", pass(abs(one - 1) < 0.5 && abs(twenty - 20) < 0.5),
             "1 point moved \(show(one)), 20 fast points moved \(show(twenty))")
 }
-
-// MARK: - Test 3: click
 
 func testClick() throws {
     try ensureFront("click")
@@ -1267,7 +1200,6 @@ func testClick() throws {
     try backgroundFocus(center, source, gap: gap)
 }
 
-// Accessibility raise of our own window, the workaround in deskflow#9852.
 func axRaiseSelf() -> String {
     let app = AXUIElementCreateApplication(getpid())
     var value: CFTypeRef?
@@ -1291,8 +1223,6 @@ func backgroundFocus(_ center: CGPoint, _ source: CGEventSource, gap: Double) th
         ("body_number", center, "counter", false),
         ("body_lownumber", center, "low", false),
         ("titlebar_number", title, "counter", false),
-        // An Accessibility raise of our own window from this thread trapped in
-        // AppKit (makeKeyAndOrderFront off the main thread), so it is left out.
     ]
     var activated: [String] = []
     try ensureFront("background arms")
@@ -1347,8 +1277,6 @@ func backgroundFocus(_ center: CGPoint, _ source: CGEventSource, gap: Double) th
     verdict("click.background_focus", activated.isEmpty ? "FAIL" : "PASS",
             "arms that activated the probe: \(activated.isEmpty ? "none" : activated.joined(separator: ","))")
 }
-
-// MARK: - Test 4: flags
 
 func testFlags() throws {
     try ensureFront("flags")
@@ -1430,8 +1358,6 @@ func testFlags() throws {
                      "held_command_merged_into_key": keyWithout?.hasCommand ?? false])
 }
 
-// MARK: - Test 5: iso
-
 func testISO() throws {
     try ensureFront("iso")
     let source = try receiverSource()
@@ -1500,8 +1426,6 @@ func testISO() throws {
     verdict("iso.real_keyboard", "MANUAL", "the last keyboard used reports \(layout); compare the chars above with the keycaps")
 }
 
-// MARK: - Test 6: caps
-
 func testCaps() throws {
     try ensureFront("caps")
     let source = try receiverSource()
@@ -1568,8 +1492,6 @@ func testCaps() throws {
     verdict("caps.light", "MANUAL", "did the Caps Lock light follow each method that toggled?")
 }
 
-// MARK: - Test 7: scroll
-
 func testScroll() throws {
     try ensureFront("scroll")
     let source = try receiverSource()
@@ -1608,8 +1530,6 @@ func testScroll() throws {
     let pixel = try send("pixel", [try wheel(.pixel, -40)])
     verdict("scroll.pixel", pass(pixel.count == 1 && pixel.allSatisfy(\.precise)), "one pixel event, precise")
 
-    // kCGScrollPhase: began 1, changed 2, ended 4. kCGMomentumScrollPhase:
-    // begin 1, continue 2, end 3. One gesture: the fingers, then the coast.
     var gesture = [try wheel(.pixel, -2, phase: 1)]
     for _ in 0..<6 { gesture.append(try wheel(.pixel, -6, phase: 2)) }
     gesture.append(try wheel(.pixel, 0, phase: 4))
@@ -1625,8 +1545,6 @@ func testScroll() throws {
             "AppKit momentum phases seen \(show(momentum.sorted().map { Int($0) }))")
 }
 
-// MARK: - Test 8: keys
-
 func testKeys() throws {
     try ensureFront("keys")
     let source = try receiverSource()
@@ -1641,7 +1559,6 @@ func testKeys() throws {
         "delay_s": delay, "interval_s": interval, "appkit_delay_s": appDelay, "appkit_interval_s": appInterval,
     ])
 
-    // Repeats made here, the way the receiver would make them.
     var mark = Log.mark()
     try guardKeys()
     post(try keyEvent(Key.k, down: true, source))
@@ -1660,7 +1577,6 @@ func testKeys() throws {
     verdict("keys.repeat_flag", pass(repeats.map(\.isRepeat) == [false, true, true, true, true, true]),
             "isARepeat \(show(repeats.map(\.isRepeat)))")
 
-    // Does macOS repeat a held posted key by itself?
     let hold = max(1.0, min(delay + 6 * interval, 3.0))
     mark = Log.mark()
     try tapKey(Key.l, source, hold: hold)
@@ -1686,8 +1602,6 @@ func testKeys() throws {
     verdict("keys.f13_f15_side_effects", "MANUAL", "did brightness or anything else change while F13 to F15 went out?")
 }
 
-// MARK: - Test 9: media (opt-in)
-
 struct Volume: Equatable {
     var level: Int
     var muted: Bool
@@ -1707,7 +1621,6 @@ func run(_ path: String, _ args: [String]) -> (Int32, String) {
     return (process.terminationStatus, String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
 }
 
-// "output volume:44, input volume:58, alert volume:100, output muted:false"
 func volumeSettings() -> Volume? {
     let (status, text) = run("/usr/bin/osascript", ["-e", "get volume settings"])
     guard status == 0 else { return nil }
@@ -1729,7 +1642,6 @@ func volumeText(_ volume: Volume?) -> String {
     volume.map { "\($0.level)\($0.muted ? "(muted)" : "")" } ?? "unknown"
 }
 
-// Built-in display brightness through the private DisplayServices, read only.
 enum Brightness {
     typealias Get = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
     static let get: Get? = {
@@ -1808,8 +1720,6 @@ func testMedia() throws {
     verdict("media.brightness", "MANUAL", "did the built-in display step up then down? did an external display change?")
 }
 
-// MARK: - Test 10: wake (opt-in)
-
 func asleep() -> Bool { CGDisplayIsAsleep(CGMainDisplayID()) != 0 }
 
 func testWake() throws {
@@ -1846,9 +1756,6 @@ func testWake() throws {
     verdict("wake.lock", "MANUAL", "did the screen lock, and did the probe window take input again after unlocking?")
 }
 
-// MARK: - feel mode
-
-// Posts "dx dy" lines from stdin 1:1 as cursor moves, clamped to the displays.
 func testFeel(seconds: Double) throws {
     let source = try receiverSource()
     Log.setQuiet(true)
@@ -1888,8 +1795,6 @@ func testFeel(seconds: Double) throws {
                     "seconds": now() - start, "ended_by": endedBy, "abs_dx_total": totalX, "abs_dy_total": totalY])
     verdict("feel", "MANUAL", "how did 1:1 unaccelerated motion feel: slow, fast, jumpy, fine?")
 }
-
-// MARK: - Runner
 
 let plans: [String: String] = [
     "suppress": "4 arms of 8 s (baseline, default source, HID source with suppression 0 and local events permitted, "
@@ -1993,7 +1898,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.contentView = view
         window.acceptsMouseMovedEvents = true
-        // Stays above Finder so posted clicks and the instructions stay visible.
         window.level = .floating
         window.center()
         window.makeKeyAndOrderFront(nil)

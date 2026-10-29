@@ -1,11 +1,3 @@
-//! Being looked at through a lens. The desktop agent records this screen through a Mutter remote
-//! desktop session, sends what the viewer's budget allows, and plays the viewer's pointer,
-//! buttons, keys and scroll through the same session, so they land where the viewer sees them.
-//!
-//! Three things run at once: a reader that takes acknowledgements and moves the moment they
-//! arrive, an encoder thread that spends the budget, and an input task that waits on Mutter in
-//! order. None of them waits on another.
-
 use std::{
     sync::{Arc, Condvar, Mutex, atomic::Ordering},
     time::{Duration, Instant},
@@ -29,17 +21,13 @@ use crate::{
     peer_view::LensOpened,
 };
 
-/// Mutter records only when pixels change, at most this often.
 const FPS: u32 = 60;
-/// A frame goes out at least this often, so the viewer can tell the lens is alive.
 const RECEIPT_EVERY: Duration = Duration::from_secs(1);
-/// How long a copy waits for the focused app to take the selection.
 const COPY_TIMEOUT: Duration = Duration::from_secs(2);
 const LEFT_CONTROL: HidUsage = HidUsage::keyboard(0xe0);
 const LEFT_SHIFT: HidUsage = HidUsage::keyboard(0xe1);
 const KEY_C: HidUsage = HidUsage::keyboard(0x06);
 
-/// Where the viewer looks, and whether the encoder has something to do.
 #[derive(Default)]
 struct Work {
     view: Option<(tiles::View, u64)>,
@@ -49,14 +37,11 @@ struct Work {
 
 type Shared = Arc<(Mutex<Work>, Condvar)>;
 
-/// What a lens sent, for the line logged when it closes.
 #[derive(Debug, Default)]
 struct Sent {
     frames: u64,
     bytes: usize,
-    /// From the start to the desktop size going out.
     first: Option<Duration>,
-    /// Each frame's encoding time and the window it was sent under.
     encode_ns: Vec<u64>,
     windows: Vec<u64>,
 }
@@ -77,7 +62,6 @@ enum Action {
     Copy,
 }
 
-/// Serves one lens on the agent's end of the relay until either side stops.
 pub async fn serve(stream: UnixStream, opened: LensOpened, bus: &zbus::Connection) -> Result<()> {
     let desk = Arc::new(
         Desk::start(bus)
@@ -168,7 +152,6 @@ async fn run(stream: UnixStream, opened: &LensOpened, desk: Arc<Desk>) -> Result
         }
         anyhow::Ok(())
     };
-    // The recording ends if Mutter stops it, for example when the session locks.
     let recording = async {
         let mut check = tokio::time::interval(Duration::from_millis(250));
         loop {
@@ -200,7 +183,6 @@ async fn run(stream: UnixStream, opened: &LensOpened, desk: Arc<Desk>) -> Result
     result
 }
 
-/// Spends the window on the newest frame and view each time something changes.
 fn encode(
     work: &Shared,
     pacer: &Mutex<Pacer>,
@@ -229,8 +211,6 @@ fn encode(
             }
             work.view
         };
-        // The viewer moves only once it knows the desktop's size, so the size and a first look
-        // at the whole screen go out before any move.
         let (view, request) = view.map_or((None, 0), |(view, request)| (Some(view), request));
         let (budget, window) = {
             let pacer = pacer.lock().unwrap_or_else(|e| e.into_inner());
@@ -315,8 +295,6 @@ fn encode(
     }
 }
 
-/// Plays the viewer's input into Mutter in order. Pointer moves that queue up collapse to the
-/// newest; keys go through this peer's keyboard mode, as in a crossing.
 async fn play(
     desk: Arc<Desk>,
     opened: &LensOpened,
@@ -394,10 +372,7 @@ async fn keys(desk: &Desk, edges: Vec<(HidUsage, bool)>) -> Result<()> {
     Ok(())
 }
 
-/// Presses this desktop's copy shortcut, Ctrl+Shift+C in a terminal and Ctrl+C elsewhere,
-/// leaving alone any modifier the viewer already holds, and returns the selection it made.
 async fn copy(desk: &Desk, remap: &KeyRemap) -> Result<String> {
-    // Ctrl+C in a terminal would interrupt whatever runs there, so guessing is not an option.
     anyhow::ensure!(
         FOCUS_KNOWN.load(Ordering::Relaxed),
         "this desktop cannot tell which app has focus; update its zflow GNOME extension"

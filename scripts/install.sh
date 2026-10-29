@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Build and install the Linux service, desktop agent and settings window.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -12,7 +11,6 @@ readonly UNINSTALLER="$LIB_DIR/uninstall.sh"
 readonly UNIT_FILE="/etc/systemd/system/zflowd.service"
 readonly CONFIG_FILE="/etc/zflow/zflow.toml"
 readonly DROPIN_DIR="/etc/systemd/system/zflowd.service.d"
-# zflow setup --prelogin on|off manages this; older installs always added it.
 readonly PRELOGIN_DROPIN="$DROPIN_DIR/prelogin.conf"
 readonly UDEV_RULE_DIR="/etc/udev/rules.d"
 readonly VIRTUAL_RULE_FILE="$UDEV_RULE_DIR/70-zflow.rules"
@@ -20,7 +18,6 @@ readonly CAPTURE_RULE_FILE="$UDEV_RULE_DIR/71-zflow-capture.rules"
 readonly MODULE_FILE="/etc/modules-load.d/zflow.conf"
 readonly SLEEP_HOOK_FILE="/usr/lib/systemd/system-sleep/zflow"
 readonly FIREWALL_SCRIPT="$LIB_DIR/firewall.sh"
-# Every GNOME user gets these; the session bus and desktop search /usr/local/share.
 readonly LAUNCHER_FILE="/usr/local/share/applications/io.zflow.zflow.desktop"
 readonly DBUS_SERVICE_FILE="/usr/local/share/dbus-1/services/io.zflow.Desktop.service"
 readonly AUTOSTART_FILE="/etc/xdg/autostart/io.zflow.desktop-agent.desktop"
@@ -46,7 +43,6 @@ refuse_symlink() {
     [[ ! -L "$1" ]] || die "refusing to replace symlink: $1"
 }
 
-# The shared session files name /usr/bin/zflow, where the Debian package puts it.
 install_session_file() {
     refuse_symlink "$2"
     install -d -o root -g root -m 0755 "${2%/*}"
@@ -74,7 +70,6 @@ for argument in "$@"; do
     esac
 done
 [[ "$(uname -s)" == "Linux" ]] || die "Linux is required"
-# Release archives carry ready-to-run binaries. Only a source checkout builds.
 if [[ -d "$REPO_ROOT/bin" ]]; then install_built=true; fi
 
 for source in \
@@ -136,10 +131,8 @@ install -d -o root -g root -m 0755 \
 install -o root -g root -m 0755 "$binary_dir/zflow" "$BIN_DIR/zflow"
 install -o root -g root -m 0755 "$binary_dir/zflowd" "$BIN_DIR/zflowd"
 install -o root -g root -m 0755 "$binary_dir/zflow-app" "$BIN_DIR/zflow-app"
-# Release archives are extracted to a temporary directory, so keep a copy of the uninstaller.
 install -o root -g root -m 0755 "$SCRIPT_DIR/uninstall.sh" "$UNINSTALLER"
 install -o root -g root -m 0755 "$REPO_ROOT/packaging/linux/firewall.sh" "$FIREWALL_SCRIPT"
-# Older installs had a separate desktop app.
 rm -f -- "$BIN_DIR/zflow-gui"
 install_session_file "$REPO_ROOT/packaging/linux/io.zflow.zflow.desktop" "$LAUNCHER_FILE"
 install_session_file "$REPO_ROOT/packaging/linux/io.zflow.Desktop.service" "$DBUS_SERVICE_FILE"
@@ -152,7 +145,6 @@ install -o root -g root -m 0644 "$REPO_ROOT/assets/linux/io.zflow.zflow-symbolic
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache --quiet --force --ignore-theme-index "$ICON_THEME_DIR"
 fi
-# Keep the pre-login ordering only when the configuration enables pre-login input.
 if ! grep -Eqs '^[[:space:]]*allow_prelogin_input[[:space:]]*=[[:space:]]*true([[:space:]#]|$)' "$CONFIG_FILE"; then
     rm -f -- "$PRELOGIN_DROPIN"
     rmdir -- "$DROPIN_DIR" 2>/dev/null || true
@@ -162,7 +154,6 @@ install -o root -g root -m 0644 "$REPO_ROOT/packaging/udev/70-zflow.rules" "$VIR
 install -o root -g root -m 0644 "$REPO_ROOT/packaging/modules-load.d/zflow.conf" "$MODULE_FILE"
 install -o root -g root -m 0755 "$REPO_ROOT/packaging/system-sleep/zflow" "$SLEEP_HOOK_FILE"
 
-# Run through bash so a noexec temporary directory still works.
 bash "$REPO_ROOT/packaging/linux/host-setup.sh" "$REPO_ROOT/packaging/config/zflow.toml" \
     "$REPO_ROOT/packaging/udev/71-zflow-capture.rules" "$VIRTUAL_RULE_FILE"
 bash "$FIREWALL_SCRIPT" open

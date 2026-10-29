@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Remove everything install.sh created. Run with sudo.
 set -euo pipefail
 [[ $EUID -eq 0 ]] || { echo "run with sudo"; exit 1; }
 

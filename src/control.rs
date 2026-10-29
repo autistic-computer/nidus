@@ -32,13 +32,9 @@ pub enum Request {
         peer: String,
         keyboard: KeyboardMode,
     },
-    /// Lists the computers found around this one that it does not trust,
-    /// after saying hello to `add` if given.
     Nearby {
         add: Option<SocketAddr>,
     },
-    /// Trusts the found computer with this name or key mark, as dropping
-    /// its tile on the board does.
     Trust {
         computer: String,
     },
@@ -56,7 +52,6 @@ pub enum Response {
         computers: Vec<Unplaced>,
         pairing_window: PairingWindow,
     },
-    /// The name the computer was saved under, and its key mark.
     Trusted {
         name: String,
         mark: String,
@@ -103,7 +98,6 @@ where
     read_message_within(reader, MAX_CONTROL_MESSAGE).await
 }
 
-/// [`write_message`] for the one stream that allows larger messages.
 pub async fn write_message_within<W, T>(
     writer: &mut W,
     message: &T,
@@ -123,7 +117,6 @@ where
     Ok(())
 }
 
-/// [`read_message`] for the one stream that allows larger messages.
 pub async fn read_message_within<R, T>(reader: &mut R, limit: usize) -> Result<T, ControlError>
 where
     R: AsyncRead + Unpin,

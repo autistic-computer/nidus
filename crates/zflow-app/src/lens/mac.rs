@@ -30,24 +30,18 @@ use super::geometry::{Fit, Grid, KeyAction, button, key_down, modifier_down, scr
 use crate::{copy, model::Model};
 
 pub const HOTKEY_LABEL: &str = "⌃⌥L";
-/// The circle's radius, in points.
 const RADIUS: f64 = 200.0;
-/// How long a lens may wait for its first answer.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long a failure stays up before the lens closes.
 const FAILURE_SHOWN: Duration = Duration::from_secs(2);
 
 struct Lens {
     model: Entity<Model>,
-    /// The computer looked at last, which the hot key opens again.
     last: Option<String>,
     window: Option<WindowHandle<LensView>>,
 }
 
 impl zz_gpui::Global for Lens {}
 
-/// The computer the hot key opens: the last one looked at while it is still
-/// linked, else the first linked one.
 pub fn target(cx: &App) -> Option<String> {
     let lens = cx.try_global::<Lens>()?;
     let snapshot = lens.model.read(cx).snapshot.as_ref()?;
@@ -93,7 +87,6 @@ fn toggle(cx: &mut App) {
     }
 }
 
-/// Closes an open lens. Returns whether one was open.
 fn close(cx: &mut App) -> bool {
     let Some(window) = cx.try_global::<Lens>().and_then(|lens| lens.window) else {
         return false;
@@ -107,7 +100,6 @@ fn close(cx: &mut App) -> bool {
         .is_ok()
 }
 
-/// Opens a lens onto computer `name` on the screen under the pointer.
 pub fn look(name: &str, cx: &mut App) {
     close(cx);
     let Some(lens) = cx.try_global::<Lens>() else {
@@ -154,8 +146,6 @@ pub fn look(name: &str, cx: &mut App) {
     }
 }
 
-/// The frame of the screen under the pointer, in the window system's
-/// top-left coordinates.
 fn screen_under_pointer() -> Option<Bounds<Pixels>> {
     let mtm = MainThreadMarker::new()?;
     let mouse = NSEvent::mouseLocation();
@@ -178,7 +168,6 @@ fn screen_under_pointer() -> Option<Bounds<Pixels>> {
     ))
 }
 
-/// What the key monitor tells the view.
 enum KeyNote {
     Close,
 }
@@ -188,9 +177,7 @@ struct LensView {
     viewer: Arc<Viewer>,
     screen: (f64, f64),
     opened: Instant,
-    /// The engine answered the lens request.
     answered: bool,
-    /// Why it failed, shown before it closes.
     failure: Option<(String, Instant)>,
     fit: Option<Fit>,
     grid: Option<Grid>,
@@ -221,7 +208,6 @@ impl LensView {
             }
         })
         .detach();
-        // Another app in front, or zflow's own window, ends the lens.
         cx.observe_window_activation(window, |view, window, cx| {
             if !window.is_window_active() && view.answered && !view.ended {
                 cx.defer(|cx| {
@@ -267,8 +253,6 @@ impl LensView {
         }
     }
 
-    /// Tells the other computer to let go of everything the lens pressed,
-    /// and stops reading keys.
     fn end(&mut self) {
         if self.ended {
             return;
@@ -276,13 +260,10 @@ impl LensView {
         self.ended = true;
         self.viewer.send(Input::Close);
         if let Some(monitor) = self.monitor.take() {
-            // SAFETY: the monitor `addLocalMonitorForEventsMatchingMask:` returned.
             unsafe { NSEvent::removeMonitor(&monitor) };
         }
     }
 
-    /// Follows the engine each frame: opening, open with new pixels, or
-    /// failed.
     fn tick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some((_, since)) = &self.failure {
             if since.elapsed() >= FAILURE_SHOWN {
@@ -315,7 +296,6 @@ impl LensView {
         }
     }
 
-    /// Copies the chunks that changed under the circle.
     fn pull(&mut self, width: u32, height: u32, frames: u64, window: &mut Window) {
         if self.fit.is_none_or(|fit| fit.desktop != (width, height)) {
             self.fit = Fit::new((width, height), self.screen);
@@ -343,7 +323,6 @@ impl LensView {
             for row in 0..h {
                 pixels.extend_from_slice(&buffer[row * CHUNK * 4..row * CHUNK * 4 + w * 4]);
             }
-            // BGRx: the padding byte becomes opaque alpha.
             for pixel in pixels.chunks_exact_mut(4) {
                 pixel[3] = 255;
             }
@@ -380,8 +359,6 @@ impl LensView {
         cx.notify();
     }
 
-    /// A left click outside the circle, or any click while it shows a
-    /// failure, closes the lens. Other clicks go over.
     fn pressed(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
         let (x, y) = (
             f64::from(f32::from(event.position.x)),
@@ -544,16 +521,12 @@ impl Drop for LensView {
     }
 }
 
-/// Reads keys while the lens is up, before the rest of the app sees them:
-/// Escape closes, Command-C copies the other computer's selection, and every
-/// other key, modifiers by side, goes over.
 fn key_monitor(
     viewer: Arc<Viewer>,
     notes: async_channel::Sender<KeyNote>,
 ) -> Option<Retained<AnyObject>> {
     let swallowed = std::cell::Cell::new(None::<u16>);
     let block = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
-        // SAFETY: AppKit hands the monitor a live event for this call.
         let event = unsafe { event.as_ref() };
         let code = event.keyCode();
         let flags = event.modifierFlags();
@@ -604,8 +577,6 @@ fn key_monitor(
         }
         std::ptr::null_mut()
     });
-    // SAFETY: the block lives as long as AppKit keeps it, and returns nil
-    // for every key it takes.
     unsafe {
         NSEvent::addLocalMonitorForEventsMatchingMask_handler(
             NSEventMask::KeyDown | NSEventMask::KeyUp | NSEventMask::FlagsChanged,
@@ -663,7 +634,6 @@ extern "C" fn hot_key_pressed(_: *mut c_void, _: *mut c_void, _: *mut c_void) ->
     0
 }
 
-/// ⌃⌥L, through Carbon's hot keys, which need no Accessibility permission.
 fn register_hot_key(pressed: async_channel::Sender<()>) -> bool {
     const KEY_L: u32 = 0x25;
     const CONTROL: u32 = 1 << 12;
@@ -679,8 +649,6 @@ fn register_hot_key(pressed: async_channel::Sender<()>) -> bool {
     };
     let mut handler = std::ptr::null_mut();
     let mut hot_key = std::ptr::null_mut();
-    // SAFETY: a static handler on the application target, and a hot key
-    // registered for the life of the app.
     unsafe {
         let target = GetApplicationEventTarget();
         InstallEventHandler(

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-// Run the shipped loader with a fake file system and a fake dynamic import.
 const source = fs.readFileSync(new URL('../packaging/gnome-extension/extension.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace('export default class ', 'class ')
     .replace('import(', 'load(') + '\nglobalThis.Loader = ZflowLoader;';
@@ -37,7 +36,6 @@ function loader(current) {
 
 const settle = () => new Promise(setImmediate);
 
-// The installed build folder wins, and a new one is new code.
 {
     const {extension, loads, started} = loader('build-0123456789abcdef\n');
     extension.enable();
@@ -48,14 +46,12 @@ const settle = () => new Promise(setImmediate);
     assert.deepEqual(started.at(-1), 'off ./build-0123456789abcdef/shell.js');
 }
 
-// A checkout, an extensions.gnome.org copy, or a strange name loads the files beside it.
 for (const current of [undefined, '../../etc', 'build-xyz', '']) {
     const {extension, loads} = loader(current);
     extension.enable();
     assert.equal(loads[0].path, './shell.js', `current ${JSON.stringify(current)}`);
 }
 
-// Turned off, or off and on again, while loading: only the newest enable starts.
 {
     const {extension, loads, started} = loader('build-aa');
     extension.enable();

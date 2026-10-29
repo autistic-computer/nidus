@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Keep the Sparkle signing key locally and configure release credentials.
 set +x
 set -Eeuo pipefail
 IFS=$'\n\t'
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-repository=demfabris/zflow
+repository=autistic-computer/zflow
 account=io.zflow.zflow
 die() { printf 'setup-updates: %s\n' "$*" >&2; exit 1; }
 if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then

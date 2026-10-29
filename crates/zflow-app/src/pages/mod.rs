@@ -1,5 +1,3 @@
-//! The window's pages, and the dialogs they open.
-
 mod computers;
 mod inspector;
 mod settings;
@@ -34,7 +32,6 @@ pub fn page(
             Page::Computers => computers::render(this, window, cx),
             Page::Settings => settings::render(this, window, cx),
             Page::Computer(name) => {
-                // Each computer lives in the inspector under the board.
                 let owner = format!("peer:{name}");
                 this.board
                     .update(cx, |board, cx| board.select(Some(owner), cx));
@@ -60,7 +57,6 @@ pub fn page(
         .into_any_element()
 }
 
-/// The page while zflow cannot be reached.
 fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement {
     v_flex()
         .size_full()
@@ -93,8 +89,6 @@ fn unreachable_state(error: String, cx: &mut Context<ZflowWindow>) -> AnyElement
         .into_any_element()
 }
 
-/// A health row's fix button. The app handles the fixes that open
-/// something here; the rest go to the engine.
 pub fn fix_button(
     id: &str,
     action: &Action,
@@ -118,8 +112,6 @@ pub fn fix_button(
         .into_any_element()
 }
 
-/// Says hello to a computer this one cannot find on the network, such as
-/// one across Tailscale. It then shows up on the shelf like any other.
 pub fn add_address(this: &Entity<ZflowWindow>, dialog: Dialog, cx: &mut App) -> Dialog {
     let state = this.read(cx);
     let input = state.address.clone();
@@ -202,7 +194,6 @@ fn look_up(this: &Entity<ZflowWindow>, address: String, window: &mut Window, cx:
         .detach();
 }
 
-/// A danger-toned button on a card.
 pub fn card_danger(
     id: impl Into<zz_gpui::ElementId>,
     label: impl Into<zz_gpui::SharedString>,

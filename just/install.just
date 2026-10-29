@@ -7,6 +7,6 @@ set working-directory := ".."
 default:
     @just --list install
 
-# Install/update the Linux service (requires sudo).
+[doc("Install/update the Linux service (requires sudo).")]
 linux: (_platform "linux")
     ./scripts/install.sh

@@ -1,12 +1,7 @@
-//! User-session connection between the daemon and GNOME's desktop integration.
-
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// Whether the focused app is a terminal, as GNOME Shell last said. A lens reads it so its keys
-/// and copies act the way a crossing's do.
 pub(crate) static FOCUSED_TERMINAL: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
-/// Whether GNOME Shell has said anything about focus yet, so [`FOCUSED_TERMINAL`] means something.
 pub(crate) static FOCUS_KNOWN: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -14,9 +9,6 @@ pub(crate) static FOCUS_KNOWN: std::sync::atomic::AtomicBool =
 struct State {
     ready: bool,
     message: String,
-    /// The last failure logged as a warning. The agent retries every two
-    /// seconds, and a stale GNOME extension fails the same way until the next
-    /// login, so only a new failure is worth a warning.
     failure: String,
 }
 
@@ -24,8 +16,6 @@ fn lock(state: &Mutex<State>) -> MutexGuard<'_, State> {
     state.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// A task on the agent's runtime, which outlives anything zbus spawns for it.
-/// The agent runs on one thread, so an aborted task never writes state again.
 #[derive(Default)]
 pub struct DesktopReceiver {
     state: Arc<Mutex<State>>,
@@ -42,8 +32,6 @@ impl DesktopReceiver {
     pub fn status(&self) -> String {
         lock(&self.state).message.clone()
     }
-    /// `connection` must own the agent's bus name; the extension answers no
-    /// other caller.
     pub fn start(&mut self, connection: &zbus::Connection) {
         if self.is_active() {
             return;
@@ -97,8 +85,6 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
     use anyhow::{Context, ensure};
     const ENABLE: &str = "Enable the zflow GNOME integration; a newly installed extension may require logging out and back in";
     let bus = zbus::fdo::DBusProxy::new(connection).await?;
-    // Login can start this agent before Shell enables the extension. Wait for
-    // its name quietly instead of failing or asking D-Bus to start it.
     let mut waiting = false;
     let owner = loop {
         match bus
@@ -116,8 +102,6 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     };
-    // Trust replies only from GNOME Shell, and keep talking to that connection
-    // even if another program takes the name later.
     ensure!(
         owner == bus.get_name_owner("org.gnome.Shell".try_into()?).await?,
         "Another program owns the zflow GNOME integration name"
@@ -177,12 +161,10 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
         }
     };
     let mut awake = IdleInhibitor::default();
-    // The daemon forgets the focus when this stream closes, however this ends.
     let result = tokio::select! {
         result = serve(&mut stream, &proxy, &bus, &owner, &mut awake) => result,
         result = forward_signals(connection, &proxy, owner.as_str(), report) => result,
     };
-    // Without the service nothing would show the pointer again or hear a push.
     awake.set(connection, false).await;
     for request in [
         crate::peer_view::LocalRequest::Sending { active: false },
@@ -196,10 +178,6 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
     result
 }
 
-/// Keeps GNOME from treating the session as idle while this computer's
-/// input goes to another one. Grabbed devices send GNOME nothing, so it
-/// would otherwise blank and lock the screen. gnome-session drops the
-/// inhibitor if the agent exits.
 #[cfg(target_os = "linux")]
 #[derive(Default)]
 struct IdleInhibitor(Option<u32>);
@@ -209,8 +187,6 @@ impl IdleInhibitor {
     const IDLE: u32 = 8;
 
     async fn set(&mut self, connection: &zbus::Connection, active: bool) {
-        // The service waits for this request, so a slow gnome-session must not
-        // hold it up.
         let result = tokio::time::timeout(std::time::Duration::from_millis(300), async {
             let proxy = zbus::Proxy::new(
                 connection,
@@ -245,7 +221,6 @@ impl IdleInhibitor {
     }
 }
 
-/// Answers the daemon's desktop requests through GNOME Shell.
 #[cfg(target_os = "linux")]
 async fn serve(
     stream: &mut tokio::net::UnixStream,
@@ -277,7 +252,6 @@ async fn serve(
         let reply = match reply {
             Ok(reply) => reply,
             Err(error) => {
-                // A restarted Shell has a new unique name; start over to find and check it.
                 anyhow::ensure!(
                     bus.name_has_owner(owner.into()).await?,
                     "GNOME Shell restarted"
@@ -291,14 +265,9 @@ async fn serve(
     }
 }
 
-/// GNOME waits up to a second for the app that copied to hand the clipboard
-/// over. The service waits longer than this for the agent.
 #[cfg(target_os = "linux")]
 const CLIPBOARD_CALL: std::time::Duration = std::time::Duration::from_millis(1500);
 
-/// Reads the clipboard through the extension, as one clip: text if there is
-/// any, else a PNG. The extension names a clip over the limit
-/// "too_large:<bytes>" and keeps its bytes.
 #[cfg(target_os = "linux")]
 async fn read_clipboard(
     proxy: &zbus::Proxy<'_>,
@@ -340,8 +309,6 @@ async fn read_clipboard(
     Ok(contents)
 }
 
-/// Puts a clip on the clipboard through the extension, after checking its
-/// bytes are what `kind` says.
 #[cfg(target_os = "linux")]
 async fn write_clipboard(
     proxy: &zbus::Proxy<'_>,
@@ -369,10 +336,6 @@ async fn write_clipboard(
     Ok(())
 }
 
-/// Reports whether a terminal has focus, first as it is now and then on every
-/// change, so Mac shortcuts can use Ctrl+Shift there. Also reports the pointer
-/// pushing against an edge that leads to another computer. Returns only on
-/// error.
 #[cfg(target_os = "linux")]
 async fn forward_signals(
     connection: &zbus::Connection,
@@ -383,8 +346,6 @@ async fn forward_signals(
     use crate::peer_view::Request;
     use anyhow::Context;
     use zbus::{MatchRule, MessageStream, message::Type};
-    // The extension sends these only to the agent. Anyone can address the
-    // agent, so accept them only from Shell.
     let from_shell = |member| {
         Ok::<_, zbus::Error>(
             MatchRule::builder()
@@ -405,11 +366,9 @@ async fn forward_signals(
         .member("NameOwnerChanged")?
         .arg(0, crate::desktop::BUS_NAME)?
         .build();
-    // Subscribe before asking, so no change falls in between.
     let mut changes = MessageStream::for_match_rule(changes, connection, None).await?;
     let mut hits = MessageStream::for_match_rule(hits, connection, None).await?;
     let mut owners = MessageStream::for_match_rule(owners, connection, None).await?;
-    // None after an edge hit, which leaves the focus as it was.
     let mut terminal = Some(focus(proxy).await);
     loop {
         if let Some(terminal) = terminal {
@@ -435,13 +394,8 @@ async fn forward_signals(
                 let message = message.context("The session bus closed")??;
                 let body = message.body();
                 let (_, _, new): (&str, &str, &str) = body.deserialize()?;
-                // Shell drops the name while the extension is off, such as
-                // on the lock screen, and takes it again after.
                 Some(match new {
                     "" => false,
-                    // Shell turns the extension back on after unlocking, and it
-                    // starts without barriers. A new connection makes the
-                    // service send them again.
                     new if new == owner => anyhow::bail!("The zflow GNOME extension restarted"),
                     _ => anyhow::bail!("GNOME Shell restarted"),
                 })
@@ -458,7 +412,6 @@ pub(super) async fn next_message(
     std::future::poll_fn(|context| std::pin::Pin::new(&mut *stream).poll_next(context)).await
 }
 
-/// Whether a terminal has focus, or false when the extension cannot say.
 #[cfg(target_os = "linux")]
 async fn focus(proxy: &zbus::Proxy<'_>) -> bool {
     #[derive(serde::Deserialize)]
@@ -483,7 +436,6 @@ async fn focus(proxy: &zbus::Proxy<'_>) -> bool {
     })
 }
 
-/// The reason GNOME gave for the last refusal logged as a warning.
 #[cfg(target_os = "linux")]
 static REFUSED: Mutex<String> = Mutex::new(String::new());
 
@@ -496,7 +448,6 @@ async fn call(
     let operation = request.operation();
     tracing::trace!(operation, "GNOME desktop RPC started");
     let result = async {
-        // The extension refuses an agent from another API level with "Update zflow".
         let mut json = serde_json::to_value(request)?;
         json["api"] = super::gnome::API.into();
         let json = json.to_string();
@@ -536,14 +487,11 @@ async fn call(
                     "GNOME desktop RPC completed"
                 );
             }
-            // An update installs a new build that the running extension has not loaded yet.
             if let crate::desktop::DesktopResponse::Unavailable { reason } = response
                 && reason.contains("GNOME extension is older than the app")
             {
                 reload_extension(proxy.connection()).await;
             }
-            // Warn once for a run of identical refusals, such as each retry
-            // against a GNOME extension from another release.
             let mut refused = REFUSED.lock().unwrap_or_else(|e| e.into_inner());
             match response {
                 crate::desktop::DesktopResponse::Unavailable { reason } if *reason != *refused => {
@@ -561,8 +509,6 @@ async fn call(
     result
 }
 
-/// The extension as desktop-agent --install writes it. debian/rules installs
-/// and scripts/pack-extension.sh uploads the same files.
 const EXTENSION_FILES: [(&str, &str); 5] = [
     (
         "metadata.json",
@@ -585,14 +531,9 @@ const EXTENSION_FILES: [(&str, &str); 5] = [
         include_str!("../../packaging/gnome-extension/client.js"),
     ),
 ];
-/// Older versions shipped GTK preferences, which GNOME would still offer from an updated copy.
 const RETIRED_FILES: [&str; 2] = ["settings.js", "prefs.js"];
-/// What GNOME Shell runs, copied again into a folder named after its contents, which extension.js
-/// loads. A new folder is new code to GJS, so an update reloads without a new login.
 const SHELL_FILES: [&str; 3] = ["shell.js", "indicator.js", "client.js"];
 
-/// The build folder's name, as debian/rules computes it: the first 16 hex digits of the SHA-256
-/// of Shell's files, in order.
 fn build_name() -> String {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
@@ -611,11 +552,8 @@ fn build_name() -> String {
     format!("build-{hex}")
 }
 
-/// How often the agent may turn the extension off and on to load an update.
 const RELOAD_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Turns the extension off and on, so its loader runs the build an update installed. An extension
-/// from before the loader keeps its old code until the next login.
 async fn reload_extension(connection: &zbus::Connection) {
     static LAST: Mutex<Option<std::time::Instant>> = Mutex::new(None);
     {
@@ -634,21 +572,14 @@ async fn reload_extension(connection: &zbus::Connection) {
     }
 }
 
-// GNOME Shell's ExtensionState values.
 const ACTIVE: f64 = 1.0;
 const OUT_OF_DATE: f64 = 4.0;
 
-/// Installs and enables the GNOME extension for this user. Returns whether it
-/// runs now; otherwise GNOME loads it at the next login.
 pub async fn install_extension(shell: Option<&zbus::Connection>) -> anyhow::Result<bool> {
-    // None when GNOME Shell could not be asked, Some(None) when this login
-    // session has not loaded the extension.
     let state = match shell {
         Some(connection) => extension_state(connection).await.ok(),
         None => None,
     };
-    // Shell reads extension folders only at login, except for an extension it
-    // downloads from extensions.gnome.org itself: that one it loads at once.
     if let (Some(connection), Some(None)) = (shell, state)
         && let Ok(reply) = shell_call(connection, "InstallRemoteExtension").await
         && reply
@@ -663,7 +594,6 @@ pub async fn install_extension(shell: Option<&zbus::Connection>) -> anyhow::Resu
     let (Some(connection), Some(Some(_))) = (shell, state) else {
         return Ok(false);
     };
-    // Shell turns on an extension it has loaded when the setting changes.
     for _ in 0..30 {
         match extension_state(connection).await? {
             Some(ACTIVE) => return Ok(true),
@@ -696,7 +626,6 @@ async fn extension_state(connection: &zbus::Connection) -> zbus::Result<Option<f
             .await?
             .body()
             .deserialize()?;
-    // Shell answers with no fields for an extension it has not loaded.
     Ok(info
         .get("state")
         .and_then(|state| f64::try_from(state).ok()))
@@ -711,15 +640,11 @@ fn extension_paths() -> anyhow::Result<(std::path::PathBuf, bool)> {
     Ok((user, packaged))
 }
 
-/// Makes this version's extension the one GNOME finds at login, unless the
-/// copy came from extensions.gnome.org, which GNOME keeps updated itself.
 fn write_extension() -> anyhow::Result<()> {
     let (user, packaged) = extension_paths()?;
     write_extension_at(&user, packaged, true)
 }
 
-/// Refresh an existing bundled copy without installing, enabling, or fetching
-/// an extension. GNOME keeps copies from extensions.gnome.org up to date.
 pub(super) fn refresh_extension() -> anyhow::Result<()> {
     let (user, packaged) = extension_paths()?;
     write_extension_at(&user, packaged, false)
@@ -727,7 +652,6 @@ pub(super) fn refresh_extension() -> anyhow::Result<()> {
 
 fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> anyhow::Result<()> {
     let metadata = std::fs::read_to_string(user.join("metadata.json")).ok();
-    // extensions.gnome.org marks the metadata of every copy it serves.
     if metadata
         .as_ref()
         .is_some_and(|text| text.contains("\"_generated\""))
@@ -735,8 +659,6 @@ fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> a
         return Ok(());
     }
     if packaged {
-        // Older versions copied the extension here too, which would shadow
-        // the package's copy.
         if std::fs::symlink_metadata(user).is_ok_and(|metadata| metadata.is_dir()) {
             std::fs::remove_dir_all(user)?;
         }
@@ -774,7 +696,6 @@ fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> a
         }
     }
     std::fs::write(user.join("current"), format!("{build}\n"))?;
-    // Shell keeps an older build's code in memory, so its files can go.
     for entry in std::fs::read_dir(user)? {
         let entry = entry?;
         let name = entry.file_name();
@@ -786,9 +707,6 @@ fn write_extension_at(user: &std::path::Path, packaged: bool, create: bool) -> a
     Ok(())
 }
 
-/// Adds the extension to GNOME's enabled list. `gnome-extensions enable`
-/// refuses an extension that Shell has not loaded yet, so this changes the
-/// setting directly, as that command does when Shell is not running.
 fn enable_extension() -> anyhow::Result<()> {
     use anyhow::{Context, ensure};
     let id = crate::desktop::EXTENSION_ID;
@@ -815,8 +733,6 @@ fn enable_extension() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Reads a string list as `gsettings get` prints it, like ['a', 'b'] or @as [].
-/// Escapes other than quotes and backslashes are refused, not guessed.
 fn parse_strv(text: &str) -> Option<Vec<String>> {
     let text = text.trim();
     let list = text.strip_prefix("@as").unwrap_or(text).trim();
@@ -961,10 +877,8 @@ mod tests {
         }
     }
 
-    /// Tests that own org.gnome.Shell on the shared private bus take turns.
     static SHELL_NAME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-    /// GNOME Shell's extension API as seen over D-Bus, with the state it reports.
     struct Extensions(Arc<Mutex<Option<f64>>>);
 
     #[zbus::interface(name = "org.gnome.Shell.Extensions")]
@@ -1007,7 +921,6 @@ mod tests {
             .unwrap();
         let agent = zbus::Connection::session().await.unwrap();
         assert_eq!(extension_state(&agent).await.unwrap(), None);
-        // Loaded live, so neither files nor settings change.
         assert!(install_extension(Some(&agent)).await.unwrap());
         assert_eq!(extension_state(&agent).await.unwrap(), Some(ACTIVE));
     }
@@ -1047,7 +960,6 @@ mod tests {
         let _turn = SHELL_NAME.lock().await;
         let state = Mutex::new(State::default());
         let agent = zbus::Connection::session().await.unwrap();
-        // Login can start the agent before Shell enables the extension.
         let early =
             tokio::time::timeout(std::time::Duration::from_millis(700), run(&agent, &state)).await;
         assert!(
@@ -1086,8 +998,6 @@ mod tests {
         );
     }
 
-    /// The extension's clipboard as the agent sees it over D-Bus: one kind
-    /// and its bytes.
     struct ClipboardShell {
         clipboard: Arc<Mutex<(String, Vec<u8>)>>,
         calls: Arc<Mutex<Vec<serde_json::Value>>>,
@@ -1158,7 +1068,6 @@ mod tests {
             let read = AgentRequest::Local(LocalRequest::ReadClipboard);
             let set = |kind: &str, data: Vec<u8>| *clipboard.lock().unwrap() = (kind.into(), data);
 
-            // A whole clip is larger than any other local message.
             let value = ask(read.clone()).await;
             assert!(value.to_string().len() > crate::control::MAX_CONTROL_MESSAGE);
             assert_eq!(
@@ -1183,7 +1092,6 @@ mod tests {
                 *clipboard.lock().unwrap(),
                 ("text".to_owned(), text.clone())
             );
-            // Bytes that are not what they claim never reach GNOME.
             let refused = ask(write(ClipKind::Png, b"GIF89a")).await;
             assert_eq!(refused["status"], "unavailable");
             assert!(refused["reason"].as_str().unwrap().contains("not a PNG"));
@@ -1216,7 +1124,6 @@ mod tests {
                     .contains("unknown clipboard kind")
             );
 
-            // A notice goes through the JSON call; handoff replies are as before.
             let notice = crate::clipboard::too_large(5 << 20);
             let finished = serde_json::json!({"status": "finished"});
             let local = LocalRequest::Notify {
@@ -1282,8 +1189,6 @@ mod tests {
                 let proxy = zbus::Proxy::new(&agent, owner.clone(), OBJECT_PATH, BUS_NAME)
                     .await
                     .unwrap();
-                // Not an async closure: its future would borrow `sent`, and
-                // tokio::spawn cannot prove that Send.
                 let report = move |request| {
                     match request {
                         crate::peer_view::Request::Focus { terminal } => {
@@ -1314,7 +1219,6 @@ mod tests {
         emit(&shell, false).await;
         assert_eq!(reports.recv().await, Some(false));
         emit(&impostor, true).await;
-        // The bus has handled the impostor's signal once this returns.
         zbus::fdo::DBusProxy::new(&impostor)
             .await
             .unwrap()
@@ -1353,7 +1257,6 @@ mod tests {
             Some(false),
             "no extension, no terminal"
         );
-        // A returning extension has lost its barriers; reconnecting resends them.
         shell.request_name(BUS_NAME).await.unwrap();
         let error = forward.await.unwrap().unwrap_err();
         assert_eq!(format!("{error:#}"), "The zflow GNOME extension restarted");
