@@ -13,7 +13,7 @@ $global:ZflowInstallerTestState = @{
 
 function Invoke-RestMethod {
     param($Uri, $Headers)
-    if ($Uri -ne 'https://api.github.com/repos/demfabris/zflow/releases/latest') { throw "Unexpected release URL: $Uri" }
+    if ($Uri -ne 'https://api.github.com/repos/autistic-computer/zflow/releases/latest') { throw "Unexpected release URL: $Uri" }
     $global:ZflowInstallerTestState.requestedLatest = $true
     $assets = @(@{ name = 'SHA256SUMS'; browser_download_url = 'https://example.invalid/v1/SHA256SUMS' })
     if (-not $global:ZflowInstallerTestState.missingAsset) { $assets += @{ name = $global:ZflowInstallerTestState.assetName; browser_download_url = 'https://example.invalid/v1/setup' } }

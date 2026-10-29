@@ -15,7 +15,7 @@ internal sealed class AppUpdates
 
     public AppUpdates(UpdateManager? manager = null)
     {
-        this.manager = manager ?? new UpdateManager(new GithubSource("https://github.com/demfabris/zflow", null, false), new UpdateOptions { ExplicitChannel = "win-x64" });
+        this.manager = manager ?? new UpdateManager(new GithubSource("https://github.com/autistic-computer/zflow", null, false), new UpdateOptions { ExplicitChannel = "win-x64" });
         if (IsEnabled) downloaded = this.manager.UpdatePendingRestart;
     }
 

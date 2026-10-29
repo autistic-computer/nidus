@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$root"
-repo=demfabris/zflow
+repo=autistic-computer/zflow
 dry_run=false
 wait_for_release=true
 
@@ -36,8 +36,8 @@ commit=$(git rev-parse HEAD)
     || die "The repository must be $repo."
 remote_url=$(git remote get-url --push origin)
 case "$remote_url" in
-    git@github.com:demfabris/zflow.git|git@github.com:demfabris/zflow|https://github.com/demfabris/zflow.git|https://github.com/demfabris/zflow) ;;
-    *) die 'origin must push to demfabris/zflow on GitHub.' ;;
+    git@github.com:autistic-computer/zflow.git|git@github.com:autistic-computer/zflow|https://github.com/autistic-computer/zflow.git|https://github.com/autistic-computer/zflow) ;;
+    *) die 'origin must push to autistic-computer/zflow on GitHub.' ;;
 esac
 public_key=$(gh variable list --repo "$repo" --json name,value \
     --jq '.[] | select(.name == "SPARKLE_PUBLIC_ED_KEY") | .value') \

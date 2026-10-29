@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail, ensure};
 use semver::Version;
 use serde::Serialize;
 
-const RELEASES: &str = "https://github.com/demfabris/zflow/releases/";
+const RELEASES: &str = "https://github.com/autistic-computer/zflow/releases/";
 const INSTALLER: &str = include_str!("../../install.sh");
 
 #[derive(Serialize)]
@@ -394,10 +394,10 @@ mod tests {
             "v0.6.0"
         );
         for url in [
-            "http://github.com/demfabris/zflow/releases/tag/v0.6.0",
+            "http://github.com/autistic-computer/zflow/releases/tag/v0.6.0",
             "https://github.com/other/zflow/releases/tag/v0.6.0",
-            "https://github.com/demfabris/zflow/releases/latest",
-            "https://github.com/demfabris/zflow/releases/tag/v0.6.0/download",
+            "https://github.com/autistic-computer/zflow/releases/latest",
+            "https://github.com/autistic-computer/zflow/releases/tag/v0.6.0/download",
         ] {
             assert!(release_tag(url).is_err(), "{url}");
         }

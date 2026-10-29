@@ -9,7 +9,7 @@ private var installed: AppLocation {
 }
 private let updateInfo: [String: String] = [
   "SUPublicEDKey": Data(repeating: 7, count: 32).base64EncodedString(),
-  "SUFeedURL": "https://github.com/demfabris/zflow/releases/latest/download/appcast.xml",
+  "SUFeedURL": "https://github.com/autistic-computer/zflow/releases/latest/download/appcast.xml",
 ]
 
 @Test func updateChecksRequireReleaseConfiguration() {
