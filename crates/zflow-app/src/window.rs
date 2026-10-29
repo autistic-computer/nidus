@@ -1,5 +1,3 @@
-//! The one window: a sidebar with the pages, and the page beside it.
-
 use zflow::app::api::Request;
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
@@ -28,11 +26,9 @@ pub struct ZflowWindow {
     pub model: Entity<Model>,
     pub services: Entity<platform::Services>,
     pub board: Entity<Board>,
-    /// What the Add by Address dialog holds.
     pub address: Entity<InputState>,
     pub address_error: Option<String>,
     pub looking_up: bool,
-    /// The install command was copied.
     pub copied: bool,
     focus: FocusHandle,
     _observers: Vec<Subscription>,
@@ -54,7 +50,6 @@ impl ZflowWindow {
             cx.observe_window_appearance(window, |_, window, cx| {
                 crate::theme::apply(Some(window), cx);
             }),
-            // A request that failed shows as a toast.
             cx.observe_in(&model, window, |_, model, window, cx| {
                 if let Some(failure) = model.update(cx, |model, _| model.take_failure()) {
                     window.push_notification(
@@ -82,7 +77,6 @@ impl ZflowWindow {
         self.model.read(cx).send(request);
     }
 
-    /// Opens the dialog that says hello to a computer mDNS cannot see.
     pub fn open_add_address(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.address_error = None;
         self.address
@@ -182,8 +176,6 @@ impl ZflowWindow {
                         ),
                 )
             });
-        // Empty where the system draws them. The drawn close button asks the
-        // platform too, as the system's does.
         let controls = WindowControls::new().on_close_window(|_, window, cx| {
             if platform::may_close(cx) {
                 window.remove_window();

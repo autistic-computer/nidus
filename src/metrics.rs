@@ -72,8 +72,6 @@ fn percentile(sorted: &[f64], quantile: f64) -> f64 {
     sorted[index]
 }
 
-/// Declares the live session metrics and their snapshot from one field list.
-/// A window becomes an optional percentile summary; a value is copied as is.
 macro_rules! session_metrics {
     (
         windows { $($(#[$window_doc:meta])* $window:ident,)* }
@@ -94,8 +92,6 @@ macro_rules! session_metrics {
             $($(#[$value_doc])* pub $value: $value_type,)*
         }
 
-        /// A copy taken under the session lock. Sorting the windows waits
-        /// until the lock is released.
         #[derive(Debug)]
         pub(crate) struct SessionMetricsSnapshotData {
             $($window: SampleWindow,)*
@@ -125,35 +121,25 @@ macro_rules! session_metrics {
 session_metrics! {
     windows {
         capture_to_send_us,
-        /// Network receive through successful uinput application.
         receive_to_inject_us,
-        /// Network receive through accepted runtime-command dispatch.
         receive_to_runtime_dispatch_us,
         arming_to_grab_us,
         rtt_us,
         delay_variation_us,
-        /// Samples of the playout engine's rolling packet-delay percentile, not
-        /// raw per-datagram delay variation.
         adaptive_delay_variation_percentile_us,
         playout_delay_us,
-        /// How far past its deadline the session timer woke.
         scheduler_lateness_us,
         clock_residual_us,
     }
     values {
-        /// Mappable evdev events seen during the local Arming window, before the
-        /// physical devices were grabbed.
         switch_time_leakage_events: u64,
         clock_offset_us: Option<f64>,
         clock_skew: Option<f64>,
         clock_skew_ppm: Option<f64>,
-        /// Unrecovered motion-sequence gaps observed in this live session.
         loss: u64,
         reordered: u64,
         duplicate_datagrams: u64,
-        /// Datagrams replaced in the bounded latest-wins application queue.
         datagram_queue_drops: u64,
-        /// Motion targets that started playing after their playout deadline.
         scheduler_late_events: u64,
         catch_up_steps: u64,
         catch_up_pointer_units: u64,
@@ -162,7 +148,6 @@ session_metrics! {
         snapshot_acknowledgements: u64,
         synthetic_releases: u64,
         stale_events_rejected: u64,
-        /// Keys and buttons the local input backend cannot inject.
         unsupported_inputs_dropped: u64,
     }
 }
@@ -182,9 +167,6 @@ impl SessionMetrics {
         self.last_packet_delay_us = Some(delay_us);
     }
 
-    /// Tracks sequence gaps without retaining an unbounded session history.
-    /// Late arrivals repair the loss estimate while they remain in the recent
-    /// window. Older arrivals are not guessed at because they may be repeats.
     pub fn observe_motion_sequence(&mut self, sequence: u64) {
         if sequence == 0 {
             return;

@@ -8,7 +8,7 @@ nothing else needs to be installed.
 
 ## Run or install
 
-Download and run the [Windows installer](https://github.com/demfabris/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe).
+Download and run the [Windows installer](https://github.com/autistic-computer/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe).
 It installs into `%LOCALAPPDATA%\Zflow.App` and adds a Start menu shortcut.
 No administrator access is needed. Configuration and paired computers remain
 in `%LOCALAPPDATA%\zflow`, outside the installation directory.
@@ -26,10 +26,10 @@ folder, Start menu shortcut, startup setting, configuration and paired
 computers stay.
 
 For a PowerShell installation, download and run the
-[installation script](https://github.com/demfabris/zflow/releases/latest/download/install-windows.ps1):
+[installation script](https://github.com/autistic-computer/zflow/releases/latest/download/install-windows.ps1):
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing https://github.com/demfabris/zflow/releases/latest/download/install-windows.ps1 -OutFile "$env:TEMP\zflow-install.ps1"
+Invoke-WebRequest -UseBasicParsing https://github.com/autistic-computer/zflow/releases/latest/download/install-windows.ps1 -OutFile "$env:TEMP\zflow-install.ps1"
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:TEMP\zflow-install.ps1"
 ```
 

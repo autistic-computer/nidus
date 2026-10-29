@@ -17,8 +17,6 @@ use super::{
 };
 
 const READY: &str = "Ready on the Mac. Move through a configured edge to connect.";
-/// How long the pointer rests against an edge before it crosses, with pause
-/// at edges on. The Linux daemon waits as long.
 const EDGE_PAUSE: Duration = Duration::from_millis(250);
 const SECURE_INPUT_ON: &str = "Secure keyboard entry is on in a Mac app (a password field or \
     Terminal's Secure Keyboard Entry). Input stays on the Mac until it turns off.";
@@ -26,60 +24,36 @@ const SECURE_INPUT_ON: &str = "Secure keyboard entry is on in a Mac app (a passw
 struct Running {
     crossing: Crossing,
     handoff: Handoff,
-    /// The computer input goes to now. A hop moves it on from the one the
-    /// handoff entered.
     peer: String,
     returned: Option<u32>,
     failed: bool,
     cancelled: bool,
-    /// A final status arrived; without one the worker ended unexpectedly.
     finished: bool,
     span: tracing::Span,
     started: Instant,
 }
 
-/// How old the Mac's own motion may be and still count as a push. The app
-/// takes it about every 12 ms.
 const PUSH_FRESH: Duration = Duration::from_millis(100);
-/// How long to wait before watching local motion again after macOS refused.
 const WATCH_RETRY: Duration = Duration::from_secs(5);
-/// After a peer lets go of this Mac, how long the pointer has to be still
-/// before a push on the edge it rests on counts. The peer let go because its
-/// pointer reached that edge, and motion from the hand-back still arrives.
 const HAND_BACK_QUIET: Duration = Duration::from_millis(200);
-/// How long after a peer takes control back this Mac does not cross to it.
-/// The peer is still finishing its own crossing and would refuse.
 const HAND_BACK_GUARD: Duration = Duration::from_millis(500);
 
-/// A push against an edge that crosses once it has lasted [`EDGE_PAUSE`].
 struct Resting {
-    /// The edge of this Mac the pointer rests on.
     edge: Edge,
     peer: String,
     since: Instant,
 }
 
-/// The pointer's way to an edge: where it was last, and a push waiting to
-/// cross.
 #[derive(Default)]
 struct Approach {
     previous: Option<Point>,
     resting: Option<Resting>,
-    /// The edge the pointer crossed from, or tried to, while it stays on
-    /// it. Pushing there again does nothing until it leaves, as a GNOME
-    /// barrier reports each push once.
     spent: Option<Edge>,
-    /// The peer that last controlled this Mac, and when it let go.
     released_by: Option<(String, Instant)>,
-    /// Set while a peer's hand-back settles: when the pointer last moved
-    /// since. Until it has been still for [`HAND_BACK_QUIET`], or leaves the
-    /// edges, its motion is not a push.
     settling: Option<Instant>,
 }
 
 impl Approach {
-    /// Starts over while `peer` controls this Mac, so that once it lets go
-    /// the hand-back settles first.
     fn controlled_by(peer: String, now: Instant) -> Self {
         Self {
             released_by: Some((peer, now)),
@@ -88,7 +62,6 @@ impl Approach {
         }
     }
 
-    /// Forgets the way to an edge, but not a hand-back still settling.
     fn restart(&mut self) {
         *self = Self {
             released_by: self.released_by.take(),
@@ -97,11 +70,6 @@ impl Approach {
         };
     }
 
-    /// The crossing the pointer at `current` starts, if any: by moving onto
-    /// an edge, or by `push`, the Mac's own motion since the last look,
-    /// pushing on while the cursor is held against one. With `pause`, the
-    /// pointer has to stay against the edge for [`EDGE_PAUSE`] first, and
-    /// moving away from it cancels.
     fn reached(
         &mut self,
         layout: &Layout,
@@ -118,14 +86,12 @@ impl Approach {
             && now.duration_since(*at) < HAND_BACK_GUARD
         {
             tracing::debug!(%peer, "that computer just took control back; input stays on the Mac");
-            // Pushing on once the guard is over still crosses.
             self.spent = None;
             return None;
         }
         Some(handoff)
     }
 
-    /// `push`, unless it belongs to a peer's hand-back that has not settled.
     fn settled(
         &mut self,
         geometry: &Geometry,
@@ -168,7 +134,6 @@ impl Approach {
         if let Some(resting) = &mut self.resting {
             match handoff::on_edge(layout, geometry, resting.edge, current) {
                 Some(handoff) if handoff.peer != resting.peer => {
-                    // Another computer's part of the edge starts over.
                     resting.peer = handoff.peer;
                     resting.since = now;
                     return None;
@@ -214,15 +179,11 @@ pub(super) struct Observer {
     running: Option<Running>,
     approach: Approach,
     secure_input_notice: bool,
-    /// Why the last crossing failed, while the notice still says so.
     failure: Option<String>,
-    /// The notice says a peer controls this Mac.
     controlled: bool,
-    /// When to try watching the Mac's own motion again.
     watch_at: Instant,
     pub notice: String,
     pub reduce_wifi_latency: bool,
-    /// The pointer rests against an edge for a moment before it crosses.
     pub pause_at_edges: bool,
     pub pause_requested: bool,
 }
@@ -251,18 +212,15 @@ impl Observer {
         self.running.is_some()
     }
 
-    /// The computer that input goes to during a crossing.
     pub fn session_peer(&self) -> Option<&str> {
         let running = self.running.as_ref()?;
         Some(&running.peer)
     }
 
-    /// The notice says Secure Input keeps input on the Mac.
     pub fn waiting_for_secure_input(&self) -> bool {
         self.secure_input_notice && self.notice == SECURE_INPUT_ON
     }
 
-    /// The notice still says why the last crossing failed.
     pub fn crossing_failed(&self) -> bool {
         self.failure.as_ref() == Some(&self.notice)
     }
@@ -291,8 +249,6 @@ impl Observer {
         }
     }
 
-    /// Stops arming with the current layout, and lets a crossing in progress
-    /// finish with its own. The app arms again with the new layout.
     pub fn disarm(&mut self) {
         macos::set_edge_guards(&[]);
         if self.enabled {
@@ -332,10 +288,6 @@ impl Observer {
 
     pub fn tick(&mut self, links: &Links) {
         self.refresh_edge_guards(links);
-        // Left alone while a crossing runs: capture swallows the motion, and
-        // what comes after the return, as a flick back against the edge
-        // during cleanup, can still cross once it is fresh. Otherwise taken
-        // every tick, so none made while a peer controls this Mac counts.
         let motion = if self.running.is_none() {
             macos::take_local_motion()
         } else {
@@ -363,8 +315,6 @@ impl Observer {
         macos::set_edge_guards(&guards);
     }
 
-    /// `controller` is the peer controlling this Mac, if any, and `motion`
-    /// the Mac's own pointer motion since the last tick.
     fn tick_with(
         &mut self,
         controller: Option<String>,
@@ -381,8 +331,6 @@ impl Observer {
             }
         }
         if let Some(peer) = controller {
-            // Nothing crosses while a peer controls this Mac, and a cursor it
-            // leaves resting on an edge does not cross once it lets go.
             self.approach = Approach::controlled_by(peer.clone(), Instant::now());
             if self.enabled && self.running.is_none() {
                 if !self.controlled {
@@ -491,15 +439,10 @@ impl Observer {
             return;
         };
         let _entered = running.span.enter();
-        // A pointer that came back may push out again at once, even if it
-        // already rests on the edge. One still where it tried to leave has
-        // to move off the edge first.
         self.approach = Approach {
             spent: self.approach.spent.filter(|_| running.returned.is_none()),
             ..Approach::default()
         };
-        // Only Escape and the person's own switches pause sharing. A crossing
-        // that went wrong says why, and the next push tries again.
         if !running.finished {
             tracing::error!("crossing worker stopped without reporting");
             self.notice = "The sharing worker stopped unexpectedly. Input is on the Mac.".into();
@@ -515,8 +458,6 @@ impl Observer {
             );
             self.notice = "Back on the Mac. Edge sharing is ready.".into();
         } else if self.enabled {
-            // Only a stop or Escape ends a crossing without a return, and both
-            // disarm first. Anything else is a failure, never a user pause.
             self.notice = "Remote input ended without returning to the Mac.".into();
             self.failure = Some(self.notice.clone());
         } else {
@@ -527,8 +468,6 @@ impl Observer {
 
     fn observe(&mut self, links: &Links, motion: Option<LocalMotion>) -> Result<()> {
         let now = Instant::now();
-        // Without the watch, only a pointer moving onto an edge crosses.
-        // macOS stops the watch after sleep or a session switch.
         if now >= self.watch_at
             && let Err(error) = macos::watch_local_motion()
         {
@@ -550,13 +489,10 @@ impl Observer {
         else {
             return Ok(());
         };
-        // A drag or a held modifier keeps the pointer on the Mac. The bridge
-        // checks again once its tap is installed.
         if !macos::input_is_neutral() {
             tracing::info!("edge reached with a button or modifier held; input stays on the Mac");
             return Ok(());
         }
-        // Capture would refuse anyway; skip the receiver setup.
         if macos::secure_input_enabled() {
             self.notice = SECURE_INPUT_ON.into();
             self.secure_input_notice = true;
@@ -571,7 +507,6 @@ impl Observer {
             start = handoff.start, end = handoff.end, position = handoff.position,
             remote_width = handoff.expected_width, remote_height = handoff.expected_height,
             entry_region = ?handoff.entry_region, "crossing geometry");
-        // The receiver status already says why a link is not ready.
         let Some(crossing) = links.cross(handoff.clone(), position, self.reduce_wifi_latency)
         else {
             tracing::info!(parent: &span, "receiver not ready; input stays on the Mac");
@@ -597,8 +532,6 @@ fn sharing_with(peer: &str) -> String {
     format!("Sharing with {peer}. Cross back or press Ctrl+Cmd+Backspace to return.")
 }
 
-/// Keep only configured, usable peer edges. Movement to this Mac's other
-/// displays stays native everywhere the desk does not put a peer.
 fn edge_guards(
     layout: &Layout,
     geometry: &Geometry,
@@ -631,7 +564,6 @@ fn edge_guards(
                 Edge::Top => (bounds.x, bounds.width, 2),
                 Edge::Bottom => (bounds.x, bounds.width, 3),
             };
-            // Match handoff's eight-point dead corners and half-open range.
             let start = (transition.source_start * f64::from(span)).ceil().max(8.0);
             let end = (transition.source_end * f64::from(span))
                 .ceil()
@@ -654,8 +586,6 @@ fn edge_guards(
 
 impl Drop for Observer {
     fn drop(&mut self) {
-        // Dropping the crossing's stop sender also returns input to the Mac;
-        // the link finishes cleanup before it closes.
         self.stop();
     }
 }
@@ -667,8 +597,6 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::{mpsc, watch};
 
-    /// An armed observer running one crossing, the crossing's status
-    /// sender, and whether it was told to stop.
     fn crossing() -> (
         Observer,
         mpsc::UnboundedSender<SourceStatus>,
@@ -726,8 +654,6 @@ mod tests {
         (observer, status, stopped)
     }
 
-    /// An armed observer running one crossing, fed `statuses` before the
-    /// crossing's channel closes.
     fn finished(statuses: &[SourceStatus], report_end: bool) -> Observer {
         let (mut observer, status, _stopped) = crossing();
         for status in statuses {
@@ -743,7 +669,6 @@ mod tests {
 
     #[test]
     fn a_crossing_that_ends_without_returning_fails_instead_of_pausing() {
-        // For example, macOS invalidated the tap and the bridge ended capture.
         let observer = finished(&[SourceStatus::Failed("tap invalidated".into())], false);
         assert!(observer.is_enabled() && !observer.pause_requested);
         assert!(observer.crossing_failed());
@@ -757,14 +682,10 @@ mod tests {
 
     #[test]
     fn a_failed_crossing_keeps_sharing_armed() {
-        // As in the live test, where the AWDL helper refused a second lease,
-        // the crossing failed and sharing went off. Only Escape or a toggle
-        // pauses sharing.
         let failure = SourceStatus::Failed("AWDL helper: AWDL is already in use".into());
         let mut observer = finished(&[failure], true);
         assert!(observer.is_enabled() && !observer.pause_requested);
         assert!(observer.crossing_failed());
-        // The notice says so until something newer happens.
         let links = Links::with_backend(Default::default()).unwrap();
         observer.tick_with(Some("linux".into()), None, &links);
         assert!(!observer.crossing_failed());
@@ -777,16 +698,11 @@ mod tests {
         observer.enabled = true;
         observer.approach.previous = Some(Point { x: 1, y: 540 });
         observer.approach.spent = Some(Edge::Left);
-        // The Mac's own push while controlled goes nowhere.
         observer.tick_with(Some("linux".into()), push(-3.0, 1), &links);
-        // Observing would have disarmed this observer, which has no layout.
         assert!(observer.is_enabled());
         assert_eq!(observer.approach.previous, None);
         assert_eq!(observer.notice, "Controlled by linux");
 
-        // Its own push brought the cursor to the edge and handed control
-        // back. Once the peer lets go and the hand-back is over, pushing on
-        // crosses.
         assert_eq!(observer.approach.spent, None);
         let (layout, geometry) = edge();
         let held = Point { x: 1919, y: 100 };
@@ -803,9 +719,6 @@ mod tests {
 
     #[test]
     fn motion_right_after_a_peer_lets_go_does_not_cross_back_to_it() {
-        // As in the live test: linux controlled this Mac, the pointer reached
-        // this edge, linux took control back, and 15 ms later motion pushing
-        // on the edge crossed straight back to linux.
         let links = Links::with_backend(Default::default()).unwrap();
         let mut observer = Observer::default();
         observer.enabled = true;
@@ -821,8 +734,6 @@ mod tests {
         };
         assert_eq!(reach(push(3.0, 1), 15), None, "motion from the hand-back");
         assert_eq!(reach(push(3.0, 1), 120), None, "and more of it");
-        // Still for a moment, then a fresh push: the Mac's own. Linux is
-        // still finishing its crossing, so that waits out the guard.
         assert_eq!(reach(None, 330), None);
         assert_eq!(
             reach(push(3.0, 1), 340),
@@ -838,7 +749,6 @@ mod tests {
         let start = Instant::now();
         let at = |ms| start + Duration::from_millis(ms);
         let mut approach = Approach::controlled_by("linux".into(), start);
-        // A new layout or a rearm keeps the hand-back.
         approach.restart();
         let mut reach = |point, push, ms| {
             let handoff = approach.reached(&layout, &geometry, point, push, at(ms), false);
@@ -851,10 +761,7 @@ mod tests {
             "motion from the hand-back"
         );
         assert_eq!(reach(Point { x: 1900, y: 800 }, push(-3.0, 1), 20), None);
-        // Desk did not just take control back, so its part of the edge
-        // crosses at once.
         assert_eq!(reach(desk, None, 30).as_deref(), Some("desk"));
-        // Linux's part waits out the guard, however the pointer gets there.
         let held = Point { x: 1919, y: 100 };
         assert_eq!(reach(Point { x: 1900, y: 100 }, None, 40), None);
         assert_eq!(reach(held, None, 50), None);
@@ -881,21 +788,15 @@ mod tests {
             let handoff = approach.reached(&layout, &geometry, point, push, now, false);
             handoff.map(|handoff| handoff.peer)
         };
-        // Already on the edge, as after a return or a peer's control.
         assert_eq!(reach(held, None), None);
         assert_eq!(reach(held, push(-2.0, 5)), None, "back inside");
         assert_eq!(reach(held, push(2.0, 150)), None, "stale");
         assert_eq!(reach(held, push(2.0, 5)).as_deref(), Some("linux"));
-        // Like a barrier hit, one stay on the edge crosses once, however
-        // long the push goes on.
         assert_eq!(reach(held, push(2.0, 5)), None);
         assert_eq!(reach(Point { x: 1918, y: 300 }, push(1.0, 5)), None);
-        // Leaving and coming back crosses again.
         assert_eq!(reach(inside, None), None);
         assert_eq!(reach(held, None).as_deref(), Some("linux"));
         assert_eq!(reach(held, push(2.0, 5)), None);
-        // Sliding along the edge is the same stay, even onto another
-        // computer's part of it, until it leaves the edge.
         let desk = Point { x: 1919, y: 800 };
         assert_eq!(reach(desk, push(2.0, 5)), None);
         assert_eq!(reach(Point { x: 1919, y: 1075 }, None), None, "a corner");
@@ -929,8 +830,6 @@ mod tests {
             (SourceStatus::Cancelled("cursor left".into()), false),
         ] {
             let (mut observer, status, _stopped) = crossing();
-            // The crossing started from this edge, and the pointer is on it
-            // when cleanup ends.
             observer.approach.spent = Some(Edge::Right);
             observer.record(ending);
             observer.record(SourceStatus::Stopped);
@@ -978,13 +877,10 @@ mod tests {
         observer.record(SourceStatus::Stopped);
         drop(status);
         observer.finish();
-        // Not a failure or a pause: the app arms again with the new layout.
         assert!(!observer.has_session() && !observer.is_enabled());
         assert!(!observer.pause_requested);
     }
 
-    /// This Mac, 1920 x 1080, and linux and desk to its right, one above
-    /// the other, each half as tall.
     fn edge() -> (Layout, Geometry) {
         let monitor =
             |id: &str, peer: Option<&str>, x, y, height| super::super::layout_model::Monitor {
@@ -1029,12 +925,9 @@ mod tests {
             handoff.map(|handoff| handoff.peer)
         };
 
-        // Off, it crosses as soon as the pointer gets there.
         assert_eq!(reach(inside, 0, false), None);
         assert_eq!(reach(edge, 10, false).as_deref(), Some("linux"));
 
-        // On, it crosses once the pointer has pushed there for 250 ms,
-        // sliding along the edge meanwhile, where the pointer is by then.
         let lower = Point { x: 1919, y: 300 };
         assert_eq!(reach(inside, 300, true), None);
         assert_eq!(reach(edge, 310, true), None);
@@ -1100,14 +993,11 @@ mod tests {
         };
         assert_eq!(reach(inside, 0), None);
         assert_eq!(reach(edge, 10), None);
-        // Away at 200 ms, so the push never crosses.
         assert_eq!(reach(inside, 210), None);
         assert_eq!(reach(inside, 400), None);
-        // Coming back starts over.
         assert_eq!(reach(edge, 500), None);
         assert_eq!(reach(edge, 700), None);
         assert_eq!(reach(edge, 750).as_deref(), Some("linux"));
-        // Sliding onto another computer's part of the edge starts over too.
         assert_eq!(reach(inside, 800), None);
         assert_eq!(reach(edge, 810), None);
         assert_eq!(reach(Point { x: 1919, y: 800 }, 1000), None);

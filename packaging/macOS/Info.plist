@@ -10,7 +10,6 @@
     <string>io.zflow.zflow</string>
     <key>CFBundleExecutable</key>
     <string>zflow-app</string>
-    <!-- zflow starts in the menu bar; its window brings the Dock icon along. -->
     <key>LSUIElement</key>
     <true/>
     <key>LSMinimumSystemVersion</key>
@@ -24,7 +23,7 @@
     <key>CFBundleVersion</key>
     <string>0.1.0</string>
     <key>SUFeedURL</key>
-    <string>https://github.com/demfabris/zflow/releases/latest/download/appcast.xml</string>
+    <string>https://github.com/autistic-computer/zflow/releases/latest/download/appcast.xml</string>
     <key>SUVerifyUpdateBeforeExtraction</key>
     <true/>
     <key>NSHighResolutionCapable</key>

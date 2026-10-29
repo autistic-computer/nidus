@@ -1,11 +1,3 @@
-//! The settings the app shows: one snapshot and one set of requests.
-//!
-//! The Mac app runs the engine in its own process, the Linux window and the
-//! GNOME panel reach the desktop agent over D-Bus, and the Windows app reads
-//! the engine's pipe through [`super::windows_view`]. The top of the window is
-//! the same everywhere, in the order of the `Snapshot` fields. Each platform
-//! fills `platform` with the rows under it.
-
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -19,34 +11,22 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Snapshot<P> {
     pub status: Status,
-    /// None while the part that shares input cannot be reached.
     pub sharing: Option<bool>,
     pub health: Vec<Health>,
-    /// The one-shot window in which a fresh install accepts one computer.
     pub pairing_window: PairingWindow,
-    /// None while there is no layout to arrange.
     pub layout: Option<Layout>,
-    /// Where the layout's screens touch, for the board to draw.
     #[serde(default)]
     pub seams: Vec<Seam>,
-    /// This computer's key mark, drawn on its own tile. None until known.
     pub own_mark: Option<String>,
-    /// Computers found but not on the board, for the shelf under it.
     #[serde(default)]
     pub unplaced: Vec<Unplaced>,
     pub peers: Vec<Peer>,
-    /// None where crossings cannot pause yet.
     pub pause_at_edges: Option<bool>,
     #[serde(default)]
     pub shortcuts: Vec<Shortcut>,
-    /// None where clipboards are not shared yet.
     pub share_clipboard: Option<bool>,
-    /// None where the app keeps it, as the Mac app does with its login item.
     pub autostart: Option<bool>,
-    /// The file with the advanced settings.
     pub config_path: PathBuf,
-    /// Things to tell people once, such as a computer that joined. Ids grow,
-    /// so a window posts each one it has not posted before.
     #[serde(default)]
     pub notices: Vec<Notice>,
     pub platform: P,
@@ -55,7 +35,6 @@ pub struct Snapshot<P> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub state: State,
-    /// The other computer while one controls the other.
     pub peer: Option<String>,
     pub title: String,
 }
@@ -64,20 +43,15 @@ pub struct Status {
 #[serde(rename_all = "snake_case")]
 pub enum State {
     Ready,
-    /// This computer controls `peer`.
     Controlling,
-    /// `peer` controls this computer.
     Controlled,
     Paused,
     Checking,
-    /// No computer is added yet.
     Setup,
     Attention,
 }
 
 impl Status {
-    /// The most important thing first: a pause or a live crossing says more
-    /// than a problem with some other computer.
     pub fn new(sharing: Option<bool>, peers: &[Peer], health: &[Health], checking: bool) -> Self {
         let with = |state| peers.iter().find(|peer| peer.state == state);
         let (state, peer) = match sharing {
@@ -116,17 +90,12 @@ impl Status {
 pub struct Peer {
     pub name: String,
     pub state: PeerState,
-    /// What the row says under the name; an unreachable peer's error.
     pub detail: String,
-    /// Whether it may control this computer.
     pub allow_control: bool,
     pub keyboard: KeyboardMode,
-    /// Whether its scrolling is turned around here.
     pub reverse_scroll: bool,
-    /// Whether it may look at this screen through a lens.
     #[serde(default)]
     pub share_screen: bool,
-    /// Its key's mark, as its tile on the shelf showed it.
     pub mark: String,
 }
 
@@ -167,11 +136,8 @@ impl Peer {
     }
 }
 
-/// One line of the health list. Rows that are fine stay in the list, so
-/// people see what was checked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Health {
-    /// Stays the same between snapshots, so a window can keep the row.
     pub id: String,
     pub level: Level,
     pub title: String,
@@ -187,8 +153,6 @@ pub enum Level {
     Error,
 }
 
-/// A fix button. The window sends `{"command": command}` unless it handles
-/// that command itself, as the Mac app does when it opens System Settings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Action {
     pub label: String,
@@ -213,9 +177,6 @@ pub struct Shortcut {
     pub keys: String,
 }
 
-/// Everything a window or menu may ask for. A request the platform does not
-/// have fails with an error rather than doing nothing.
-// Each platform leaves the fields of the other's requests unread.
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
@@ -224,21 +185,17 @@ pub enum Request {
     SetSharing {
         enabled: bool,
     },
-    /// Absent fields stay as they are; see [`crate::peer_view::set_peer`].
     SetPeer {
         name: String,
         allow_control: Option<bool>,
         keyboard: Option<KeyboardMode>,
         reverse_scroll: Option<bool>,
-        /// Whether it may look at this screen through a lens.
         #[serde(default)]
         share_screen: Option<bool>,
     },
     Forget {
         name: String,
     },
-    /// Puts screen `id` at `x`, `y`, or against an edge within `tolerance`
-    /// of there. With `computer`, every screen of its computer moves alike.
     MoveTile {
         id: String,
         x: i32,
@@ -247,9 +204,6 @@ pub enum Request {
         #[serde(default)]
         computer: bool,
     },
-    /// Answers where a [`Request::MoveTile`] would land, and the seams it
-    /// would make, without moving anything: a
-    /// [`super::layout_model::Preview`], or null where it cannot go.
     Preview {
         id: String,
         x: i32,
@@ -258,20 +212,15 @@ pub enum Request {
         #[serde(default)]
         computer: bool,
     },
-    /// Drops a computer from the shelf onto the board, which trusts it. `id`
-    /// is its shelf tile's `key:<fingerprint>`; the point is where it landed.
     Place {
         id: String,
         x: i32,
         y: i32,
         tolerance: u32,
     },
-    /// Says hello to an IP address, port optional, so a computer mDNS
-    /// cannot see shows up on the shelf.
     AddAddress {
         address: String,
     },
-    /// Checks the other computers again now.
     Retry,
     SetSwitching {
         pause_at_edges: bool,
@@ -279,40 +228,28 @@ pub enum Request {
     SetClipboard {
         share: bool,
     },
-    /// Mac: opens a lens onto computer `name`'s screen.
     Lens {
         name: String,
     },
     SetAutostart {
         enabled: bool,
     },
-    /// Mac: reads the configuration files again.
     Reload,
-    /// Mac: blocks AWDL while sharing.
     SetAwdl {
         enabled: bool,
     },
-    /// Mac: whether the AWDL helper is installed and answering.
     HelperReady {
         ready: bool,
     },
-    /// Mac: asks macOS for Accessibility.
     AllowAccessibility,
-    /// Mac: checks Accessibility now instead of at the next tick.
     CheckAccessibility,
-    /// Mac: starts looking for computers and checks Local Network access.
     Discover,
-    /// Linux: opens the settings window.
     OpenSettings,
-    /// Linux: follows the service's log in a terminal.
     OpenLogs,
-    /// Linux: installs and turns on the GNOME extension.
     InstallExtension,
-    /// Windows: sends this computer's input to computer `name` now.
     TakeControl {
         name: String,
     },
-    /// Windows: brings input back to this computer.
     ReturnHere,
 }
 
@@ -491,7 +428,6 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(value.as_object().unwrap().len(), order.len());
         assert_eq!(value["status"]["title"], "Add a computer");
-        // Before a platform fills them, the new rows say nothing is going on.
         assert_eq!(value["pairing_window"]["state"], "never");
         assert_eq!(value["unplaced"], serde_json::json!([]));
         assert_eq!(value["notices"], serde_json::json!([]));

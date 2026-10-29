@@ -15,21 +15,14 @@
 #define ZFLOW_MAX_CONTACTS 5
 #define ZFLOW_MAX_DISPLAYS 64
 #define ZFLOW_CAPS_LOCK 57
-// HIToolbox's kKeyboardISO, the characters 'ISO '.
 #define ZFLOW_KEYBOARD_ISO 0x49534F20
 
-// Media keys and native gestures would act on the Mac app under the frozen
-// cursor. Their payloads are not decoded, so capture swallows them. The
-// gesture numbers are NSEvent types: rotate 18, begin/end gesture 19-20,
-// gesture 29, magnify 30, swipe 31, smart magnify 32, quick look 33,
-// pressure 34.
 #define ZFLOW_SWALLOWED_EVENTS                                              \
   (CGEventMaskBit(NX_SYSDEFINED) | CGEventMaskBit(18) | CGEventMaskBit(19) | \
    CGEventMaskBit(20) | CGEventMaskBit(29) | CGEventMaskBit(30) |           \
    CGEventMaskBit(31) | CGEventMaskBit(32) | CGEventMaskBit(33) |           \
    CGEventMaskBit(34))
 
-// From Carbon's HIToolbox; declared here instead of including all of Carbon.
 extern Boolean IsSecureEventInputEnabled(void);
 extern OSType KBGetLayoutType(SInt16 keyboard_type);
 
@@ -62,10 +55,6 @@ static CGEventRef pass_event(CGEventTapProxy proxy, CGEventType type,
   return event;
 }
 
-// AXIsProcessTrusted can stay true after zflow is removed from the
-// Accessibility list, but the window server then refuses an active tap for
-// mouse events. This one wants only middle-button presses, which almost never
-// arrive in the microseconds before it is disabled; nothing services it.
 int zflow_mac_event_tap_allowed(void) {
   CFMachPortRef tap = CGEventTapCreate(
       kCGHIDEventTap, kCGTailAppendEventTap, kCGEventTapOptionDefault,
@@ -119,8 +108,6 @@ static void watch_displays(void) {
   CGDisplayRegisterReconfigurationCallback(displays_changed, NULL);
 }
 
-// Changes whenever macOS reconfigures a display, so callers can cache the
-// display list instead of reading it on every tick.
 uint32_t zflow_mac_display_generation(void) {
   static pthread_once_t once = PTHREAD_ONCE_INIT;
   pthread_once(&once, watch_displays);
@@ -131,9 +118,6 @@ int zflow_mac_secure_input_enabled(void) {
   return IsSecureEventInputEnabled() ? 1 : 0;
 }
 
-// Only buttons and modifiers count. macOS can report a key as down long after
-// its release, and a key held at entry is harmless: the tap keeps its release
-// on the Mac and drops its repeats.
 int zflow_mac_input_is_neutral(void) {
   for (CGMouseButton button = 0; button < 32; button++)
     if (CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, button)) return 0;
@@ -142,15 +126,10 @@ int zflow_mac_input_is_neutral(void) {
   return (CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState) & held) == 0;
 }
 
-// inject.c marks every event it posts with this, so a peer's motion is not
-// taken for the Mac's own. macOS also stamps a posted event with the ID of
-// the process that posted it.
 #define ZFLOW_POSTED_MARK 0x7A666C6F77LL
 
-// The Mac's own pointer motion since the last take, in points.
 typedef struct {
   double dx, dy;
-  // How long ago the last move came.
   uint64_t age_ns;
 } ZFlowMacMotion;
 
@@ -162,13 +141,12 @@ static pthread_mutex_t g_motion_watch_lock = PTHREAD_MUTEX_INITIALIZER;
 static _Atomic bool g_motion_watching;
 static CFMachPortRef g_motion_tap;
 
-// Short leases make these barriers fail open if the app worker stops ticking.
 #define ZFLOW_MAX_EDGE_GUARDS 256
 #define ZFLOW_EDGE_GUARD_NS 500000000ULL
 typedef struct {
   ZFlowMacRect bounds;
   double start, end;
-  uint32_t edge; // Left, Right, Top, Bottom.
+  uint32_t edge;
 } ZFlowMacEdgeGuard;
 static ZFlowMacEdgeGuard g_edge_guards[ZFLOW_MAX_EDGE_GUARDS];
 static uint32_t g_edge_guard_count, g_edge_guard_generation;
@@ -191,8 +169,6 @@ void zflow_mac_edge_guards(const ZFlowMacEdgeGuard *guards, uint32_t count) {
   pthread_mutex_unlock(&g_motion_lock);
 }
 
-// Intersect the complete move, including one that skips the edge's pixels.
-// The first encountered configured edge wins; other local edges stay native.
 static bool guarded_move(ZFlowMacPosition from, ZFlowMacPosition to,
                          ZFlowMacPosition *held) {
   double first = 2.0;
@@ -206,8 +182,6 @@ static bool guarded_move(ZFlowMacPosition from, ZFlowMacPosition to,
     double before = vertical ? from.x : from.y, after = vertical ? to.x : to.y;
     if (negative ? !(after < before && before >= line && after <= line)
                  : !(after > before && before <= line && after >= line)) continue;
-    // Once held at the boundary, preserve movement along it. Using t=0
-    // would pin the pointer in place and trap it inside a partial segment.
     double t = before == line ? 1.0 : (line - before) / (after - before);
     double along = vertical ? from.y + t * (to.y - from.y) : from.x + t * (to.x - from.x);
     if (t >= first || along < guard.start || along >= guard.end) continue;
@@ -219,16 +193,11 @@ static bool guarded_move(ZFlowMacPosition from, ZFlowMacPosition to,
 
 static void shorten_warp_freeze(void);
 
-// A move's deltas are the device's motion after acceleration, not the
-// cursor's: macOS reports them even while the cursor is held against a
-// screen edge, where its location stays put. Capture reads the same fields
-// while the cursor is frozen.
 static CGEventRef motion_callback(CGEventTapProxy proxy, CGEventType type,
                                   CGEventRef event, void *context) {
   (void)proxy;
   (void)context;
   if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-    // Forget guards until the worker refreshes them after a disabled tap.
     pthread_mutex_lock(&g_motion_lock);
     g_edge_guard_count = 0;
     g_motion_position_valid = false;
@@ -266,11 +235,9 @@ static CGEventRef motion_callback(CGEventTapProxy proxy, CGEventType type,
   g_motion_position = position;
   g_motion_position_valid = isfinite(position.x) && isfinite(position.y);
   pthread_mutex_unlock(&g_motion_lock);
-  // The original jump must not reach the app on the adjacent local display.
   return blocked ? NULL : event;
 }
 
-// Returns 1 and the motion since the last take, or 0 when there was none.
 int zflow_mac_motion_take(ZFlowMacMotion *motion) {
   if (!motion) return 0;
   pthread_mutex_lock(&g_motion_lock);
@@ -289,8 +256,6 @@ static void *motion_thread(void *context) {
   pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
   CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
   CGEventTapEnable(g_motion_tap, true);
-  // Runs until macOS invalidates the tap, as after sleep or a session
-  // switch, which leaves the loop nothing to run. The next watch starts over.
   while (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, false) != kCFRunLoopRunFinished) {
   }
   CFMachPortInvalidate(g_motion_tap);
@@ -305,10 +270,6 @@ static void *motion_thread(void *context) {
   return NULL;
 }
 
-// Watches motion and holds configured crossings on their source display until
-// the sharing worker captures input. 0 when watching, -1 when macOS refused.
-// A refused tap leaks a Mach port inside CoreGraphics, so callers must not
-// retry quickly.
 int zflow_mac_motion_watch(void) {
   if (atomic_load(&g_motion_watching)) return 0;
   pthread_mutex_lock(&g_motion_watch_lock);
@@ -323,7 +284,6 @@ int zflow_mac_motion_watch(void) {
       motion_callback, NULL);
   CFRunLoopSourceRef source = tap ? CFMachPortCreateRunLoopSource(NULL, tap, 0) : NULL;
   g_motion_tap = tap;
-  // Set first: the thread clears it when it ends, which can be at once.
   atomic_store(&g_motion_watching, true);
   pthread_t thread;
   int status = source && pthread_create(&thread, NULL, motion_thread, source) == 0 ? 0 : -1;
@@ -382,7 +342,6 @@ typedef struct {
   uint8_t pressed;
   uint8_t contact_count;
   uint8_t padding[2];
-  // The trackpad's size in hundredths of a millimetre, 0 when unknown.
   int32_t surface_width;
   int32_t surface_height;
   ZFlowMacContact contacts[ZFLOW_MAX_CONTACTS];
@@ -409,12 +368,8 @@ static bool g_start_ready;
 static int g_start_status;
 static bool g_request_raw_touch;
 static ZFlowMacRect g_entry_region;
-// Called after each queued event and when capture stops, so the consumer can
-// sleep instead of polling the queue.
 static void (*g_wake)(void);
 static bool g_forwarded_keys[128];
-// The code each held key went out as. Its release sends the same code, even
-// one replayed without an event after the keyboard type changed.
 static uint16_t g_forwarded_codes[128];
 static bool g_forwarded_buttons[33];
 static _Atomic bool g_stop;
@@ -464,9 +419,6 @@ static bool release_cursor(void) {
     else
       ok = false;
   }
-  // SetsCursorInBackground stays on, and reconnecting comes after the show,
-  // as in input-leap. Turning the property off right after the show now and
-  // then left the cursor hidden until another app came to the front.
   if (g_cursor_disconnected) {
     if (cursor_result(CGAssociateMouseAndMouseCursorPosition(true),
                       "could not reconnect the Mac cursor"))
@@ -509,11 +461,6 @@ static bool release_cursor_at(const ZFlowMacPosition *position) {
   return ok;
 }
 
-// macOS drops local mouse input for 0.25 s after a warp, so after a return
-// the cursor sat still at the edge while the mouse kept moving. 0.05 s lets
-// it move on almost at once; at 0.01 s it sometimes showed across the screen
-// for a frame before the warp held. lan-mouse settled on 0.05 s too. The
-// setting lasts as long as its source, so this one stays.
 static void shorten_warp_freeze(void) {
   CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
   if (source) CGEventSourceSetLocalEventsSuppressionInterval(source, 0.05);
@@ -526,8 +473,6 @@ static bool capture_cursor(void) {
     set_error("previous capture did not release cursor control");
     return false;
   }
-  // Capture needs the same background visibility property used by Deskflow.
-  // Resolve the private API at runtime and refuse capture if it is unavailable.
   int (*default_connection)(void) = dlsym(RTLD_DEFAULT, "_CGSDefaultConnection");
   g_set_connection_property = dlsym(RTLD_DEFAULT, "CGSSetConnectionProperty");
   if (!default_connection || !g_set_connection_property) {
@@ -545,18 +490,12 @@ static bool capture_cursor(void) {
   if (!cursor_result(CGDisplayHideCursor(kCGNullDirectDisplay),
                      "could not hide the Mac cursor")) return false;
   g_cursor_hidden = true;
-  // Keep relative deltas while freezing the local cursor. Do not recenter it.
   g_cursor_disconnected = true;
   return cursor_result(CGAssociateMouseAndMouseCursorPosition(false),
                        "could not disconnect the Mac cursor");
 }
 
-// The one admission check that counts: it runs after the tap is installed, so
-// no press can slip between the check and capture.
-// Admission status: 0 allows capture, -1 fails, -2 cancels the crossing.
 static int capture_entry_allowed(void) {
-  // While any app holds Secure Event Input the tap sees no keys, so typing
-  // would reach the Mac while the pointer drives the other computer.
   if (IsSecureEventInputEnabled()) {
     set_error("secure keyboard entry is on in a Mac app (a password field or "
               "Terminal's Secure Keyboard Entry); input stays on the Mac");
@@ -589,18 +528,11 @@ static int capture_entry_allowed(void) {
 }
 
 static bool owns_transition(bool *held, bool pressed) {
-  // A release whose press happened before tap installation belongs to the
-  // local session, including a quick click during capture startup.
   if (!pressed && !*held) return false;
   *held = pressed;
   return true;
 }
 
-// On ISO keyboards macOS swaps keycodes 10 and 50: 10 is the key left of 1
-// and 50 the key left of Z, the reverse of ANSI and JIS. Swap them back so
-// each code names one position, as SDL, Chromium and Firefox do. The type
-// comes from the event, so a built-in ISO and an external ANSI keyboard can
-// both be right.
 static uint16_t physical_keycode(CGEventRef event, uint16_t keycode) {
   if (keycode != 10 && keycode != 50) return keycode;
   SInt16 keyboard = (SInt16)CGEventGetIntegerValueField(
@@ -639,8 +571,6 @@ static int contact_callback(MTDeviceRef device, MTTouch *touches, int count,
   (void)frame;
   ZFlowMacEvent event = {0};
   event.kind = ZFLOW_EVENT_TOUCH;
-  // Scans every entry instead of reading the count, which unloading resets
-  // while a last frame may still be in flight.
   for (size_t i = 0; i < sizeof(g_raw_devices) / sizeof(g_raw_devices[0]); i++) {
     if (g_raw_devices[i] == device) {
       event.surface_width = g_raw_surfaces[i][0];
@@ -657,8 +587,6 @@ static int contact_callback(MTDeviceRef device, MTTouch *touches, int count,
     float y = touches[i].normalized.pos.y;
     if (!isfinite(x) || !isfinite(y)) return 0;
 
-    // Contacts at the pad edge report slightly outside [0, 1]. Dropping the
-    // whole frame would freeze the gesture there, so clamp instead.
     ZFlowMacContact *contact = &event.contacts[event.contact_count++];
     contact->id = touches[i].identifier;
     contact->x = fminf(fmaxf(x, 0.0f), 1.0f);
@@ -716,7 +644,6 @@ static void stop_capture_run_loop(void) {
   pthread_mutex_unlock(&g_run_loop_lock);
 }
 
-// Ends capture from the tap thread. An error marks the crossing failed.
 static void end_capture(const char *error) {
   if (error) {
     set_error(error);
@@ -727,19 +654,12 @@ static void end_capture(const char *error) {
   wake();
 }
 
-// Queue a captured event and swallow it. Dropping one on a full queue could
-// lose a release, so end capture instead; ending remote input releases
-// everything held on the other computer.
 static CGEventRef forward(const ZFlowMacEvent *event) {
   if (!enqueue(event))
     end_capture("the capture queue overflowed; input returned to the Mac");
   return NULL;
 }
 
-// Releases that happened while macOS had the tap disabled went to the Mac, so
-// the other computer still holds those keys and buttons. Release whatever is
-// no longer down. Key state is read by raw keycode, but each release sends the
-// code its press went out as.
 static void release_lifted_input(void) {
   ZFlowMacEvent release = {.kind = ZFLOW_EVENT_KEY};
   for (uint16_t key = 0; key < 128; key++) {
@@ -764,7 +684,6 @@ uint8_t zflow_mac_should_forward_scroll(uint8_t raw_touch,
                                         uint8_t raw_contact_active,
                                         int64_t scroll_phase,
                                         int64_t momentum_phase) {
-  // macOS can keep sending gesture scroll after the raw contacts lift.
   return !raw_touch ||
       (!raw_contact_active && scroll_phase == 0 && momentum_phase == 0);
 }
@@ -774,8 +693,6 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
   (void)proxy;
   (void)context;
   if (type == kCGEventTapDisabledByTimeout) {
-    // One slow callback should not end remote control, but a tap re-enabled
-    // after Accessibility was removed would hold the Mac's input.
     if (!zflow_mac_event_tap_allowed()) {
       end_capture("Accessibility access was removed; ending remote control");
       return event;
@@ -812,8 +729,6 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
       captured.kind = ZFLOW_EVENT_KEY;
       captured.code = keycode;
       if (type == kCGEventFlagsChanged && keycode == ZFLOW_CAPS_LOCK) {
-        // macOS reports one flagsChanged per Caps Lock toggle and nothing on
-        // release, so each report is a full press.
         captured.pressed = 1;
         forward(&captured);
         captured.pressed = 0;
@@ -822,13 +737,11 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
       captured.pressed = type == kCGEventFlagsChanged
           ? zflow_mac_modifier_pressed(keycode, flags)
           : type == kCGEventKeyDown;
-      // Repeats of a key held since before capture belong to neither computer.
       if (type == kCGEventKeyDown && keycode < 128 && !g_forwarded_keys[keycode] &&
           CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)) return NULL;
       if (keycode < 128) {
         bool held = g_forwarded_keys[keycode];
         if (!owns_transition(&g_forwarded_keys[keycode], captured.pressed)) return event;
-        // Autorepeat and the release keep the code the first press chose.
         if (!held) g_forwarded_codes[keycode] = physical_keycode(event, keycode);
         captured.code = g_forwarded_codes[keycode];
       }
@@ -866,8 +779,6 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
               CGEventGetIntegerValueField(event, kCGScrollWheelEventScrollPhase),
               CGEventGetIntegerValueField(event, kCGScrollWheelEventMomentumPhase))) {
         captured.kind = ZFLOW_EVENT_MOTION;
-        // CoreGraphics counts left as positive; the wire counts right, as
-        // Linux does. Up is positive for both.
         captured.scroll_x = -CGEventGetIntegerValueField(
             event, kCGScrollWheelEventPointDeltaAxis2);
         captured.scroll_y = CGEventGetIntegerValueField(
@@ -894,8 +805,6 @@ static void unload_multitouch(void) {
   atomic_store(&g_raw_contact_active, false);
 }
 
-// Enumerates at each capture start: an awake Magic Trackpad can be missing
-// from a list taken earlier.
 static bool load_multitouch(void) {
   g_multitouch = dlopen(
       "/System/Library/PrivateFrameworks/MultitouchSupport.framework/MultitouchSupport",
@@ -912,7 +821,6 @@ static bool load_multitouch(void) {
   MTDeviceStart = dlsym(g_multitouch, "MTDeviceStart");
   MTDeviceStop = dlsym(g_multitouch, "MTDeviceStop");
   MTDeviceIsBuiltIn = dlsym(g_multitouch, "MTDeviceIsBuiltIn");
-  // Optional: without it, contacts carry an unknown size.
   MTDeviceGetSensorSurfaceDimensions =
       dlsym(g_multitouch, "MTDeviceGetSensorSurfaceDimensions");
   if (!MTDeviceCreateList || !MTRegisterContactFrameCallback ||
@@ -929,13 +837,10 @@ static bool load_multitouch(void) {
     MTDeviceRef device = (MTDeviceRef)CFArrayGetValueAtIndex(g_device_list, i);
     if (MTDeviceIsBuiltIn(device)) continue;
     found = true;
-    // Read once here so the contact callback only copies it.
     int32_t *surface = g_raw_surfaces[g_raw_device_count];
     if (!MTDeviceGetSensorSurfaceDimensions ||
         MTDeviceGetSensorSurfaceDimensions(device, &surface[0], &surface[1]) != 0)
       surface[0] = surface[1] = 0;
-    // Only registered devices are kept, so unloading never stops a device
-    // that was never started.
     g_raw_devices[g_raw_device_count++] = device;
     MTRegisterContactFrameCallback(device, contact_callback);
     if (MTDeviceStart(device, 0) != 0) {
@@ -962,8 +867,6 @@ static void signal_started(int status) {
 
 static void *capture_thread(void *context) {
   (void)context;
-  // At the default QoS a busy Mac shares the CPU evenly with this thread,
-  // and the pointer on the other computer stutters.
   pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
   bool raw_active = g_request_raw_touch && load_multitouch();
   if (!raw_active) g_request_raw_touch = false;
@@ -1009,22 +912,14 @@ static void *capture_thread(void *context) {
   pthread_mutex_unlock(&g_run_loop_lock);
   CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
   CGEventTapEnable(g_event_tap, true);
-  // Check after installing the tap: a press during raw-device startup must
-  // stay local instead of sending only its release to the other computer.
   int admission = capture_entry_allowed();
   bool cursor_active = admission == 0 && capture_cursor();
   if (cursor_active) {
-    // Raw-device startup can report contacts while input still belongs to the
-    // Mac. Do not replay that local part of the stroke after remote entry.
     clear_capture_queue();
     signal_started(raw_active ? 1 : 0);
-    // CFRunLoopStop is lost when it lands before the loop runs, so wake up
-    // to recheck the flag.
     while (!atomic_load(&g_stop)) {
       if (CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, false) ==
           kCFRunLoopRunFinished) {
-        // macOS invalidated the tap, as after sleep or a session switch.
-        // That ends the crossing; it is not the user pausing sharing.
         set_error("macOS stopped input capture; input returned to the Mac");
         g_capture_status = -1;
         break;
@@ -1048,8 +943,6 @@ static void *capture_thread(void *context) {
   return NULL;
 }
 
-// Captures only while the cursor is inside `entry` with nothing held. `wake`
-// may be NULL; otherwise it runs on capture threads and must stay cheap.
 int zflow_mac_capture_start(int raw_touch, const ZFlowMacRect *entry,
                             void (*wake)(void)) {
   if (g_thread_valid) {

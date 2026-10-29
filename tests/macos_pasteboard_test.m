@@ -6,8 +6,6 @@
 #include <string.h>
 #include <unistd.h>
 
-// Every check uses a pasteboard with a unique name, never the general one,
-// so the tests leave the person's clipboard alone.
 #include "../src/macos/pasteboard.m"
 
 static const uint8_t PNG_SIGNATURE[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
@@ -15,8 +13,6 @@ static const uint8_t PNG_SIGNATURE[] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '
 static NSPasteboard *board;
 static const char *board_name;
 
-// Text that is only produced when something reads it, so a check can tell
-// whether a call read the pasteboard.
 @interface LazyText : NSObject <NSPasteboardItemDataProvider>
 @property int reads;
 @end
@@ -31,7 +27,6 @@ static const char *board_name;
 }
 @end
 
-// What macOS pretends to do about zflow reading the pasteboard.
 static NSInteger pretended;
 static NSInteger pretend(NSPasteboard *unused) {
   (void)unused;
@@ -64,13 +59,10 @@ static int64_t write_board(uint32_t kind, NSData *data) {
   return count;
 }
 
-// The checks run on a thread of their own, as the app's do, and look at the
-// pasteboard on the main thread.
 static void on_main_thread(void (^work)(void)) {
   dispatch_sync(dispatch_get_main_queue(), work);
 }
 
-// A width x height image, encoded as `type` by ImageIO.
 static NSData *image(CFStringRef type, size_t width, size_t height) {
   CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
   CGContextRef context = CGBitmapContextCreate(NULL, width, height, 8, 0, space,
@@ -107,7 +99,6 @@ static void *checks(void *unused) {
     Read empty = read_board(NULL, 1024);
     assert(empty.status == 0 && empty.kind == ZFLOW_CLIP_EMPTY && !empty.data);
 
-    // Text goes on with the marker, and reads back byte for byte.
     NSData *text = [@"zflow ✓ text" dataUsingEncoding:NSUTF8StringEncoding];
     __block NSInteger before = 0;
     on_main_thread(^{
@@ -115,7 +106,6 @@ static void *checks(void *unused) {
     });
     int64_t written = write_board(ZFLOW_CLIP_TEXT, text);
     on_main_thread(^{
-      // Clearing moved the count once, and writing did not move it again.
       assert(written == before + 1);
       assert(board.changeCount == written);
       assert([board.types containsObject:NSPasteboardTypeString]);
@@ -128,12 +118,10 @@ static void *checks(void *unused) {
     Read again = read_board(NULL, 1024);
     assert(again.kind == ZFLOW_CLIP_TEXT && [again.data isEqualToData:text]);
 
-    // Over the limit, only the size comes back.
     Read large = read_board(NULL, text.length - 1);
     assert(large.status == 0 && large.kind == ZFLOW_CLIP_TEXT);
     assert(large.length == text.length && !large.data);
 
-    // Text wins over an image copied with it, and any other change is news.
     NSData *png = image(CFSTR("public.png"), 3, 2);
     on_main_thread(^{
       [board clearContents];
@@ -144,8 +132,6 @@ static void *checks(void *unused) {
     assert(caption.kind == ZFLOW_CLIP_TEXT && caption.count != written);
     assert([caption.data isEqualToData:[@"caption" dataUsingEncoding:NSUTF8StringEncoding]]);
 
-    // A password manager's copy, or one meant only for a moment, stays here,
-    // though it is news.
     for (NSString *marker in @[ CONCEALED_TYPE, TRANSIENT_TYPE ]) {
       on_main_thread(^{
         [board clearContents];
@@ -157,7 +143,6 @@ static void *checks(void *unused) {
       assert(!secret.data && secret.length == 0 && secret.count != written);
     }
 
-    // A PNG reads as it is.
     on_main_thread(^{
       [board clearContents];
       [board setData:png forType:NSPasteboardTypePNG];
@@ -165,7 +150,6 @@ static void *checks(void *unused) {
     Read picture = read_board(NULL, 1 << 20);
     assert(picture.kind == ZFLOW_CLIP_PNG && [picture.data isEqualToData:png]);
 
-    // A TIFF alone, as from a screenshot tool, becomes a PNG of the same size.
     NSData *tiff = image(CFSTR("public.tiff"), 5, 4);
     on_main_thread(^{
       [board clearContents];
@@ -175,7 +159,6 @@ static void *checks(void *unused) {
     assert(converted.status == 0 && converted.kind == ZFLOW_CLIP_PNG);
     check_size(converted.data, 5, 4);
 
-    // Bytes that are not an image fail instead of going out as one.
     on_main_thread(^{
       [board clearContents];
       [board setData:[@"not a tiff" dataUsingEncoding:NSUTF8StringEncoding]
@@ -183,7 +166,6 @@ static void *checks(void *unused) {
     });
     assert(read_board(NULL, 1 << 20).status == -1);
 
-    // A PNG goes on as PNG with the marker, and nothing else.
     int64_t image_written = write_board(ZFLOW_CLIP_PNG, png);
     on_main_thread(^{
       NSArray<NSPasteboardType> *types = board.types;
@@ -195,7 +177,6 @@ static void *checks(void *unused) {
     Read back = read_board(NULL, 1 << 20);
     assert(back.kind == ZFLOW_CLIP_PNG && [back.data isEqualToData:png]);
 
-    // Calls that cannot work are refused before touching the pasteboard.
     int64_t count = 0;
     uint8_t *data = NULL;
     size_t length = 0;
@@ -204,9 +185,6 @@ static void *checks(void *unused) {
     assert(zflow_mac_pasteboard_write(board_name, ZFLOW_CLIP_TEXT, text.bytes, 0, &count) == -1);
     assert(zflow_mac_pasteboard_write(board_name, ZFLOW_CLIP_TEXT, NULL, 4, &count) == -1);
 
-    // A busy main thread makes a call give up, and the write it gave up on
-    // never happens later. The main thread stays busy until both calls gave
-    // up, however late a loaded machine runs them.
     zflow_pasteboard_wait = 0.05;
     dispatch_semaphore_t busy = dispatch_semaphore_create(0);
     dispatch_semaphore_t gave_up = dispatch_semaphore_create(0);
@@ -225,7 +203,6 @@ static void *checks(void *unused) {
       assert(![board.types containsObject:NSPasteboardTypeString]);
     });
 
-    // A named pasteboard never asks, and the values match AppKit's.
     assert(ACCESS_DEFAULT == NSPasteboardAccessBehaviorDefault);
     assert(ACCESS_ASK == NSPasteboardAccessBehaviorAsk);
     assert(ACCESS_ALWAYS_ALLOW == NSPasteboardAccessBehaviorAlwaysAllow);
@@ -243,9 +220,6 @@ static void *checks(void *unused) {
       copied = board.changeCount;
     });
     zflow_access_behavior = pretend;
-    // While macOS would ask at every read, or refuses, a crossing reads
-    // nothing, says why, and still knows its own write. Turning sharing on
-    // reads nothing either.
     for (int refusal = 0; refusal < 2; refusal++) {
       pretended = refusal == 0 ? ACCESS_ASK : ACCESS_ALWAYS_DENY;
       Read held = read_board(NULL, 1024);
@@ -257,14 +231,11 @@ static void *checks(void *unused) {
       });
       assert(lazy.reads == 0);
     }
-    // Once allowed, there is nothing to ask.
     pretended = ACCESS_ALWAYS_ALLOW;
     zflow_mac_pasteboard_ask(board_name);
     on_main_thread(^{
     });
     assert(lazy.reads == 0);
-    // Before macOS has ever asked, turning sharing on reads once, on the
-    // main thread and without waiting, and a crossing reads too.
     pretended = ACCESS_DEFAULT;
     zflow_mac_pasteboard_ask(board_name);
     on_main_thread(^{
@@ -286,12 +257,10 @@ int main(void) {
   @autoreleasepool {
     board = [NSPasteboard pasteboardWithUniqueName];
     board_name = strdup(board.name.UTF8String);
-    // On the main thread a call runs in place.
     Read direct = read_board(NULL, 8);
     assert(direct.status == 0 && direct.kind == ZFLOW_CLIP_EMPTY);
     pthread_t thread;
     assert(pthread_create(&thread, NULL, checks, NULL) == 0);
-    // Answers the checks' calls, as the app's main thread does.
     CFRunLoopRun();
     assert(pthread_join(thread, NULL) == 0);
     [board releaseGlobally];

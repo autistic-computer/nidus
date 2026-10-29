@@ -1,6 +1,3 @@
-//! The Mac engine on a thread of the app's own process. The window's
-//! requests queue for that thread, which ticks the engine between them, so
-//! no engine work runs on the UI thread.
 use super::{NativeApp, api::Request};
 use crate::lens::viewer::Viewer;
 use anyhow::{Context, Result, anyhow};
@@ -14,23 +11,17 @@ use std::{
 
 type Reply = mpsc::Sender<Result<Value>>;
 
-/// How long a request waits for the engine thread before it gives up.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(15);
-/// How often the engine ticks while no request comes.
 const TICK: Duration = Duration::from_millis(12);
 
 pub struct Engine {
     commands: Option<mpsc::Sender<(Request, Reply)>>,
     thread: Option<JoinHandle<()>>,
-    /// Read and written straight from the UI thread, so a frame never waits
-    /// for the engine thread.
     lens: Arc<Viewer>,
 }
 
 impl Engine {
-    /// Starts the engine with the configuration at `path`.
     pub fn open(path: PathBuf) -> Result<Self> {
-        // Input a peer holds is let go if the app is told to quit by a signal.
         crate::macos::install_exit_handlers();
         let (ready, started) = mpsc::channel();
         let (commands, requests) = mpsc::channel::<(Request, Reply)>();
@@ -77,7 +68,6 @@ impl Engine {
         })
     }
 
-    /// Runs `request` on the engine thread and returns its snapshot.
     pub fn request(&self, request: Request) -> Result<Value> {
         let (reply, answer) = mpsc::channel();
         self.commands
@@ -96,8 +86,6 @@ impl Engine {
 }
 
 impl Drop for Engine {
-    /// Closing the queue ends the engine thread, which lets go of input a
-    /// peer holds before the app exits.
     fn drop(&mut self) {
         self.commands.take();
         if let Some(thread) = self.thread.take() {

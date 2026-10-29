@@ -22,7 +22,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -41,12 +41,9 @@ jobs:
         run: ./scripts/build-windows.ps1
       - name: Open the app
         run: ./scripts/check-windows-app.ps1 -App windows/dist/Zflow.App.exe -Out target/app-check/built
-      # vpk, Velopack's packager, is a .NET tool.
-      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: '10.0.x'
-      # Installs v0.7.0, the last WinUI release, and updates it to this build
-      # the way its updater does: quit the app, then Update.exe apply.
       - name: Update from the WinUI app
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,7 +52,6 @@ jobs:
           gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern zflow-windows-x86_64-Setup.exe --dir $check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $root = Join-Path $env:LOCALAPPDATA 'Zflow.App'
-          # Start-Process -Wait would also wait for the app Setup starts.
           $setup = Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
           if (-not $setup.WaitForExit(300000)) { throw 'The WinUI installer did not finish' }
           if (-not (Test-Path (Join-Path $root 'current/Zflow.App.exe'))) { throw 'The WinUI release did not install' }
@@ -67,18 +63,17 @@ jobs:
           $package = Resolve-Path target/windows-release/Zflow.App-0.7.1-win-x64-full.nupkg
           $update = Start-Process (Join-Path $root 'Update.exe') -PassThru `
             -ArgumentList 'apply', '--silent', '--norestart', '--package', "`"$package`""
-          $null = $update.Handle  # keeps ExitCode readable after it exits
+          $null = $update.Handle
           if (-not $update.WaitForExit(300000)) { throw 'Update.exe apply did not finish' }
           Get-ChildItem $root -Filter *.log | Copy-Item -Destination $check
           if ($update.ExitCode) { throw "Update.exe apply failed with $($update.ExitCode)" }
           $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
           if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'The update did not land' }
           if (-not (Test-Path (Join-Path $root 'current/zflow.exe'))) { throw 'The update left out the engine' }
-          # Velopack keeps the app at current\, which updates replace in place.
           ./scripts/check-windows-app.ps1 -App (Join-Path $root 'current/Zflow.App.exe') -Out $check
       - name: Upload app check
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: zflow-app-check-windows
           path: target/app-check/
@@ -89,7 +84,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pwsh -NoProfile -File windows/Zflow.UpdateTests/Build.Tests.ps1
       - name: Upload Windows preview
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: zflow-windows-x64
           path: windows/dist/
@@ -100,7 +95,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -108,13 +103,11 @@ jobs:
       - name: Build libraries
         run: |
           sudo apt-get update
-          # PipeWire for the lens; the rest for the app's window.
           sudo apt-get install -y pkg-config libclang-dev libpipewire-0.3-dev libspa-0.2-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libfontconfig-dev libfreetype-dev
       - name: Rust
         run: |
           cargo fmt --all --check
-          # Without dev-dependencies, so their features can't hide a missing one.
           cargo build --locked
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked --all-targets
@@ -134,13 +127,12 @@ jobs:
           shellcheck -x install.sh scripts/*.sh packaging/linux/*.sh packaging/system-sleep/zflow \
             debian/zflow.postinst debian/zflow.postrm debian/zflow.preinst debian/zflow.prerm tests/deb_lifecycle.sh
 
-  # The release builds Linux on arm64 too, so its tests run there as well.
   linux-arm:
     name: Linux arm64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -148,7 +140,6 @@ jobs:
       - name: Build libraries
         run: |
           sudo apt-get update
-          # PipeWire for the lens; the rest for the app's window.
           sudo apt-get install -y pkg-config libclang-dev libpipewire-0.3-dev libspa-0.2-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libfontconfig-dev libfreetype-dev
       - name: Rust
@@ -159,7 +150,7 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - name: Install Rust build toolchain
@@ -186,22 +177,17 @@ jobs:
           xcrun --sdk macosx clang -isysroot "$sdk" -fobjc-arc -O2 -Wall -Wextra -Werror \
             tests/macos_media_test.m -framework AppKit -framework ApplicationServices \
             -o target/debug/macos-media-test
-          # The Main Thread Checker fails the run if AppKit wants the main thread.
           MTC_CRASH_ON_REPORT=1 \
             DYLD_INSERT_LIBRARIES="$(xcode-select -p)/usr/lib/libMainThreadChecker.dylib" \
             ./target/debug/macos-media-test
-          # A uniquely named pasteboard, so the run leaves the clipboard alone.
           xcrun --sdk macosx clang -isysroot "$sdk" -fobjc-arc -O2 -Wall -Wextra -Werror \
             tests/macos_pasteboard_test.m -framework AppKit -framework CoreGraphics \
             -framework ImageIO -o target/debug/macos-pasteboard-test
           MTC_CRASH_ON_REPORT=1 \
             DYLD_INSERT_LIBRARIES="$(xcode-select -p)/usr/lib/libMainThreadChecker.dylib" \
             ./target/debug/macos-pasteboard-test
-      # The app, the AWDL helper, Sparkle and the icon, in a signed bundle.
       - name: App bundle
         run: ./scripts/build-macos-app.sh --debug
-      # Opens the bundle on a fresh configuration: it must stay up with its
-      # window on screen. The picture and the log are kept with the run.
       - name: Open the app
         run: |
           mkdir -p target/app-check
@@ -228,12 +214,11 @@ jobs:
           ! grep -q panicked app.log
       - name: Upload app check
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: zflow-app-check-macos
           path: target/app-check/
           if-no-files-found: ignore
-      # install.sh also runs on Macs, with their own tar and checksum tools.
       - name: Installer
         run: python3 tests/install_test.py
       - name: Notarization script

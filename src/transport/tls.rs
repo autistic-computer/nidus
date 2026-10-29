@@ -27,14 +27,11 @@ use crate::identity::Identity;
 use super::TransportError;
 
 pub const INPUT_ALPN_PROTOCOL: &[u8] = b"zflow/8";
-/// Answered on the input port by computers that do not trust each other yet.
 pub const HELLO_ALPN_PROTOCOL: &[u8] = b"zflow-hello/5";
 const INPUT_KEEP_ALIVE: std::time::Duration = std::time::Duration::from_secs(5);
 const INPUT_IDLE_TIMEOUT_MS: u32 = 15_000;
-/// A hello is two short messages, so a silent peer is dropped quickly.
 const HELLO_IDLE_TIMEOUT_MS: u32 = 5_000;
 
-/// A Quinn client configuration that authenticates one exact peer SPKI.
 #[derive(Clone)]
 pub struct InputClientConfig {
     pub(super) quinn: quinn::ClientConfig,
@@ -50,8 +47,6 @@ impl fmt::Debug for InputClientConfig {
     }
 }
 
-/// The one listener on the input port. It answers hellos from any key and
-/// input connections only from keys on a fixed allowlist.
 #[derive(Clone)]
 pub struct InputServerConfig {
     pub(super) quinn: quinn::ServerConfig,
@@ -68,15 +63,6 @@ impl fmt::Debug for InputServerConfig {
 }
 
 impl InputServerConfig {
-    /// Clone the endpoint configuration for [`quinn::Endpoint::server`].
-    ///
-    /// To add or revoke local authorization at runtime, build a replacement
-    /// with [`input_server_config_for_peers`] and install this value with
-    /// [`quinn::Endpoint::set_server_config`]. Pass the same replacement to
-    /// [`super::accept`], which checks the allowlist once the handshake is
-    /// done, so a peer revoked while its handshake was in flight is refused
-    /// too. Established [`super::InputConnection`] values remain
-    /// authenticated until the caller closes them.
     pub fn quinn_config(&self) -> quinn::ServerConfig {
         self.quinn.clone()
     }
@@ -88,9 +74,6 @@ impl InputServerConfig {
     }
 }
 
-/// A client configuration for saying hello to a computer whose key is not
-/// known yet. It carries no pin: connections made with it are exposed only
-/// as [`super::HelloConnection`], which has no input surface.
 #[derive(Clone)]
 pub struct HelloClientConfig {
     pub(super) quinn: quinn::ClientConfig,
@@ -131,14 +114,6 @@ pub fn input_server_config(
     input_server_config_for_peers(identity, [expected_peer_spki])
 }
 
-/// Build one input listener configuration for every currently allowed peer.
-///
-/// The TLS 1.3 handshake proves the client holds the key it presents, and
-/// [`super::accept`] then refuses input from a key absent from this
-/// immutable snapshot before any input stream is accepted. An empty
-/// allowlist still answers hellos. Empty keys are rejected. Install a newly
-/// built snapshot with [`quinn::Endpoint::set_server_config`] when the local
-/// peer set changes.
 pub fn input_server_config_for_peers<I, S>(
     identity: &Identity,
     allowed_peer_spkis: I,
@@ -211,7 +186,6 @@ fn certified_raw_key(identity: &Identity) -> Result<Arc<CertifiedKey>, Transport
         ));
     }
 
-    // With RFC 7250 the single Certificate entry contains SPKI DER, not X.509.
     Ok(Arc::new(CertifiedKey::new(
         vec![CertificateDer::from(identity.spki().to_vec())],
         signing_key,
@@ -244,8 +218,6 @@ fn tls_client_config(
     Ok(config)
 }
 
-/// The handshake only proves the client holds the key it presents. Which
-/// keys may do what is decided after it, per protocol.
 fn tls_server_config(
     identity: &Identity,
     alpn_protocols: &[&[u8]],
@@ -275,14 +247,12 @@ fn tls_server_config(
 
 fn input_client_transport_config() -> quinn::TransportConfig {
     let mut config = datagram_transport_config();
-    // Only the initiator opens the single critical stream; the other side may open one lens.
     config.max_concurrent_bidi_streams(1_u8.into());
     config
 }
 
 fn input_server_transport_config() -> quinn::TransportConfig {
     let mut config = datagram_transport_config();
-    // The critical stream, and one lens the initiator may open.
     config.max_concurrent_bidi_streams(2_u8.into());
     config
 }
@@ -290,16 +260,9 @@ fn input_server_transport_config() -> quinn::TransportConfig {
 fn datagram_transport_config() -> quinn::TransportConfig {
     let mut config = quinn::TransportConfig::default();
     config
-        // Each clipboard transfer is one stream, and one at a time.
         .max_concurrent_uni_streams(1_u8.into())
         .datagram_receive_buffer_size(Some(64 * 1_024))
-        // A small Quinn queue bounds already-submitted stale data. The
-        // application keeps one additional latest-wins slot and counts every
-        // replacement before using send_datagram_wait.
         .datagram_send_buffer_size(4 * 1_024)
-        // Sessions stay open between crossings. A ping when nothing else was
-        // sent keeps an idle session alive, and a dead path ends it within
-        // the idle timeout so the source reconnects.
         .keep_alive_interval(Some(INPUT_KEEP_ALIVE))
         .max_idle_timeout(Some(quinn::VarInt::from_u32(INPUT_IDLE_TIMEOUT_MS).into()));
     config
@@ -307,7 +270,6 @@ fn datagram_transport_config() -> quinn::TransportConfig {
 
 fn hello_client_transport_config() -> quinn::TransportConfig {
     let mut config = quinn::TransportConfig::default();
-    // The initiator opens the one hello stream and accepts nothing.
     config
         .max_concurrent_bidi_streams(0_u8.into())
         .max_concurrent_uni_streams(0_u8.into())
@@ -483,11 +445,6 @@ fn verify_rpk_signature(
 mod tests {
     use super::*;
 
-    /// Each version's protocols: input, then the one computers use before
-    /// they trust each other, which was code pairing until 0.3.0. Computers
-    /// on different protocols cannot connect, so a protocol change needs a
-    /// new version, or the installer hands out one that cannot talk to a
-    /// build from main.
     const VERSIONS: &[(&str, &[u8], &[u8])] = &[
         ("0.1.0", b"zflow/1", b"zflow-pair/1"),
         ("0.2.0", b"zflow/3", b"zflow-pair/4"),

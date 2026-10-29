@@ -1,6 +1,3 @@
-//! What applies to this computer as a whole. Each paired computer's own
-//! settings are in its inspector on the Computers page.
-
 use zflow::app::api::{Level, Request};
 use zz_gpui::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
 use zz_gpui_kit::{
@@ -59,7 +56,6 @@ pub fn render(
 
     let card = settings_card_ground(cx);
     let shortcuts = snapshot.shortcuts.iter().map(|shortcut| {
-        // One cap per shortcut, as zz draws key hints.
         SettingEntry::new(shortcut.title.clone(), "")
             .control(Keycap::new(shortcut.keys.clone()).on(card))
     });
@@ -77,7 +73,6 @@ pub fn render(
     if !snapshot.shortcuts.is_empty() {
         column = column.child(SettingsStack::titled("Shortcuts").children(shortcuts));
     }
-    // Rows that are fine stay listed, so people see what was checked.
     if !snapshot.health.is_empty() {
         let theme = cx.theme().clone();
         let checks: Vec<SettingEntry> = snapshot
@@ -122,9 +117,8 @@ pub fn render(
         .into_any_element()
 }
 
-const REPOSITORY: &str = "https://github.com/demfabris/zflow";
+const REPOSITORY: &str = "https://github.com/autistic-computer/zflow";
 
-/// The version, the license, and where to read more or report a problem.
 fn about(cx: &mut Context<ZflowWindow>) -> [SettingEntry; 2] {
     let link =
         |id: &'static str, label: &'static str, url: String, cx: &mut Context<ZflowWindow>| {

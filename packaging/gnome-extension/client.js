@@ -3,11 +3,8 @@ import GLib from 'gi://GLib';
 
 const BUS = 'io.zflow.Desktop';
 const PATH = '/io/zflow/Desktop';
-// src/app/gnome.rs mirrors this. The extension comes from extensions.gnome.org
-// and the agent from the zflow package, so they can be updated at different times.
 export const API = 6;
 
-// Agents older than API 1 did not report it and speak API 1.
 export function compatible(snapshot) {
     return (snapshot?.api ?? 1) === API;
 }
@@ -18,7 +15,6 @@ export function statusText(snapshot) {
     return snapshot.status.title;
 }
 
-// Whether something has to be fixed before input can move.
 export function needsAttention(snapshot) {
     return !compatible(snapshot) || snapshot.health.some(row => row.level === 'error');
 }
@@ -43,7 +39,6 @@ export class Client {
                 (connection, result) => {
                     try { resolve(JSON.parse(connection.call_finish(result).deep_unpack()[0])); }
                     catch (error) {
-                        // Users see this message, so drop the "GDBus.Error:<name>: " prefix.
                         if (error instanceof GLib.Error) Gio.DBusError.strip_remote_error(error);
                         reject(error);
                     }

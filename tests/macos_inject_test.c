@@ -39,9 +39,6 @@ static bool fake_post_access(void);
 static IOReturn fake_user_activity(CFStringRef, IOPMUserActiveType, IOPMAssertionID *);
 static sig_t fake_signal(int, sig_t);
 
-// Every call that posts, touches IOKit or reads the session is faked. Events
-// are still built by CoreGraphics, so the tests read back real fields. These
-// tests never post input on the host.
 #define CGEventPost fake_post
 #define CGEventCreate fake_create
 #define CGEventSourceFlagsState fake_flags_state
@@ -72,8 +69,6 @@ static sig_t fake_signal(int, sig_t);
 
 static CGEventRef posted[64];
 static size_t posted_count;
-// The spawned child prints what it posts, so the parent can check the
-// signal handler's releases.
 static bool print_posts;
 static atomic_bool handler_posted;
 static int interval_calls;
@@ -212,12 +207,11 @@ static CFDictionaryRef fake_session(void) {
   return session ? CFRetain(session) : NULL;
 }
 
-// Keyboard types with the layouts HIToolbox reports for them.
 static OSType fake_layout_type(SInt16 keyboard) {
   switch (keyboard) {
-    case 40: return 0x414E5349; // 'ANSI'
+    case 40: return 0x414E5349;
     case 41: return ZFLOW_KEYBOARD_ISO;
-    default: return 0x4A495320; // 'JIS '
+    default: return 0x4A495320;
   }
 }
 
@@ -228,15 +222,12 @@ static bool fake_post_access(void) { return post_access; }
 static IOReturn fake_user_activity(CFStringRef name, IOPMUserActiveType type,
                                    IOPMAssertionID *assertion) {
   assert(CFStringGetLength(name) > 0 && type == kIOPMUserActiveLocal && assertion);
-  // The same assertion is reused on every call.
   assert(*assertion == (activity_calls ? 7 : kIOPMNullAssertionID));
   *assertion = 7;
   activity_calls++;
   return kIOReturnSuccess;
 }
 
-// The exit handler restores the default action just before it re-raises.
-// A post from the input thread at that moment must not press anything.
 static sig_t fake_signal(int number, sig_t handler) {
   if (print_posts && handler == SIG_DFL) {
     ZFlowMacPosted key = {.kind = ZFLOW_POST_KEY, .code = 41, .down = 1};
@@ -273,7 +264,6 @@ static void source_tests(void) {
   assert(filter_calls == 2 && filters[0] && filters[1]);
   assert(CGEventSourceGetUserData(g_source) == ZFLOW_POSTED_MARK);
   assert(CGEventSourceGetSourceStateID(g_source) == kCGEventSourceStateHIDSystemState);
-  // A second open keeps the source.
   CGEventSourceRef source = g_source;
   assert(zflow_mac_inject_open() == 0);
   assert(g_source == source && interval_calls == 1);
@@ -335,7 +325,6 @@ static void key_tests(void) {
   event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0});
   assert(CGEventGetType(event) == kCGEventKeyUp);
 
-  // flagsChanged carries the aggregate flag and the side's device bit.
   event = post_one((ZFlowMacPosted){
       .kind = ZFLOW_POST_MODIFIER, .code = 54, .down = 1,
       .flags = kCGEventFlagMaskCommand | NX_DEVICERCMDKEYMASK});
@@ -345,7 +334,6 @@ static void key_tests(void) {
   event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MODIFIER, .code = 54});
   assert(CGEventGetType(event) == kCGEventFlagsChanged && CGEventGetFlags(event) == 0);
 
-  // Caps Lock follows the Mac's own lock, whatever the caller sent.
   live_flags = kCGEventFlagMaskAlphaShift | kCGEventFlagMaskControl;
   event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0, .down = 1,
                                     .flags = kCGEventFlagMaskCommand});
@@ -396,7 +384,6 @@ static void release_tests(void) {
   post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 40});
   clear_posted();
 
-  // Keys, then modifiers, then buttons where the cursor is.
   zflow_mac_inject_release_all();
   assert(posted_count == 5);
   assert(CGEventGetType(posted[0]) == kCGEventKeyUp && field(posted[0], kCGKeyboardEventKeycode) == 0);
@@ -413,7 +400,6 @@ static void release_tests(void) {
   zflow_mac_inject_release_all();
   assert(posted_count == 0);
 
-  // Closing releases too, and nothing posts until the source is back.
   post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 12, .down = 1});
   clear_posted();
   zflow_mac_inject_close();
@@ -434,7 +420,6 @@ static void caps_tests(void) {
   assert(zflow_mac_caps_lock(&on) == 0 && on == 1);
   assert(zflow_mac_set_caps_lock(0) == 0 && !caps_state);
   assert(opens == 1 && lock_calls == 4);
-  // No key event: a posted Caps Lock only fakes the flag.
   assert(posted_count == before);
   assert(zflow_mac_caps_lock(NULL) == -1);
 
@@ -514,8 +499,6 @@ static void session_tests(void) {
   CFRelease(zero);
 }
 
-// Runs in a spawned copy: hold input, then take SIGTERM. The handler must
-// release everything, then die of the signal it raises itself.
 static int signal_child(void) {
   alarm(10);
   assert(zflow_mac_inject_open() == 0);
@@ -525,9 +508,6 @@ static int signal_child(void) {
   zflow_mac_inject_install_exit_handlers();
   zflow_mac_inject_install_exit_handlers();
   print_posts = true;
-  // Dispatch arms its sources asynchronously, and an ignored signal that
-  // arrives first is lost, so keep sending until the handler posts. After
-  // that, only its own raise may end the process before the alarm does.
   while (!atomic_load(&handler_posted)) {
     kill(getpid(), SIGTERM);
     usleep(20000);
@@ -551,9 +531,6 @@ static void signal_tests(void) {
   assert(posix_spawn(&child, path, &actions, NULL, arguments, environ) == 0);
   posix_spawn_file_actions_destroy(&actions);
   close(output[1]);
-  // A loaded machine can run the handler many times before the process
-  // dies, so read to the end: a pipe closed early kills the child with
-  // SIGPIPE, and a full buffer cuts the last line.
   static char text[1 << 16];
   size_t length = 0;
   char chunk[256];
@@ -569,14 +546,11 @@ static void signal_tests(void) {
   int status = 0;
   assert(waitpid(child, &status, 0) == child);
   assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGTERM);
-  // Key up 40, flagsChanged 56, right button up, then nothing goes down.
   char expected[64];
   int released = snprintf(expected, sizeof(expected), "%d 40\n%d 56\n%d 1\n",
                           (int)kCGEventKeyUp, (int)kCGEventFlagsChanged,
                           (int)kCGEventRightMouseUp);
   assert(strncmp(text, expected, (size_t)released) == 0);
-  // A SIGTERM sent before the handler restored the default action runs it
-  // again. That run has nothing left to release, so only the late post repeats.
   const char *late = "late post -1\n";
   const char *rest = text + released;
   assert(*rest);

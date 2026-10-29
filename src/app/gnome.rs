@@ -1,4 +1,3 @@
-//! Session service shared by the GNOME panel and the settings window, zflow-app.
 use super::{
     api::{self, Action, Health, Level, Peer, PeerState, Request, Shortcut, Status},
     desktop::DesktopReceiver,
@@ -12,11 +11,8 @@ use std::{
 
 pub const BUS: &str = "io.zflow.Desktop";
 pub(crate) const PATH: &str = "/io/zflow/Desktop";
-/// packaging/gnome-extension/client.js mirrors this. Raise both when the agent
-/// and the extension stop understanding each other.
 pub(crate) const API: u32 = 6;
 const AUTOSTART: &str = "autostart/io.zflow.desktop-agent.desktop";
-/// Where the package keeps the service's settings.
 const CONFIG_PATH: &str = "/etc/zflow/zflow.toml";
 
 #[derive(Default)]
@@ -46,7 +42,6 @@ impl Service {
                 let daemon = crate::peer_view::status().await;
                 let state = self.0.lock().unwrap_or_else(|e| e.into_inner());
                 let mut value = serde_json::to_value(snapshot(daemon, &state)?)?;
-                // The panel reads the level before anything else.
                 value["api"] = API.into();
                 return Ok(value);
             }
@@ -164,7 +159,6 @@ impl Service {
                 let address = crate::peer_view::parse_address(&address)?;
                 crate::peer_view::request(&DaemonRequest::AddAddress { address }).await?;
             }
-            // The service looks for computers whenever discovery is on.
             Request::Reload
             | Request::SetAwdl { .. }
             | Request::HelperReady { .. }
@@ -179,8 +173,6 @@ impl Service {
     }
 }
 
-/// What the settings window and the panel show. Linux has no rows of its
-/// own under the shared ones yet.
 fn snapshot(
     daemon: Result<crate::peer_view::DesktopStatus>,
     state: &State,
@@ -260,8 +252,6 @@ fn snapshot(
     })
 }
 
-/// Ways to show the service's log, best first: the default terminal
-/// following it, Debian's terminal alternative, then GNOME Logs.
 fn log_viewers() -> [(&'static str, &'static [&'static str]); 3] {
     const FOLLOW: &[&str] = &["journalctl", "--unit=zflowd.service", "--follow"];
     [
@@ -293,7 +283,6 @@ fn peers(daemon: &crate::peer_view::DesktopStatus) -> Vec<Peer> {
                     Some(LinkStatus::Unreachable { reason, .. }) => {
                         (PeerState::Unreachable, Some(reason))
                     }
-                    // Not dialed: nothing listens where it was paired, as with a Mac.
                     None => (PeerState::Paired, None),
                 }
             };
@@ -306,10 +295,6 @@ fn peers(daemon: &crate::peer_view::DesktopStatus) -> Vec<Peer> {
         .collect()
 }
 
-/// One row for the links to paired computers, with Retry while one cannot
-/// be reached. Each computer's own row says why. A computer that is asleep
-/// or away only warns; one a person has to update or place again needs
-/// attention.
 fn link_health(
     peers: &[Peer],
     links: &std::collections::BTreeMap<String, crate::peer_view::LinkStatus>,
@@ -370,7 +355,6 @@ fn shortcuts(daemon: &crate::peer_view::DesktopStatus) -> Vec<Shortcut> {
     .collect()
 }
 
-/// Evdev key names as people read them: KEY_LEFTMETA is the Super key.
 fn chord_label(keys: &[String]) -> String {
     keys.iter()
         .map(|key| {
@@ -416,7 +400,6 @@ pub(super) fn xdg(variable: &str, fallback: &str) -> Result<PathBuf> {
         .context("HOME is not set")
 }
 
-/// The directories in an XDG search path such as XDG_DATA_DIRS.
 pub(super) fn xdg_dirs(variable: &str, fallback: &str) -> Vec<PathBuf> {
     let value = std::env::var_os(variable).filter(|value| !value.is_empty());
     std::env::split_paths(value.as_deref().unwrap_or(fallback.as_ref()))
@@ -444,8 +427,6 @@ fn entry_enabled(path: &Path) -> Result<bool> {
     }
 }
 
-/// The package starts the agent for every GNOME user from a system autostart
-/// entry. A user entry with the same name replaces it, even a hidden one.
 struct Autostart {
     user: PathBuf,
     system: Option<PathBuf>,
@@ -477,7 +458,6 @@ impl Autostart {
         if enabled == system {
             return remove_if_present(&self.user);
         }
-        // Hidden=true is how the XDG autostart spec turns a system entry off.
         std::fs::create_dir_all(self.user.parent().unwrap())?;
         std::fs::write(
             &self.user,
@@ -502,7 +482,6 @@ fn executable() -> Result<String> {
         !path.chars().any(char::is_control),
         "Invalid executable path"
     );
-    // Desktop Entry string escaping happens before Exec argument unquoting.
     Ok(path
         .replace('\\', "\\\\\\\\")
         .replace('"', "\\\\\"")
@@ -515,9 +494,6 @@ pub(super) fn set_autostart(enabled: bool) -> Result<()> {
     Autostart::find()?.set(enabled)
 }
 
-/// Moves this account to the launcher, D-Bus activation file and autostart
-/// entry that the package installs for every user. Older versions wrote
-/// copies into the account, and those would shadow the system files.
 pub(super) fn install() -> Result<()> {
     let data = xdg("XDG_DATA_HOME", ".local/share")?;
     let system = xdg_dirs("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
@@ -529,8 +505,6 @@ pub(super) fn install() -> Result<()> {
             remove_if_present(&data.join(name))?;
         }
     }
-    // Older versions turned Start at Login on here; keep it off only if the
-    // user turned it off since.
     let autostart = Autostart::find()?;
     if autostart.user.symlink_metadata().is_err() || autostart.enabled()? {
         autostart.set(true)?;
@@ -538,8 +512,6 @@ pub(super) fn install() -> Result<()> {
     Ok(())
 }
 
-/// Starts the desktop agent in this login session. With `replace`, a running
-/// agent stops first, so the binary an update just installed takes over.
 pub(super) async fn start_agent(connection: &zbus::Connection, replace: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let bus = zbus::fdo::DBusProxy::new(connection).await?;
@@ -550,7 +522,6 @@ pub(super) async fn start_agent(connection: &zbus::Connection, replace: bool) ->
         let pid = bus
             .get_connection_unix_process_id(owner.into_inner().into())
             .await?;
-        // Stop only the agent itself, which exits cleanly on SIGTERM.
         let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
         if name.trim() != "zflow" {
             return Ok(());
@@ -565,9 +536,6 @@ pub(super) async fn start_agent(connection: &zbus::Connection, replace: bool) ->
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
-    // D-Bus activation runs the agent outside the caller's terminal and logs
-    // to the journal. The bus may not have read a service file installed
-    // moments ago until it reloads.
     let _ = bus.reload_config().await;
     if let Err(error) = bus.start_service_by_name(BUS.try_into()?, 0).await {
         tracing::debug!(%error, "D-Bus could not start the desktop agent");
@@ -581,8 +549,6 @@ pub(super) async fn start_agent(connection: &zbus::Connection, replace: bool) ->
     Ok(())
 }
 
-/// Starts the desktop agent, then becomes the settings window: the zflow-app
-/// beside this executable, or the one on PATH.
 pub fn settings() -> Result<()> {
     use std::os::unix::process::CommandExt;
     ensure!(
@@ -590,7 +556,6 @@ pub fn settings() -> Result<()> {
         "Open settings as your desktop user, without sudo"
     );
     super::desktop::refresh_extension()?;
-    // Older versions ran the window from scripts copied here.
     if let Ok(cache) = xdg("XDG_CACHE_HOME", ".cache") {
         let _ = std::fs::remove_dir_all(cache.join("zflow/desktop"));
     }
@@ -604,7 +569,6 @@ pub fn settings() -> Result<()> {
     if !app.is_file() {
         app = "zflow-app".into();
     }
-    // The window runs `zflow update` and `zflow settings` through this path.
     Err(std::process::Command::new(&app)
         .env("ZFLOW_EXECUTABLE", &zflow)
         .exec())
@@ -676,7 +640,6 @@ mod tests {
                     },
                 ),
                 ("new".into(), LinkStatus::Connecting),
-                // A session wins over a stale link state.
                 ("desk".into(), LinkStatus::Connecting),
             ]
             .into(),
@@ -710,7 +673,6 @@ mod tests {
             (Level::Error, "Cannot connect to laptop")
         );
         assert_eq!(health.action.unwrap().command, "retry");
-        // A computer that is only asleep or away warns and keeps retrying.
         let mut asleep = status.links.clone();
         asleep.insert(
             "laptop".into(),
@@ -727,7 +689,6 @@ mod tests {
             "Ctrl+Super+Backspace",
             "the default escape chord"
         );
-        // The settings window arranges the layout the service keeps.
         let layout = crate::app::layout_model::Layout {
             monitors: vec![crate::app::layout_model::Monitor {
                 display: None,
@@ -740,7 +701,6 @@ mod tests {
                 height: 1440,
             }],
         };
-        // The shelf, the window and the notices come from the service.
         let fedora = crate::neighbors::Unplaced {
             id: "key:aa".into(),
             name: "fedora".into(),
@@ -772,7 +732,6 @@ mod tests {
         assert_eq!(up.share_clipboard, Some(true));
         assert_eq!(up.own_mark.as_deref(), Some("a1b2c3"));
         assert_eq!((up.unplaced, up.notices), (vec![fedora], vec![joined]));
-        // While sharing, a computer that cannot be reached is a problem.
         assert!(
             up.health
                 .iter()
@@ -831,7 +790,6 @@ mod tests {
         assert!(autostart.enabled().unwrap());
         assert!(!autostart.user.exists(), "the system entry applies again");
 
-        // Without a system entry, a user entry is the only way to start.
         let autostart = Autostart {
             system: None,
             ..autostart

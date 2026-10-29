@@ -22,7 +22,6 @@ fn screen(id: &str, peer: Option<&str>, x: i32) -> Monitor {
     }
 }
 
-/// One paired Mac to the right of this computer.
 pub(crate) fn snapshot() -> Snapshot {
     let peer = api::Peer {
         name: "mac".into(),
@@ -67,7 +66,6 @@ pub(crate) fn snapshot() -> Snapshot {
     }
 }
 
-/// A board on a fake model, drawn once so it knows its size.
 fn board(cx: &mut TestAppContext) -> (Requests, &mut VisualTestContext, Fit) {
     cx.update(crate::theme::init);
     let (model, requests) = {

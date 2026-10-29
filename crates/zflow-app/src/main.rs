@@ -1,7 +1,3 @@
-//! zflow's app: one window with the computers and the settings, a menu bar
-//! or tray icon on the Mac and Windows, and on the Mac the engine itself.
-
-// No console window on Windows.
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod board;
@@ -32,19 +28,12 @@ use crate::{
 pub const APP_ID: &str = "io.zflow.zflow";
 const FORGET: &str = "forget";
 
-/// What the app was started with.
 #[derive(Clone, Debug, Default)]
 pub struct Arguments {
     pub config: Option<PathBuf>,
-    /// Opens on the Settings page.
     pub show_settings: bool,
-    /// Starts in the menu bar or tray, without the window.
     pub background: bool,
-    /// Asks a running copy to quit, then exits.
     pub quit: bool,
-    /// Windows: this copy runs as administrator in place of process
-    /// `replace_process`, for user `replace_user`, and sets the event
-    /// `restart_ready` once it has taken over.
     pub replace_process: Option<u32>,
     pub replace_user: Option<String>,
     pub restart_ready: Option<String>,
@@ -78,7 +67,6 @@ impl Arguments {
                     parsed.restart_ready =
                         Some(arguments.next().ok_or("--restart-ready takes a name")?);
                 }
-                // macOS adds this to apps it launches from Finder.
                 argument if argument.starts_with("-psn_") => {}
                 argument => return Err(format!("unknown argument: {argument}")),
             }
@@ -88,8 +76,6 @@ impl Arguments {
 }
 
 fn main() {
-    // Velopack calls the app with its own arguments around installs and
-    // updates, and ends the process once its hooks ran.
     #[cfg(target_os = "windows")]
     platform::velopack_hooks();
     let arguments = match Arguments::parse(std::env::args().skip(1)) {
@@ -115,7 +101,6 @@ fn main() {
         .clone()
         .unwrap_or_else(platform::default_config);
     let application = zz_gpui_platform::application();
-    // Opening zflow again while it runs, as from Applications, shows the window.
     #[cfg(target_os = "macos")]
     application.on_reopen(open);
     application
@@ -135,12 +120,10 @@ fn main() {
             }
             let services = platform::init(cx);
             notify_notices(&model, cx);
-            // Each system decides whether the window opens at start.
             platform::start(&model, &services, &arguments, cx);
         });
 }
 
-/// Shows the window, opening it if it is closed.
 pub fn open(cx: &mut App) {
     if let Some(window) = cx.try_global::<MainWindow>().and_then(|window| window.0)
         && window
@@ -166,7 +149,6 @@ pub fn open(cx: &mut App) {
                 zz_gpui_kit::Theme::global(cx).title_bar_height(),
             )),
             window_min_size: Some(size(px(700.0), px(480.0))),
-            // X11 window managers frame their windows themselves.
             window_decorations: Some(if cx.compositor_name() == "X11" {
                 WindowDecorations::Server
             } else {
@@ -193,13 +175,10 @@ pub fn open(cx: &mut App) {
     }
 }
 
-/// The open window, if any.
 pub struct MainWindow(pub Option<WindowHandle<Root>>);
 
 impl zz_gpui::Global for MainWindow {}
 
-/// Tells people once when a computer joins, with a Forget button for one
-/// that is not theirs.
 fn notify_notices(model: &Entity<Model>, cx: &mut App) {
     cx.observe(model, |model, cx| {
         let notices = model.update(cx, |model, _| model.take_notices());

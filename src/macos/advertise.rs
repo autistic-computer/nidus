@@ -1,8 +1,3 @@
-//! Tells computers on the local network where this Mac takes input and
-//! what it is called, as the Linux daemon does, so a paired computer finds
-//! it after its address changes and others can show it before they trust
-//! it. The record carries no Touch: the Mac cannot post contacts.
-
 use std::time::Duration;
 
 use tokio::sync::oneshot;
@@ -15,10 +10,8 @@ use crate::{
 
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
-/// Advertises one port on its own thread until dropped.
 pub struct Advertiser {
     port: u16,
-    /// The record's instance, which this Mac's own browser finds too.
     instance: Option<String>,
     stop: Option<oneshot::Sender<()>>,
 }

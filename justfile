@@ -1,25 +1,24 @@
 import 'just/common.just'
 
-# Capture app or daemon diagnostics.
+[doc("Capture app or daemon diagnostics.")]
 mod debug 'just/debug.just'
-# Apply or check Rust formatting.
+[doc("Apply or check Rust formatting.")]
 mod fmt 'just/fmt.just'
-# Install a native service.
+[doc("Install a native service.")]
 mod install 'just/install.just'
-# Package distributable artifacts.
+[doc("Package distributable artifacts.")]
 mod package 'just/package.just'
-# Check or publish a GitHub release.
+[doc("Check or publish a GitHub release.")]
 mod release 'just/release.just'
-# Run a test suite.
+[doc("Run a test suite.")]
 mod test 'just/test.just'
 
-# List development commands.
 [default]
 [private]
 default:
     @just --list
 
-# Build and open the app.
+[doc("Build and open the app.")]
 run platform *args: (_platform platform)
     #!/usr/bin/env bash
     set -euo pipefail
@@ -33,7 +32,7 @@ run platform *args: (_platform platform)
         cargo run --locked --bin zflow -- settings "$@"
     fi
 
-# Package the Mac app, or build the Linux service, its command and the app.
+[doc("Package the Mac app, or build the Linux service, its command and the app.")]
 build platform *args: (_platform platform)
     #!/usr/bin/env bash
     set -euo pipefail
@@ -46,9 +45,9 @@ build platform *args: (_platform platform)
         cargo build --locked -p zflow-app "$@"
     fi
 
-# Lint Rust code.
+[doc("Lint Rust code.")]
 lint:
     cargo clippy --locked --all-targets -- -D warnings
 
-# Check formatting, lint, and run tests.
+[doc("Check formatting, lint, and run tests.")]
 check: fmt::check lint test::rust test::app test::desktop test::install test::release

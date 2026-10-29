@@ -1,7 +1,3 @@
-//! Lenses onto this computer. The desktop agent offers to serve one, a peer allowed to look
-//! opens one, and this service hands the agent who it is and then only copies bytes between the
-//! two. The agent captures and encodes; nothing here reads a pixel.
-
 use super::*;
 use crate::{
     lens::wire::{LensMessage, write},
@@ -9,16 +5,13 @@ use crate::{
 };
 use tokio::net::UnixStream;
 
-/// Copies in large reads, since a tile packet can be megabytes.
 const RELAY_BUFFER: usize = 256 * 1024;
 
 impl Shared {
-    /// Keeps the agent's offer until a lens arrives. A newer offer replaces it.
     pub(super) async fn offer_lens(self: &Arc<Self>, agent: UnixStream) {
         *self.lens_host.lock().await = Some(agent);
     }
 
-    /// Relays a peer's lens to the agent, or tells the peer why not.
     pub(super) fn serve_lens(self: &Arc<Self>, peer: String, stream: LensStream) {
         let shared = self.clone();
         tokio::spawn(async move {

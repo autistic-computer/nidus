@@ -26,7 +26,6 @@ fn main() {
         .flag("-std=c11")
         .warnings(true)
         .compile("zflow_macos_capture");
-    // Objective-C rejects -std=c11, so it builds on its own.
     cc::Build::new()
         .file("src/macos/media.m")
         .file("src/macos/pasteboard.m")

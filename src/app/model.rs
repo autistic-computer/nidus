@@ -9,8 +9,6 @@ use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{config::Config, session::SessionOptions};
 
-/// A TOML file being edited. `saved` is what the file held when it was read
-/// or last written, and saving refuses to overwrite a file changed since.
 pub struct Document<T> {
     pub path: PathBuf,
     pub draft: T,
@@ -20,18 +18,13 @@ pub struct Document<T> {
 
 pub type ConfigDocument = Document<Config>;
 
-/// What a document holds.
 pub trait Contents: Clone + PartialEq + Serialize + DeserializeOwned {
     const NAME: &'static str;
-    /// The contents of a file that does not exist yet.
     fn missing(path: &Path) -> Self;
-    /// Checks a file as it is read.
     fn check_read(&self) -> Result<()>;
-    /// Checks everything before a save.
     fn check_save(&self) -> Result<()> {
         self.check_read()
     }
-    /// The text to write, given what the file held before.
     fn render(&self, _saved: &Self, _disk: Option<&str>) -> Result<String> {
         Ok(toml::to_string_pretty(self)?)
     }
@@ -122,7 +115,6 @@ impl Contents for Config {
         Ok(())
     }
 
-    /// Patches only the changed fields into the user's file, keeping comments.
     fn render(&self, saved: &Self, disk: Option<&str>) -> Result<String> {
         let next = toml::to_string_pretty(self)?;
         let Some(disk) = disk else {
@@ -136,7 +128,6 @@ impl Contents for Config {
     }
 }
 
-// Compare complete configurations, but patch only changed fields into the user's document.
 fn merge_changes(
     target: &mut dyn toml_edit::TableLike,
     before: &toml_edit::Table,

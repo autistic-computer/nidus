@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Package existing native Linux binaries without rebuilding them.
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 binary_dir=$(cd -- "${1:-$root/target/release}" && pwd -P)
@@ -10,8 +9,6 @@ work=$(mktemp -d "$output/.deb.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 mkdir "$work/source"
 cp -R "$root/debian" "$root/packaging" "$work/source/"
-# Shell keeps loaded metadata until the next login. The app compares this
-# release label with the installed copy to explain when a logout is needed.
 sed -i '/"uuid":/a\  "version-name": "'"$version"'",' "$work/source/packaging/gnome-extension/metadata.json"
 mkdir "$work/source/assets"
 cp -R "$root/assets/linux" "$work/source/assets/"

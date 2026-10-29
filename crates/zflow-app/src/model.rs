@@ -1,7 +1,3 @@
-//! What the window shows and how it asks for changes. A worker thread owns
-//! the line to the engine, polls it for snapshots and runs requests in order,
-//! so nothing blocks the UI thread.
-
 use std::{path::PathBuf, sync::mpsc, time::Duration};
 
 use serde::Deserialize;
@@ -15,18 +11,15 @@ use crate::platform::Platform;
 
 pub type Snapshot = api::Snapshot<Option<Platform>>;
 
-/// How often the window asks for a fresh snapshot.
 #[cfg(target_os = "macos")]
 const POLL: Duration = Duration::from_millis(500);
 #[cfg(not(target_os = "macos"))]
 const POLL: Duration = Duration::from_secs(1);
 
-/// What the window shows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Page {
     Computers,
     Settings,
-    /// A paired computer, by name.
     Computer(String),
 }
 
@@ -37,23 +30,17 @@ enum Job {
         request: Request,
         reply: Option<Reply>,
     },
-    /// A question whose answer is not a snapshot, such as where a move
-    /// would land.
     Ask {
         request: Request,
         reply: async_channel::Sender<Result<serde_json::Value, String>>,
     },
     Reconnect,
-    /// Drops the line to the engine, which on a Mac stops it and lets go of
-    /// input a peer holds, then answers.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     Shutdown(async_channel::Sender<()>),
 }
 
 enum Event {
     Snapshot(Box<Snapshot>),
-    /// A request failed. A poll failing is quiet: it says why there is no
-    /// snapshot instead of popping up.
     Failed {
         error: String,
         quiet: bool,
@@ -64,18 +51,14 @@ enum Event {
 
 pub struct Model {
     pub snapshot: Option<Snapshot>,
-    /// Why there is no snapshot.
     pub error: Option<String>,
-    /// The last request that failed, until the window takes it as a toast.
     pub failure: Option<String>,
     pub page: Page,
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub config: PathBuf,
-    /// The window onto another computer's screen.
     #[cfg(target_os = "macos")]
     pub lens: Option<std::sync::Arc<zflow::lens::viewer::Viewer>>,
     jobs: mpsc::Sender<Job>,
-    /// The newest notice seen, once a snapshot came.
     last_notice: Option<u64>,
     _events: Task<()>,
 }
@@ -113,8 +96,6 @@ impl Model {
         }
     }
 
-    /// A model with `snapshot` and no engine, for tests. What the window
-    /// asks for queues on the returned [`Requests`].
     #[cfg(test)]
     pub fn fake(snapshot: Snapshot, _: &mut Context<Self>) -> (Self, Requests) {
         let (jobs, queue) = mpsc::channel();
@@ -135,7 +116,6 @@ impl Model {
         )
     }
 
-    /// Sends `request`, and shows why if it fails.
     pub fn send(&self, request: Request) {
         let _ = self.jobs.send(Job::Call {
             request,
@@ -143,8 +123,6 @@ impl Model {
         });
     }
 
-    /// Sends `request` and resolves to why it failed, for a caller that
-    /// shows the reason itself.
     pub fn attempt(&self, request: Request) -> async_channel::Receiver<Result<(), String>> {
         let (reply, answer) = async_channel::bounded(1);
         let _ = self.jobs.send(Job::Call {
@@ -154,7 +132,6 @@ impl Model {
         answer
     }
 
-    /// Asks `request` and resolves to its raw answer.
     pub fn ask(
         &self,
         request: Request,
@@ -164,7 +141,6 @@ impl Model {
         answer
     }
 
-    /// Starts over after the engine could not be reached.
     pub fn reconnect(&mut self, cx: &mut Context<Self>) {
         self.error = None;
         let _ = self.jobs.send(Job::Reconnect);
@@ -178,7 +154,6 @@ impl Model {
         }
     }
 
-    /// Shows why something failed, for a few seconds.
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub fn report(&mut self, message: String, cx: &mut Context<Self>) {
         self.receive(
@@ -190,7 +165,6 @@ impl Model {
         );
     }
 
-    /// Stops the engine line; resolves once it is down.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn shutdown(&self) -> async_channel::Receiver<()> {
         let (done, finished) = async_channel::bounded(1);
@@ -200,15 +174,10 @@ impl Model {
         finished
     }
 
-    /// The failure not shown yet, once.
     pub fn take_failure(&mut self) -> Option<String> {
         self.failure.take()
     }
 
-    /// Notices not posted yet, oldest first, about computers still paired.
-    /// Each comes once. The Linux agent outlives the window, keeps its
-    /// earlier notices and posted them itself, so the first snapshot's are
-    /// taken as seen.
     pub fn take_notices(&mut self) -> Vec<zflow::hello::Notice> {
         let Some(snapshot) = &self.snapshot else {
             return Vec::new();
@@ -271,9 +240,6 @@ impl Model {
     }
 }
 
-/// The worker: connects, then runs each queued request and polls between
-/// them. A request whose answer carries no snapshot is followed by a poll,
-/// so the window shows its effect at once.
 fn work(
     config: &std::path::Path,
     jobs: &mpsc::Receiver<Job>,
@@ -281,7 +247,6 @@ fn work(
 ) {
     let send = |event| events.send_blocking(event).is_ok();
     let mut client: Option<Client> = None;
-    // A fresh connection asks for a snapshot at once.
     let mut fresh = false;
     loop {
         let Some(line) = &client else {
@@ -384,14 +349,11 @@ fn work(
     }
 }
 
-/// What a fake model was asked, in order.
 #[cfg(test)]
 pub struct Requests(mpsc::Receiver<Job>);
 
 #[cfg(test)]
 impl Requests {
-    /// The next request, and whether it was a question; a question gets
-    /// `answer`.
     pub fn next(&self, answer: serde_json::Value) -> Option<(Request, bool)> {
         match self.0.try_recv().ok()? {
             Job::Call { request, reply } => {
@@ -413,7 +375,6 @@ impl Requests {
     }
 }
 
-/// The model, as a global the tray and menus reach.
 pub struct Shared(pub Entity<Model>);
 
 impl zz_gpui::Global for Shared {}
@@ -451,17 +412,13 @@ mod tests {
                 .collect()
         };
 
-        // The first snapshot's notices were posted before the window opened.
         assert!(model.update(cx, |model, _| names(model)).is_empty());
 
-        // A later join is posted once.
         snapshot.notices.push(joined(6, "mac", "996615"));
         model.update(cx, |model, _| model.snapshot = Some(snapshot.clone()));
         assert_eq!(model.update(cx, |model, _| names(model)), ["mac"]);
         assert!(model.update(cx, |model, _| names(model)).is_empty());
 
-        // Not about a paired computer: a namesake with another key, or one
-        // forgotten since.
         snapshot
             .notices
             .extend([joined(7, "mac", "123456"), joined(8, "box", "a4d876")]);

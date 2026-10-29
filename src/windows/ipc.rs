@@ -48,8 +48,6 @@ pub enum Command {
         peer: String,
         enabled: bool,
     },
-    /// Puts screen `id` at `x`, `y`, or against an edge within `tolerance`
-    /// of there. With `computer`, every screen of its computer moves alike.
     MoveTile {
         id: String,
         x: i32,
@@ -58,8 +56,6 @@ pub enum Command {
         #[serde(default)]
         computer: bool,
     },
-    /// Where a `MoveTile` would land and the seams it would make, without
-    /// moving anything. Null where it cannot go.
     Preview {
         id: String,
         x: i32,
@@ -96,7 +92,6 @@ pub fn user_sid() -> Result<String> {
         );
         let mut size = 0;
         GetTokenInformation(token, TokenUser, std::ptr::null_mut(), 0, &mut size);
-        // usize storage ensures TOKEN_USER is correctly aligned.
         let mut buffer = vec![0usize; (size as usize).div_ceil(size_of::<usize>())];
         let ok = GetTokenInformation(
             token,

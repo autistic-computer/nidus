@@ -1,36 +1,19 @@
-//! Where things go on the arrangement, in board pixels from its top left.
-//! Kept apart from drawing so the math is tested on its own; the GNOME and
-//! Mac windows drew the same way.
-
 use zflow::app::layout_model::{Monitor, Seam};
 
-/// How tall the arrangement is, before the shelf under it.
 pub const BOARD_HEIGHT: f32 = 240.0;
-/// Room around the arrangement: at the sides, above it for the computers'
-/// names, and under it.
 pub const ROOM_SIDES: f32 = 28.0;
 pub const ROOM_ABOVE: f32 = 48.0;
 pub const ROOM_BELOW: f32 = 24.0;
-/// The most a layout unit takes on the board.
 pub const MAX_SCALE: f32 = 0.12;
-/// How far an island's outline stands off its screens, and its name off the
-/// outline.
 pub const HULL: f32 = 8.0;
 pub const CHIP_GAP: f32 = 6.0;
-/// A drag snaps to an edge within this many pixels.
 pub const DRAG_TOLERANCE: f32 = 14.0;
-/// An arrow key moves a computer 100 layout units, about an inch, and snaps
-/// within a little less, so a step away from a seam is not pulled back.
 pub const KEY_STEP: i32 = 100;
 pub const KEY_TOLERANCE: u32 = 99;
-/// Enter puts a found computer against this one's right edge.
 pub const PLACE_TOLERANCE: u32 = 150;
-/// The size the engine gives a placed computer's screen until it says its own.
 pub const NEW_TILE: (i32, i32) = (1920, 1080);
-/// A press that moves less than this is a click.
 pub const DRAG_THRESHOLD: f32 = 3.0;
 
-/// A rectangle on the board: x, y, width, height.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     pub x: f32,
@@ -67,7 +50,6 @@ impl Rect {
         width * height
     }
 
-    /// The smallest rectangle around all of `rects`.
     pub fn around(rects: impl IntoIterator<Item = Self>) -> Option<Self> {
         rects.into_iter().reduce(|a, b| {
             let x = a.x.min(b.x);
@@ -82,7 +64,6 @@ impl Rect {
     }
 }
 
-/// The scale and offset that center a layout on the board.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fit {
     pub scale: f32,
@@ -93,8 +74,6 @@ pub struct Fit {
 }
 
 impl Fit {
-    /// Centers `monitors` on a board `width` by `height`, with room above
-    /// for the computers' names.
     pub fn new<'a>(
         monitors: impl IntoIterator<Item = &'a Monitor>,
         width: f32,
@@ -122,8 +101,6 @@ impl Fit {
         })
     }
 
-    /// A monitor on the board, `shift` pixels from its spot. Every screen
-    /// rounds its edges alike, so touching edges stay touching.
     pub fn rect(&self, monitor: &Monitor, shift: (f32, f32)) -> Rect {
         let x = |value: f32| (self.offset_x + (value - self.left) * self.scale + shift.0).round();
         let y = |value: f32| (self.offset_y + (value - self.top) * self.scale + shift.1).round();
@@ -136,7 +113,6 @@ impl Fit {
         )
     }
 
-    /// The layout point under board pixel (`x`, `y`).
     pub fn layout_point(&self, x: f32, y: f32) -> (f32, f32) {
         (
             self.left + (x - self.offset_x) / self.scale,
@@ -144,8 +120,6 @@ impl Fit {
         )
     }
 
-    /// A seam on the board, short of its ends by `inset`: start and end
-    /// points.
     pub fn seam_line(&self, seam: &Seam, inset: f32) -> ((f32, f32), (f32, f32)) {
         let across = if seam.vertical {
             self.offset_x + (seam.at as f32 - self.left) * self.scale
@@ -167,13 +141,11 @@ impl Fit {
         }
     }
 
-    /// Board pixels as layout units, rounded.
     pub fn units(&self, pixels: f32) -> i32 {
         (pixels / self.scale).round() as i32
     }
 }
 
-/// An island's screens as shown, with room around them.
 pub fn hull(shown: impl IntoIterator<Item = Rect>) -> Option<Rect> {
     Rect::around(shown).map(|rect| {
         Rect::new(
@@ -185,10 +157,6 @@ pub fn hull(shown: impl IntoIterator<Item = Rect>) -> Option<Rect> {
     })
 }
 
-/// Where a computer's name goes: over its outline's top left corner, or
-/// another corner, or just inside, wherever it covers the least of `others`.
-/// Off the board counts as covering everything. Returns the spot's index,
-/// so a drag can keep it.
 pub fn chip_spot(hull: Rect, span: f32, height: f32, board: (f32, f32), others: &[Rect]) -> usize {
     chip_spots(hull, span, height, board.0)
         .iter()
@@ -208,7 +176,6 @@ pub fn chip_spot(hull: Rect, span: f32, height: f32, board: (f32, f32), others: 
         .0
 }
 
-/// The five places a name may go, as `chip_spot` numbers them.
 pub fn chip_spots(hull: Rect, span: f32, height: f32, board_width: f32) -> [(f32, f32); 5] {
     let fit = |x: f32| x.min(board_width - span - 4.0).max(4.0).round();
     let (start, end) = (fit(hull.x), fit(hull.right() - span));
@@ -224,7 +191,6 @@ pub fn chip_spots(hull: Rect, span: f32, height: f32, board_width: f32) -> [(f32
     ]
 }
 
-/// How far the pointer went, but with the moving screens kept on the board.
 pub fn travel(moving: &[Rect], dx: f32, dy: f32, board: (f32, f32)) -> (f32, f32) {
     let Some(bounds) = Rect::around(moving.iter().copied()) else {
         return (dx, dy);
@@ -236,8 +202,6 @@ pub fn travel(moving: &[Rect], dx: f32, dy: f32, board: (f32, f32)) -> (f32, f32
     )
 }
 
-/// Where the other computer is from here across `seam`: which edge of this
-/// screen, as a crossing row says it.
 pub fn crossing_side(seam: &Seam, here_is_a: bool) -> &'static str {
     match (seam.vertical, here_is_a) {
         (true, true) => "Right",
@@ -317,7 +281,6 @@ mod tests {
     #[test]
     fn names_avoid_other_computers_and_the_edges() {
         let hull = Rect::new(100.0, 10.0, 100.0, 80.0);
-        // Above would leave the board, so it goes below.
         assert_eq!(chip_spot(hull, 60.0, 24.0, (400.0, 240.0), &[]), 2);
         let roomy = Rect::new(100.0, 60.0, 100.0, 80.0);
         assert_eq!(chip_spot(roomy, 60.0, 24.0, (400.0, 240.0), &[]), 0);

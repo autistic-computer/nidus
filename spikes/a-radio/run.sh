@@ -1,39 +1,14 @@
 #!/usr/bin/env bash
-# Spike A: does steady keepalive traffic flatten WiFi RTT spikes?
-#
-# Methodology: the measurement ping is SPARSE (one probe every 1.13 s), because
-# that is what an isolated input packet (a keystroke after idle) experiences.
-# The keepalive traffic is the treatment. The odd 1.13 s interval avoids
-# phase-locking with the round keepalive rates, so probes sample random phases
-# of the keepalive cycle instead of always landing on a freshly woken radio.
-# Steady-state motion smoothness is spike B's job, not this script's.
-#
-# Run it several times under different link conditions and label each arm:
-#
-#   ./run.sh macbook.local ps-on            # baseline, power save untouched
-#   sudo iw dev <wlan> set power_save off
-#   ./run.sh macbook.local ps-off
-#   # on the mac: sudo ifconfig awdl0 down (re-enables itself, repeat as needed)
-#   ./run.sh macbook.local ps-on-awdl-down
-#
-# ~45 s per arm, 5 arms per run. Results append to results.csv next to this
-# script; failed arms are reported and skipped, never recorded as data.
-# Verdict goes in RESULT.md.
-#
-# Caveat: ICMP keepalive proves the radio-wake mechanism, not zflow's exact
-# traffic shape. Spike B re-checks the winning cadence with a real UDP stream.
 
 set -euo pipefail
 export LC_ALL=C
 
 TARGET=${1:?usage: run.sh <target-host> <label>}
 LABEL=${2:?usage: run.sh <target-host> <label>}
-LABEL=${LABEL//,/-}   # keep the CSV parseable
+LABEL=${LABEL//,/-}
 
-MEAS_INTERVAL=1.13  # sparse, non-harmonic with all keepalive rates
-MEAS_COUNT=40       # ~45 s per arm
-# keepalive rates in Hz; "0" means no keepalive. Override order via env to
-# control for link drift across arms: ZFLOW_RATES="100 50 20 10 0" ./run.sh ...
+MEAS_INTERVAL=1.13
+MEAS_COUNT=40
 read -r -a RATES <<< "${ZFLOW_RATES:-0 10 20 50 100}"
 
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -64,7 +39,7 @@ for RATE in "${RATES[@]}"; do
     INT=$(awk "BEGIN{printf \"%.3f\", 1/$RATE}")
     ping -q -i "$INT" "$TARGET" >/dev/null 2>&1 &
     KEEPALIVE_PID=$!
-    sleep 2  # let the radio settle into the new traffic pattern
+    sleep 2
     if ! kill -0 "$KEEPALIVE_PID" 2>/dev/null; then
       echo "arm ${RATE}Hz FAILED: keepalive ping exited (interval ${INT}s rejected? old iputils needs root below 200ms) - skipping, not recorded"
       KEEPALIVE_PID=""

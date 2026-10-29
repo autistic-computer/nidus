@@ -1,6 +1,3 @@
-//! What the window says, in one place, so the window, the menu and the
-//! notifications say it the same way.
-
 use zflow::{
     app::api::{PeerState, State},
     core::KeyboardMode,
@@ -9,7 +6,6 @@ use zflow::{
     wire::Os,
 };
 
-/// What this computer is called in the window.
 pub const THIS_COMPUTER: &str = if cfg!(target_os = "macos") {
     "This Mac"
 } else if cfg!(windows) {
@@ -18,7 +14,6 @@ pub const THIS_COMPUTER: &str = if cfg!(target_os = "macos") {
     "This Computer"
 };
 
-/// "this Mac" in a sentence.
 pub const THIS_COMPUTER_LOWER: &str = if cfg!(target_os = "macos") {
     "this Mac"
 } else if cfg!(windows) {
@@ -27,16 +22,14 @@ pub const THIS_COMPUTER_LOWER: &str = if cfg!(target_os = "macos") {
     "this computer"
 };
 
-/// The key that takes input back from any computer.
 pub const RETURN_KEYS: &str = if cfg!(target_os = "macos") {
     "⌃⌘⌫"
 } else {
     "Ctrl+Super+Backspace"
 };
 
-pub const INSTALL_COMMAND: &str = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/demfabris/zflow/releases/latest/download/install.sh | bash";
+pub const INSTALL_COMMAND: &str = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash";
 
-/// A paired computer's state, short enough for a chip or a menu row.
 pub const fn peer_state(state: PeerState) -> &'static str {
     match state {
         PeerState::Paired => "Not connected",
@@ -56,7 +49,6 @@ pub const fn peer_state(state: PeerState) -> &'static str {
     }
 }
 
-/// Whether it is linked now: input can cross to it.
 #[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const fn linked(state: PeerState) -> bool {
     matches!(
@@ -65,7 +57,6 @@ pub const fn linked(state: PeerState) -> bool {
     )
 }
 
-/// The line under the status title.
 pub fn status_hint(state: State, peer: Option<&str>) -> String {
     let peer = peer.unwrap_or("the other computer");
     match state {
@@ -91,7 +82,6 @@ pub const fn keyboard_title(mode: KeyboardMode) -> &'static str {
     }
 }
 
-/// What the mode does here.
 pub const fn keyboard_detail(mode: KeyboardMode) -> &'static str {
     match mode {
         KeyboardMode::Standard => "Keys arrive as sent: Super is Command and Alt is Option.",
@@ -110,7 +100,6 @@ pub const KEYBOARD_MODES: [KeyboardMode; 3] = [
     KeyboardMode::Mac,
 ];
 
-/// The line under a found computer's name on the shelf.
 pub fn unplaced_detail(computer: &Unplaced) -> String {
     match computer.state {
         UnplacedState::Identifying => "Identifying…".into(),
@@ -128,7 +117,6 @@ pub const fn os_name(os: Os) -> &'static str {
     }
 }
 
-/// Only a computer whose key is known, on this version, can be placed.
 pub const fn placeable(computer: &Unplaced) -> bool {
     matches!(
         computer.state,
@@ -136,8 +124,6 @@ pub const fn placeable(computer: &Unplaced) -> bool {
     )
 }
 
-/// What a fresh install's pairing window means for the person: while it is
-/// open, the other computer can finish on its own.
 pub fn finish_note(
     window: &PairingWindow,
     other: Option<&str>,
@@ -189,7 +175,6 @@ fn capitalized(text: &str) -> String {
         .unwrap_or_default()
 }
 
-/// A screen's size: its diagonal in inches, from millimeters, then its pixels.
 pub fn screen_size(width_mm: u32, height_mm: u32, width: u32, height: u32) -> String {
     let diagonal = (f64::from(width_mm).hypot(f64::from(height_mm)) / 25.4).round();
     if width_mm == 0 || height_mm == 0 {

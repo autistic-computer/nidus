@@ -1,8 +1,3 @@
-//! Answers a controlling peer's desktop handoff, as the GNOME extension does
-//! on Linux. Prepare puts the cursor where the pointer enters, Poll says when
-//! it leaves through one of the exits the peer gave, and Finish or a lapsed
-//! lease ends the handoff.
-
 use std::{
     sync::{Mutex, MutexGuard, PoisonError},
     time::{Duration, Instant},
@@ -22,41 +17,26 @@ use crate::desktop::{
 
 const LEASE: Duration = Duration::from_millis(LEASE_MS);
 const POLL_HOLD: Duration = Duration::from_millis(POLL_HOLD_MS);
-/// How long Prepare waits for the cursor to reach the entry point.
 const ENTRY_WAIT: Duration = Duration::from_millis(100);
-/// How far from the entry point the cursor may land.
 const ENTRY_SLOP: f64 = 2.0;
-/// How often a waiting request looks at the cursor.
 const SAMPLE: Duration = Duration::from_millis(8);
-/// How often a held lease is checked, as the GNOME extension does.
 const LEASE_CHECK: Duration = Duration::from_millis(250);
-/// The entry display must be at least this big both ways.
 const MIN_DISPLAY: u32 = 8;
-// The Linux daemon's words for the same answers.
 const ENDED: &str = "Desktop handoff expired or ended";
 const STALE: &str = "Desktop handoff token is stale";
 const NO_DISPLAY: &str = "No Mac display touches the selected crossing range";
 
-/// This Mac as the handoff server sees it. Tests use a fake.
 pub(crate) trait Desk: Send + Sync + 'static {
     fn geometry(&self) -> Result<Geometry>;
-    /// Changes whenever macOS reconfigures a display.
     fn generation(&self) -> u32;
     fn cursor(&self) -> Result<CursorPosition>;
-    /// Moves the cursor with a posted move. A warp would hold off the Mac's
-    /// own input for a quarter second.
     fn move_to(&self, point: Point);
-    /// Lets go of whatever the peer holds on this Mac.
     fn release_all(&self);
-    /// Wakes the display, as local input would.
     fn wake(&self);
-    /// Ends a session whose handoff lapsed.
     fn close(&self, peer: &str, session_id: u64);
-    /// Whether `session_id` is still `peer`'s open session.
     fn current(&self, peer: &str, session_id: u64) -> bool;
 }
 
-/// A stretch of an edge with a display behind it, in points along the edge.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Segment {
     start: i32,
@@ -64,16 +44,12 @@ struct Segment {
     display: Rect,
 }
 
-/// One outer edge of this desktop, cut to a handoff's range: where the
-/// pointer enters, and where leaving through it hands the pointer back.
 #[derive(Clone, Debug, PartialEq)]
 struct ArmedEdge {
     edge: Edge,
     start: u32,
     end: u32,
-    /// The edge's line: an x for Left and Right, a y for Top and Bottom.
     boundary: i32,
-    /// Where the desktop starts along the edge, and how long the edge is.
     origin: i32,
     span: u32,
     segments: Vec<Segment>,
@@ -89,7 +65,6 @@ impl ArmedEdge {
             (bounds.x, bounds.width)
         };
         let boundary = side(&bounds, edge);
-        // The range's first and last pixels round inward.
         let scaled = |fraction: u32| u64::from(fraction) * u64::from(span);
         let range_start = origin + scaled(start).div_ceil(u64::from(FRACTION_MAX)) as i32;
         let range_end = origin + (scaled(end) / u64::from(FRACTION_MAX)) as i32;
@@ -122,10 +97,6 @@ impl ArmedEdge {
         })
     }
 
-    /// Where the pointer enters at `position`: three points in from the
-    /// edge, at the pixel nearest the wanted one that has a display behind
-    /// it. The peer's tile for this Mac is its bounding box, so the wanted
-    /// pixel can fall where no display touches the edge.
     fn entry(&self, position: u32) -> Result<Point, &'static str> {
         let wanted = self.origin
             + (u64::from(position) * u64::from(self.span) / u64::from(FRACTION_MAX)) as i32;
@@ -159,9 +130,6 @@ impl ArmedEdge {
         })
     }
 
-    /// Where the cursor sits on the edge's outermost pixels, if it does.
-    /// That is where the clamp leaves a pointer the peer pushes out, and
-    /// where the Mac's own trackpad hands the pointer back.
     fn at_edge(&self, cursor: CursorPosition) -> Option<u32> {
         let line = f64::from(self.boundary);
         let (across, along) = self.axes(cursor);
@@ -172,8 +140,6 @@ impl ArmedEdge {
         on_edge.then(|| self.position(along)).flatten()
     }
 
-    /// Where a move from `from` to `to`, before the clamp to the displays,
-    /// leaves through the edge, if it does.
     fn crossing(&self, from: CursorPosition, to: CursorPosition) -> Option<u32> {
         let line = f64::from(self.boundary);
         let ((from_across, from_along), (to_across, to_along)) = (self.axes(from), self.axes(to));
@@ -188,7 +154,6 @@ impl ArmedEdge {
         self.position(from_along + travelled * (to_along - from_along))
     }
 
-    /// A point's distance across the edge and along it.
     fn axes(&self, point: CursorPosition) -> (f64, f64) {
         match self.edge {
             Edge::Left | Edge::Right => (point.x, point.y),
@@ -196,8 +161,6 @@ impl ArmedEdge {
         }
     }
 
-    /// The return position for a pointer leaving at `along`, or None where
-    /// no display in the range touches the edge.
     fn position(&self, along: f64) -> Option<u32> {
         let pixel = along.floor();
         self.segments
@@ -213,7 +176,6 @@ impl ArmedEdge {
     }
 }
 
-/// Where `rect`'s side along `edge` is.
 fn side(rect: &Rect, edge: Edge) -> i32 {
     match edge {
         Edge::Left => rect.x,
@@ -223,8 +185,6 @@ fn side(rect: &Rect, edge: Edge) -> i32 {
     }
 }
 
-/// The cursor as a pixel on a display, so the answer passes validation even
-/// when macOS reports it a fraction past an edge.
 fn on_display(geometry: &Geometry, cursor: CursorPosition) -> Point {
     let point = Point {
         x: cursor.x.floor() as i32,
@@ -250,31 +210,23 @@ struct Lease {
     session_id: u64,
     token: u64,
     renewed: Instant,
-    /// The display generation the entry was placed in, and its displays.
     generation: u32,
     geometry: Geometry,
-    /// Each exit the peer gave that has a display behind it, by its index.
     exits: Vec<(u32, ArmedEdge)>,
     sampled: CursorPosition,
-    /// The exit the pointer left through, and where, once it has.
     exited: Option<(u32, u32)>,
-    /// A Poll has answered `exited`.
     delivered: bool,
-    /// The peer kept the pointer here after an exit, so a cursor resting
-    /// on an exit's edge does not report it again until it moves off.
     resting: bool,
     _guard: LeaseGuard,
 }
 
 impl Lease {
-    /// The exit a move from `from` to `to` leaves through, if any.
     fn crossing(&self, from: CursorPosition, to: CursorPosition) -> Option<(u32, u32)> {
         self.exits
             .iter()
             .find_map(|(index, edge)| Some((*index, edge.crossing(from, to)?)))
     }
 
-    /// The exit whose outermost pixels the cursor rests on, if any.
     fn at_edge(&self, cursor: CursorPosition) -> Option<(u32, u32)> {
         self.exits
             .iter()
@@ -291,14 +243,10 @@ impl Lease {
     }
 }
 
-/// Answers desktop requests from the peers that may control this Mac. One
-/// handoff at a time holds the Mac, through its `Ownership`.
 pub(crate) struct HandoffServer<D> {
     desk: D,
     ownership: Ownership,
     lease: Mutex<Option<Lease>>,
-    /// Wakes a held Poll when the pointer leaves or the handoff ends, and
-    /// `watch` when a handoff starts.
     changed: Notify,
 }
 
@@ -316,8 +264,6 @@ impl<D: Desk> HandoffServer<D> {
         self.lease.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Answers one request from `peer`'s session. Whether that peer may
-    /// control this Mac at all is the caller's to check first.
     pub async fn request(
         &self,
         peer: &str,
@@ -355,8 +301,6 @@ impl<D: Desk> HandoffServer<D> {
         }
     }
 
-    /// Holds this Mac for the handoff and puts the cursor where the pointer
-    /// enters. The hold lasts until Finish, or until Poll stops renewing it.
     async fn prepare(
         &self,
         peer: &str,
@@ -375,8 +319,6 @@ impl<D: Desk> HandoffServer<D> {
         else {
             return DesktopResponse::unavailable("Not a desktop handoff");
         };
-        // Read first, so any display change while this runs is checked
-        // against the displays the entry was placed in.
         let generation = self.desk.generation();
         let planned = self.desk.geometry().and_then(|geometry| {
             let selected = geometry.for_monitor(monitor.as_deref())?;
@@ -391,7 +333,6 @@ impl<D: Desk> HandoffServer<D> {
             Ok(entry) => entry,
             Err(reason) => return DesktopResponse::unavailable(reason),
         };
-        // An exit on a display that is gone leads nowhere.
         let exits = (0..)
             .zip(&exits)
             .filter_map(|(index, exit)| {
@@ -404,8 +345,6 @@ impl<D: Desk> HandoffServer<D> {
             .collect();
         {
             let mut lease = self.lease();
-            // A request can outlive its session, whose close ended any
-            // handoff before this one could start.
             if !self.desk.current(peer, session_id) {
                 return DesktopResponse::unavailable(ENDED);
             }
@@ -430,8 +369,6 @@ impl<D: Desk> HandoffServer<D> {
                 resting: false,
                 _guard: guard,
             };
-            // An entry on another exit's outermost pixels, as near a corner,
-            // is not a push out through it.
             prepared.resting = prepared.at_edge(prepared.sampled).is_some();
             *lease = Some(prepared);
         }
@@ -463,9 +400,6 @@ impl<D: Desk> HandoffServer<D> {
         }
     }
 
-    /// Renews the handoff, then answers where the pointer left, or Active
-    /// once the hold runs out. Meanwhile it watches the cursor, so the Mac's
-    /// own trackpad can move the pointer off too.
     async fn poll(&self, peer: &str, session_id: u64, token: u64) -> DesktopResponse {
         {
             let mut lease = self.lease();
@@ -477,8 +411,6 @@ impl<D: Desk> HandoffServer<D> {
             }
             active.renewed = Instant::now();
             if active.delivered {
-                // Polling again after an exit means the pointer stays here,
-                // as when a key is held on the way to a third computer.
                 active.exited = None;
                 active.delivered = false;
                 active.resting = true;
@@ -506,7 +438,6 @@ impl<D: Desk> HandoffServer<D> {
         }
     }
 
-    /// Ends the handoff and lets go of whatever the peer still holds.
     fn finish(&self, peer: &str, session_id: u64, token: u64) -> DesktopResponse {
         let ended = {
             let mut lease = self.lease();
@@ -524,9 +455,6 @@ impl<D: Desk> HandoffServer<D> {
         DesktopResponse::Finished
     }
 
-    /// Checks one of the peer's pointer moves before it is posted. A move
-    /// out through an exit reports it and wakes the Poll. True while an exit
-    /// waits for the peer, so this and later moves are dropped.
     pub fn moved(&self, from: CursorPosition, to: CursorPosition) -> bool {
         let mut lease = self.lease();
         let Some(active) = lease.as_mut() else {
@@ -549,8 +477,6 @@ impl<D: Desk> HandoffServer<D> {
         true
     }
 
-    /// Also catches a local trackpad move that skips an internal edge's pixels
-    /// between polls. Injected peer moves are checked before posting by moved().
     fn sample(&self, cursor: CursorPosition) {
         let mut lease = self.lease();
         let Some(active) = lease.as_mut() else {
@@ -574,7 +500,6 @@ impl<D: Desk> HandoffServer<D> {
         self.changed.notify_waiters();
     }
 
-    /// The exit no Poll has answered yet, which this answer takes.
     fn exited(&self, session_id: u64, token: u64) -> Result<Option<(u32, u32)>, &'static str> {
         match self.lease().as_mut() {
             Some(lease) if lease.session_id == session_id && lease.token == token => {
@@ -594,7 +519,6 @@ impl<D: Desk> HandoffServer<D> {
             .is_some_and(|lease| lease.session_id == session_id && lease.token == token)
     }
 
-    /// Drops the handoff, if it is still this one.
     fn end(&self, session_id: u64, token: u64) {
         let ended = self
             .lease()
@@ -605,8 +529,6 @@ impl<D: Desk> HandoffServer<D> {
         }
     }
 
-    /// Ends the handoff of a session that closed, and lets go of whatever
-    /// its peer held.
     pub fn closed(&self, peer: &str, session_id: u64) {
         let ended = self
             .lease()
@@ -619,13 +541,8 @@ impl<D: Desk> HandoffServer<D> {
         }
     }
 
-    /// Ends a handoff that went two seconds without a Poll, or whose
-    /// displays changed. As on Linux, whatever the peer holds is let go and
-    /// its session closes. True if one ended.
     pub fn expire_at(&self, now: Instant) -> bool {
         let generation = self.desk.generation();
-        // macOS can report a reconfiguration that leaves every display where
-        // it was, as waking one may. Only one that moved them ends the handoff.
         let reconfigured = self
             .lease()
             .as_ref()
@@ -652,9 +569,6 @@ impl<D: Desk> HandoffServer<D> {
         true
     }
 
-    /// Checks the lease every quarter second while there is one, so a peer
-    /// that stops polling, or a display change, ends the handoff. Runs until
-    /// dropped.
     pub async fn watch(&self) {
         loop {
             let changed = self.changed.notified();
@@ -708,7 +622,6 @@ mod tests {
             .unwrap()
     }
 
-    // The GNOME extension's vectors, from tests/gnome_desktop_test.mjs.
     #[test]
     fn entries_land_where_the_gnome_extension_puts_them() {
         let one = single();
@@ -720,7 +633,6 @@ mod tests {
         ] {
             assert_eq!(entry(&one, edge, 0, MAX, 500_000), Point { x, y });
         }
-        // The first and last pixel of a partial range round inside it.
         assert_eq!(entry(&one, Edge::Left, 185_185, MAX, 185_185).y, 200);
         assert_eq!(entry(&one, Edge::Left, 0, 500_000, 500_000).y, 539);
 
@@ -737,7 +649,6 @@ mod tests {
             "an entry into the gap moves to the nearest display"
         );
 
-        // 1920x1080 left of 2560x1440: the bottom of the left edge has no display.
         let wide = desktop(&[(0, 0, 1920, 1080), (1920, 0, 2560, 1440)]);
         assert_eq!(
             entry(&wide, Edge::Left, 0, MAX, 900_000),
@@ -776,7 +687,6 @@ mod tests {
         let bottom = ArmedEdge::new(&one, Edge::Bottom, 0, MAX).unwrap();
         assert_eq!(bottom.at_edge(at(480.0, 1079.0)), Some(250_000));
 
-        // Nothing returns where no display in the range touches the edge.
         let gap = desktop(&[(-200, -100, 200, 100), (-200, 100, 200, 100)]);
         let gap = ArmedEdge::new(&gap, Edge::Left, 0, MAX).unwrap();
         assert_eq!(gap.at_edge(at(-200.0, 50.0)), None);
@@ -791,14 +701,11 @@ mod tests {
         geometry: Option<Geometry>,
         generation: u32,
         cursor: Option<CursorPosition>,
-        /// The cursor lands where it is moved, as it does when macOS shows
-        /// the move at once.
         follows: bool,
         moves: Vec<Point>,
         releases: usize,
         wakes: usize,
         closed: Vec<(String, u64)>,
-        /// Sessions that ended before their request was answered.
         ended: Vec<(String, u64)>,
     }
 
@@ -866,7 +773,6 @@ mod tests {
         (Arc::new(server), desk, ownership)
     }
 
-    /// The way back through the whole edge the pointer came in at.
     fn back(monitor: Option<&str>, edge: Edge) -> Vec<Exit> {
         vec![Exit {
             monitor: monitor.map(str::to_owned),
@@ -892,7 +798,6 @@ mod tests {
         DesktopResponse::unavailable(reason)
     }
 
-    /// Moves this Mac's displays, as macOS reports a reconfiguration.
     fn rearrange(desk: &FakeDesk, geometry: Geometry) {
         let mut fake = desk.state();
         fake.geometry = Some(geometry);
@@ -1046,13 +951,11 @@ mod tests {
         assert_eq!(desk.state().wakes, 1, "Prepare wakes the display");
         assert_eq!(ownership.controller().as_deref(), Some("linux"));
 
-        // With the pointer inside, a Poll holds, then answers Active.
         let started = Instant::now();
         let poll = DesktopRequest::Poll { token: 7 };
         assert_eq!(ask(poll.clone()).await, DesktopResponse::Active);
         assert!(started.elapsed() >= POLL_HOLD);
 
-        // The Mac's own trackpad at the edge hands the pointer back too.
         desk.state().cursor = Some(at(0.0, 270.0));
         assert_eq!(
             ask(DesktopRequest::Finish { token: 8 }).await,
@@ -1064,8 +967,6 @@ mod tests {
             position: 250_000,
         };
         assert_eq!(ask(poll.clone()).await, exited);
-        // Polling on keeps the pointer here. Resting on the edge does not
-        // report again; moving off and back does.
         assert_eq!(ask(poll.clone()).await, DesktopResponse::Active);
         desk.state().cursor = Some(at(40.0, 270.0));
         assert_eq!(ask(poll.clone()).await, DesktopResponse::Active);
@@ -1128,7 +1029,6 @@ mod tests {
         );
         drop(claim);
 
-        // A range with no display behind it takes nothing.
         let (server, _desk, ownership) =
             setup(desktop(&[(-200, -100, 200, 100), (-200, 100, 200, 100)]));
         let gap = DesktopRequest::Prepare {
@@ -1191,8 +1091,6 @@ mod tests {
             start: 0,
             end: MAX,
         };
-        // The pointer enters at the top of the left edge, and another
-        // computer is above.
         let prepare = DesktopRequest::Prepare {
             monitor: None,
             token: 7,
@@ -1253,9 +1151,6 @@ mod tests {
             start: 0,
             end: MAX,
             position: 500_000,
-            // Home through the left edge, on to another computer below the
-            // right half of the second display, and one past a display
-            // that is gone.
             exits: vec![
                 exit("panel-0", Edge::Left, 0),
                 exit("unplugged", Edge::Top, 0),
@@ -1277,8 +1172,6 @@ mod tests {
         );
         assert!(server.moved(at(1920.0, 1438.0), at(1920.0, 1442.0)));
         assert_eq!(poll().await, onward);
-        // The peer polls on, so the pointer stays, and pushing out again
-        // reports again.
         let kept = tokio::spawn({
             let server = server.clone();
             async move {
@@ -1323,8 +1216,6 @@ mod tests {
         let poll = |token| server.request("linux", 1, DesktopRequest::Poll { token });
         assert_eq!(poll(7).await, unavailable(ENDED));
 
-        // A reconfiguration that leaves the displays where they were keeps
-        // the handoff, and a display change ends the next request's.
         server.request("linux", 1, prepare(8)).await;
         desk.state().generation += 1;
         assert_eq!(poll(8).await, DesktopResponse::Active);
@@ -1333,7 +1224,6 @@ mod tests {
         assert_eq!(poll(8).await, unavailable(ENDED));
         assert_eq!(desk.state().closed.len(), 2);
 
-        // A held Poll ends with its lease.
         server.request("linux", 1, prepare(9)).await;
         let polling = tokio::spawn({
             let server = server.clone();
@@ -1347,7 +1237,6 @@ mod tests {
         assert!(server.expire_at(Instant::now() + LEASE));
         assert_eq!(polling.await.unwrap(), unavailable(ENDED));
 
-        // The watch notices a display change without any request.
         let watching = tokio::spawn({
             let server = server.clone();
             async move { server.watch().await }
@@ -1402,7 +1291,6 @@ mod tests {
         assert!(started.elapsed() >= ENTRY_WAIT);
         assert_eq!(ownership.controller(), None);
 
-        // Within two points of the entry counts.
         desk.state().cursor = Some(at(4.5, 541.9));
         assert_eq!(
             server.request("linux", 1, prepare(8)).await,
@@ -1415,7 +1303,6 @@ mod tests {
             .request("linux", 1, DesktopRequest::Finish { token: 8 })
             .await;
 
-        // A display change while the cursor travels ends the handoff.
         desk.state().cursor = Some(at(500.0, 500.0));
         let preparing = tokio::spawn({
             let server = server.clone();

@@ -1,9 +1,3 @@
-//! The Windows engine's pipe, seen as the shared snapshot and requests.
-//!
-//! The engine answers `status` with its own fields and takes its own
-//! commands (`src/windows/ipc.rs`). The window speaks [`super::api`], so this
-//! turns one into the other. The translation is plain data, so it is tested
-//! on every platform; only [`Pipe`] needs Windows.
 use super::api::{Health, Level, Peer, PeerState, Request, Shortcut, Snapshot, Status};
 use crate::{
     app::layout_model::{Layout, Seam},
@@ -16,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::path::Path;
 
-/// What `status` answers, as `src/windows/engine.rs` writes it.
 #[derive(Debug, Deserialize)]
 struct EngineStatus {
     name: String,
@@ -47,29 +40,22 @@ struct EnginePeer {
     name: String,
     mark: Option<String>,
     connected: bool,
-    /// Why the last attempt to reach it failed.
     status: Option<String>,
     keyboard: KeyboardMode,
     #[serde(default)]
     reverse_scroll: bool,
 }
 
-/// The rows the Windows window adds under the shared ones.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WindowsPlatform {
     pub name: String,
-    /// Whether the engine runs as administrator, so input reaches
-    /// administrator windows.
     pub elevated: bool,
-    /// Whether input can be sent from this desktop now.
     pub available: bool,
     pub listen: Option<String>,
     pub addresses: Vec<String>,
-    /// A notice from the engine about a link.
     pub notice: Option<String>,
 }
 
-/// The engine's shortcuts, which `src/windows/input.c` holds fixed.
 fn shortcuts() -> Vec<Shortcut> {
     vec![
         Shortcut {
@@ -89,7 +75,6 @@ fn text(value: &Value) -> String {
         .map_or_else(|| value.to_string(), str::to_owned)
 }
 
-/// The shared snapshot for an engine `status` answer.
 pub fn snapshot(status: Value, config_path: &Path) -> Result<Snapshot<WindowsPlatform>> {
     let status: EngineStatus = serde_json::from_value(status)?;
     let is = |peer: &Option<String>, name: &str| peer.as_deref() == Some(name);
@@ -168,7 +153,6 @@ pub fn snapshot(status: Value, config_path: &Path) -> Result<Snapshot<WindowsPla
         pause_at_edges: Some(status.pause_at_edges),
         shortcuts: shortcuts(),
         share_clipboard: Some(status.clipboard),
-        // The app keeps the login item, as the Mac app does.
         autostart: None,
         config_path: config_path.to_owned(),
         notices: Vec::new(),
@@ -183,9 +167,6 @@ pub fn snapshot(status: Value, config_path: &Path) -> Result<Snapshot<WindowsPla
     })
 }
 
-/// The engine commands that carry out `request`, in order. The last one
-/// answers with the status the window shows. `names` maps a found
-/// computer's shelf id to its name, for a placed computer's first move.
 pub fn commands(request: &Request, name_of: impl Fn(&str) -> Option<String>) -> Result<Vec<Value>> {
     let status = json!({"command": "status"});
     Ok(match request {
@@ -231,8 +212,6 @@ pub fn commands(request: &Request, name_of: impl Fn(&str) -> Option<String>) -> 
         } => vec![json!({
             "command": "preview", "id": id, "x": x, "y": y, "tolerance": tolerance, "computer": computer,
         })],
-        // Trusting puts its screen beside this one; the move puts it where
-        // it was dropped.
         Request::Place {
             id,
             x,
@@ -272,7 +251,6 @@ pub fn commands(request: &Request, name_of: impl Fn(&str) -> Option<String>) -> 
     })
 }
 
-/// The engine's pipe for the configuration at `config`.
 #[cfg(windows)]
 pub struct Pipe {
     config: std::path::PathBuf,
@@ -290,8 +268,6 @@ impl Pipe {
         })
     }
 
-    /// Runs `request` and answers with the shared snapshot, or a move's
-    /// preview as the engine gave it.
     pub fn call(&self, request: &Request) -> Result<Value> {
         let names = |id: &str| -> Option<String> {
             let status = self.send(json!({"command": "status"})).ok()?;
@@ -315,7 +291,6 @@ impl Pipe {
         Ok(serde_json::to_value(snapshot(answer, &self.config)?)?)
     }
 
-    /// The engine's own status, if it answers within `wait`.
     pub fn probe(&self, wait: std::time::Duration) -> Option<Value> {
         let command: crate::windows::ipc::Command =
             serde_json::from_value(json!({"command": "status"})).ok()?;
@@ -328,7 +303,6 @@ impl Pipe {
             .ok()
     }
 
-    /// Asks the engine to stop, which lets go of input a peer holds.
     pub fn quit(&self) -> Result<()> {
         self.send(json!({"command": "quit"})).map(drop)
     }
@@ -374,7 +348,6 @@ mod tests {
         assert_eq!(snapshot.platform.listen.as_deref(), Some("0.0.0.0:43119"));
         assert_eq!(snapshot.platform.addresses, vec!["192.0.2.4"]);
         assert_eq!(snapshot.shortcuts.len(), 2);
-        // It reads back as the window reads every snapshot.
         let value = serde_json::to_value(&snapshot).unwrap();
         let back: Snapshot<WindowsPlatform> = serde_json::from_value(value).unwrap();
         assert_eq!(back, snapshot);
@@ -445,8 +418,6 @@ mod tests {
 
     #[test]
     fn every_command_is_one_the_engine_takes() {
-        // The engine's parser is Windows-only, so its commands are checked
-        // by name and fields here, as src/windows/ipc.rs spells them.
         for command in commands(
             &Request::MoveTile {
                 id: "local".into(),

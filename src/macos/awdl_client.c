@@ -36,7 +36,6 @@ static int request_lease(int *input, int *output, char *error, size_t error_size
   } else {
     *input = xpc_dictionary_dup_fd(reply, "input");
     *output = xpc_dictionary_dup_fd(reply, "output");
-    // A write after the helper ends must fail with EPIPE, not kill the app.
     if (*input >= 0 && *output >= 0 && fcntl(*input, F_SETNOSIGPIPE, 1) == 0) {
       status = 0;
     } else {
@@ -52,9 +51,6 @@ static int request_lease(int *input, int *output, char *error, size_t error_size
   return status;
 }
 
-// Asks the privileged helper for an AWDL lease. The helper answers only the
-// signed zflow app, and this side accepts only the helper from the same team.
-// On success the caller owns both pipe ends of the helper's lease protocol.
 int zflow_awdl_lease(int *input, int *output, char *error, size_t error_size) {
   *input = -1;
   *output = -1;
@@ -85,8 +81,6 @@ static int check_helper(void) {
     dispatch_semaphore_signal(answered);
   });
   xpc_release(request);
-  // Cancelling answers a pending reply with an error, so a stuck helper
-  // cannot hold the check open.
   if (dispatch_semaphore_wait(answered, dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC)) != 0) {
     xpc_connection_cancel(connection);
     dispatch_semaphore_wait(answered, DISPATCH_TIME_FOREVER);
@@ -98,8 +92,6 @@ static int check_helper(void) {
   return ready;
 }
 
-// Asks the helper whether it can reach awdl0. A helper that does not answer
-// within three seconds is not ready.
 int zflow_awdl_check(void) {
   if (__builtin_available(macOS 14.4, *)) {
     return check_helper();
@@ -107,8 +99,6 @@ int zflow_awdl_check(void) {
   return 0;
 }
 
-// Whether this app is signed by a team. Only such a build can install the
-// helper, and that cannot change while it runs.
 int zflow_signing_team(void) {
   SecCodeRef code = NULL;
   SecStaticCodeRef static_code = NULL;

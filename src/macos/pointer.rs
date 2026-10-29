@@ -1,6 +1,3 @@
-//! Pointer motion and scroll for posting on the Mac: the acceleration curve,
-//! keeping the cursor on a display, and wheel units to pixels.
-
 use std::{
     str::FromStr,
     time::{Duration, Instant},
@@ -10,31 +7,20 @@ use anyhow::{Context, Result, bail, ensure};
 
 use super::{CursorPosition, DesktopRect};
 
-// libinput's defaults, so motion feels as it does on a Linux receiver.
-// Speeds are in device units per millisecond for a 1000 dpi mouse.
 const DECELERATE_BELOW: f64 = 0.07;
 const POINTS_PER_UNIT: f64 = 1.0;
-/// A pause this long forgets the last speed.
 const MOTION_TIMEOUT: Duration = Duration::from_millis(300);
 const MIN_INTERVAL_MS: f64 = 1.0;
 const MAX_INTERVAL_MS: f64 = 50.0;
-/// Scroll on the wire counts 120 units to a detent, as Linux does.
 const WHEEL_DETENT: i64 = 120;
-/// How far a detent scrolls. Deskflow posts 3 lines a detent, and
-/// CoreGraphics counts a line as 10 pixels (CGEvent.h).
 const PIXELS_PER_DETENT: i64 = 30;
 
-/// How motion from a peer is scaled. `speed` is libinput's setting, -1 to 1.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Profile {
-    /// Faster motion moves further, as libinput's adaptive profile does.
     Adaptive { speed: f64 },
-    /// Every motion is scaled by `1 + speed`.
     Flat { speed: f64 },
 }
 
-/// One count moves one point. The adaptive curve felt accelerated in the
-/// first sitting, so it is opt-in.
 impl Default for Profile {
     fn default() -> Self {
         Self::Flat { speed: 0.0 }
@@ -44,7 +30,6 @@ impl Default for Profile {
 impl FromStr for Profile {
     type Err = anyhow::Error;
 
-    /// Reads `adaptive:<speed>` or `flat:<speed>`.
     fn from_str(value: &str) -> Result<Self> {
         let (kind, speed) = value
             .split_once(':')
@@ -62,8 +47,6 @@ impl FromStr for Profile {
     }
 }
 
-/// libinput's linear profile: slower than 1:1 below 0.07 units/ms, 1:1 up
-/// to a threshold, then a line up to the maximum factor.
 fn adaptive_factor(speed: f64, velocity: f64) -> f64 {
     let threshold = (0.4 - 0.25 * speed).max(0.2);
     let max_factor = 2.0 + 1.5 * speed;
@@ -84,7 +67,6 @@ struct LastMotion {
     velocity: f64,
 }
 
-/// Turns motion deltas in device units into whole points to move.
 #[derive(Clone, Debug)]
 pub struct Acceleration {
     profile: Profile,
@@ -101,13 +83,10 @@ impl Acceleration {
         }
     }
 
-    /// Forgets the last speed and the part under a point.
     pub fn reset(&mut self) {
         *self = Self::new(self.profile);
     }
 
-    /// The part under a point carries into the next motion, so slow motion
-    /// still adds up.
     pub fn apply(&mut self, dx: i64, dy: i64, now: Instant) -> (i64, i64) {
         if dx == 0 && dy == 0 {
             return (0, 0);
@@ -124,8 +103,6 @@ impl Acceleration {
             Profile::Flat { speed } => return 1.0 + speed,
             Profile::Adaptive { speed } => speed,
         };
-        // The first motion after a pause counts as spread over the longest
-        // interval, so it is not taken for a flick.
         let (interval, previous) = match self.last {
             Some(last) => {
                 let elapsed = now.saturating_duration_since(last.at);
@@ -141,7 +118,6 @@ impl Acceleration {
         };
         let velocity = (dx as f64).hypot(dy as f64) / interval;
         self.last = Some(LastMotion { at: now, velocity });
-        // Simpson's rule over the last and current speed, as libinput does.
         (adaptive_factor(speed, previous)
             + 4.0 * adaptive_factor(speed, (previous + velocity) / 2.0)
             + adaptive_factor(speed, velocity))
@@ -156,9 +132,6 @@ fn contains(display: &DesktopRect, point: CursorPosition) -> bool {
         && point.y < display.y + display.height
 }
 
-/// Keeps a point on a display: unchanged when it is on one, otherwise moved
-/// to the nearest point of the nearest display. macOS does not clamp posted
-/// positions itself.
 pub fn clamp_to_displays(point: CursorPosition, displays: &[DesktopRect]) -> CursorPosition {
     if displays.iter().any(|display| contains(display, point)) {
         return point;
@@ -176,12 +149,8 @@ pub fn clamp_to_displays(point: CursorPosition, displays: &[DesktopRect]) -> Cur
         .unwrap_or(point)
 }
 
-/// Turns wheel units into pixels to post. Each scroll posts how far the
-/// rounded running total moved, so the part under a pixel carries, and the
-/// distance depends only on the total, not on how playout batched it.
 #[derive(Clone, Debug, Default)]
 pub struct ScrollScale {
-    /// Wheel units since the activation began, on each axis.
     total: (i64, i64),
 }
 
@@ -190,8 +159,6 @@ impl ScrollScale {
         *self = Self::default();
     }
 
-    /// Pixels to post, with the wire's signs, or `None` while neither axis
-    /// has moved a whole pixel.
     pub fn pixels(&mut self, x: i64, y: i64) -> Option<(i32, i32)> {
         let x = advance(&mut self.total.0, x);
         let y = advance(&mut self.total.1, y);
@@ -199,21 +166,17 @@ impl ScrollScale {
     }
 }
 
-/// Adds `units` to an axis' total and returns the whole pixels it moved.
 fn advance(total: &mut i64, units: i64) -> i32 {
     let before = total_pixels(*total);
     *total = total.saturating_add(units);
     wheel(total_pixels(*total) - before)
 }
 
-/// Pixels for a total of wheel units, rounded half away from zero so both
-/// directions scroll alike.
 fn total_pixels(units: i64) -> i64 {
     let scaled = units.saturating_mul(PIXELS_PER_DETENT);
     scaled.saturating_add(scaled.signum() * (WHEEL_DETENT / 2)) / WHEEL_DETENT
 }
 
-/// Scroll event fields are 32-bit; an absurd value is clamped.
 fn wheel(value: i64) -> i32 {
     value.clamp(i32::MIN.into(), i32::MAX.into()) as i32
 }
@@ -268,8 +231,6 @@ mod tests {
     #[test]
     fn the_default_moves_a_point_per_count_at_any_pace() {
         assert_eq!("flat:0".parse::<Profile>().unwrap(), Profile::default());
-        // The same 400 counts trickled every 8 ms, bunched every 50 ms, and
-        // all at once.
         let start = Instant::now();
         let travel = |step: i64, every: u64| {
             let mut acceleration = Acceleration::new(Profile::default());
@@ -324,8 +285,6 @@ mod tests {
             }
             acceleration.apply(40, 0, at(start, 16 + pause)).0
         };
-        // 40 units over the longest interval is 0.8 units/ms. Kept, the last
-        // speed of 5 units/ms nearly doubles the move.
         assert_eq!(fast(290), 76);
         assert_eq!(fast(301), 38);
 
@@ -389,7 +348,6 @@ mod tests {
 
     #[test]
     fn snaps_out_of_a_gap_to_the_nearest_display() {
-        // A shorter display to the left of a taller one leaves a gap below it.
         let displays = [
             display(0.0, 0.0, 1920.0, 1080.0),
             display(1920.0, 0.0, 2560.0, 1440.0),
@@ -423,7 +381,6 @@ mod tests {
         );
     }
 
-    /// Every pixel a stream of scrolls posts, summed on each axis.
     fn scrolled(steps: impl IntoIterator<Item = (i64, i64)>) -> (i64, i64) {
         let mut scale = ScrollScale::default();
         steps
@@ -446,9 +403,6 @@ mod tests {
 
     #[test]
     fn distance_does_not_depend_on_how_scroll_was_batched() {
-        // Ten detents down and three right: one detent at a time, bunched as
-        // playout sends them when they come fast, cut at odd places by
-        // catch-up, and with the axes interleaved and partly undone.
         let slow: Vec<_> = [(0, 120); 10].into_iter().chain([(120, 0); 3]).collect();
         let fast = vec![(0, 600), (360, 600)];
         let cut = vec![(0, 67), (0, 53), (7, 473), (0, 7), (353, 600)];
@@ -462,7 +416,6 @@ mod tests {
 
     #[test]
     fn high_resolution_steps_add_up_like_detents() {
-        // A high-resolution Linux wheel sends 15 units a step, 3.75 pixels.
         assert_eq!(scrolled([(0, 15); 80]), scrolled([(0, 120); 10]));
         assert_eq!(scrolled([(-15, 0); 80]), (-300, 0));
         let mut scale = ScrollScale::default();
@@ -470,7 +423,6 @@ mod tests {
         let step = |y| Some((0, y));
         assert_eq!(steps, [4, 4, 3, 4, 4, 4, 3, 4].map(step));
 
-        // Steps under a pixel post nothing until they add up, either way.
         let mut scale = ScrollScale::default();
         assert_eq!(scale.pixels(0, 1), None);
         assert_eq!(scale.pixels(0, 1), step(1));
@@ -483,8 +435,6 @@ mod tests {
     }
 
     proptest! {
-        /// However a stream is cut up, it scrolls as far as its total at
-        /// once, and turned around it scrolls exactly as far back.
         #[test]
         fn any_stream_scrolls_as_far_as_its_total(
             steps in prop::collection::vec((-600_i64..=600, -600_i64..=600), 0..64),

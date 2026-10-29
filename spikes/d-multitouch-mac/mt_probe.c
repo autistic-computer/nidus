@@ -1,16 +1,3 @@
-// Spike D probe: does MultitouchSupport.framework still deliver raw contact
-// frames on this machine, and do they keep arriving while a
-// kCGEventTapOptionDefault event tap swallows mouse/scroll events?
-//
-//   clang -O2 -Wall -o mt_probe mt_probe.c \
-//     -framework CoreFoundation -framework ApplicationServices
-//   ./mt_probe [--tap] [--secs N]
-//
-// Private API resolved via dlopen/dlsym (the framework binary lives in the
-// dyld shared cache, not on disk). Struct layout is the long-stable one used
-// by OpenMultitouchSupport and Karabiner's MultitouchPrivate.h; the sanity
-// check that normalized positions land in [0,1] guards against layout drift.
-
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #include <dlfcn.h>
@@ -46,8 +33,8 @@ typedef int (*MTContactCallbackFunction)(MTDeviceRef, MTTouch *, int, double, in
 static CFMutableArrayRef (*MTDeviceCreateList)(void);
 static MTDeviceRef (*MTDeviceCreateDefault)(void);
 static void (*MTRegisterContactFrameCallback)(MTDeviceRef, MTContactCallbackFunction);
-static int (*MTDeviceStart)(MTDeviceRef, int);          // OSStatus
-static int (*MTDeviceStop)(MTDeviceRef);                // OSStatus
+static int (*MTDeviceStart)(MTDeviceRef, int);
+static int (*MTDeviceStop)(MTDeviceRef);
 static bool (*MTDeviceIsRunning)(MTDeviceRef);
 static bool (*MTDeviceIsAvailable)(void);
 static void (*MTEasyInstallPrintCallbacks)(MTDeviceRef, int, int, int, int, int, int);
@@ -56,10 +43,9 @@ static int (*MTDeviceGetFamilyID)(MTDeviceRef, int *);
 static int (*MTDeviceGetDeviceID)(MTDeviceRef, unsigned long long *);
 static int (*MTDeviceGetSensorDimensions)(MTDeviceRef, int *, int *);
 
-// written on the MT callback thread, read from the main run loop
-static _Atomic long g_frames = 0;        // callback invocations
-static _Atomic long g_touch_frames = 0;  // frames with >=1 contact
-static _Atomic long g_multi_frames = 0;  // frames with >=3 contacts
+static _Atomic long g_frames = 0;
+static _Atomic long g_touch_frames = 0;
+static _Atomic long g_multi_frames = 0;
 static _Atomic int g_max_touches = 0;
 static _Atomic double g_first_touch_ts = 0.0;
 static _Atomic double g_last_touch_ts = 0.0;
@@ -88,7 +74,7 @@ static int contact_cb(MTDeviceRef dev, MTTouch *touches, int n, double ts, int f
       atomic_store(&g_pos_out_of_range, 1);
   }
   long tf = atomic_load(&g_touch_frames);
-  if (tf % 30 == 1) {  // ~4 lines/s at 125 Hz
+  if (tf % 30 == 1) {
     printf("frame ts=%.4f n=%d", ts, n);
     for (int i = 0; i < n && i < 5; i++)
       printf("  [id=%d st=%d x=%.3f y=%.3f sz=%.2f]",
@@ -109,12 +95,11 @@ static CGEventRef tap_cb(CGEventTapProxy proxy, CGEventType type, CGEventRef ev,
     CGEventTapEnable(g_tap, true);
     return ev;
   }
-  if (type == kCGEventTapDisabledByUserInput) return ev;  // escape hatch: stay off
+  if (type == kCGEventTapDisabledByUserInput) return ev;
   atomic_fetch_add(&g_swallowed, 1);
-  return NULL;  // swallow
+  return NULL;
 }
 
-// listen-only tap: proves whether pointer/key events flow while MT is silent
 static _Atomic long g_ev_moved = 0, g_ev_scroll = 0, g_ev_key = 0;
 
 static CGEventRef monitor_cb(CGEventTapProxy proxy, CGEventType type, CGEventRef ev, void *info) {
@@ -145,7 +130,6 @@ static void poll_cb(CFRunLoopTimerRef t, void *info) {
     fflush(stdout);
     last_moved = m; last_scroll = s; last_key = k;
   }
-  // enough >=3-finger evidence collected: stop early
   if (atomic_load(&g_multi_frames) >= 400) CFRunLoopStop(CFRunLoopGetCurrent());
 }
 
@@ -224,7 +208,6 @@ int main(int argc, char **argv) {
            MTDeviceIsRunning ? (int)MTDeviceIsRunning(d) : -1);
   }
 
-  // always-on listen-only tap for input-flow correlation (never swallows)
   CGEventMask mon_mask = CGEventMaskBit(kCGEventMouseMoved) |
                          CGEventMaskBit(kCGEventLeftMouseDragged) |
                          CGEventMaskBit(kCGEventScrollWheel) |

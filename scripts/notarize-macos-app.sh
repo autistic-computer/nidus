@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Notarize the signed release app, or the signed disk image built from it, and
-# attach Apple's ticket before packaging. An empty KEYCHAIN_PATH uses the
-# default keychains.
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 profile=${1:?usage: notarize-macos-app.sh KEYCHAIN_PROFILE [KEYCHAIN_PATH [APP_OR_DMG]]}
@@ -10,7 +7,6 @@ if [[ -n "${2:-}" ]]; then auth+=(--keychain "$2"); fi
 item=${3:-$root/target/release/zflow.app}
 output="$root/target/notarization"
 if [[ "$item" == *.dmg ]]; then
-    # Apple takes a disk image as is. Keep its results apart from the app's.
     output="$output/dmg"
     mkdir -p "$output"
     codesign --verify --strict "$item"

@@ -1,10 +1,3 @@
-//! Arrange to pair: what a computer says about itself before anyone trusts
-//! it, and how one a person placed becomes a trusted peer.
-//!
-//! A hello only describes. Trust comes from a person dropping a computer's
-//! tile onto the board, or from the one-shot pairing window on a fresh
-//! install (see [`crate::pairing_window`]).
-
 use std::net::{IpAddr, SocketAddr};
 
 use anyhow::{Result, bail};
@@ -16,35 +9,23 @@ use crate::{
     wire::{HELLO_VOUCHES, Hello, MAX_NAME_BYTES, MAX_VERSION_BYTES, Os},
 };
 
-/// The longest host name the OS label is cut to before it becomes a name.
 const MAX_LABEL_BYTES: usize = 255;
-/// What the Mac and GNOME windows call a computer's own tile. No other
-/// computer's name may read as one, or its tile could pass for this one.
 const OWN_TILE_LABELS: [&str; 2] = ["This Mac", "This computer"];
 
-/// Something to tell people once, as a system notification.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Notice {
-    /// Grows with each notice, so a window posts each one once.
     pub id: u64,
     pub kind: NoticeKind,
-    /// The computer it is about.
     pub name: String,
-    /// That computer's key mark, so a person can tell it from a namesake.
     pub mark: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NoticeKind {
-    /// It joined while the pairing window was open, or a person placed it.
     Joined,
 }
 
-/// This computer's hello. `trusts_you` says whether the computer it goes to
-/// is already trusted here. Only a trusted computer hears this one's other
-/// addresses, such as Tailscale, VPN or container ones; anyone else gets
-/// only the address it reached.
 pub fn local_hello(input_port: u16, trusts_you: bool) -> Hello {
     let candidates = if trusts_you {
         this_host_candidates(input_port)
@@ -69,7 +50,6 @@ pub fn make_hello(
     unique.truncate(MAX_DISCOVERY_CANDIDATES);
     let mut version = env!("CARGO_PKG_VERSION").to_owned();
     truncate(&mut version, MAX_VERSION_BYTES);
-    // Random until introductions use them, so real ones will not stand out.
     let mut vouches = [[0_u8; 16]; HELLO_VOUCHES];
     for vouch in &mut vouches {
         let _ = getrandom::fill(vouch);
@@ -95,9 +75,6 @@ pub fn this_os() -> Os {
     }
 }
 
-/// Where a computer that said hello takes input: the address it spoke from
-/// on the port it named, then the addresses it claims. A dialer's source
-/// port is not its listening port, so it is never used.
 pub fn hello_addresses(remote: SocketAddr, hello: &Hello) -> Vec<SocketAddr> {
     let observed = SocketAddr::new(remote.ip().to_canonical(), hello.input_port);
     let mut addresses = vec![observed];
@@ -109,11 +86,6 @@ pub fn hello_addresses(remote: SocketAddr, hello: &Hello) -> Vec<SocketAddr> {
     addresses
 }
 
-/// Saves a computer this one now trusts and returns its name, taken from the
-/// name it gave. Either computer may control the other. A key already saved
-/// only learns the addresses. A namesake with another key gets an entry of
-/// its own, marked with part of its key: it is never taken for the saved
-/// one, whatever address it uses.
 pub fn trust_peer(
     config: &mut Config,
     spki: &[u8],
@@ -141,9 +113,6 @@ pub fn trust_peer(
     Ok(name)
 }
 
-/// Gives the saved computer `name` a new key, for one that was reset or
-/// reinstalled and dropped onto its old tile. It keeps its settings and its
-/// tile, but pre-login input was granted to the old key alone.
 pub fn replace_key(
     config: &mut Config,
     name: &str,
@@ -164,7 +133,6 @@ pub fn replace_key(
     if existing.spki_der_hex != key {
         existing.spki_der_hex = key;
         existing.permissions.inject_prelogin = false;
-        // Where the old key answered says nothing about the new one.
         existing.addresses.clear();
     }
     existing.learn_addresses(addresses.iter().copied());
@@ -180,11 +148,6 @@ fn default_permissions() -> PeerPermissions {
     }
 }
 
-/// The name a computer is shown and saved under. It comes from the other
-/// computer, so only plain ASCII survives: invisible, bidirectional and
-/// lookalike characters could make two computers look the same in a list.
-/// A name that reads as an own tile's label becomes "Computer". It fits one
-/// DNS label, so the mDNS record can carry it too.
 pub fn peer_name(label: Option<&str>) -> String {
     let label = label.unwrap_or_default().trim();
     let label = label
@@ -208,8 +171,6 @@ pub fn peer_name(label: Option<&str>) -> String {
     }
 }
 
-/// Whether `name` is an own tile's label once case, spaces and punctuation
-/// are left out, as "this-mac" or "THIS_COMPUTER" would be.
 fn reads_as_own_tile(name: &str) -> bool {
     let letters = |text: &str| -> String {
         text.chars()
@@ -222,17 +183,13 @@ fn reads_as_own_tile(name: &str) -> bool {
         .any(|label| letters(label) == letters(name))
 }
 
-/// This computer's name, as hellos and mDNS carry it.
 pub fn local_name() -> String {
     peer_name(local_device_label().as_deref())
 }
 
-/// The OS host name, cut to the label bound. GUI apps and services do not
-/// inherit the shell's `$HOSTNAME`, so this asks the OS.
 #[cfg(unix)]
 pub(crate) fn local_device_label() -> Option<String> {
     let mut buffer = [0_u8; 256];
-    // SAFETY: the pointer and length describe `buffer`, which outlives the call.
     if unsafe { libc::gethostname(buffer.as_mut_ptr().cast(), buffer.len()) } != 0 {
         return None;
     }
@@ -251,7 +208,6 @@ pub(crate) fn local_device_label() -> Option<String> {
     use windows_sys::Win32::System::WindowsProgramming::GetComputerNameW;
     let mut buffer = [0_u16; 256];
     let mut length = buffer.len() as u32;
-    // SAFETY: the buffer and its length remain valid for the call.
     if unsafe { GetComputerNameW(buffer.as_mut_ptr(), &mut length) } == 0 {
         return None;
     }
@@ -260,9 +216,6 @@ pub(crate) fn local_device_label() -> Option<String> {
     Some(name)
 }
 
-/// This computer's addresses on its input port. Sent in a hello, they let
-/// the other computer reach this one after either leaves the network they
-/// met on, for example over Tailscale.
 pub fn this_host_candidates(input_port: u16) -> Vec<SocketAddr> {
     let addresses = crate::discovery::local_unicast_addresses().unwrap_or_else(|error| {
         tracing::debug!("could not list this computer's addresses: {error}");
@@ -274,8 +227,6 @@ pub fn this_host_candidates(input_port: u16) -> Vec<SocketAddr> {
 fn candidates_on_port(addresses: Vec<IpAddr>, input_port: u16) -> Vec<SocketAddr> {
     addresses
         .into_iter()
-        // A link-local address only works on the link it came from, and the
-        // other computer refuses an IPv6 one without its interface scope.
         .filter(|address| match address {
             IpAddr::V4(address) => !address.is_link_local(),
             IpAddr::V6(address) => !address.is_unicast_link_local(),
@@ -284,7 +235,6 @@ fn candidates_on_port(addresses: Vec<IpAddr>, input_port: u16) -> Vec<SocketAddr
         .collect()
 }
 
-/// Cuts `text` to at most `bytes`, on a character boundary.
 fn truncate(text: &mut String, bytes: usize) {
     let mut end = text.len().min(bytes);
     while !text.is_char_boundary(end) {
@@ -317,7 +267,6 @@ mod tests {
         assert_eq!(peer_name(Some("\u{200b}")), "Computer");
         assert_eq!(peer_name(Some(".local")), "Computer");
         assert_eq!(peer_name(None), "Computer");
-        // No computer can name itself like the tile of the one showing it.
         for own in [
             "This Mac",
             "this-mac.local",
@@ -328,7 +277,6 @@ mod tests {
         }
         assert_eq!(peer_name(Some("This MacBook")), "This MacBook");
         assert_eq!(peer_name(Some(&"a".repeat(400))).len(), MAX_NAME_BYTES);
-        // A cut that lands after a space does not leave it dangling.
         let spaced = format!("{} b", "a".repeat(MAX_NAME_BYTES - 1));
         assert_eq!(peer_name(Some(&spaced)), "a".repeat(MAX_NAME_BYTES - 1));
         assert_eq!(peer_name(Some(&local_name())), local_name());
@@ -336,7 +284,6 @@ mod tests {
 
     #[test]
     fn the_device_label_comes_from_the_os_host_name() {
-        // cargo, like launchd and systemd, does not pass $HOSTNAME along.
         let label = local_device_label().expect("this host has a name");
         assert!(label.len() <= MAX_LABEL_BYTES);
         assert!(!label.chars().any(char::is_control));
@@ -376,13 +323,11 @@ mod tests {
         assert_eq!(hello.candidates.len(), MAX_DISCOVERY_CANDIDATES);
         assert_eq!(hello.candidates[0], advertised);
         assert_ne!(hello.candidates[1], advertised);
-        // It encodes, so the bounds hold.
         crate::wire::encode(&crate::wire::WireMessage::Hello(hello)).unwrap();
         let trusted = local_hello(43119, true);
         assert!(trusted.trusts_you);
         assert_eq!(trusted.candidates, this_host_candidates(43119));
         assert_ne!(trusted.vouches, local_hello(43119, true).vouches);
-        // A computer not trusted here learns none of them.
         let stranger = local_hello(43119, false);
         assert!(!stranger.trusts_you && stranger.candidates.is_empty());
     }
@@ -419,8 +364,6 @@ mod tests {
         assert!(permissions.connect && permissions.send_normal && permissions.receive_normal);
         assert!(!permissions.inject_prelogin);
 
-        // The same key again only learns where it is now, newest first, and
-        // keeps its settings whatever it calls itself.
         config
             .peers
             .get_mut("ubuntu")
@@ -439,8 +382,6 @@ mod tests {
             ["192.0.2.9:43119", "192.0.2.1:43119"].map(|a| a.parse::<SocketAddr>().unwrap())
         );
 
-        // Another key with the same name, even from the same address, is a
-        // different computer: no reinstall guess replaces the saved key.
         let expected = format!("ubuntu ({})", &other.fingerprint_hex()[..6]);
         assert_eq!(
             trust_peer(
@@ -484,7 +425,6 @@ mod tests {
         assert!(!ubuntu.permissions.inject_prelogin);
         assert_eq!(ubuntu.addresses, now);
 
-        // A key saved under another name stays where it is.
         assert!(replace_key(&mut config, "ubuntu", twin.spki(), &[]).is_err());
         assert!(replace_key(&mut config, "nobody", old.spki(), &[]).is_err());
         assert_eq!(config.peers.len(), 2);

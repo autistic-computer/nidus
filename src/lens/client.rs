@@ -1,7 +1,3 @@
-//! Looking through a lens: feeds the viewer what the other computer sends, acknowledges every
-//! frame so it keeps sending, and sends the viewer's pointer, keys and scroll back, newest
-//! pointer position only.
-
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
@@ -19,16 +15,12 @@ use super::{
 };
 use crate::transport::LensStream;
 
-/// Marks the viewer opening and returns where its input goes, so the UI can send moves while
-/// the stream is still opening.
 pub fn start(viewer: &Viewer) -> mpsc::UnboundedReceiver<Input> {
     let (input, inputs) = mpsc::unbounded_channel();
     viewer.opening(input);
     inputs
 }
 
-/// Opens a lens with `open` and runs it until the viewer closes it or the stream ends, then
-/// tells the viewer how it ended. `copied` gets the text of each copy.
 pub async fn run(
     open: impl Future<Output = Result<LensStream>>,
     viewer: Arc<Viewer>,
@@ -49,8 +41,6 @@ pub async fn run(
     result
 }
 
-/// When each pointer move went out, until frames answer it: first any frame, then one exact under
-/// the lens. Logged when the lens closes.
 #[derive(Default)]
 struct Trips {
     moves: u64,
@@ -60,7 +50,6 @@ struct Trips {
     sharp: Vec<u64>,
 }
 
-/// Moves a lost frame never answers stop counting past this many.
 const TRIPS_WAITING: usize = 256;
 
 impl Trips {
@@ -83,7 +72,6 @@ impl Trips {
     }
 }
 
-/// Takes the moves up to `request` off `queue`, timing the one the frame names.
 fn settle(queue: &mut VecDeque<(u64, Instant)>, request: u64, into: &mut Vec<u64>) {
     while let Some(&(id, at)) = queue.front()
         && id <= request
@@ -117,7 +105,6 @@ async fn serve(
             },
             next = input.recv() => {
                 let Some(mut next) = next else { break };
-                // Only the newest position matters; anything else keeps its order.
                 while let Input::Move { .. } = next {
                     match input.try_recv() {
                         Ok(newer @ Input::Move { .. }) => next = newer,
@@ -169,7 +156,6 @@ async fn send_input(
         Input::Button { button, pressed } => LensMessage::Button { button, pressed },
         Input::Key { usage, pressed } => LensMessage::Key { usage, pressed },
         Input::Scroll { dx, dy } => {
-            // Whole pixels go out; the remainder waits for the next scroll.
             scroll.0 += dx;
             scroll.1 += dy;
             let whole = (scroll.0.trunc(), scroll.1.trunc());
@@ -195,7 +181,6 @@ async fn receive_frames(
     copied: impl Fn(String),
     trips: Arc<Mutex<Trips>>,
 ) -> Result<()> {
-    // The decoder is this task's alone, so the UI never waits behind a decode.
     let mut decoder = None;
     while let Some((message, body)) = read(&mut receive).await? {
         match message {

@@ -1,6 +1,5 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
-# The release workflow builds Rust once, then packages the resulting executables.
 export DEB_BUILD_OPTIONS = nostrip
 
 %:
@@ -24,12 +23,9 @@ override_dh_auto_install:
 	install -D -m 0644 assets/linux/io.zflow.zflow-symbolic.svg debian/zflow/usr/share/icons/hicolor/symbolic/apps/io.zflow.zflow-symbolic.svg
 	install -D -m 0644 packaging/linux/io.zflow.Desktop.service debian/zflow/usr/share/dbus-1/services/io.zflow.Desktop.service
 	install -D -m 0644 packaging/linux/io.zflow.desktop-agent.desktop debian/zflow/etc/xdg/autostart/io.zflow.desktop-agent.desktop
-	# The same files scripts/pack-extension.sh uploads to extensions.gnome.org.
 	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris
 	install -m 0644 $(addprefix packaging/gnome-extension/,metadata.json extension.js shell.js indicator.js client.js) \
 		debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/
-	# Shell's code again, in a folder named after its contents, which extension.js loads. A new
-	# folder is new code to GJS, so the agent can reload the extension without a new login.
 	build=build-$$(cat $(addprefix packaging/gnome-extension/,shell.js indicator.js client.js) | sha256sum | cut -c1-16); \
 	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/$$build && \
 	install -m 0644 $(addprefix packaging/gnome-extension/,shell.js indicator.js client.js) \

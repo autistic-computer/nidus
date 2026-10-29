@@ -52,20 +52,13 @@ impl VirtualDeviceRole {
     }
 }
 
-/// What an event node is, for capturing every keyboard and pointer when no
-/// devices are configured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeviceClass {
     Keyboard,
-    /// A mouse, pointing stick or trackball.
     Pointer,
     Touchpad,
 }
 
-/// Classifies a node from its capabilities close to how udev's input_id does,
-/// so the daemon wants the same nodes the packaged udev rule lets it read.
-/// Anything else, such as a power button, a pen tablet, a touchscreen or a
-/// gamepad, is left alone.
 pub fn classify_device(
     keys: Option<&AttributeSetRef<KeyCode>>,
     relative: Option<&AttributeSetRef<RelativeAxisCode>>,
@@ -76,16 +69,12 @@ pub fn classify_device(
     let has_relative = |axis| relative.is_some_and(|axes| axes.contains(axis));
     let has_absolute = |axis| absolute.is_some_and(|axes| axes.contains(axis));
 
-    // udev's keyboard test is every key from Esc to D: the digits, the Q row
-    // and A, S, D. Media keys and power buttons fail it. Space is required
-    // too, so the node can type text.
     let keyboard = (KeyCode::KEY_ESC.code()..=KeyCode::KEY_D.code())
         .all(|code| has_key(KeyCode::new(code)))
         && has_key(KeyCode::KEY_SPACE);
     if keyboard {
         return Some(DeviceClass::Keyboard);
     }
-    // udev's mouse buttons run from BTN_LEFT up to the first joystick button.
     let mouse_button = (KeyCode::BTN_LEFT.code()..KeyCode::BTN_TRIGGER.code())
         .any(|code| has_key(KeyCode::new(code)));
     if has_relative(RelativeAxisCode::REL_X)
@@ -185,9 +174,6 @@ impl DeviceScan {
     }
 }
 
-/// Enumerates `/dev/input/event*` directly. Hotplug intentionally uses a
-/// periodic rescan rather than libudev, keeping the service's platform surface
-/// and AF_NETLINK needs small.
 pub fn enumerate_devices() -> io::Result<DeviceScan> {
     enumerate_devices_in(Path::new("/dev/input"))
 }
@@ -248,7 +234,6 @@ mod tests {
         let relative_set = relative.iter().collect::<AttributeSet<_>>();
         let absolute_set = absolute.iter().collect::<AttributeSet<_>>();
         let properties = properties.iter().collect::<AttributeSet<_>>();
-        // evdev reports no set for an event type the node lacks.
         classify_device(
             (!keys.is_empty()).then_some(&*key_set),
             (!relative.is_empty()).then_some(&*relative_set),
@@ -269,13 +254,11 @@ mod tests {
         use KeyCode as Key;
         use RelativeAxisCode as Rel;
 
-        // keyd's virtual keyboard carries every key, like a real keyboard.
         assert_eq!(
             classify(&full_keyboard(), &[], &[], &[]),
             Some(DeviceClass::Keyboard)
         );
         let mouse_buttons = [Key::BTN_LEFT, Key::BTN_RIGHT, Key::BTN_MIDDLE];
-        // A mouse, such as OpenLogi's virtual one.
         assert_eq!(
             classify(
                 &mouse_buttons,
@@ -285,7 +268,6 @@ mod tests {
             ),
             Some(DeviceClass::Pointer)
         );
-        // A pointing stick, and a trackball with only side buttons.
         assert_eq!(
             classify(
                 &mouse_buttons,
@@ -345,7 +327,6 @@ mod tests {
                     &[],
                 ),
             ),
-            // udev does not call this a keyboard, so it would stay unreadable.
             ("keys without digits", classify(&no_digits, &[], &[], &[])),
             ("keys without space", classify(&no_space, &[], &[], &[])),
             (

@@ -1,5 +1,3 @@
-//! Toolkit- and transport-neutral zflow protocol model.
-
 pub mod clock;
 pub mod keymap;
 mod model;

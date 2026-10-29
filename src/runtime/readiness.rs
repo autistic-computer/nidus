@@ -9,9 +9,6 @@ use crate::linux::{
     DeviceInfo, VirtualDeviceRole, ZFLOW_KEYBOARD_NAME, ZFLOW_POINTER_NAME, ZFLOW_TOUCHPAD_NAME,
 };
 
-/// Parsed udev database properties. The parser accepts both the `E:KEY=value`
-/// records stored below `/run/udev/data` and the `KEY=value` form printed by
-/// `udevadm info --query=property`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UdevProperties(BTreeMap<String, String>);
 
@@ -86,9 +83,6 @@ impl VirtualDeviceReadiness {
     }
 }
 
-/// Reads the udev database record corresponding to an event character device.
-/// Looking up the record by `major:minor` avoids spawning `udevadm` from the
-/// input-owning service and observes exactly the properties udev published.
 pub fn read_udev_properties(event_path: &Path, database_dir: &Path) -> io::Result<UdevProperties> {
     let metadata = fs::metadata(event_path)?;
     let device = metadata.rdev();
@@ -146,7 +140,6 @@ fn device_info_from_sysfs(event_path: PathBuf, class_path: &Path) -> Option<Devi
         vendor: read_hex_u16(device.join("id/vendor"))?,
         product: read_hex_u16(device.join("id/product"))?,
         version: read_hex_u16(device.join("id/version"))?,
-        // Readiness looks only at zflow's own devices, found by identity.
         class: None,
     })
 }

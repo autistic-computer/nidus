@@ -1,9 +1,3 @@
-//! Pure receiver-side ordering, reconciliation, and failure recovery.
-//!
-//! Authentication and playout scheduling live outside this type. Each input
-//! connection gets its own receiver. The caller supplies monotonic time; the
-//! receiver only emits backend-neutral effects.
-
 use std::time::Duration;
 
 use thiserror::Error;
@@ -81,7 +75,6 @@ pub enum ReceiverEffect {
 }
 
 impl ReceiverEffect {
-    /// True only for an effect that a platform input backend must apply.
     pub fn is_injection(&self) -> bool {
         matches!(
             self,
@@ -129,7 +122,6 @@ impl ActivationState {
 #[derive(Debug, Clone)]
 pub struct Receiver {
     config: ReceiverConfig,
-    /// Taken from the first control message. One connection carries one.
     context: Option<(SessionEpoch, TransportGeneration)>,
     highest_activation: Option<ActivationId>,
     activation: Option<ActivationState>,
@@ -164,8 +156,6 @@ impl Receiver {
         now: MonotonicTimeMicros,
     ) -> Result<Vec<ReceiverEffect>, ReceiverError> {
         self.observe_time(now)?;
-        // Checked before the lease: an error must leave held state for the
-        // caller's connection-loss cleanup.
         self.check_context(message.session)?;
         let mut effects = Vec::new();
         self.expire_lease(now, &mut effects);
@@ -300,9 +290,6 @@ impl Receiver {
         Ok(effects)
     }
 
-    /// Applies one bounded playout step while keeping anchor reconciliation
-    /// based on the displacement that the backend has actually received.
-    /// Several steps may name the same cumulative target until it is reached.
     pub fn receive_playout_step(
         &mut self,
         session: SessionContext,
@@ -387,7 +374,6 @@ impl Receiver {
         }
     }
 
-    /// Releases everything the closing connection held.
     pub fn connection_lost(
         &mut self,
         now: MonotonicTimeMicros,
@@ -471,8 +457,6 @@ impl Receiver {
         Ok(())
     }
 
-    /// Activation ids only grow, so every id up to the highest one seen is
-    /// closed unless it is the one still open.
     fn is_closed(&self, activation: ActivationId) -> bool {
         self.highest_activation
             .is_some_and(|highest| activation <= highest)
@@ -577,8 +561,6 @@ fn reconcile_held(
     authoritative: &HeldState,
     effects: &mut Vec<ReceiverEffect>,
 ) {
-    // Modifiers go down first and come up last, so a restored or released
-    // chord never acts as its bare key.
     let mut released = state
         .held
         .pressed_keys
@@ -708,7 +690,6 @@ mod tests {
     }
 
     proptest! {
-        /// Required property: held input is gone at, never after, the negotiated lease.
         #[test]
         fn lease_expiry_releases_held_state(
             lease_ms in 1_u64..=1_000,
@@ -739,8 +720,6 @@ mod tests {
             prop_assert!(receiver.is_closed(session.activation_id));
         }
 
-        /// Required property: a closed activation never injects again, and a
-        /// connection cannot switch epoch or generation.
         #[test]
         fn epoch_generation_activation_ordering_rejects_stale(
             epochs in (any::<u8>(), any::<u8>()).prop_filter(
@@ -800,7 +779,6 @@ mod tests {
             }
         }
 
-        /// Required property: the anchor displacement is emitted before its click.
         #[test]
         fn anchor_precedes_pointer_transition(distance in -1_000_i64..=1_000) {
             let session = context(1, 1, 1);
@@ -824,7 +802,6 @@ mod tests {
             }
         }
 
-        /// Required property: snapshots emit exactly the set difference.
         #[test]
         fn snapshot_reconciliation_is_by_difference(
             before in prop::collection::btree_set(4_u16..20, 0..8),
@@ -960,7 +937,6 @@ mod tests {
         held.press_key(c);
         held.press_key(gui);
         assert_eq!(snapshot(2, held.clone()), [(gui, true), (c, true)]);
-        // A Consumer key sorts after the modifiers but still lifts first.
         held.press_key(volume);
         assert_eq!(snapshot(3, held), [(volume, true)]);
         assert_eq!(
@@ -1256,7 +1232,6 @@ mod tests {
         enter(&mut receiver, session, 0);
         sender.enter(MonotonicTimeMicros(0)).unwrap();
 
-        // The only datagram is lost and the source goes idle.
         let captured_at = MonotonicTimeMicros(1_000);
         sender
             .capture_motion(

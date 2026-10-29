@@ -1,5 +1,3 @@
-//! Posting input on the Mac for a peer that controls it.
-
 use std::{
     collections::{BTreeMap, VecDeque},
     ffi::{CStr, c_char},
@@ -17,7 +15,6 @@ use super::{
 };
 use crate::core::{HidUsage, KeyRemap, KeyboardMode, PointerButton, ReceiverEffect};
 
-/// "zflow" in ASCII. Every posted event carries it.
 const POSTED_MARK: i64 = 0x7A_666C_6F77;
 const DEFAULT_REPEAT: KeyRepeat = KeyRepeat {
     delay: Duration::from_millis(250),
@@ -26,11 +23,8 @@ const DEFAULT_REPEAT: KeyRepeat = KeyRepeat {
 const DEFAULT_DOUBLE_CLICK: Duration = Duration::from_millis(500);
 const MIN_INTERVAL: Duration = Duration::from_millis(1);
 const LOCK_CHECK_INTERVAL: Duration = Duration::from_millis(100);
-/// Presses of one button further apart than this start a new click count.
 const CLICK_SLOP: f64 = 4.0;
-/// A cursor further than this from where zflow put it was moved on the Mac.
 const CURSOR_SLOP: f64 = 0.01;
-/// How many recent moves the real cursor may still be behind.
 const UNSEEN_MOVES: usize = 16;
 const CAPS_LOCK: HidUsage = HidUsage::keyboard(0x39);
 const LCTRL: HidUsage = HidUsage::keyboard(0xe0);
@@ -38,15 +32,12 @@ const LGUI: HidUsage = HidUsage::keyboard(0xe3);
 const RCTRL: HidUsage = HidUsage::keyboard(0xe4);
 const RGUI: HidUsage = HidUsage::keyboard(0xe7);
 
-/// A button held during a move, as a CG button number, with the click state
-/// of its press.
 #[derive(Clone, Copy)]
 pub(crate) struct Drag {
     pub button: u16,
     pub click_state: i64,
 }
 
-/// One event to post. No `Debug`, so typed keys never reach a log.
 #[derive(Clone, Copy)]
 pub(crate) enum Posted {
     Move {
@@ -56,7 +47,6 @@ pub(crate) enum Posted {
         drag: Option<Drag>,
         flags: u64,
     },
-    /// `button` is a CG button: 0 left, 1 right, 2 and up other.
     Button {
         button: u16,
         down: bool,
@@ -70,17 +60,23 @@ pub(crate) enum Posted {
         autorepeat: bool,
         flags: u64,
     },
-    /// A modifier going down or up. `flags` already include the change.
-    Modifier { code: u16, down: bool, flags: u64 },
-    /// Pixels, with the wire's signs.
-    Scroll { x: i32, y: i32, flags: u64 },
-    /// An `NX_KEYTYPE`, such as volume up.
-    Media { key: u32, down: bool },
+    Modifier {
+        code: u16,
+        down: bool,
+        flags: u64,
+    },
+    Scroll {
+        x: i32,
+        y: i32,
+        flags: u64,
+    },
+    Media {
+        key: u32,
+        down: bool,
+    },
 }
 
 impl Posted {
-    /// The event for inject.c. Media keys go through AppKit instead, so
-    /// theirs is empty and inject.c refuses it.
     fn native(&self) -> NativePosted {
         let mut native = NativePosted::default();
         match *self {
@@ -135,8 +131,6 @@ impl Posted {
             }
             Self::Scroll { x, y, flags } => {
                 native.kind = NativePostKind::Scroll as u32;
-                // Up is positive for both, but the wire counts right as
-                // positive, as Linux does, and CoreGraphics counts left.
                 (native.wheel_x, native.wheel_y) = (x.saturating_neg(), y);
                 native.flags = flags;
             }
@@ -146,10 +140,8 @@ impl Posted {
     }
 }
 
-/// What an activation reads from this Mac when it opens.
 #[derive(Clone, Copy)]
 pub(crate) struct Environment {
-    /// The keyboard last typed on is ISO.
     pub iso: bool,
     pub repeat: KeyRepeat,
     pub double_click: Duration,
@@ -165,17 +157,11 @@ impl Default for Environment {
     }
 }
 
-/// Sees each of the peer's moves before it is posted, from the cursor to
-/// where the move would put it before the clamp to the displays. True drops
-/// the move. A desktop handoff uses it to notice the pointer leaving.
 pub(crate) type Watch = Box<dyn FnMut(CursorPosition, CursorPosition) -> bool + Send>;
 
-/// Everything the injector does to the Mac. Tests use `FakeBackend`.
 pub(crate) trait Backend: Send + 'static {
     fn post(&mut self, event: &Posted) -> Result<()>;
-    /// Flips the real Caps Lock.
     fn toggle_caps_lock(&mut self) -> Result<()>;
-    /// Releases whatever the native side still holds, after a failed post.
     fn release_all(&mut self);
     fn environment(&mut self) -> Environment;
     fn cursor(&mut self) -> Option<CursorPosition>;
@@ -198,30 +184,20 @@ struct Press {
     count: i64,
 }
 
-/// Turns receiver effects into Mac events and remembers what they hold, so
-/// every way out can release it. No `Debug`: it holds typed keys.
 pub(crate) struct InjectorCore<B> {
     backend: B,
     environment: Environment,
-    /// The mode for the next activation, sent with the batch that opens it.
     next_keyboard: KeyboardMode,
     keyboard: KeyboardMode,
     remap: KeyRemap,
-    /// In the mac mode, what each physical Ctrl or Cmd key became when it
-    /// was pressed, so its release matches.
     chosen: BTreeMap<HidUsage, HidUsage>,
-    /// Keyboard usages down, with the keycode each went down as.
     keys: BTreeMap<HidUsage, u16>,
-    /// How many usages hold each keycode. PrintScreen and F13 share one.
     codes: BTreeMap<u16, u32>,
     media: BTreeMap<HidUsage, u32>,
     repeat: Option<Repeat>,
-    /// CG buttons down, with the click state of their press.
     buttons: BTreeMap<u16, i64>,
     last_press: Option<Press>,
     position: Option<CursorPosition>,
-    /// Where the cursor was before each move macOS may not show yet, oldest
-    /// first. A real cursor at one of them is behind, not moved on the Mac.
     unseen: VecDeque<CursorPosition>,
     acceleration: Acceleration,
     scroll: ScrollScale,
@@ -261,8 +237,6 @@ impl<B: Backend> InjectorCore<B> {
         self.watch = Some(watch);
     }
 
-    /// Applies one batch in order. A failure or a locked screen releases
-    /// everything and fails the batch, which closes the session.
     pub fn apply(
         &mut self,
         effects: Vec<ReceiverEffect>,
@@ -286,8 +260,6 @@ impl<B: Backend> InjectorCore<B> {
     }
 
     fn effect(&mut self, effect: ReceiverEffect, now: Instant) -> Result<()> {
-        // Keys the keyboard held back go down before a click or a scroll, as
-        // on Linux. `busy` is whether a button is still down after it.
         let pointer = match &effect {
             ReceiverEffect::Button {
                 button, pressed, ..
@@ -326,19 +298,15 @@ impl<B: Backend> InjectorCore<B> {
             ReceiverEffect::Button {
                 button, pressed, ..
             } => self.button(button, pressed, now),
-            // The session drops touch before it reaches a Mac.
             ReceiverEffect::TouchReplaced { .. }
             | ReceiverEffect::SnapshotAck { .. }
             | ReceiverEffect::Rejected { .. } => Ok(()),
         }
     }
 
-    /// Starts an activation with nothing down, in the mode its first batch
-    /// named, and rereads this Mac's keyboard, repeat and click settings.
     fn begin(&mut self) {
         self.release_all();
         self.keyboard = self.next_keyboard;
-        // The mac mode is Standard plus the Ctrl and Cmd swap in `choose`.
         self.remap.reset(match self.keyboard {
             KeyboardMode::Mac => KeyboardMode::Standard,
             mode => mode,
@@ -349,8 +317,6 @@ impl<B: Backend> InjectorCore<B> {
         self.last_press = None;
     }
 
-    /// Releases keys, then modifiers, then buttons, and stops the repeat.
-    /// Caps Lock stays as it is.
     pub fn release_all(&mut self) {
         self.repeat = None;
         let mut failed = false;
@@ -408,13 +374,10 @@ impl<B: Backend> InjectorCore<B> {
         }
     }
 
-    /// When the repeating key next repeats.
     pub fn deadline(&self) -> Option<Instant> {
         self.repeat.as_ref().map(|repeat| repeat.at)
     }
 
-    /// Repeats the newest held key when it is due. macOS does not repeat
-    /// posted keys.
     pub fn tick(&mut self, now: Instant) -> Result<()> {
         let (code, due) = match &self.repeat {
             Some(repeat) if repeat.at <= now => (repeat.code, repeat.at),
@@ -424,7 +387,6 @@ impl<B: Backend> InjectorCore<B> {
             self.release_all();
             bail!("the Mac is locked");
         }
-        // A late tick does not catch up with a burst.
         let interval = self.environment.repeat.interval;
         let next = due + interval;
         let at = if next > now { next } else { now + interval };
@@ -444,9 +406,6 @@ impl<B: Backend> InjectorCore<B> {
         Ok(())
     }
 
-    /// In the mac mode, Ctrl and Cmd trade places outside terminals, so
-    /// Ctrl+C copies in an editor and still interrupts in a shell. The front
-    /// app is read on the press, and the release goes where the press went.
     fn choose(&mut self, physical: HidUsage, pressed: bool) -> HidUsage {
         let swapped = match physical {
             LCTRL => LGUI,
@@ -473,7 +432,6 @@ impl<B: Backend> InjectorCore<B> {
         chosen
     }
 
-    /// Posts one key edge that came out of the remap.
     fn output(&mut self, usage: HidUsage, pressed: bool, now: Instant) -> Result<()> {
         if let Some(key) = keys::hid_to_media_key(usage) {
             let changed = if pressed {
@@ -487,7 +445,6 @@ impl<B: Backend> InjectorCore<B> {
             };
         }
         if usage == CAPS_LOCK {
-            // The press flips the real lock; its release does nothing.
             return match pressed {
                 true => self.backend.toggle_caps_lock(),
                 false => Ok(()),
@@ -521,7 +478,6 @@ impl<B: Backend> InjectorCore<B> {
                 flags,
             });
         }
-        // Only the newest key repeats, as on a real keyboard.
         self.repeat = Some(Repeat {
             code,
             at: now + self.environment.repeat.delay,
@@ -568,15 +524,11 @@ impl<B: Backend> InjectorCore<B> {
         }
     }
 
-    /// Held modifiers with their side bits. Every event carries them, and
-    /// inject.c adds Caps Lock from the Mac's own lock, which the Mac's
-    /// keyboard can flip at any time.
     fn flags(&self) -> u64 {
         keys::modifier_flags(self.codes.keys().copied())
     }
 
     fn button(&mut self, button: PointerButton, pressed: bool, now: Instant) -> Result<()> {
-        // Wire button 1 is CG's left (0), 2 right (1), 3 middle (2), and on.
         let Some(button) = button.0.checked_sub(1).filter(|&button| button < 32) else {
             return Ok(());
         };
@@ -601,8 +553,6 @@ impl<B: Backend> InjectorCore<B> {
         })
     }
 
-    /// The same button pressed again soon and close by counts up, so apps
-    /// see a double or triple click.
     fn click_count(&mut self, button: u16, at: CursorPosition, now: Instant) -> i64 {
         let count = match self.last_press {
             Some(last)
@@ -623,9 +573,6 @@ impl<B: Backend> InjectorCore<B> {
         count
     }
 
-    /// Where zflow last put the cursor, unless something on the Mac moved it
-    /// since. Read right after a post, the real cursor can still be where an
-    /// earlier move left it, which is not a move on the Mac.
     fn cursor(&mut self) -> CursorPosition {
         let near = |a: CursorPosition, b: CursorPosition| distance(a, b) <= CURSOR_SLOP;
         let position = match (self.position, self.backend.cursor()) {
@@ -661,8 +608,6 @@ impl<B: Backend> InjectorCore<B> {
         self.post_move(from, target, dx, dy)
     }
 
-    /// Puts the cursor at `point` with a posted move, which unlike a warp
-    /// does not hold off the Mac's own input.
     pub fn move_to(&mut self, point: CursorPosition) -> Result<()> {
         let from = self.cursor();
         let (dx, dy) = ((point.x - from.x).round(), (point.y - from.y).round());
@@ -682,7 +627,6 @@ impl<B: Backend> InjectorCore<B> {
         }
         self.unseen.push_back(from);
         self.position = Some(to);
-        // A drag names one button: left, then right, then the lowest other.
         let drag = self
             .buttons
             .first_key_value()
@@ -700,7 +644,6 @@ impl<B: Backend> InjectorCore<B> {
         })
     }
 
-    /// The active displays, read again after macOS reconfigures them.
     fn displays(&mut self) -> &[DesktopRect] {
         let generation = self.backend.display_generation();
         if self.display_generation != Some(generation) {
@@ -718,7 +661,6 @@ impl<B: Backend> InjectorCore<B> {
         self.backend.post(&Posted::Scroll { x, y, flags })
     }
 
-    /// Whether the screen is locked, asked at most every 100 ms.
     fn locked(&mut self, now: Instant) -> bool {
         if let Some((at, locked)) = self.locked
             && now.saturating_duration_since(at) < LOCK_CHECK_INTERVAL
@@ -735,12 +677,10 @@ fn distance(a: CursorPosition, b: CursorPosition) -> f64 {
     (a.x - b.x).hypot(a.y - b.y)
 }
 
-/// Whether this Mac can post a key. The session drops the others.
 pub(crate) fn supports_key(usage: HidUsage) -> bool {
     keys::hid_to_mac_keycode(usage, false).is_some() || keys::hid_to_media_key(usage).is_some()
 }
 
-/// Work for the injector thread. No `Debug`, so effects never reach a log.
 enum InjectCommand {
     Apply {
         effects: Vec<ReceiverEffect>,
@@ -752,15 +692,12 @@ enum InjectCommand {
     Watch(Watch),
 }
 
-/// Posts on its own thread, `zflow-inject`, which also times key repeat.
-/// Dropping it releases everything and joins the thread.
 pub(crate) struct Injector {
     commands: Option<mpsc::Sender<InjectCommand>>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl Injector {
-    /// Posts on this Mac.
     pub fn mac() -> Result<Self> {
         Self::start(MacBackend::open()?, pointer_profile())
     }
@@ -781,8 +718,6 @@ impl Injector {
         })
     }
 
-    /// Applies a batch in order. The answer says when its last event went
-    /// out; an error means everything was released.
     pub fn apply(
         &self,
         effects: Vec<ReceiverEffect>,
@@ -797,7 +732,6 @@ impl Injector {
         answer
     }
 
-    /// Puts the cursor at `point`, after anything sent before.
     pub fn move_to(&self, point: CursorPosition) {
         self.send(InjectCommand::MoveTo(point));
     }
@@ -806,13 +740,11 @@ impl Injector {
         self.send(InjectCommand::ReleaseAll);
     }
 
-    /// Shows `watch` every move from now on.
     pub fn watch(&self, watch: Watch) {
         self.send(InjectCommand::Watch(watch));
     }
 
     fn send(&self, command: InjectCommand) {
-        // A thread that is gone drops `applied`, which answers the caller.
         if let Some(commands) = &self.commands {
             let _ = commands.send(command);
         }
@@ -821,7 +753,6 @@ impl Injector {
 
 impl Drop for Injector {
     fn drop(&mut self) {
-        // The thread releases everything once its channel closes.
         self.commands.take();
         if let Some(thread) = self.thread.take()
             && thread.join().is_err()
@@ -866,8 +797,6 @@ fn run<B: Backend>(mut core: InjectorCore<B>, commands: mpsc::Receiver<InjectCom
             Some(InjectCommand::Watch(watch)) => core.watch(watch),
             None => {}
         }
-        // Steady input can keep the timeout from firing, so the repeat is
-        // checked after every command too.
         if let Err(error) = core.tick(Instant::now()) {
             tracing::warn!(error = %format!("{error:#}"), "key repeat stopped");
         }
@@ -875,8 +804,6 @@ fn run<B: Backend>(mut core: InjectorCore<B>, commands: mpsc::Receiver<InjectCom
     core.release_all();
 }
 
-/// `ZFLOW_MAC_POINTER`, `adaptive:<speed>` or `flat:<speed>`, tunes the
-/// pointer until there is a setting for it.
 fn pointer_profile() -> Profile {
     let profile = match std::env::var("ZFLOW_MAC_POINTER") {
         Ok(value) => value.parse().unwrap_or_else(|error: anyhow::Error| {
@@ -889,13 +816,10 @@ fn pointer_profile() -> Profile {
     profile
 }
 
-/// Posts through inject.c, which keeps one event source and one table of
-/// held input for the whole process. Only one may exist.
 pub(crate) struct MacBackend(());
 
 impl MacBackend {
     pub fn open() -> Result<Self> {
-        // SAFETY: open creates the source once and is safe to call again.
         if unsafe { zflow_mac_inject_open() } != 0 {
             bail!("could not create a Mac event source");
         }
@@ -904,7 +828,6 @@ impl MacBackend {
 
     fn caps_lock(&mut self) -> Result<bool> {
         let mut on = 0;
-        // SAFETY: the output is a plain int.
         ensure!(
             unsafe { zflow_mac_caps_lock(&mut on) } == 0,
             "could not read Caps Lock"
@@ -916,21 +839,17 @@ impl MacBackend {
 impl Backend for MacBackend {
     fn post(&mut self, event: &Posted) -> Result<()> {
         let status = match *event {
-            // SAFETY: AppKit builds and posts its own event.
             Posted::Media { key, down } => unsafe {
                 zflow_mac_post_media_key(key, i32::from(down), POSTED_MARK)
             },
-            // SAFETY: the event has inject.c's C layout and outlives the call.
             _ => unsafe { zflow_mac_inject_post(&event.native()) },
         };
         ensure!(status == 0, "could not post a Mac input event");
         Ok(())
     }
 
-    /// Flips the real lock, light included.
     fn toggle_caps_lock(&mut self) -> Result<()> {
         let on = !self.caps_lock()?;
-        // SAFETY: this only calls IOHIDSystem.
         ensure!(
             unsafe { zflow_mac_set_caps_lock(i32::from(on)) } == 0,
             "could not set Caps Lock"
@@ -939,7 +858,6 @@ impl Backend for MacBackend {
     }
 
     fn release_all(&mut self) {
-        // SAFETY: this posts releases from inject.c's own table.
         unsafe { zflow_mac_inject_release_all() }
     }
 
@@ -974,7 +892,6 @@ impl Backend for MacBackend {
 
 impl Drop for MacBackend {
     fn drop(&mut self) {
-        // SAFETY: close releases everything held, then frees the source.
         unsafe { zflow_mac_inject_close() }
     }
 }
@@ -991,10 +908,8 @@ impl Default for KeyRepeat {
     }
 }
 
-/// This Mac's key repeat: IOHIDSystem's, then the preferences, then AppKit's.
 pub(crate) fn key_repeat() -> KeyRepeat {
     let (mut initial, mut interval) = (0, 0);
-    // SAFETY: both outputs are plain integers.
     if unsafe { zflow_mac_key_repeat_ns(&mut initial, &mut interval) } == 0 {
         return KeyRepeat {
             delay: Duration::from_nanos(initial).max(MIN_INTERVAL),
@@ -1002,7 +917,6 @@ pub(crate) fn key_repeat() -> KeyRepeat {
         };
     }
     let (mut delay, mut every) = (0.0, 0.0);
-    // SAFETY: both outputs are plain doubles.
     if unsafe { zflow_mac_appkit_key_repeat(&mut delay, &mut every) } == 0 {
         return KeyRepeat {
             delay: seconds(delay).unwrap_or(DEFAULT_REPEAT.delay),
@@ -1013,25 +927,20 @@ pub(crate) fn key_repeat() -> KeyRepeat {
 }
 
 pub(crate) fn double_click_interval() -> Duration {
-    // SAFETY: this reads an AppKit setting.
     seconds(unsafe { zflow_mac_double_click_interval() }).unwrap_or(DEFAULT_DOUBLE_CLICK)
 }
 
-/// A positive, finite, sane number of seconds.
 fn seconds(value: f64) -> Option<Duration> {
     (value.is_finite() && value > 0.0 && value < 60.0)
         .then(|| Duration::from_secs_f64(value).max(MIN_INTERVAL))
 }
 
-/// The ISO keyboard swaps the keys left of 1 and left of Z.
 pub(crate) fn keyboard_is_iso() -> bool {
-    // SAFETY: this reads the last keyboard's type.
     unsafe { zflow_mac_keyboard_is_iso() == 1 }
 }
 
 pub(crate) fn frontmost_bundle_id() -> Option<String> {
     let mut buffer = [0u8; 256];
-    // SAFETY: the bridge writes a NUL-terminated string within the capacity.
     if unsafe { zflow_mac_frontmost_bundle_id(buffer.as_mut_ptr().cast(), buffer.len()) } < 0 {
         return None;
     }
@@ -1039,21 +948,15 @@ pub(crate) fn frontmost_bundle_id() -> Option<String> {
     bundle.to_str().ok().map(str::to_owned)
 }
 
-/// The screen lock is up, or another user has the console.
 pub(crate) fn session_locked() -> bool {
-    // SAFETY: this reads the window server's session dictionary.
     unsafe { zflow_mac_session_locked() != 0 }
 }
 
-/// Accessibility lets this process post events.
 pub(crate) fn post_allowed() -> bool {
-    // SAFETY: this checks a permission without prompting.
     unsafe { zflow_mac_post_allowed() == 1 }
 }
 
-/// Wakes the display as local input would.
 pub(crate) fn declare_user_activity() -> Result<()> {
-    // SAFETY: this only declares an IOKit power assertion.
     ensure!(
         unsafe { zflow_mac_declare_user_activity() } == 0,
         "could not wake the Mac display"
@@ -1061,9 +964,7 @@ pub(crate) fn declare_user_activity() -> Result<()> {
     Ok(())
 }
 
-/// Releases held input on SIGINT, SIGTERM and SIGHUP before the app dies.
 pub(crate) fn install_exit_handlers() {
-    // SAFETY: installs once; later calls do nothing.
     unsafe { zflow_mac_inject_install_exit_handlers() }
 }
 
@@ -1116,21 +1017,16 @@ unsafe extern "C" {
     fn zflow_mac_appkit_key_repeat(delay: *mut f64, interval: *mut f64) -> i32;
 }
 
-/// Records what would be posted and answers queries from its own state.
-/// Clones share that state, so a test keeps one and hands one to the core.
 #[cfg(test)]
 #[derive(Clone, Default)]
 pub(crate) struct FakeBackend(std::sync::Arc<std::sync::Mutex<Fake>>);
 
 #[cfg(test)]
 pub(crate) struct Fake {
-    /// What was posted, in order, as text tests compare.
     pub log: Vec<String>,
     pub environment: Environment,
-    /// The Mac's own Caps Lock.
     pub caps_lock: bool,
     pub cursor: Option<CursorPosition>,
-    /// How many posted moves the cursor shows late, as macOS may.
     pub lag: usize,
     pub moves: VecDeque<CursorPosition>,
     pub displays: Vec<DesktopRect>,
@@ -1140,7 +1036,6 @@ pub(crate) struct Fake {
     pub fail: bool,
     pub focus_reads: usize,
     pub lock_reads: usize,
-    /// How often the display was woken.
     pub wakes: usize,
 }
 
@@ -1365,8 +1260,6 @@ mod tests {
         start + Duration::from_millis(ms)
     }
 
-    /// A core in `mode` with its activation open and the log empty. Motion
-    /// is not accelerated, so moves are easy to read.
     fn open(mode: KeyboardMode, now: Instant) -> (InjectorCore<FakeBackend>, FakeBackend) {
         let fake = FakeBackend::default();
         let mut core = InjectorCore::new(fake.clone(), Profile::Flat { speed: 0.0 });
@@ -1437,7 +1330,6 @@ mod tests {
             click(&mut core, 1, 600)[0],
             "button 0 down at 960,540 click 3"
         );
-        // Too slow, another button, or too far away starts over.
         assert_eq!(
             click(&mut core, 1, 1101)[0],
             "button 0 down at 960,540 click 1"
@@ -1471,7 +1363,6 @@ mod tests {
             "button 0 down at 968,540 click 1"
         );
 
-        // A drag carries its press's count.
         apply(&mut core, &fake, vec![button(1, true)], after(start, 1600));
         assert_eq!(
             apply(
@@ -1482,7 +1373,6 @@ mod tests {
             ),
             ["move 969,540 by 1,0 drag 0 click 2"]
         );
-        // Button 0 and anything past 32 do not exist on a Mac.
         assert!(
             apply(
                 &mut core,
@@ -1492,7 +1382,6 @@ mod tests {
             )
             .is_empty()
         );
-        // A new activation forgets the last click.
         core.apply(vec![opened()], None, after(start, 1700))
             .unwrap();
         fake.take_log();
@@ -1538,7 +1427,6 @@ mod tests {
                 "modifier 56 up flags 0x100010"
             ]
         );
-        // Arrows keep the numeric pad and Fn flags a real arrow has.
         assert_eq!(
             apply(&mut core, &fake, vec![key(0x50, true)], start),
             ["key 123 down flags 0xb00010"]
@@ -1563,7 +1451,6 @@ mod tests {
             apply(&mut core, &fake, vec![key(0x39, true)], start),
             ["caps off"]
         );
-        // Releasing everything never flips it.
         apply(
             &mut core,
             &fake,
@@ -1576,7 +1463,6 @@ mod tests {
         );
         assert!(fake.state().caps_lock);
 
-        // The Mac's own keyboard turned it off; the next press turns it on.
         fake.state().caps_lock = false;
         core.apply(vec![opened()], None, start).unwrap();
         fake.take_log();
@@ -1599,19 +1485,15 @@ mod tests {
         assert_eq!(core.deadline(), Some(after(start, 283)));
         core.tick(after(start, 283)).unwrap();
         assert_eq!(fake.take_log(), ["key 40 down repeat"]);
-        // A late tick repeats once, not in a burst.
         core.tick(after(start, 400)).unwrap();
         assert_eq!(fake.take_log(), ["key 40 down repeat"]);
         assert_eq!(core.deadline(), Some(after(start, 433)));
 
-        // A newer key takes over the repeat, and releasing the older one
-        // does not stop it.
         apply(&mut core, &fake, vec![key(0x05, true)], after(start, 410));
         assert_eq!(core.deadline(), Some(after(start, 660)));
         apply(&mut core, &fake, vec![key(0x0e, false)], after(start, 420));
         core.tick(after(start, 660)).unwrap();
         assert_eq!(fake.take_log(), ["key 11 down repeat"]);
-        // Modifiers carry into the repeats but never repeat themselves.
         apply(&mut core, &fake, vec![key(0xe1, true)], after(start, 670));
         assert_eq!(core.deadline(), Some(after(start, 693)));
         core.tick(after(start, 693)).unwrap();
@@ -1619,7 +1501,6 @@ mod tests {
         apply(&mut core, &fake, vec![key(0x05, false)], after(start, 700));
         assert_eq!(core.deadline(), None);
 
-        // Caps Lock and media keys do not repeat either.
         apply(
             &mut core,
             &fake,
@@ -1676,7 +1557,6 @@ mod tests {
             ]
         );
         assert_eq!(core.deadline(), None);
-        // Nothing is left to release, and the remap forgot the held keys.
         assert!(
             apply(
                 &mut core,
@@ -1697,7 +1577,6 @@ mod tests {
         core.apply(vec![opened()], Some(KeyboardMode::PcPositions), start)
             .unwrap();
         assert_eq!(fake.take_log(), ["key 0 up", "release all"]);
-        // PC positions: the key beside Space is Cmd.
         assert_eq!(
             apply(
                 &mut core,
@@ -1707,7 +1586,6 @@ mod tests {
             ),
             ["modifier 55 down flags 0x100008"]
         );
-        // The key left of 1 and the key left of Z swap on an ISO Mac.
         assert_eq!(
             apply(
                 &mut core,
@@ -1756,7 +1634,6 @@ mod tests {
             apply(&mut core, &fake, vec![key(0xe0, true)], start),
             ["modifier 55 down flags 0x100008"]
         );
-        // The release matches the press after the focus moves.
         fake.state().terminal = true;
         assert_eq!(
             apply(&mut core, &fake, vec![key(0xe0, false)], start),
@@ -1771,7 +1648,6 @@ mod tests {
             apply(&mut core, &fake, vec![key(0xe0, false)], start),
             ["modifier 59 up"]
         );
-        // A repeated press keeps the first choice.
         apply(&mut core, &fake, vec![key(0xe0, true)], start);
         fake.state().terminal = true;
         assert!(apply(&mut core, &fake, vec![key(0xe0, true)], start).is_empty());
@@ -1780,7 +1656,6 @@ mod tests {
             ["modifier 55 up"]
         );
         fake.state().terminal = false;
-        // Super is Ctrl in an app and Cmd in a terminal, on both sides.
         assert_eq!(
             apply(
                 &mut core,
@@ -1812,7 +1687,6 @@ mod tests {
                 "key 8 down flags 0x100008"
             ]
         );
-        // Only a new Ctrl or Cmd press asks which app is in front.
         assert_eq!(fake.state().focus_reads, 6);
 
         let (mut core, fake) = open(KeyboardMode::Standard, start);
@@ -1836,7 +1710,6 @@ mod tests {
             ),
             ["media 16 down", "media 16 up", "media 0 down"]
         );
-        // Power is not posted.
         assert!(apply(&mut core, &fake, vec![media(0x30, true)], start).is_empty());
         assert_eq!(
             apply(&mut core, &fake, vec![media(0xe9, false)], start),
@@ -1864,7 +1737,6 @@ mod tests {
             ["key 105 up flags 0x800000"]
         );
         assert_eq!(core.deadline(), None);
-        // Keys a Mac lacks post nothing.
         assert!(
             apply(
                 &mut core,
@@ -1888,13 +1760,11 @@ mod tests {
             apply(&mut core, &fake, vec![motion(2000, 0, 0, 0)], start),
             ["move 1919,500 by 2000,0"]
         );
-        // The Mac's own trackpad moved the cursor.
         fake.state().cursor = Some(CursorPosition { x: 10.5, y: 10.0 });
         assert_eq!(
             apply(&mut core, &fake, vec![motion(-20, 5, 0, 0)], start),
             ["move 0,15 by -20,5"]
         );
-        // A display change is picked up.
         {
             let mut state = fake.state();
             state.displays = vec![DesktopRect {
@@ -1963,7 +1833,6 @@ mod tests {
                 "button 0 up at 971,545 click 1",
             ]
         );
-        // A cursor anywhere else was still moved on the Mac.
         {
             let mut state = fake.state();
             state.moves.clear();
@@ -1991,7 +1860,6 @@ mod tests {
             core.apply(vec![motion(40, 0, 0, 0)], None, after(start, step * 8))
                 .unwrap();
         }
-        // 38, 77, then twice the motion at full speed.
         assert_eq!(
             fake.take_log(),
             [
@@ -2024,8 +1892,6 @@ mod tests {
                 "scroll 0,30"
             ]
         );
-        // A new activation forgets the 3.75 pixels, so half a pixel rounds
-        // up to one instead of 4.25 staying at 4.
         apply(&mut core, &fake, vec![closed(), opened()], start);
         assert_eq!(
             apply(&mut core, &fake, vec![motion(0, 0, 2, 0)], start),
@@ -2038,7 +1904,6 @@ mod tests {
         let start = Instant::now();
         let (mut core, fake) = open(KeyboardMode::Standard, start);
         apply(&mut core, &fake, vec![key(0x04, true)], start);
-        // The lock is read at most every 100 ms.
         fake.state().locked = true;
         apply(&mut core, &fake, vec![key(0x05, true)], after(start, 50));
         assert!(
@@ -2046,11 +1911,9 @@ mod tests {
                 .is_err()
         );
         assert_eq!(fake.take_log(), ["key 0 up", "key 11 up", "release all"]);
-        // Effects that post nothing still go through.
         core.apply(vec![opened()], None, after(start, 110)).unwrap();
         fake.take_log();
 
-        // A repeat that comes due on a locked screen stops.
         fake.state().locked = false;
         apply(&mut core, &fake, vec![key(0x04, true)], after(start, 300));
         fake.state().locked = true;
@@ -2072,7 +1935,6 @@ mod tests {
         );
         fake.state().fail = true;
         assert!(core.apply(vec![key(0x05, true)], None, start).is_err());
-        // The posts failed too; the C table is the last word.
         assert_eq!(fake.take_log(), ["release all"]);
         fake.state().fail = false;
         assert!(
@@ -2112,8 +1974,6 @@ mod tests {
             .blocking_recv()
             .unwrap();
         assert!(applied.is_ok());
-        // Timers run late on a busy CI machine, so this waits for three
-        // repeats rather than for a fixed time.
         let mut log = Vec::new();
         let deadline = Instant::now() + Duration::from_secs(2);
         while log.len() < 5 && Instant::now() < deadline {
@@ -2127,7 +1987,6 @@ mod tests {
         injector.release_all();
         let applied = injector.apply(vec![], None).blocking_recv().unwrap();
         assert!(applied.is_ok());
-        // One more repeat may have gone out first.
         let log = fake.take_log();
         let (repeats, released) = log.split_at(log.len() - 2);
         assert_eq!(released, ["key 40 up", "release all"]);

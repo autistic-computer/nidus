@@ -1,4 +1,3 @@
-//! A desktop lease binds cursor placement and the exit edges to one session.
 use super::input;
 use crate::core::ReceiverEffect;
 use crate::desktop::{
@@ -13,17 +12,11 @@ pub struct Lease {
     pub session: u64,
     token: u64,
     geometry: Geometry,
-    /// Each exit the peer gave that has a monitor behind it, by its index,
-    /// with that monitor.
     exits: Vec<(u32, Geometry, Exit)>,
     expires: Instant,
     next_geometry: Instant,
-    /// The exit the pointer left through, and where, once it has.
     exited: Option<(u32, u32)>,
-    /// A Poll has answered `exited`.
     delivered: bool,
-    /// The peer kept the pointer here after an exit, so resting on an exit's
-    /// edge does not report it again until the pointer moves off.
     resting: bool,
 }
 impl Lease {
@@ -33,7 +26,6 @@ impl Lease {
     pub fn expired(&self) -> bool {
         Instant::now() >= self.expires
     }
-    /// An exit waits for the peer, so its input is dropped meanwhile.
     pub fn exited(&self) -> bool {
         self.exited.is_some()
     }
@@ -75,7 +67,6 @@ impl Lease {
         }
         Ok(())
     }
-    /// The exit whose outermost pixels `cursor` rests on, and where.
     fn resting_on(&self, cursor: Point) -> Option<(u32, u32)> {
         self.exits.iter().find_map(|(index, selected, exit)| {
             Some((
@@ -94,7 +85,6 @@ impl Lease {
             DesktopRequest::Poll { .. } => {
                 self.expires = Instant::now() + Duration::from_millis(LEASE_MS);
                 if self.delivered {
-                    // Polling again after an exit means the pointer stays.
                     self.exited = None;
                     self.delivered = false;
                     self.resting = true;
@@ -113,9 +103,6 @@ impl Lease {
         }
     }
 }
-/// Keeps the pointer where it is while an exit waits for the peer, so it
-/// cannot leave again or slip onto another monitor. Keys, clicks and scroll
-/// still apply, since the peer may keep the pointer here.
 pub fn hold_pointer(effects: &mut [ReceiverEffect]) {
     for effect in effects {
         if let ReceiverEffect::Motion { delta, .. } = effect {
@@ -145,7 +132,6 @@ pub fn prepare(
     let geometry = input::geometry()?;
     let selected = geometry.for_monitor(monitor.as_deref())?;
     let p = entry(&selected, edge, start, end, position)?;
-    // An exit on a monitor that is gone leads nowhere.
     let exits = (0..)
         .zip(exits)
         .filter_map(|(index, exit)| {
@@ -171,8 +157,6 @@ pub fn prepare(
         delivered: false,
         resting: false,
     };
-    // An entry on another exit's outermost pixels, as near a corner, is
-    // not a push out through it.
     lease.resting = lease.resting_on(actual).is_some();
     Ok((
         lease,

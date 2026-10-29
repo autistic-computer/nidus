@@ -1,5 +1,3 @@
-"""Exercise update publication and nested signing without Apple services."""
-
 import base64
 import json
 import os
@@ -13,7 +11,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = base64.b64encode(bytes(range(32))).decode()
 PRIVATE = "private-key-fixture-never-print"
-# Public RFC 8032 test vector; tests never create a release signing identity.
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 SEED_PUBLIC = bytes.fromhex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a")
 CRYPTO = r'''
@@ -178,7 +175,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.output.is_file())
         self.assertEqual([call[0] for call in calls], ["codesign", "xcrun", "generate_appcast"])
-        self.assertIn("https://github.com/demfabris/zflow/releases/download/v1.2.3/", calls[-1])
+        self.assertIn("https://github.com/autistic-computer/zflow/releases/download/v1.2.3/", calls[-1])
         self.assertIn("--ed-key-file", calls[-1])
         self.assertFalse(list(self.root.glob(".appcast.*")))
 
@@ -265,7 +262,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertIn(str(self.private_file), result.stdout)
         self.assertFalse(list(self.key_directory.glob(".sparkle-key-*")))
         self.assertFalse(any(call[0] in ("swift", "generate_keys") for call in calls))
-        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "demfabris/zflow", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
+        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "autistic-computer/zflow", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
         inode = self.private_file.stat().st_ino
         result, _ = self.linux_setup(mode="generation-forbidden", extra={"EXISTING_PUBLIC": base64.b64encode(SEED_PUBLIC).decode()})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

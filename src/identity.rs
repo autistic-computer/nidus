@@ -67,11 +67,6 @@ impl Identity {
     }
 }
 
-/// Two computers that dial each other at the same moment end up with two
-/// connections. Both keep the one dialed by the computer whose key
-/// fingerprint sorts first, so neither keeps closing the other's. Returns
-/// whether that is this computer. Fingerprints are lowercase hex, as
-/// [`Identity::fingerprint_hex`] writes them.
 pub fn wins_simultaneous_dial(local_fingerprint: &str, peer_fingerprint: &str) -> bool {
     local_fingerprint < peer_fingerprint
 }
@@ -142,7 +137,6 @@ fn store_private_key(path: &Path, bytes: &[u8]) -> Result<(), IdentityError> {
         })
 }
 
-/// Lowercase hexadecimal, two digits per byte.
 pub fn encode_hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     let mut output = String::with_capacity(bytes.len() * 2);

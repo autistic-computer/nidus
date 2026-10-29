@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Root-side host setup shared by the Debian package and archive installs:
-# service account, configuration and state, capture rules, and uinput access.
 set -Eeuo pipefail
 IFS=$'\n\t'
 
@@ -9,11 +7,8 @@ readonly SERVICE_GROUP="zflow"
 readonly CONFIG_DIR="/etc/zflow"
 readonly CONFIG_FILE="$CONFIG_DIR/zflow.toml"
 readonly STATE_DIR="/var/lib/zflow"
-# A fresh install may take one computer by itself, once someone is at the
-# desktop (src/pairing_window.rs). Upgrades never get this file.
 readonly PAIRING_WINDOW_FILE="$STATE_DIR/pairing-window"
 readonly CAPTURE_RULE_FILE="/etc/udev/rules.d/71-zflow-capture.rules"
-# Removing the Debian package parks the device selection here.
 readonly SAVED_CAPTURE_RULE_FILE="/etc/udev/71-zflow-capture.rules.disabled"
 
 die() {
@@ -70,12 +65,8 @@ for path in "$CONFIG_DIR" "$CONFIG_FILE" "$STATE_DIR" "$PAIRING_WINDOW_FILE" "$C
     [[ ! -L "$path" ]] || die "refusing symlink: $path"
 done
 
-# Configuration and capture rules are created once and kept on upgrades.
 install -d -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0700 "$CONFIG_DIR" "$STATE_DIR"
 if [[ ! -e "$CONFIG_FILE" ]]; then
-    # The marker goes first, so a run that fails between the two writes both
-    # again. uutils install (Ubuntu 26.04) can't copy a pipe over an existing
-    # file, and a purge leaves the old marker behind.
     eligible="$(mktemp)"
     printf 'eligible\n' >"$eligible"
     install -o "$SERVICE_USER" -g "$SERVICE_GROUP" -m 0600 "$eligible" "$PAIRING_WINDOW_FILE"
@@ -98,7 +89,6 @@ fi
 chown root:root "$CAPTURE_RULE_FILE"
 chmod 0644 "$CAPTURE_RULE_FILE"
 
-# Containers and chroots have no udev to apply the rules.
 if [[ -d /run/systemd/system && -S /run/udev/control ]]; then
     udevadm verify "$VIRTUAL_RULE_FILE" "$CAPTURE_RULE_FILE"
     modprobe uinput
@@ -107,8 +97,6 @@ if [[ -d /run/systemd/system && -S /run/udev/control ]]; then
     udevadm trigger --action=change --subsystem-match=input
     udevadm settle
     [[ -c /dev/uinput ]] || die "uinput loaded but /dev/uinput is missing"
-    # Check what the udev rules produce, so a later rule that overrides the group
-    # fails here instead of after the next reboot.
     runuser -u "$SERVICE_USER" -- /usr/bin/test -w /dev/uinput \
         || die "$SERVICE_USER cannot write /dev/uinput after applying udev rules"
 

@@ -1,5 +1,3 @@
-//! Desktop handoff metadata carried inside an authenticated input session.
-
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +7,6 @@ pub use monitors::Display;
 pub const FRACTION_MAX: u32 = 1_000_000;
 pub const MAX_TOKEN: u64 = 9_007_199_254_740_991;
 pub const LEASE_MS: u64 = 2_000;
-// packaging/gnome-extension/extension.js mirrors this hold duration.
 pub const POLL_HOLD_MS: u64 = 200;
 pub const REQUEST_TIMEOUT_MS: u64 = 1_000;
 pub const MAX_MESSAGE_BYTES: usize = 32_768;
@@ -55,7 +52,6 @@ impl Rect {
 #[serde(deny_unknown_fields)]
 pub struct Geometry {
     pub monitors: Vec<Rect>,
-    /// Active logical displays. Empty only in layouts made before monitor discovery.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub displays: Vec<Display>,
 }
@@ -103,7 +99,6 @@ impl Geometry {
     }
 }
 
-/// Maps positions between the saved local edge and the receiver crossing range.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ReturnMapping {
     pub geometry: Geometry,
@@ -161,9 +156,6 @@ impl ReturnMapping {
             ((remote - self.remote_start) / (self.remote_end - self.remote_start)).clamp(0.0, 1.0);
         let along = self.local_start + progress * (self.local_end - self.local_start);
         let point = edge_point(self.geometry.bounds()?, self.edge, along);
-        // The receiver's barrier spans the whole shared range, which can include
-        // parts of this edge with no display behind them. Return to the nearest
-        // point on the edge that has one.
         self.geometry
             .monitors
             .iter()
@@ -216,12 +208,8 @@ fn edge_point(bounds: Rect, edge: Edge, along: f64) -> Point {
     }
 }
 
-/// At most this many ways off a desktop go in one Prepare.
 pub const MAX_EXITS: usize = 64;
 
-/// A stretch of one edge of the desktop being prepared, as fractions of
-/// that monitor's edge, where leaving takes the pointer somewhere else:
-/// back to the computer that sends, or on to another one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Exit {
@@ -236,8 +224,6 @@ pub struct Exit {
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopRequest {
     Snapshot,
-    /// Puts the pointer at `position` of the range from `start` to `end`
-    /// on `edge`, and watches `exits` until Finish.
     Prepare {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         monitor: Option<String>,
@@ -304,10 +290,6 @@ impl DesktopRequest {
     }
 }
 
-/// A desktop's answers. `Exited` says the pointer left through the
-/// Prepare's `exits[exit]` at `position`, a fraction of that exit's edge. A
-/// Poll answers each report once; the next Poll means the pointer stays, and
-/// a new push out reports again.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopResponse {
@@ -348,19 +330,12 @@ impl DesktopResponse {
     }
 }
 
-/// At most this many active or remembered monitors share a layout, keeping it inside one
-/// desktop message.
 pub const MAX_SHARED_TILES: usize = 32;
 
-/// The arrangement every paired computer keeps. Tiles are keyed by key
-/// fingerprint, because each computer names the others differently.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SharedLayout {
-    /// Raised by every edit. With `editor` it orders two versions, so both
-    /// computers keep the same one.
     pub version: u64,
-    /// The fingerprint of the computer that made this version.
     pub editor: String,
     pub tiles: Vec<Tile>,
 }
@@ -368,7 +343,6 @@ pub struct SharedLayout {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Tile {
-    /// The computer's key fingerprint.
     pub key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
@@ -388,8 +362,6 @@ impl SharedLayout {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
         ensure!(fingerprint(&self.editor), "Invalid layout editor");
-        // Kept to what JSON carries exactly, which also stops two computers
-        // from pinning it at the maximum and trading edits forever.
         ensure!(self.version <= MAX_TOKEN, "Invalid layout version");
         ensure!(
             self.tiles.len() <= MAX_SHARED_TILES,
@@ -416,11 +388,6 @@ impl SharedLayout {
         Ok(())
     }
 
-    /// This edit with the tiles of `previous` that its editor could not show
-    /// put back: those whose key `known` does not know, such as computers it
-    /// has not paired. Other computers still place them, so an edit must not
-    /// move them. A tile the edit now covers is left out, since the person
-    /// making it could not see it.
     pub fn with_others_from(mut self, previous: &Self, known: impl Fn(&str) -> bool) -> Self {
         for tile in &previous.tiles {
             if self.tiles.len() >= MAX_SHARED_TILES {
@@ -433,23 +400,10 @@ impl SharedLayout {
         self
     }
 
-    /// Whether this version replaces `other`. Both computers answer the same.
     pub fn is_newer_than(&self, other: &Self) -> bool {
         (self.version, &self.editor) > (other.version, &other.editor)
     }
 
-    /// A new version in which the computer `key` gives its own tile the size
-    /// of its desktop. A layout from a computer that never had this one gets
-    /// its tile beside the first tile, so an edge leads to it. None when the
-    /// size is already right or the layout is full.
-    ///
-    /// A resized tile keeps touching the tiles it touched, on the same sides
-    /// where it can, so the crossings stay. It keeps whichever corner still
-    /// allows that. When growing would overlap a tile, or shrinking would
-    /// leave a gap, the tiles past the side that moved slide with it: only
-    /// the ones in the way if that is enough, else all of them. With no room
-    /// for that, it goes beside a tile it touched, else beside any tile. Of
-    /// the ways that work, the one that moves the fewest tiles wins.
     pub fn with_own_size(&self, key: &str, width: u32, height: u32) -> Option<Self> {
         self.with_display_size(key, None, width, height)
     }
@@ -487,7 +441,6 @@ impl SharedLayout {
         let before = &self.tiles;
         let (w, h) = (i64::from(width), i64::from(height));
         let ((left, right), (top, bottom)) = (span(old.x, old.width), span(old.y, old.height));
-        // Every tile, with this one at the new size and its corner at (x, y).
         let resized = |x: i64, y: i64| {
             let mut tiles = before.clone();
             let grown = Tile {
@@ -498,8 +451,6 @@ impl SharedLayout {
             tiles[index] = shifted(&grown, x - left, y - top)?;
             Some(tiles)
         };
-        // How far `other` slides to stay against the side of this tile it is
-        // past, when this tile's corner goes to (x, y).
         let slide = |x: i64, y: i64, other: &Tile| {
             let ((l, r), (t, b)) = (span(other.x, other.width), span(other.y, other.height));
             let dx = if l >= right {
@@ -555,9 +506,6 @@ impl SharedLayout {
             .chain([(past_all, top)])
             .map(|(x, y)| resized(x, y));
         let touched = others().any(|(_, other)| touching(old, other).is_some());
-        // Contacts this tile keeps on the same side, then on any side, then
-        // whether it touches anything, then the other tiles' contacts kept,
-        // then the fewest tiles moved.
         let score = |tiles: &[Tile]| {
             let (mut same, mut any, mut rest) = (0, 0, 0);
             for (i, a) in before.iter().enumerate() {
@@ -585,7 +533,6 @@ impl SharedLayout {
                     .count();
             (same, any, touches, rest, std::cmp::Reverse(moved))
         };
-        // Pairs that did not change keep whatever they had.
         let apart = |tiles: &Vec<Tile>| {
             (0..tiles.len()).all(|i| {
                 (i + 1..tiles.len()).all(|j| {
@@ -600,7 +547,6 @@ impl SharedLayout {
             .chain(placed)
             .flatten()
             .filter(apart)
-            // The first of the best.
             .min_by_key(|tiles| std::cmp::Reverse(score(tiles)))?;
         let next = Self {
             version: self.version.checked_add(1)?,
@@ -610,11 +556,6 @@ impl SharedLayout {
         next.validate().ok().map(|()| next)
     }
 
-    /// A new version, edited by `own`, with a tile of `size` for each of
-    /// `keys` the layout lacks, such as a computer paired after the layout
-    /// was arranged. Each goes beside `own`'s tile where there is room: to
-    /// the right, left, below or above, else to the right of all the rest.
-    /// None when no tile is missing or the layout is full.
     pub fn with_tiles_for<'a>(
         &self,
         own: &str,
@@ -641,9 +582,6 @@ impl SharedLayout {
         next.validate().ok().map(|()| next)
     }
 
-    /// A new version, edited by `own`, in which `new` takes over `old`'s
-    /// tile, as when a reinstalled computer's new key is dropped onto its
-    /// old tile. None when `old` has no tile or `new` already has one.
     pub fn with_key_replaced(&self, own: &str, old: &str, new: &str) -> Option<Self> {
         if self.tiles.iter().any(|tile| tile.key == new) {
             return None;
@@ -661,9 +599,6 @@ impl SharedLayout {
     }
 }
 
-/// Where a new tile of `size` for `key` goes among `tiles`: beside `anchor`
-/// where there is room (right, left, below, above), else to the right of all
-/// of them. None when that is off the canvas.
 fn free_spot(
     tiles: &[Tile],
     anchor: Option<&Tile>,
@@ -694,8 +629,6 @@ fn free_spot(
         .find(|tile| !tiles.iter().any(|other| overlaps(tile, other)))
 }
 
-/// Where a tile of size (w, h) goes against each side of `anchor`: right,
-/// left, below and above, lined up with its top or left.
 fn beside(anchor: &Tile, (w, h): (i64, i64)) -> [(i64, i64); 4] {
     let ((left, right), (top, bottom)) =
         (span(anchor.x, anchor.width), span(anchor.y, anchor.height));
@@ -707,7 +640,6 @@ fn beside(anchor: &Tile, (w, h): (i64, i64)) -> [(i64, i64); 4] {
     ]
 }
 
-/// `tile` moved by (dx, dy). None when that is off the canvas.
 fn shifted(tile: &Tile, dx: i64, dy: i64) -> Option<Tile> {
     use crate::app::layout_model::MAX_COORDINATE;
     let on_canvas = |at: i32, by: i64| {
@@ -723,7 +655,6 @@ fn shifted(tile: &Tile, dx: i64, dy: i64) -> Option<Tile> {
     })
 }
 
-/// The side of `a` that `b` shares part of, if any.
 fn touching(a: &Tile, b: &Tile) -> Option<Edge> {
     let ((al, ar), (at, ab)) = (span(a.x, a.width), span(a.y, a.height));
     let ((bl, br), (bt, bb)) = (span(b.x, b.width), span(b.y, b.height));
@@ -755,19 +686,9 @@ fn overlaps(a: &Tile, b: &Tile) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "direction", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DesktopMessage {
-    Request {
-        id: u64,
-        request: DesktopRequest,
-    },
-    Response {
-        id: u64,
-        response: DesktopResponse,
-    },
-    /// The sender's layout, sent when a session starts and after each change.
-    /// It needs no answer.
-    Layout {
-        layout: SharedLayout,
-    },
+    Request { id: u64, request: DesktopRequest },
+    Response { id: u64, response: DesktopResponse },
+    Layout { layout: SharedLayout },
 }
 
 impl DesktopMessage {
@@ -819,8 +740,6 @@ mod tests {
                 .is_none(),
             "nothing missing"
         );
-        // The right is taken, so the next one goes left. Below would overlap
-        // the tall tile on the right, so the one after goes above.
         let keys = [key(3), key(4)];
         let more = placed
             .with_tiles_for(&key(1), keys.iter().map(String::as_str), size)
@@ -829,7 +748,6 @@ mod tests {
             more.tiles[2..],
             [tile(3, -1920, 0, 1920, 1080), tile(4, 0, -1080, 1920, 1080)]
         );
-        // Without this computer's own tile, it goes right of the rest.
         let foreign = SharedLayout {
             tiles: vec![tile(2, 0, 0, 1000, 800)],
             ..alone.clone()
@@ -839,8 +757,6 @@ mod tests {
             .with_tiles_for(&key(1), keys.iter().map(String::as_str), size)
             .unwrap();
         assert_eq!(past.tiles[1..], [tile(3, 1000, 0, 1920, 1080)]);
-        // A layout from a computer that never had this one: this computer
-        // writes its own tile beside the first one.
         let joined = foreign.with_own_size(&key(1), 1280, 720).unwrap();
         assert_eq!((joined.version, &joined.editor), (4, &key(1)));
         assert_eq!(joined.tiles[1..], [tile(1, 1000, 0, 1280, 720)]);
@@ -906,8 +822,6 @@ mod tests {
             let tiles = &layout.tiles;
             (0..tiles.len()).all(|i| tiles[i + 1..].iter().all(|b| !overlaps(&tiles[i], b)))
         };
-        // Ubuntu's first layout: itself, then its paired computers to the
-        // right in name order, at a placeholder size.
         let (ubuntu, mac, xps) = (1, 2, 3);
         let row = SharedLayout {
             version: 0,
@@ -918,8 +832,6 @@ mod tests {
                 tile(xps, 4480, 0, 1920, 1080),
             ],
         };
-        // The Mac writes its real size. It grows right and down, and xps
-        // slides right by as much, so all three still touch.
         let grown = row.with_own_size(&key(mac), 3008, 1692).unwrap();
         assert!(apart(&grown));
         assert_eq!(
@@ -942,12 +854,9 @@ mod tests {
                 .any(|t| (t.source, t.target, t.edge) == (0, 1, Edge::Right)),
             "Ubuntu keeps its edge to the Mac"
         );
-        // Shrinking back pulls xps along, so no gap opens.
         let shrunk = grown.with_own_size(&key(mac), 1920, 1080).unwrap();
         assert_eq!(shrunk.tiles, row.tiles);
 
-        // Growing taller between a tile above and one below: the one above
-        // moves up, since the one below also touches Ubuntu.
         let (above, below) = (4, 5);
         let stacked = SharedLayout {
             tiles: vec![
@@ -969,7 +878,6 @@ mod tests {
             ]
         );
 
-        // A full layout, four by four, with a tile inside it growing.
         let grid = SharedLayout {
             tiles: (0..MAX_SHARED_TILES)
                 .map(|n| {
@@ -993,8 +901,6 @@ mod tests {
             );
         }
 
-        // A row as wide as the canvas: nothing can slide out of the way, so
-        // the grown tile goes below the tile on its left, still touching it.
         let mut x = -MAX_COORDINATE;
         let wide = SharedLayout {
             tiles: (0..14)
@@ -1056,7 +962,6 @@ mod tests {
         invalid.editor = "ABC".into();
         assert!(invalid.validate().is_err(), "not a fingerprint");
 
-        // A computer writes its own size, as a new version it edited.
         let small = SharedLayout {
             version: 5,
             editor: key(9),
@@ -1092,13 +997,10 @@ mod tests {
         let taller = small.with_own_size(&key(2), 500, 900).unwrap();
         assert_eq!((taller.version, &taller.editor), (6, &key(2)));
         assert_eq!((taller.tiles[1].x, taller.tiles[1].height), (1000, 900));
-        // The side touching a neighbour stays, whether the tile grows or shrinks.
         let wider = small.with_own_size(&key(1), 1200, 800).unwrap();
         assert_eq!((wider.tiles[0].x, wider.tiles[0].width), (-200, 1200));
         let narrower = small.with_own_size(&key(1), 600, 800).unwrap();
         assert_eq!((narrower.tiles[0].x, narrower.tiles[0].width), (400, 600));
-        // Squeezed between two neighbours, a grown tile pushes the one it
-        // grows into, and keeps touching both.
         let mut middle = small.clone();
         middle.tiles.push(Tile {
             display: None,
@@ -1165,8 +1067,6 @@ mod tests {
             start,
             end,
         };
-        // The most exits, each on a monitor with the longest name, still fit
-        // one desktop message.
         let most = vec![exit(&"m".repeat(128), 0, FRACTION_MAX); MAX_EXITS];
         let message = DesktopMessage::Request {
             id: 1,
@@ -1219,7 +1119,6 @@ mod tests {
                 let end = (remote_end * f64::from(FRACTION_MAX)) as u32;
                 for position in [start, start + (end - start) / 3, (start + end) / 2, end] {
                     let point = mapping.position(position).unwrap();
-                    // Flooring a local pixel costs at most 1500 fraction units in these ranges.
                     assert!(mapping.fraction(point).unwrap().abs_diff(position) <= 1501);
                 }
                 for (point, expected) in [

@@ -3,7 +3,7 @@ On a Mac, open `zflow-VERSION-macos.dmg` and drag zflow to Applications, or use 
 This is a prototype release; the live qualification checklist is in TESTPLAN.md.
 
 ```sh
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/demfabris/zflow/releases/latest/download/install.sh | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash
 ```
 
 ## New in 0.6.1: Windows crossings no longer get stuck

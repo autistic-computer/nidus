@@ -1,17 +1,3 @@
-//! The one-shot pairing window of a fresh install. For ten minutes, a
-//! computer that shows up alone joins without anyone dragging its tile, so
-//! two new installs find each other in seconds.
-//!
-//! It is trust on first use, kept narrow: the window opens at most once per
-//! install, never on an upgrade or an unattended install, and closes for
-//! good on the first acceptance, after ten minutes, as soon as two unknown
-//! computers are around at once, or when the one it took cannot be added.
-//! The state lives in
-//! `state_dir/pairing-window`: only setup writes `eligible`, and a window
-//! still open when the program stopped comes back closed.
-//!
-//! Time comes from the caller, so tests run on paused time.
-
 use std::{
     io::ErrorKind,
     path::{Path, PathBuf},
@@ -25,31 +11,22 @@ use crate::neighbors::{Stranger, Strangers};
 
 pub const FILE_NAME: &str = "pairing-window";
 pub const OPEN_FOR: Duration = Duration::from_secs(10 * 60);
-/// How long a lone stranger has to stay alone before it joins. Anyone else
-/// showing up meanwhile closes the window instead.
 pub const HOLD_OFF: Duration = Duration::from_secs(5);
 
-/// Why the window closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Reason {
-    /// It would have opened on a computer that already trusts someone.
     HadPeers,
-    /// A computer joined, on its own or placed by a person.
     Accepted,
     Expired,
-    /// Two unknown computers were around at once.
     Rival,
-    /// The program stopped while it was open.
     Restarted,
-    /// The computer it settled on could not be added, so a person places it.
     Failed,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum State {
-    /// Not a fresh install, or one from before arrange to pair.
     #[default]
     Never,
     Eligible,
@@ -57,12 +34,10 @@ pub enum State {
     Closed,
 }
 
-/// The window as the settings show it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct View {
     pub state: State,
     pub seconds_left: Option<u64>,
-    /// The lone stranger about to join.
     pub holding: Option<Holding>,
     pub reason: Option<Reason>,
 }
@@ -90,8 +65,6 @@ pub struct PairingWindow {
 }
 
 impl PairingWindow {
-    /// Reads the window's state. One left open by an earlier run closes,
-    /// since nobody can tell how long it was open.
     pub fn load(state_dir: &Path) -> Self {
         let path = state_dir.join(FILE_NAME);
         let text = match std::fs::read_to_string(&path) {
@@ -119,16 +92,10 @@ impl PairingWindow {
         window
     }
 
-    /// Makes a fresh install's window able to open once. Setup calls this
-    /// when it creates the configuration, and nothing else does.
     pub fn mark_eligible(state_dir: &Path) -> Result<(), crate::config::ConfigError> {
         crate::config::save_text(&state_dir.join(FILE_NAME), "eligible\n")
     }
 
-    /// Opens an eligible window, when a person is at this computer. One
-    /// that already trusts a computer was not a fresh install after all.
-    /// The file says open before the window is, so a restart finds it
-    /// closed; when that cannot be saved, the window does not open at all.
     pub fn open(&mut self, has_peers: bool, now: Instant) {
         if self.phase != Phase::Eligible {
             return;
@@ -151,16 +118,12 @@ impl PairingWindow {
         };
     }
 
-    /// A computer was placed, or the one [`Self::tick`] returned was saved
-    /// as trusted, which uses the window up.
     pub fn placed(&mut self) {
         if matches!(self.phase, Phase::Eligible | Phase::Open { .. }) {
             self.close(Reason::Accepted);
         }
     }
 
-    /// The computer [`Self::tick`] returned could not be added. Trying it
-    /// again every second would not help, so the window closes.
     pub fn not_added(&mut self) {
         if matches!(self.phase, Phase::Open { .. }) {
             self.close(Reason::Failed);
@@ -171,15 +134,6 @@ impl PairingWindow {
         matches!(self.phase, Phase::Open { .. })
     }
 
-    /// Weighs who is around and returns the stranger to trust now. The
-    /// window stays open until the caller says how that went, with
-    /// [`Self::placed`] or [`Self::not_added`]. A candidate is the only
-    /// stranger, every compatible record
-    /// around has a known key, it answered a hello this computer sent, its
-    /// name is its own, and it said hello lately. It joins once it stayed
-    /// the candidate for [`HOLD_OFF`]; any change starts the wait again, and
-    /// a second stranger closes the window, even one that only said hello,
-    /// and so does anything turned away because a table was full.
     pub fn tick(&mut self, strangers: &Strangers, now: Instant) -> Option<Stranger> {
         let Phase::Open { until } = self.phase else {
             return None;
@@ -188,7 +142,6 @@ impl PairingWindow {
             self.close(Reason::Expired);
             return None;
         }
-        // A stranger turned away for want of room could be the second one.
         if strangers.present.len() > 1 || strangers.turned_away {
             self.close(Reason::Rival);
             return None;
@@ -286,7 +239,6 @@ mod tests {
         }
     }
 
-    /// An open window in a fresh state directory.
     fn opened() -> (tempfile::TempDir, PairingWindow) {
         let directory = tempfile::tempdir().unwrap();
         PairingWindow::mark_eligible(directory.path()).unwrap();
@@ -319,11 +271,9 @@ mod tests {
         assert_eq!(after(&mut window, almost, &desk).await, None);
         let joined = after(&mut window, Duration::from_millis(1), &desk).await;
         assert_eq!(joined, Some(stranger("k1", "desk")));
-        // It is used up only once the computer is saved.
         assert_eq!(window.view(Instant::now()).state, State::Open);
         window.placed();
         assert_eq!(window.view(Instant::now()).reason, Some(Reason::Accepted));
-        // Once only.
         assert_eq!(after(&mut window, HOLD_OFF, &desk).await, None);
     }
 
@@ -352,7 +302,6 @@ mod tests {
             after(&mut window, Duration::from_secs(3), &both).await,
             None
         );
-        // The rival leaving does not reopen it.
         assert_eq!(after(&mut window, HOLD_OFF * 2, &desk).await, None);
         assert_eq!(window.view(Instant::now()).reason, Some(Reason::Rival));
     }
@@ -388,8 +337,6 @@ mod tests {
             window.tick(&who, Instant::now());
             assert_eq!(after(&mut window, HOLD_OFF * 3, &who).await, None);
         }
-        // A record whose hello has not come back could be anyone, so it
-        // holds the wait until it is known.
         let unsure = around(&[stranger("k1", "desk")], 1);
         window.tick(&unsure, Instant::now());
         assert_eq!(after(&mut window, HOLD_OFF * 3, &unsure).await, None);
@@ -409,8 +356,6 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_computer_that_only_said_hello_never_joins_but_is_a_rival() {
         let (_directory, mut window) = opened();
-        // Its hello came in, maybe from off the network, and no record or
-        // added address led this computer to it.
         let knocked = Stranger {
             answered: false,
             ..stranger("k1", "desk")
@@ -419,12 +364,10 @@ mod tests {
         window.tick(&alone, Instant::now());
         assert_eq!(after(&mut window, HOLD_OFF * 3, &alone).await, None);
         assert_eq!(window.view(Instant::now()).holding, None);
-        // Once a hello this computer sent proves the key, it can join.
         let known = around(&[stranger("k1", "desk")], 0);
         assert_eq!(after(&mut window, Duration::ZERO, &known).await, None);
         assert!(after(&mut window, HOLD_OFF, &known).await.is_some());
 
-        // Beside the computer it would take, it still counts as a second.
         let (_directory, mut window) = opened();
         let evil = Stranger {
             answered: false,
@@ -440,8 +383,6 @@ mod tests {
         let (_directory, mut window) = opened();
         let desk = around(&[stranger("k1", "desk")], 0);
         window.tick(&desk, Instant::now());
-        // A flood filled a table, so the real second computer may be the
-        // one that was dropped.
         let full = Strangers {
             turned_away: true,
             ..desk.clone()
@@ -470,19 +411,16 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn the_window_opens_only_once_on_a_fresh_install() {
-        // An upgrade has no file and never opens.
         let directory = tempfile::tempdir().unwrap();
         let mut window = PairingWindow::load(directory.path());
         window.open(false, Instant::now());
         assert_eq!(window.view(Instant::now()), View::default());
 
-        // A computer that already trusts someone closes it.
         PairingWindow::mark_eligible(directory.path()).unwrap();
         let mut window = PairingWindow::load(directory.path());
         window.open(true, Instant::now());
         assert_eq!(window.view(Instant::now()).reason, Some(Reason::HadPeers));
 
-        // Eligible, then open, then a restart: closed, and it stays so.
         PairingWindow::mark_eligible(directory.path()).unwrap();
         let mut window = PairingWindow::load(directory.path());
         window.open(false, Instant::now());
@@ -504,7 +442,6 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         PairingWindow::mark_eligible(directory.path()).unwrap();
         let mut window = PairingWindow::load(directory.path());
-        // The write fails, as on a full or read-only disk.
         let path = directory.path().join(FILE_NAME);
         std::fs::remove_file(&path).unwrap();
         std::fs::create_dir(&path).unwrap();

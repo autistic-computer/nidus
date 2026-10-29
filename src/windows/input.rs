@@ -47,7 +47,6 @@ pub enum Event {
     Escape,
     Activate,
     EdgeHit(Point, Edge),
-    /// The native watchdog returned input because the engine stopped pulsing.
     Stalled,
     Stopped,
 }
@@ -127,7 +126,6 @@ impl Capture {
             .set(tx.clone())
             .map_err(|_| anyhow::anyhow!("Input capture already started"))?;
         let join = std::thread::spawn(move || {
-            // SAFETY: callback is a static function; the adapter owns all hooks.
             unsafe {
                 zflow_input_run(event);
             }
@@ -148,7 +146,6 @@ impl Capture {
 impl Drop for Capture {
     fn drop(&mut self) {
         remote(false);
-        // SAFETY: thread identifies the message loop owned by this guard.
         unsafe {
             zflow_input_stop(self.thread);
         }
@@ -226,7 +223,6 @@ impl Boundary {
     }
 }
 pub fn boundaries(items: &[Boundary]) {
-    // SAFETY: C copies these bounded descriptors before returning.
     unsafe {
         zflow_input_boundaries(items.as_ptr(), items.len() as i32);
     }
@@ -363,8 +359,6 @@ mod boundary_tests {
     #[ignore = "moves and restores the real pointer; pause other zflow instances first"]
     async fn native_return_guard_stops_injected_motion_at_an_internal_edge() {
         let geometry = geometry().unwrap();
-        // Place the boundary inside a real screen so OS desktop clamping cannot
-        // hide a missed interception. This also works with one active monitor.
         let mut source = geometry.monitors[0];
         source.width /= 2;
         let original = cursor().unwrap();
@@ -437,7 +431,6 @@ pub fn geometry() -> Result<Geometry> {
     ) {
         use sha2::{Digest, Sha256};
         use std::ffi::CStr;
-        // SAFETY: the bridge calls synchronously with live, terminated strings.
         let geometry = unsafe { &mut *context.cast::<Geometry>() };
         let bounds = Rect {
             x,
@@ -447,7 +440,7 @@ pub fn geometry() -> Result<Geometry> {
         };
         if geometry.monitors.contains(&bounds) {
             return;
-        } // Mirrored surfaces share one cursor.
+        }
         geometry.monitors.push(bounds);
         geometry.displays.push(Display {
             id: format!(
@@ -505,9 +498,6 @@ fn post(kind: i32, code: i32, value: i32, extra: i32) -> Result<()> {
     Ok(())
 }
 
-/// Windows refuses every event this process posts while a more privileged
-/// window, such as an administrator terminal, has focus, and that window's
-/// input also skips this process's hooks. A motionless move finds out.
 pub fn unblocked() -> Result<()> {
     post(4, 0, 0, 0)
 }
@@ -574,9 +564,6 @@ impl Injector {
         }
         Ok(())
     }
-    /// Whether a crossing into this desktop can work: the last release went
-    /// through and Windows accepts posted input now. Otherwise the entering
-    /// pointer would stop at the entry point.
     pub fn ready(&mut self) -> Result<()> {
         if self.releasing {
             self.release();
@@ -652,8 +639,6 @@ impl Injector {
     }
     pub fn tick(&mut self) -> Result<()> {
         if self.releasing {
-            // UIPI can reject the mouse-up immediately after a click focuses an
-            // elevated window. Keep retrying even after that session closes.
             self.release();
             return Ok(());
         }

@@ -1,22 +1,14 @@
-//! Where the other computer's desktop sits on this screen, and how input
-//! maps onto it. Plain math, so it is tested away from a Mac.
-
-/// The remote desktop fitted whole, aspect-fit and centered, onto a screen.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Fit {
     pub scale: f64,
-    /// Where the desktop's top left lands on the screen, in points.
     pub x: f64,
     pub y: f64,
     pub width: f64,
     pub height: f64,
-    /// The desktop's own size, in its pixels.
     pub desktop: (u32, u32),
 }
 
 impl Fit {
-    /// Fits a `desktop` of pixels onto a `screen` of points. None when either
-    /// is empty.
     pub fn new(desktop: (u32, u32), screen: (f64, f64)) -> Option<Self> {
         let (width, height) = (f64::from(desktop.0), f64::from(desktop.1));
         if width <= 0.0 || height <= 0.0 || screen.0 <= 0.0 || screen.1 <= 0.0 {
@@ -34,27 +26,22 @@ impl Fit {
         })
     }
 
-    /// The desktop pixel under screen point (`x`, `y`), kept on the desktop
-    /// even over the bars around it.
     pub fn pixel(&self, x: f64, y: f64) -> (f64, f64) {
         let column = ((x - self.x) / self.scale).clamp(0.0, f64::from(self.desktop.0) - 1.0);
         let row = ((y - self.y) / self.scale).clamp(0.0, f64::from(self.desktop.1) - 1.0);
         (column, row)
     }
 
-    /// The screen point of desktop pixel (`column`, `row`).
     #[cfg(test)]
     pub fn point(&self, column: f64, row: f64) -> (f64, f64) {
         (self.x + column * self.scale, self.y + row * self.scale)
     }
 
-    /// Screen points as desktop pixels.
     pub fn pixels(&self, points: f64) -> f64 {
         points / self.scale
     }
 }
 
-/// The desktop cut into the squares the engine hands over.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Grid {
     pub chunk: u32,
@@ -73,8 +60,6 @@ impl Grid {
         }
     }
 
-    /// Chunk `id`'s pixels: x, y, width, height. The last row and column
-    /// are smaller.
     pub fn rect(&self, id: u32) -> (u32, u32, u32, u32) {
         let (x, y) = (
             (id % self.columns) * self.chunk,
@@ -88,7 +73,6 @@ impl Grid {
         )
     }
 
-    /// The chunks under a circle, as the engine counts them.
     #[cfg(test)]
     pub fn around(&self, x: f64, y: f64, radius: f64) -> Vec<u32> {
         let span = |center: f64, size: u32| {
@@ -106,7 +90,6 @@ impl Grid {
     }
 }
 
-/// A mouse button as the engine numbers them: 1 left, 2 middle, 3 right.
 pub fn button(number: u8) -> Option<u8> {
     match number {
         0 => Some(1),
@@ -118,14 +101,11 @@ pub fn button(number: u8) -> Option<u8> {
     }
 }
 
-/// A scroll as the engine takes it: pixels, positive scrolling content left
-/// and up, as swiping left and up does. Lines count 16 pixels.
 pub fn scroll(dx: f64, dy: f64, precise: bool) -> (f64, f64) {
     let unit = if precise { 1.0 } else { 16.0 };
     (-dx * unit, -dy * unit)
 }
 
-/// What a key press does in the lens.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyAction {
     Close,
@@ -133,8 +113,6 @@ pub enum KeyAction {
     Send,
 }
 
-/// Escape closes; Command-C alone copies the other computer's selection;
-/// every other key goes over.
 pub fn key_down(code: u16, command_only: bool, character: Option<&str>) -> KeyAction {
     const ESCAPE: u16 = 53;
     if code == ESCAPE {
@@ -146,8 +124,6 @@ pub fn key_down(code: u16, command_only: bool, character: Option<&str>) -> KeyAc
     }
 }
 
-/// Whether a modifier key is down after a flags change, from AppKit's
-/// side bits, else its family's flag.
 pub fn modifier_down(code: u16, flags: u64) -> Option<bool> {
     const COMMAND: u64 = 1 << 20;
     const SHIFT: u64 = 1 << 17;
@@ -184,7 +160,6 @@ mod tests {
         assert!((fit.y - 250.0).abs() < f64::EPSILON && fit.x.abs() < f64::EPSILON);
         assert_eq!(fit.pixel(500.0, 500.0), (1000.0, 500.0));
         assert_eq!(fit.point(1000.0, 500.0), (500.0, 500.0));
-        // Over the bars the pointer stays on the desktop.
         assert_eq!(fit.pixel(500.0, 10.0), (1000.0, 0.0));
         assert_eq!(fit.pixel(5000.0, 5000.0), (1999.0, 999.0));
         assert_eq!(Fit::new((0, 10), (10.0, 10.0)), None);
