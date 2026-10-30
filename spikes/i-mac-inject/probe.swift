@@ -1798,7 +1798,7 @@ func testFeel(seconds: Double) throws {
 
 let plans: [String: String] = [
     "suppress": "4 arms of 8 s (baseline, default source, HID source with suppression 0 and local events permitted, "
-        + "Deskflow's process-wide calls); posts 1 px moves every 8 ms while you circle on the trackpad",
+        + "the deprecated system-wide calls); posts 1 px moves every 8 ms while you circle on the trackpad",
     "delta": "moves the cursor inside the window with location and delta fields set in different ways; hands off",
     "click": "single, double and drag clicks on the window, then Finder takes focus and the probe clicks itself back",
     "flags": "posts left Cmd down, clicks and Cmd+A on the window with and without flags, then Cmd up",

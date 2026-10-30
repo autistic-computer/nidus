@@ -88,7 +88,7 @@ Background focus (Finder frontmost, then a posted click on the probe window's bo
 | body, event number 1 | yes (runs 2 and 3) |
 | title bar, event number from the counter | yes (run 3); in run 2 Finder never took focus, so not measured |
 
-Deskflow issue [#9852](https://github.com/deskflow/deskflow/issues/9852) reports that posted body clicks do not activate a window on macOS 27. That did not reproduce here.
+Posted body clicks do activate a window on macOS 27, with or without an event number.
 
 ### flags
 

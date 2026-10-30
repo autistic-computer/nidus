@@ -30,11 +30,11 @@ Order: A first (zero code, calibrates everything else), then B, C, D, E in paral
 
 ### Spike B: smoothing feel (`spikes/b-smoothing/`)
 
-**Question.** With real mouse input streamed over the real link as cumulative totals, does a playout buffer with capped catch-up feel better than raw apply during a jitter burst, and better than lan-mouse on the same link?
+**Question.** With real mouse input streamed over the real link as cumulative totals, does a playout buffer with capped catch-up feel better than raw apply during a jitter burst?
 
 **Kill criteria.** If the tuned adaptive mode still feels rubbery or laggy compared to raw apply, the core differentiator is gone and the rethink happens now. This is the product bet; nothing else proceeds past a failure here.
 
-**Method.** `sender` reads the physical mouse via evdev and streams timestamped cumulative totals over UDP; `receiver` injects through a uinput virtual mouse in three runtime-switchable modes: `raw`, `fixed` delay, `adaptive` delay with capped catch-up. Sit at the sender machine, drive the receiver machine's cursor, flip modes over ssh while the link misbehaves (leave power_save on to keep the spikes). Compare against lan-mouse on the same link the same day.
+**Method.** `sender` reads the physical mouse via evdev and streams timestamped cumulative totals over UDP; `receiver` injects through a uinput virtual mouse in three runtime-switchable modes: `raw`, `fixed` delay, `adaptive` delay with capped catch-up. Sit at the sender machine, drive the receiver machine's cursor, flip modes over ssh while the link misbehaves (leave power_save on to keep the spikes).
 
 ## Tier 1: the flagship features
 
@@ -72,4 +72,4 @@ Order: A first (zero code, calibrates everything else), then B, C, D, E in paral
 
 ## Explicitly not spiked
 
-CGEventTap capture, portal/EIS capture, and the Karabiner vHID client protocol are proven daily by deskflow, lan-mouse, and Kanata; their risk is integration effort, not feasibility. The macOS LoginWindow TCC question and the CoreHID entitlement belong to capabilities already marked experiment in SPEC.md and wait for the macOS phase.
+CGEventTap capture, portal/EIS capture, and the Karabiner vHID client protocol are already used by shipping input tools; their risk is integration effort, not feasibility. The macOS LoginWindow TCC question and the CoreHID entitlement belong to capabilities already marked experiment in SPEC.md and wait for the macOS phase.

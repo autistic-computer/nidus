@@ -1,8 +1,8 @@
-# Roadmap: two-way input, one GUI, Deskflow parity
+# Roadmap: two-way input, one GUI
 
 Written 2026-09-28 against `e14a0c6`. Line numbers point at that commit.
 
-Today the Mac sends input and Linux receives it. The goal is that any paired computer can control any other, like Synergy and Deskflow, with at least Deskflow's features and a simpler setup. Both apps show the same settings, natively: a shared top section, then a platform section.
+Today the Mac sends input and Linux receives it. The goal is that any paired computer can control any other, with the features in the matrix below and a simple setup. Both apps show the same settings, natively: a shared top section, then a platform section.
 
 Tags: **exists**, **partial**, **missing**. "Guess" marks anything not proven by code or by a command on the Ubuntu box.
 
@@ -35,97 +35,94 @@ Tags: **exists**, **partial**, **missing**. "Guess" marks anything not proven by
 
 ---
 
-## 1. Parity matrix
+## 1. Feature matrix
 
 Verdicts:
-- **have**: Nidus already matches or beats Deskflow.
+- **have**: Nidus already does it well enough.
 - **build**: missing, and worth it.
 - **improve**: exists but needs work.
 - **skip**: not worth its complexity.
 
-Deskflow issue numbers refer to [github.com/deskflow/deskflow](https://github.com/deskflow/deskflow/issues).
-
 ### Roles and topology
 
-| Feature | Deskflow | Nidus Mac | Nidus Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Which machine controls | One server, N clients. Radio button, core restart. | Sends only (`src/macos/mod.rs:657-671`) | Receives; sends only by chord or CLI (`src/daemon.rs:758-777`) | improve | Drop roles. The session is already two-way. |
-| Any machine controls any other | Not supported ([#5160](https://github.com/deskflow/deskflow/issues/5160)) | missing | partial | build | The main goal, and Deskflow's biggest gap. |
-| Three or more computers, pointer moves from peer to peer | The server routes between clients | exists: the source routes hops (`src/app/handoff.rs`, `Next::Hop`) | same | have (0.6.0, not live-tested) | Receivers report which exit the pointer left through. |
-| Wire compatibility with Barrier/Synergy | yes | no | no | skip | Different protocol by design. |
-| Reconnect | Fixed or backoff | exists (`src/macos/link.rs`) | exists: a live link per peer on the Mac's schedule (`src/daemon/links.rs`, `src/link.rs`) | have | |
-| Finds a peer whose IP changed | Several hostnames | exists: links find a peer by the key its hello proved (0.3.0) | same | have | |
-| Encryption and trust | TLS, fingerprint on first use | exists: QUIC, pinned key, trust by placing a found computer; a fresh install's 10-minute window takes one lone computer (0.3.0) | same | have | Simpler than a code, and first use is bounded. |
-| Discovery | none | advertises its name and browses while it looks for computers | advertises its name and browses (`start_discovery` in `src/daemon.rs`) | have | Found computers wait on a shelf under the arrangement. |
-| Computer names | Must match on both ends, plus aliases | Host name from its hello | same | have; rename: skip | No name agreement needed. Marks tell namesakes apart. |
+| Feature | Nidus Mac | Nidus Linux | Verdict | Why |
+|---|---|---|---|---|
+| Which machine controls | Sends only (`src/macos/mod.rs:657-671`) | Receives; sends only by chord or CLI (`src/daemon.rs:758-777`) | improve | Drop roles. The session is already two-way. |
+| Any machine controls any other | missing | partial | build | The main goal. |
+| Three or more computers, pointer moves from peer to peer | exists: the source routes hops (`src/app/handoff.rs`, `Next::Hop`) | same | have (0.6.0, not live-tested) | Receivers report which exit the pointer left through. |
+| Reconnect | exists (`src/macos/link.rs`) | exists: a live link per peer on the Mac's schedule (`src/daemon/links.rs`, `src/link.rs`) | have | |
+| Finds a peer whose IP changed | exists: links find a peer by the key its hello proved (0.3.0) | same | have | |
+| Encryption and trust | exists: QUIC, pinned key, trust by placing a found computer; a fresh install's 10-minute window takes one lone computer (0.3.0) | same | have | Simpler than a code, and first use is bounded. |
+| Discovery | advertises its name and browses while it looks for computers | advertises its name and browses (`start_discovery` in `src/daemon.rs`) | have | Found computers wait on a shelf under the arrangement. |
+| Computer names | Host name from its hello | same | have; rename: skip | No name agreement needed. Marks tell namesakes apart. |
 
 ### Layout
 
-| Feature | Deskflow | Mac | Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Layout editor | 5x3 grid | exists (`ComputerLayout.swift`) | exists (`settings.js`, drag or arrow keys) | have | Both edit the shared layout. |
-| Partial edge links | Text config only | exists (`src/app/layout_model.rs:98-146`) | shared code | have | |
-| One layout for all machines | The server's | One per Mac | none | build | Decision 4. |
-| Per-monitor tiles | none ([#6257](https://github.com/deskflow/deskflow/issues/6257)) | partial: the type allows several tiles per peer (`layout_model.rs:13-31`), but the app builds one bounding box per computer (`native.rs:436-477`) | none | skip | Entry already snaps to the nearest monitor (`extension.js:175-190`). Portal barriers only work on outer edges (`SPEC.md:518`). |
+| Feature | Mac | Linux | Verdict | Why |
+|---|---|---|---|---|
+| Layout editor | exists (`ComputerLayout.swift`) | exists (`settings.js`, drag or arrow keys) | have | Both edit the shared layout. |
+| Partial edge links | exists (`src/app/layout_model.rs:98-146`) | shared code | have | |
+| One layout for all machines | One per Mac | none | build | Decision 4. |
+| Per-monitor tiles | partial: the type allows several tiles per peer (`layout_model.rs:13-31`), but the app builds one bounding box per computer (`native.rs:436-477`) | none | skip | Entry already snaps to the nearest monitor (`extension.js:175-190`). Portal barriers only work on outer edges (`SPEC.md:518`). |
 
 ### Switching
 
-| Feature | Deskflow | Mac | Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Edge switching as the sender | yes | exists (`src/app/sharing.rs:244-297`) | missing | build | Section 3. |
-| Return through the edge as the receiver | yes | missing | exists (`extension.js:197-210`) | build | Section 4. |
-| Hotkey: next or named computer | yes | missing | partial: only works with exactly one eligible peer (`src/daemon.rs:758-777`) | improve | One "switch to next computer" chord on both machines. |
-| Emergency return | none | exists: Ctrl+Cmd+Backspace, hardcoded (`capture_bridge.c:593-601`) | exists: set in config (`src/config.rs:97-101`) | have | Same physical keys on both. |
-| Lock the pointer to the current computer | Scroll Lock toggle | missing | missing | build (small) | A menu item on both. |
-| Switch delay | Off, or 250 ms | missing | missing | build (small) | One "pause at edges" toggle, off by default. |
-| Double tap | Off, or 250 ms | missing | missing | skip | The delay covers the same need. |
-| Dead corners | Per-corner checkboxes | exists: 8 points (`handoff.rs`) | exists: 8 px (`extension.js`) | have | A fixed dead zone at the desktop's corners, no setting. It protects the hot corners. |
-| No crossing while a button is held | yes | exists (`sharing.rs:261`, `capture_bridge.c:132-141`) | n/a yet | have | |
-| Require a modifier to cross | Mouse Without Borders | no | no | skip | Conflicts with the rule that modifiers must be up. |
-| Relative moves for games | option | Always relative on the wire (`src/session.rs:97`) | same | have | |
+| Feature | Mac | Linux | Verdict | Why |
+|---|---|---|---|---|
+| Edge switching as the sender | exists (`src/app/sharing.rs:244-297`) | missing | build | Section 3. |
+| Return through the edge as the receiver | missing | exists (`extension.js:197-210`) | build | Section 4. |
+| Hotkey: next or named computer | missing | partial: only works with exactly one eligible peer (`src/daemon.rs:758-777`) | improve | One "switch to next computer" chord on both machines. |
+| Emergency return | exists: Ctrl+Cmd+Backspace, hardcoded (`capture_bridge.c:593-601`) | exists: set in config (`src/config.rs:97-101`) | have | Same physical keys on both. |
+| Lock the pointer to the current computer | missing | missing | build (small) | A menu item on both. |
+| Switch delay | missing | missing | build (small) | One "pause at edges" toggle, off by default. |
+| Double tap | missing | missing | skip | The delay covers the same need. |
+| Dead corners | exists: 8 points (`handoff.rs`) | exists: 8 px (`extension.js`) | have | A fixed dead zone at the desktop's corners, no setting. It protects the hot corners. |
+| No crossing while a button is held | exists (`sharing.rs:261`, `capture_bridge.c:132-141`) | n/a yet | have | |
+| Require a modifier to cross | no | no | skip | Conflicts with the rule that modifiers must be up. |
+| Relative moves for games | Always relative on the wire (`src/session.rs:97`) | same | have | |
 
 ### Keyboard
 
-| Feature | Deskflow | Mac | Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Modifier remap per computer | Any to any | n/a | 3 modes per peer (`src/core/keymap.rs:15-28`) | improve | A Mac receiver needs a mode that turns PC shortcuts into Mac ones. |
-| Keyboard layout | Keysym plus language sync | Physical keys; the receiver's layout applies (`SPEC.md:312`) | same | have | Avoids Deskflow's AltGr and dead-key bugs. |
-| Left and right modifiers kept apart | no ([#8486](https://github.com/deskflow/deskflow/issues/8486)) | exists (`capture_bridge.c:462-501`) | exists | have | |
-| Key repeat | DKRP message | The wire drops repeats (`src/session.rs:595-599`), so a Mac receiver must make its own | The compositor repeats | build (Mac) | |
-| Lock key LED sync | Per-screen fixes | Caps sent as press and release per toggle (`capture_bridge.c:604-611`) | LED sync is optional in the spec (`SPEC.md:490`) | skip LED sync | Test Caps Lock on the Mac. |
-| Secure Input notice | Names the app | Notice shown (`sharing.rs:266-270`) | n/a | have | |
-| Media keys | yes | Swallowed while sending (`capture_bridge.c:19-28`) | Sent (`src/session.rs:78-83`) | build | |
+| Feature | Mac | Linux | Verdict | Why |
+|---|---|---|---|---|
+| Modifier remap per computer | n/a | 3 modes per peer (`src/core/keymap.rs:15-28`) | improve | A Mac receiver needs a mode that turns PC shortcuts into Mac ones. |
+| Keyboard layout | Physical keys; the receiver's layout applies (`SPEC.md:312`) | same | have | AltGr and dead keys come from the receiver's own layout, so no keysym translation is needed. |
+| Left and right modifiers kept apart | exists (`capture_bridge.c:462-501`) | exists | have | |
+| Key repeat | The wire drops repeats (`src/session.rs:595-599`), so a Mac receiver must make its own | The compositor repeats | build (Mac) | |
+| Lock key LED sync | Caps sent as press and release per toggle (`capture_bridge.c:604-611`) | LED sync is optional in the spec (`SPEC.md:490`) | skip LED sync | Test Caps Lock on the Mac. |
+| Secure Input notice | Notice shown (`sharing.rs:266-270`) | n/a | have | |
+| Media keys | Swallowed while sending (`capture_bridge.c:19-28`) | Sent (`src/session.rs:78-83`) | build | |
 
 ### Pointer and scroll
 
-| Feature | Deskflow | Mac | Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Reverse scroll per peer | per axis | missing | missing | build (small) | Natural scrolling on the Mac against Linux settings is the usual mismatch. Apply it on the receiver. |
-| Scroll speed per peer | 0.1 to 10 | missing | missing | skip | Reversing is what people need. |
-| Pointer speed | open request | The Mac receiver moves one point per count; a curve is opt-in | libinput accelerates the virtual pointer (guess) | build (Mac, no UI at first) | |
-| Hi-res wheel | yes | Pixel deltas | exists (`src/linux/mapping.rs:368-381`) | have | |
-| Trackpad gestures | no ([#2905](https://github.com/deskflow/deskflow/issues/2905)) | Raw contacts to Linux, experimental | receives them | have (Mac to Linux); skip (Linux to Mac) | No public macOS API. |
-| Linux laptop touchpad as the sender | yes, through EIS | n/a | The sender turns contacts into pointer motion, clicks and scrolling (`src/linux/touchpad.rs`); raw contacts only to a Linux peer with touch forwarding | have (0.6.0, not live-tested) | SPEC.md, "Linux touchpad as a pointer". GNOME's own touchpad settings are not read yet. |
+| Feature | Mac | Linux | Verdict | Why |
+|---|---|---|---|---|
+| Reverse scroll per peer | missing | missing | build (small) | Natural scrolling on the Mac against Linux settings is the usual mismatch. Apply it on the receiver. |
+| Scroll speed per peer | missing | missing | skip | Reversing is what people need. |
+| Pointer speed | The Mac receiver moves one point per count; a curve is opt-in | libinput accelerates the virtual pointer (guess) | build (Mac, no UI at first) | |
+| Hi-res wheel | Pixel deltas | exists (`src/linux/mapping.rs:368-381`) | have | |
+| Trackpad gestures | Raw contacts to Linux, experimental | receives them | have (Mac to Linux); skip (Linux to Mac) | No public macOS API. |
+| Linux laptop touchpad as the sender | n/a | The sender turns contacts into pointer motion, clicks and scrolling (`src/linux/touchpad.rs`); raw contacts only to a Linux peer with touch forwarding | have (0.6.0, not live-tested) | SPEC.md, "Linux touchpad as a pointer". GNOME's own touchpad settings are not read yet. |
 
 ### Clipboard, power, misc
 
-| Feature | Deskflow | Mac | Linux | Verdict | Why |
-|---|---|---|---|---|---|
-| Clipboard text | yes | missing (`SPEC.md:71`) | exists (Phase 4) | build (Phase 4) | Sync it only when the pointer crosses. |
-| Clipboard images | yes, 3 MiB cap | missing | exists: PNG, 3 MiB cap (Phase 4) | build after text | Capped, no UI. |
-| Primary selection | yes | n/a | missing | skip | |
-| Files | Removed in v1.22 ([PR #8569](https://github.com/deskflow/deskflow/pull/8569)) | no | no | skip | |
-| Screensaver sync | always on | Locking the Mac turns on Secure Input, which ends the crossing (`src/macos/mod.rs:46`) | The seat gate refuses input while locked (`src/daemon.rs:1033-1050`) | have (partial) | |
-| Keep the sender awake | n/a | Guess: fine | missing: with devices grabbed, GNOME sees no input and may lock | build (Linux) | An idle inhibitor while sending. |
-| Wake the target display | in master | missing | Guess: fine | build (Mac) | |
-| Run a command on enter/exit | in master | no | no | skip | |
-| Start at login, tray | declined / yes | exists | exists | have | |
-| Logs in the GUI | panel | Logs go to stderr only (`src/ffi.rs:52`) | journald | build (tiny) | An "Open logs" action. |
-| Pre-login input | Windows only | n/a | exists | have | |
-| Mac permission checks | Fatal error | exists (`src/app/native.rs:221-237`) | n/a | have | |
-| Wi-Fi lag (AWDL) | wiki workaround | exists (`src/macos/awdl.rs`) | n/a | improve | Hold the lease while receiving too. |
-| Wayland sender | Portal, dialog every session on GNOME 50 | n/a | missing | build | |
-| Wayland receiver | RemoteDesktop portal | n/a | exists: uinput, works at the greeter | have | |
+| Feature | Mac | Linux | Verdict | Why |
+|---|---|---|---|---|
+| Clipboard text | missing (`SPEC.md:71`) | exists (Phase 4) | build (Phase 4) | Sync it only when the pointer crosses. |
+| Clipboard images | missing | exists: PNG, 3 MiB cap (Phase 4) | build after text | Capped, no UI. |
+| Primary selection | n/a | missing | skip | |
+| Files | no | no | skip | |
+| Screensaver sync | Locking the Mac turns on Secure Input, which ends the crossing (`src/macos/mod.rs:46`) | The seat gate refuses input while locked (`src/daemon.rs:1033-1050`) | have (partial) | |
+| Keep the sender awake | Guess: fine | missing: with devices grabbed, GNOME sees no input and may lock | build (Linux) | An idle inhibitor while sending. |
+| Wake the target display | missing | Guess: fine | build (Mac) | |
+| Run a command on enter/exit | no | no | skip | |
+| Start at login, tray | exists | exists | have | |
+| Logs in the GUI | Logs go to stderr only (`src/ffi.rs:52`) | journald | build (tiny) | An "Open logs" action. |
+| Pre-login input | n/a | exists | have | |
+| Mac permission checks | exists (`src/app/native.rs:221-237`) | n/a | have | |
+| Wi-Fi lag (AWDL) | exists (`src/macos/awdl.rs`) | n/a | improve | Hold the lease while receiving too. |
+| Wayland sender | n/a | missing | build | |
+| Wayland receiver | n/a | exists: uinput, works at the greeter | have | |
 
 ---
 
@@ -265,7 +262,7 @@ Cost: the network-facing account can read every keyboard. To reduce that, open d
 
 ## 4. Mac receiver (Mac)
 
-The baseline is CGEventPost from the logged-in app, which is what Deskflow and lan-mouse do. No new process is needed. Spike I (2026-09-28, `spikes/i-mac-inject/RESULT.md`) passed on this Mac: the gotchas below are measured unless marked (guess).
+The baseline is CGEventPost from the logged-in app. No new process is needed. Spike I (2026-09-28, `spikes/i-mac-inject/RESULT.md`) passed on this Mac: the gotchas below are measured unless marked (guess).
 
 **Reusable pieces:**
 - The receiver state machine (`src/core/receiver.rs`) and playout (`src/session/receive.rs`).
@@ -286,7 +283,7 @@ The baseline is CGEventPost from the logged-in app, which is what Deskflow and l
 | Caps Lock | `IOHIDSetModifierLockState` on an `IOHIDSystem` connection. | Keycode 57 only sets the event flag, so letters and the real lock disagree. |
 | Unmapped keys | PrintScreen becomes F13. Drop ScrollLock, Pause and F21 to F24. | F14 and F15 never reach apps. F16 to F19 are untested. |
 | Media keys | NX_SYSDEFINED subtype 8. | Volume and brightness both work; brightness stepped on the external display with the lid closed. |
-| Scroll | Pixel units only, 30 px per detent (Deskflow's 3 lines of 10 px), with the part under a pixel carried on each axis. | Playout hands over the wheel in batches of any size, so the distance must depend only on the total. No phase or momentum on the wire (`src/session.rs:103-104`). macOS accepts posted phases and momentum, so the wire could carry them later. |
+| Scroll | Pixel units only, 30 px per detent (3 lines of 10 px), with the part under a pixel carried on each axis. | Playout hands over the wheel in batches of any size, so the distance must depend only on the total. No phase or momentum on the wire (`src/session.rs:103-104`). macOS accepts posted phases and momentum, so the wire could carry them later. |
 | Wake | `IOPMAssertionDeclareUserActivity` on Prepare. | Not tested yet (spike I skipped it). |
 
 **Handoff answers, in-process:**
@@ -476,7 +473,7 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
     - In capture-all mode, any captured device going away (a sleeping Bluetooth mouse) ends a crossing.
     - Fixed in 0.6.0: an edit kept only the tiles of computers this one paired, so a computer that paired the others put them back beside itself. An edit now keeps the others where they were, unless it covers one.
 
-### Phase 4: the Deskflow extras
+### Phase 4: the extras
 
 - **Scope:**
   - Clipboard, synced when the pointer crosses: text first, then images.

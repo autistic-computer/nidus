@@ -99,35 +99,11 @@ Reverse-engineering research describes AWDL availability windows on the shared W
 
 Nidus treats radio wake traffic, QoS, and smoothing constants as measurements. Runtime diagnostics say that a trace is “consistent with power saving or radio coexistence” and offer controlled checks. They MUST NOT claim a cause from RTT alone.
 
-### Existing tools
+### Prior art from games
 
-This table records a source snapshot from 2026-08-31. Maintainers must refresh it before external publication.
+Interactive-input transport over lossy links has decades of working practice in games: [Quake 3's redundant unacked sends](https://fabiensanglard.net/quake3/network.php), [GGPO's per-packet input history](https://www.ggpo.net/), and [Source's interpolation delay](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking). Nidus applies the same ideas to keyboard and pointer sharing, where one ordered byte stream would delay fresh input behind lost or bulk data.
 
-| Project | Transport and current finding | Relevance to Nidus |
-|---|---|---|
-| [Deskflow](https://github.com/deskflow/deskflow) | Its [protocol reference](https://github.com/deskflow/deskflow/blob/master/docs/dev/protocol_reference.md) uses TCP port 24800. The project lists Wayland as supported. | One ordered byte stream can delay fresh input behind lost or bulk data. |
-| [Input Leap](https://github.com/input-leap/input-leap) | The maintainers archived the repository in July 2026. It inherits the Synergy TCP protocol family. | Nidus cannot depend on future maintenance there. |
-| [Lan Mouse](https://github.com/feschber/lan-mouse/tree/6b1eddef7ab3ae0b06f2ed3d9b21165e03ea4cad) | Current main sends input as DTLS application datagrams. It tracks held keys and releases them on teardown, but it has no per-event delivery or periodic button reconciliation. An isolated lost release can persist until cleanup. | Its input-capture, input-emulation, input-event, and protocol crates may save platform work. |
-| [rkvm](https://github.com/htrefil/rkvm) | It uses TCP with TLS and has seen little source activity since 2024. | Its hotkey model remains useful for session-free switching. |
-
-### The unserved gap
-
-The reproductions below establish demand, not contracts, but the pattern is consistent. Synergy's vendor documents its lag fix as [switching to an ethernet connection](https://symless.com/synergy/help/fix-lagging-issues-using-ethernet). A Barrier user reports that wireless lag disappears "unless a speedtest is running in the background" ([barrier #1755](https://github.com/debauchee/barrier/issues/1755)), which is the radio-wake mechanism Nidus probes deliberately. A Lan Mouse contributor concludes that on lossy networks "there is no way around these types of problem (short of plugging the laptop into corded network)" ([lan-mouse #307](https://github.com/feschber/lan-mouse/issues/307)).
-
-Interactive-input transport over lossy links has decades of working practice in games: [Quake 3's redundant unacked sends](https://fabiensanglard.net/quake3/network.php), [GGPO's per-packet input history](https://www.ggpo.net/), and [Source's interpolation delay](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking). No software KVM in the table applies any of it. That gap is the product.
-
-Nidus's differentiators are bounded receiver-side state recovery, cumulative motion over unreliable delivery, measured playout, pre-login Linux injection, and explicit platform capability gates.
-
-### Reuse gate
-
-Before Nidus writes Linux and macOS backends from zero, one bounded spike MUST adapt the Nidus event model to Lan Mouse's input-event, input-capture, and input-emulation crates. The result must record:
-
-- API and lifecycle fit;
-- missing greeter, ownership, gesture, and failure semantics;
-- maintenance cost against an independent backend;
-- GPL-3.0 compatibility with Nidus's chosen license.
-
-The team will reuse code only after choosing a compatible license. It may still keep Nidus as a separate product and protocol.
+Nidus is built around bounded receiver-side state recovery, cumulative motion over unreliable delivery, measured playout, pre-login Linux injection, and explicit platform capability gates.
 
 ## Architecture
 
@@ -807,7 +783,7 @@ As of 2026-08-31, implementation steps 0 through 5 are code-complete and pass th
 0. Run the tier 0 and tier 1 feasibility spikes in [SPIKES.md](SPIKES.md). A tier 0 failure reopens this specification before any step below starts.
 1. Choose the package name and license.
 2. Build the protocol state machine, property tests, and fuzz targets.
-3. Run the bounded Lan Mouse backend reuse spike.
+3. Settle the Linux backend and wire protocol as Nidus's own.
 4. Implement Linux on-demand evdev capture, uinput injection, hotkey ownership, and watchdog recovery.
 5. Add authenticated QUIC, cumulative motion, receiver lease, and metrics.
 6. Daily-drive a Linux-to-Linux alpha on the maintainer's own jittery link; this is the first real smoothing measurement.
@@ -827,7 +803,7 @@ Release matrices from TESTPLAN.md gate each beta along the way.
 - The lens rides the input connection on its own stream, below input's priority, paced by application acknowledgements rather than QUIC's congestion window alone, since QUIC buffers whatever the application writes. It captures through Mutter's private remote desktop and screencast APIs in the desktop agent and PipeWire directly, with no GStreamer; nidd only relays (lens design, 2026-10-18).
 
 - The Cargo package is `nid-kvm`, the installed binary is `nid`, and the project license is GPL-3.0-or-later (maintainer implementation decision, 2026-08-31).
-- The Linux evdev/uinput backend remains independent after the bounded Lan Mouse reuse gate found that reuse would require a maintained fork without removing Nidus's backend or protocol work. Lan Mouse remains a reference for later portal/EIS work (reuse gate, 2026-08-31).
+- The Linux evdev/uinput backend and the wire protocol are Nidus's own, with no forked third-party input crates (maintainer decision, 2026-08-31).
 - Linux uses evdev plus uinput as its system backbone.
 - Linux grabs on demand at Arming after a neutral frame; the bounded switch-time leak is accepted (maintainer decision, 2026-08-31).
 - Mid-session enrollment of new physical devices is baseline behavior.

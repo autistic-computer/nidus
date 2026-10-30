@@ -502,11 +502,10 @@ runs, and sharing retries without pausing. Ctrl+Cmd+Backspace returns input and
 pauses sharing.
 
 For background cursor visibility, the app resolves the private
-`SetsCursorInBackground` connection property at runtime, following Deskflow's
-approach. Missing symbols or a failed cursor API call prevent activation.
-Apple documents cursor disconnection for foreground apps; verify the behavior
-on the target macOS version, with another app focused. API success alone does
-not prove cursor immobility or suppression of native trackpad gestures.
+`SetsCursorInBackground` connection property at runtime. Missing symbols or a
+failed cursor API call prevent activation. Apple documents cursor disconnection
+for foreground apps; verify the behavior on the target macOS version, with
+another app focused. API success alone does not prove cursor immobility or suppression of native trackpad gestures.
 
 On September 10, live tests on a Mac16,5 running macOS 27.0 (26A428) passed
 cursor isolation and recovery after normal exit, SIGKILL, and SIGSTOP. Fabrico

@@ -379,9 +379,9 @@ Checks:
 8. **Keyboard modes.** Set **Keys from ubuntu** to each mode. Standard keys:
    Super+C copies. PC key positions: Alt+C copies. Mac shortcuts: Ctrl+C copies
    in TextEdit and interrupts `sleep 100` in Terminal.
-9. **Scroll.** Every scroll posts as pixels, 30 per detent (Deskflow's 3 lines
-   of about 10 px). Judge the distance per detent in Safari and TextEdit, then
-   spin the wheel fast: it scrolls as far per detent as slowly, since nothing
+9. **Scroll.** Every scroll posts as pixels, 30 per detent (3 lines of about
+   10 px). Judge the distance per detent in Safari and TextEdit, then spin
+   the wheel fast: it scrolls as far per detent as slowly, since nothing
    accelerates the wheel yet.
    On a hi-res wheel, if one is available, a detent scrolls as far as on the
    notched wheel. Record the horizontal direction and the natural-scrolling
@@ -990,8 +990,9 @@ September 10 implementation checks: Mac passed 174 tests; Ubuntu passed 221
 with one ignored hardware test. Both passed formatting, Clippy, and GUI builds;
 Ubuntu also built the headless daemon and passed systemd unit verification.
 The earlier native Mac window displayed two local output tiles. This exposed a
-model mismatch with Synergy's computer tiles. The earlier generic Ubuntu monitor
-list also included an inactive output and rounded 133.33% scaling to 200%.
+model mismatch with the layout's one tile per computer. The earlier generic
+Ubuntu monitor list also included an inactive output and rounded 133.33%
+scaling to 200%.
 
 After user authorization, the release daemon and updated unit were installed on
 Ubuntu and nidd restarted at 12:36 local time. The desktop user queried the

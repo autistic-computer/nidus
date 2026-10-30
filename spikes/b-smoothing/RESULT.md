@@ -10,7 +10,7 @@ and tuning switched live while driving.
 Untreated link that evening: p80 one-way delay variation 34-40 ms, p95 65-125
 ms, ~300 frames lost across the session. Verdicts by hand:
 
-- raw: rubber-banding, "pretty similar to synergy rubberbanding actually".
+- raw: rubber-banding.
 - fixed 16 ms: rubber-banding back on every spike (no slew by design).
 - adaptive, 80 ms cap, p95: "smoother but adds a clear latency" (the delay
   pinned at the cap the whole time).
@@ -38,8 +38,8 @@ harness.
 
 Date: 2026-08-31. Host: Ubuntu 26.4, GNOME Shell 50.1, Wayland, wired. This
 records the loopback/synthetic-jitter validation of the harness itself, plus
-one algorithm finding. The kill-criteria verdict (feel on the real link vs
-lan-mouse) still needs the two-machine run.
+one algorithm finding. The kill-criteria verdict (feel on the real link)
+still needs the two-machine run.
 
 ## Setup
 
@@ -84,5 +84,5 @@ loop). This velocity-scaled rule is the candidate for SPEC's catch-up policy.
 
 ## Still open (needs two Linux machines on the jittery link)
 
-The actual kill criteria: side-by-side feel vs raw and vs lan-mouse on real
-WiFi with real hand motion. The harness is ready for it.
+The actual kill criteria: side-by-side feel vs raw on real WiFi with real
+hand motion. The harness is ready for it.
