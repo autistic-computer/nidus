@@ -13,7 +13,7 @@ sed -i '/"uuid":/a\  "version-name": "'"$version"'",' "$work/source/packaging/gn
 mkdir "$work/source/assets"
 cp -R "$root/assets/linux" "$work/source/assets/"
 cat > "$work/source/debian/changelog" <<EOF
-zflow (${version/-/~}) unstable; urgency=medium
+nid (${version/-/~}) unstable; urgency=medium
 
   * Package upstream release $version.
 
@@ -21,8 +21,8 @@ zflow (${version/-/~}) unstable; urgency=medium
 EOF
 (
     cd "$work/source"
-    ZFLOW_BIN_DIR="$binary_dir" dpkg-buildpackage --build=binary --no-sign
+    NID_BIN_DIR="$binary_dir" dpkg-buildpackage --build=binary --no-sign
 )
 arch=$(dpkg --print-architecture)
-install -m 0644 "$work/"zflow_*_"$arch.deb" "$output/zflow_${version}_${arch}.deb"
-printf 'Created %s/zflow_%s_%s.deb\n' "$output" "$version" "$arch"
+install -m 0644 "$work/"nid_*_"$arch.deb" "$output/nid_${version}_${arch}.deb"
+printf 'Created %s/nid_%s_%s.deb\n' "$output" "$version" "$arch"

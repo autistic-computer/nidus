@@ -9,11 +9,11 @@
 #include <string.h>
 
 enum {
-  ZFLOW_CLIP_EMPTY = 0,
-  ZFLOW_CLIP_TEXT = 1,
-  ZFLOW_CLIP_PNG = 2,
-  ZFLOW_CLIP_UNCHANGED = 3,
-  ZFLOW_CLIP_NOT_ALLOWED = 4,
+  NID_CLIP_EMPTY = 0,
+  NID_CLIP_TEXT = 1,
+  NID_CLIP_PNG = 2,
+  NID_CLIP_UNCHANGED = 3,
+  NID_CLIP_NOT_ALLOWED = 4,
 };
 
 enum {
@@ -23,12 +23,12 @@ enum {
   ACCESS_ALWAYS_DENY = 3,
 };
 
-static NSString *const ZFLOW_CLIP_MARKER = @"io.zflow.clip";
+static NSString *const NID_CLIP_MARKER = @"io.nid.clip";
 
 static NSString *const CONCEALED_TYPE = @"org.nspasteboard.ConcealedType";
 static NSString *const TRANSIENT_TYPE = @"org.nspasteboard.TransientType";
 
-static double zflow_pasteboard_wait = 3.0;
+static double nid_pasteboard_wait = 3.0;
 
 enum { WORK_PENDING, WORK_RUNNING, WORK_ABANDONED };
 
@@ -45,7 +45,7 @@ static bool on_main(void (^work)(void)) {
     work();
     dispatch_semaphore_signal(done);
   });
-  int64_t wait = (int64_t)(zflow_pasteboard_wait * (double)NSEC_PER_SEC);
+  int64_t wait = (int64_t)(nid_pasteboard_wait * (double)NSEC_PER_SEC);
   if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, wait)) == 0) return true;
   int pending = WORK_PENDING;
   if (atomic_compare_exchange_strong(&state, &pending, WORK_ABANDONED)) return false;
@@ -78,7 +78,7 @@ static NSInteger access_behavior(NSPasteboard *board) {
   return ACCESS_ALWAYS_ALLOW;
 }
 
-static NSInteger (*zflow_access_behavior)(NSPasteboard *) = access_behavior;
+static NSInteger (*nid_access_behavior)(NSPasteboard *) = access_behavior;
 
 static bool may_read(NSInteger behavior) {
   return behavior == ACCESS_ALWAYS_ALLOW || behavior == ACCESS_DEFAULT;
@@ -91,21 +91,21 @@ static NSData *clip_on(NSPasteboard *board, uint32_t *kind, bool *tiff) {
   NSData *found = nil;
   if (text) {
     found = [text dataUsingEncoding:NSUTF8StringEncoding];
-    *kind = ZFLOW_CLIP_TEXT;
+    *kind = NID_CLIP_TEXT;
   } else if ((found = [board dataForType:NSPasteboardTypePNG])) {
-    *kind = ZFLOW_CLIP_PNG;
+    *kind = NID_CLIP_PNG;
   } else if ((found = [board dataForType:NSPasteboardTypeTIFF])) {
-    *kind = ZFLOW_CLIP_PNG;
+    *kind = NID_CLIP_PNG;
     *tiff = true;
   }
   return found;
 }
 
-int zflow_mac_pasteboard_read(const char *name, const int64_t *unchanged_at, size_t limit,
+int nid_mac_pasteboard_read(const char *name, const int64_t *unchanged_at, size_t limit,
                               uint32_t *kind, uint8_t **data, size_t *length,
                               int64_t *change_count) {
   if (!kind || !data || !length || !change_count) return -1;
-  *kind = ZFLOW_CLIP_EMPTY;
+  *kind = NID_CLIP_EMPTY;
   *data = NULL;
   *length = 0;
   @autoreleasepool {
@@ -114,17 +114,17 @@ int zflow_mac_pasteboard_read(const char *name, const int64_t *unchanged_at, siz
     int64_t unchanged = skip ? *unchanged_at : 0;
     __block NSInteger count = 0;
     __block NSData *found = nil;
-    __block uint32_t found_kind = ZFLOW_CLIP_EMPTY;
+    __block uint32_t found_kind = NID_CLIP_EMPTY;
     __block bool tiff = false;
     bool answered = on_main(^{
       NSPasteboard *board = pasteboard_named(board_name);
       count = board.changeCount;
       if (skip && count == unchanged) {
-        found_kind = ZFLOW_CLIP_UNCHANGED;
+        found_kind = NID_CLIP_UNCHANGED;
         return;
       }
-      if (!may_read(zflow_access_behavior(board))) {
-        found_kind = ZFLOW_CLIP_NOT_ALLOWED;
+      if (!may_read(nid_access_behavior(board))) {
+        found_kind = NID_CLIP_NOT_ALLOWED;
         return;
       }
       found = clip_on(board, &found_kind, &tiff);
@@ -143,18 +143,18 @@ int zflow_mac_pasteboard_read(const char *name, const int64_t *unchanged_at, siz
   }
 }
 
-void zflow_mac_pasteboard_free(uint8_t *data) {
+void nid_mac_pasteboard_free(uint8_t *data) {
   free(data);
 }
 
-void zflow_mac_pasteboard_ask(const char *name) {
+void nid_mac_pasteboard_ask(const char *name) {
   @autoreleasepool {
     NSString *board_name = name ? [NSString stringWithUTF8String:name] : nil;
     dispatch_async(dispatch_get_main_queue(), ^{
       @autoreleasepool {
         NSPasteboard *board = pasteboard_named(board_name);
-        if (zflow_access_behavior(board) != ACCESS_DEFAULT) return;
-        uint32_t kind = ZFLOW_CLIP_EMPTY;
+        if (nid_access_behavior(board) != ACCESS_DEFAULT) return;
+        uint32_t kind = NID_CLIP_EMPTY;
         bool tiff = false;
         (void)clip_on(board, &kind, &tiff);
       }
@@ -162,20 +162,20 @@ void zflow_mac_pasteboard_ask(const char *name) {
   }
 }
 
-int zflow_mac_pasteboard_write(const char *name, uint32_t kind, const uint8_t *data, size_t length,
+int nid_mac_pasteboard_write(const char *name, uint32_t kind, const uint8_t *data, size_t length,
                                int64_t *change_count) {
   if (!data || length == 0 || !change_count) return -1;
-  if (kind != ZFLOW_CLIP_TEXT && kind != ZFLOW_CLIP_PNG) return -1;
+  if (kind != NID_CLIP_TEXT && kind != NID_CLIP_PNG) return -1;
   @autoreleasepool {
     NSString *board_name = name ? [NSString stringWithUTF8String:name] : nil;
     NSData *bytes = [NSData dataWithBytes:data length:length];
-    NSPasteboardType type = kind == ZFLOW_CLIP_TEXT ? NSPasteboardTypeString : NSPasteboardTypePNG;
+    NSPasteboardType type = kind == NID_CLIP_TEXT ? NSPasteboardTypeString : NSPasteboardTypePNG;
     __block NSInteger count = 0;
     __block BOOL written = NO;
     bool answered = on_main(^{
       NSPasteboardItem *item = [NSPasteboardItem new];
       if (![item setData:bytes forType:type] ||
-          ![item setData:[NSData data] forType:ZFLOW_CLIP_MARKER])
+          ![item setData:[NSData data] forType:NID_CLIP_MARKER])
         return;
       NSPasteboard *board = pasteboard_named(board_name);
       NSInteger cleared = [board clearContents];

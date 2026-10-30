@@ -727,7 +727,7 @@ impl NativeApp {
             UnplacedState::Identifying => bail!("{} is still being identified", tile.name),
             UnplacedState::DifferentVersion => {
                 bail!(
-                    "{} runs another zflow version. Update both computers.",
+                    "{} runs another Nidus version. Update both computers.",
                     tile.name
                 )
             }
@@ -1123,7 +1123,7 @@ impl NativeApp {
                 }),
                 ..row(
                     Level::Error,
-                    "Allow Accessibility so zflow can share the keyboard and pointer, and so paired computers can control this Mac.",
+                    "Allow Accessibility so Nidus can share the keyboard and pointer, and so paired computers can control this Mac.",
                 )
             };
         }
@@ -1283,7 +1283,7 @@ mod tests {
     #[test]
     fn helper_readiness_does_not_restart_sharing() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         std::fs::write(
             &path,
             "[transport]\ndiscovery = false\n[macos]\nblock_awdl = true\n",
@@ -1301,7 +1301,7 @@ mod tests {
     #[test]
     fn network_waits_for_setup_or_a_paired_computer() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         std::fs::write(&path, "[macos]\nsharing = true\n").unwrap();
         let mut app = NativeApp::open(path).unwrap();
         app.tick();
@@ -1319,7 +1319,7 @@ mod tests {
     #[test]
     fn the_mac_snapshot_lists_the_shared_rows_in_window_order() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         std::fs::write(
             &path,
             "[transport]\ndiscovery = false\n[macos]\nsharing = false\n",
@@ -1383,7 +1383,7 @@ mod tests {
     #[test]
     fn peer_settings_are_saved_without_restarting_sharing() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let peer =
             crate::identity::Identity::load_or_create(&directory.path().join("desk")).unwrap();
         let mut config = Config::default();
@@ -1433,7 +1433,7 @@ mod tests {
     #[test]
     fn this_mac_is_advertised_only_while_it_listens_and_may_use_the_network() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let desk = Identity::load_or_create(&directory.path().join("desk")).unwrap();
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
@@ -1470,7 +1470,7 @@ mod tests {
     #[test]
     fn missing_accessibility_comes_with_its_allow_button() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         std::fs::write(&path, "[transport]\ndiscovery = false\n").unwrap();
         let mut app = NativeApp::open(path).unwrap();
         app.accessibility = false;
@@ -1482,7 +1482,7 @@ mod tests {
     #[test]
     fn a_newer_shared_layout_is_kept_and_a_move_is_the_next_version() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let desk = Identity::load_or_create(&directory.path().join("desk")).unwrap();
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
@@ -1559,7 +1559,7 @@ mod tests {
     #[test]
     fn a_computer_paired_later_gets_a_tile_beside_this_mac() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let identity = |name: &str| Identity::load_or_create(&directory.path().join(name)).unwrap();
         let [desk, laptop, tablet] = ["desk", "laptop", "tablet"].map(identity);
         let record = |peer: &Identity| {
@@ -1646,7 +1646,7 @@ mod tests {
             let record = crate::config::PeerConfig::from_spki(peer.spki(), Vec::new(), permissions);
             config.peers.insert((*name).into(), record.unwrap());
         }
-        let path = directory.join("zflow.toml");
+        let path = directory.join("nid.toml");
         config.save(&path).unwrap();
         NativeApp::open(path).unwrap()
     }
@@ -1705,7 +1705,7 @@ mod tests {
         assert!(app.request(place("key:00", 0)).is_err());
 
         let value = app.request(place(&id, 4000)).unwrap();
-        let saved = Config::load(&directory.path().join("zflow.toml")).unwrap();
+        let saved = Config::load(&directory.path().join("nid.toml")).unwrap();
         let record = &saved.peers["desk"];
         assert_eq!(record.spki_der().unwrap(), desk.spki());
         assert!(record.permissions.connect && record.permissions.receive_normal);
@@ -1778,7 +1778,7 @@ mod tests {
             tolerance: 0,
         };
         app.request(request).unwrap();
-        let saved = Config::load(&directory.path().join("zflow.toml")).unwrap();
+        let saved = Config::load(&directory.path().join("nid.toml")).unwrap();
         assert_eq!(saved.peers.len(), 1);
         let record = &saved.peers["desk"];
         assert_eq!(record.spki_der().unwrap(), reinstalled.spki());
@@ -1798,7 +1798,7 @@ mod tests {
     #[test]
     fn a_fresh_mac_lets_the_lone_computer_around_join_once() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut app = NativeApp::open(path.clone()).unwrap();
         app.document.draft.macos.sharing = false;
         app.save_config().unwrap();
@@ -1833,7 +1833,7 @@ mod tests {
     #[test]
     fn a_connection_turned_away_closes_a_fresh_macs_window() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut app = NativeApp::open(path).unwrap();
         app.document.draft.macos.sharing = false;
         app.save_config().unwrap();
@@ -1857,7 +1857,7 @@ mod tests {
         assert!(!app.discover);
         app.request(Request::Discover).unwrap();
         drop(app);
-        let app = NativeApp::open(directory.path().join("zflow.toml")).unwrap();
+        let app = NativeApp::open(directory.path().join("nid.toml")).unwrap();
         assert!(app.discover);
         assert!(!app.discovers() && app.links.listen_port().is_none());
     }
@@ -1867,7 +1867,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let desk = Identity::load_or_create(&directory.path().join("desk")).unwrap();
         let mut app = mac_with(directory.path(), &[("desk", &desk)]);
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let saved = || Config::load(&path).unwrap().peers["desk"].addresses.clone();
         let armed_at = app.retry_at;
         let now = tokio::time::Instant::now();

@@ -15,10 +15,10 @@ installing, so no process running as the user can swap files mid-install.
 
 | Platform | Runner | Artifact |
 | --- | --- | --- |
-| Linux x86-64 | Ubuntu 24.04 | `zflow-vVERSION-x86_64-unknown-linux-gnu.tar.gz`, `zflow_VERSION_amd64.deb` |
-| Linux ARM64 | Ubuntu 24.04 ARM | `zflow-vVERSION-aarch64-unknown-linux-gnu.tar.gz`, `zflow_VERSION_arm64.deb` |
-| macOS Apple Silicon and Intel | macOS 26 | `zflow-vVERSION-macos.dmg`, `zflow-vVERSION-universal-apple-darwin.tar.gz` |
-| Windows x64 | Windows 2025 | `zflow-windows-x86_64-Setup.exe`, `Zflow.App-VERSION-win-x64-full.nupkg`, `releases.win-x64.json`, portable ZIP |
+| Linux x86-64 | Ubuntu 24.04 | `nid-vVERSION-x86_64-unknown-linux-gnu.tar.gz`, `nid_VERSION_amd64.deb` |
+| Linux ARM64 | Ubuntu 24.04 ARM | `nid-vVERSION-aarch64-unknown-linux-gnu.tar.gz`, `nid_VERSION_arm64.deb` |
+| macOS Apple Silicon and Intel | macOS 26 | `nid-vVERSION-macos.dmg`, `nid-vVERSION-universal-apple-darwin.tar.gz` |
+| Windows x64 | Windows 2025 | `nid-windows-x86_64-Setup.exe`, `Nid.App-VERSION-win-x64-full.nupkg`, `releases.win-x64.json`, portable ZIP |
 
 Linux uses Ubuntu 24.04 to keep the glibc floor at 2.39. The Mac job builds the
 Rust library for both CPUs, merges the two with `lipo`, and builds the Swift
@@ -37,7 +37,7 @@ Checksums detect corrupt or mismatched downloads; they rely on the same
 GitHub/HTTPS trust as the artifacts.
 
 Installers and invitations use
-`https://github.com/autistic-computer/zflow/releases/latest/download/install.sh`, so
+`https://github.com/autistic-computer/nidus/releases/latest/download/install.sh`, so
 they run published installation code. The installer resolves one concrete
 tag and fetches both the archive and its checksums from that tag.
 
@@ -76,7 +76,7 @@ notarizes and staples the image too. It checks signatures, tickets, and
 Gatekeeper again on the final archive and disk image. A signing or notarization
 failure blocks publication, including manual builds with `publish` off.
 
-The disk image holds `zflow.app` and a link to `/Applications`, and opens in
+The disk image holds `Nidus.app` and a link to `/Applications`, and opens in
 Finder's default view. It is plain `hdiutil` output, with no background picture
 or saved icon positions, so it adds no build dependency.
 
@@ -131,10 +131,10 @@ it still run, with updating disabled. Sparkle verifies the EdDSA signature befor
 extracting an update. After the Mac disk image is signed, notarized and stapled,
 `scripts/macos-update-feed.sh` signs its final bytes and produces `appcast.xml`
 with a version-specific download URL. Apps read the feed at
-`https://github.com/autistic-computer/zflow/releases/latest/download/appcast.xml`.
+`https://github.com/autistic-computer/nidus/releases/latest/download/appcast.xml`.
 
 Windows uses pinned Velopack tooling for its per-user installer and update
-packages. Its package ID is `Zflow.App`; `%LOCALAPPDATA%\zflow` remains the
+packages. Its package ID is `Nid.App`; `%LOCALAPPDATA%\nid` remains the
 configuration directory. Setup, the JSON feed and its full package must ship
 together. Signing Windows binaries requires a separate trusted certificate;
 see [Windows packaging](../windows/README.md#build).
@@ -162,11 +162,11 @@ For a local signed and notarized build (`--universal` needs
 
 ```sh
 ./scripts/build-macos-app.sh --universal --sign 'Developer ID Application: NAME (TEAM_ID)'
-xcrun notarytool store-credentials zflow-notary --team-id TEAM_ID
-./scripts/notarize-macos-app.sh zflow-notary
-./scripts/build-macos-dmg.sh target/release/zflow.app target/dist/zflow-vVERSION-macos.dmg \
+xcrun notarytool store-credentials nid-notary --team-id TEAM_ID
+./scripts/notarize-macos-app.sh nid-notary
+./scripts/build-macos-dmg.sh target/release/Nidus.app target/dist/nid-vVERSION-macos.dmg \
   --sign 'Developer ID Application: NAME (TEAM_ID)'
-./scripts/notarize-macos-app.sh zflow-notary '' target/dist/zflow-vVERSION-macos.dmg
+./scripts/notarize-macos-app.sh nid-notary '' target/dist/nid-vVERSION-macos.dmg
 ./scripts/package-release.sh universal-apple-darwin
 ```
 
@@ -193,41 +193,41 @@ Mac that is `universal-apple-darwin`, which requires an app built with
 
 ## Debian packages
 
-The package owns `/usr/bin/zflow`, `/usr/bin/zflowd`, vendor systemd/udev files
-and `/usr/lib/zflow` helper scripts under `/usr/lib`, and the GNOME extension,
+The package owns `/usr/bin/nid`, `/usr/bin/nidd`, vendor systemd/udev files
+and `/usr/lib/nid` helper scripts under `/usr/lib`, and the GNOME extension,
 application launcher, and D-Bus activation file under `/usr/share`. It also
-ships `/etc/xdg/autostart/io.zflow.desktop-agent.desktop`, which starts the
+ships `/etc/xdg/autostart/io.nid.desktop-agent.desktop`, which starts the
 desktop agent in every GNOME session. debhelper handles service lifecycle and
 respects `policy-rc.d`. Configuration and capture rules are generated only when
 absent; updates keep daemon-written settings and the computers added. Only
-creating the configuration writes `eligible` to `/var/lib/zflow/pairing-window`,
+creating the configuration writes `eligible` to `/var/lib/nid/pairing-window`,
 so a fresh install may take one computer by itself and an update never does.
 
-On configure, `/usr/lib/zflow/firewall.sh open` allows UDP 43119, the one port
+On configure, `/usr/lib/nid/firewall.sh open` allows UDP 43119, the one port
 for hellos and input, when ufw is active (application profile
-`/etc/ufw/applications.d/zflow`) or firewalld is running (service
-`/etc/firewalld/services/zflow.xml` in the default zone). It prints what it
+`/etc/ufw/applications.d/nid`) or firewalld is running (service
+`/etc/firewalld/services/nid.xml` in the default zone). It prints what it
 opened and never turns a firewall on. apt runs it on every upgrade, but it
-opens the port only while zflow has no profile or service file yet, so an
+opens the port only while Nidus has no profile or service file yet, so an
 upgrade never brings back a rule you removed. A rule written by 0.2.0 or older
 also lists UDP 43120; nothing listens there now.
 
-`apt remove zflow` stops the service, closes those firewall rules, and moves
+`apt remove nid` stops the service, closes those firewall rules, and moves
 selected-device rules out of udev's active directory, retaining them for
 reinstallation. dpkg keeps the autostart entry as a conffile until purge;
-`TryExec` stops it from running without `/usr/bin/zflow`. `apt purge zflow`
+`TryExec` stops it from running without `/usr/bin/nid`. `apt purge nid`
 also removes the autostart entry, generated configuration and device
-selections. Both retain `/var/lib/zflow` identities and the locked system
+selections. Both retain `/var/lib/nid` identities and the locked system
 account. Neither touches home folders, so a GNOME extension installed from
 extensions.gnome.org stays until the user removes it.
 
 An archive/source installation owns `/usr/local` binaries and `/etc` service
 files that would shadow a Debian installation. The curl installer keeps using
 archives for such a machine. To migrate deliberately, stop sharing, save
-`/etc/udev/rules.d/71-zflow-capture.rules`, run the archive/source uninstaller
+`/etc/udev/rules.d/71-nid-capture.rules`, run the archive/source uninstaller
 without `--purge`, install the `.deb`, then restore the capture rules and reload
 udev. Configuration and identity remain in place. Then run
-`zflow desktop-agent --install` as each desktop user: it removes the per-user
+`nid desktop-agent --install` as each desktop user: it removes the per-user
 launcher, D-Bus file and extension copy that older versions wrote, which would
 shadow the package's files.
 The `.deb` rejects a remaining `/usr/local` installation before unpacking.
@@ -235,39 +235,39 @@ The `.deb` rejects a remaining `/usr/local` installation before unpacking.
 ## Linux service
 
 For development, `scripts/install.sh` builds both headless binaries and installs them under
-`/usr/local/bin`. It creates a locked `zflow` account, loads `uinput`, installs
-the service, udev rules, and a system-sleep hook, then starts `zflowd`. The
+`/usr/local/bin`. It creates a locked `nid` account, loads `uinput`, installs
+the service, udev rules, and a system-sleep hook, then starts `nidd`. The
 account, configuration, capture-rule, and uinput steps live in
 `packaging/linux/host-setup.sh`, which the Debian package's postinst also runs.
 It also installs the launcher and D-Bus activation file under
 `/usr/local/share` and the autostart entry under `/etc/xdg/autostart`, with
-`/usr/local/bin/zflow` in place of `/usr/bin/zflow`. The session bus and GNOME
+`/usr/local/bin/nid` in place of `/usr/bin/nid`. The session bus and GNOME
 search `/usr/local/share` through the default `XDG_DATA_DIRS`. The firewall step
 is the same `firewall.sh` the package uses, kept at
-`/usr/local/lib/zflow/firewall.sh` for the uninstaller.
+`/usr/local/lib/nid/firewall.sh` for the uninstaller.
 
 Binary archives contain the same installer and Linux service assets alongside
-`bin/zflow` and `bin/zflowd`. Their installer runs with `--install-built` and
+`bin/nid` and `bin/nidd`. Their installer runs with `--install-built` and
 needs no source checkout or compiler.
 
 The installer keeps two administrator-managed files on upgrades:
 
-- `/etc/zflow/zflow.toml`
-- `/etc/udev/rules.d/71-zflow-capture.rules`
+- `/etc/nid/nid.toml`
+- `/etc/udev/rules.d/71-nid-capture.rules`
 
-The package-owned `70-zflow.rules` gives group `zflow`, mode `0640` and
-`ZFLOW_CAPTURE=1` to every keyboard, mouse, touchpad, pointing stick and
-trackball event node, except zflow's own virtual devices. With
+The package-owned `70-nid.rules` gives group `nid`, mode `0640` and
+`NID_CAPTURE=1` to every keyboard, mouse, touchpad, pointing stick and
+trackball event node, except Nidus's own virtual devices. With
 `capture_devices` empty, the default, the daemon captures all of them and
 skips any that another program already grabbed. This changes the owning group
-of every keyboard and mouse node from `input` to `zflow`, so a tool that read
+of every keyboard and mouse node from `input` to `nid`, so a tool that read
 them through membership in `input` loses access. The compositor opens devices
 through logind and is not affected. The service account does not join the
 broad `input` group.
 
-`zflow setup --device` narrows capture to chosen devices. It maintains the
+`nid setup --device` narrows capture to chosen devices. It maintains the
 capture rule with stable device attributes, and each selected event node
-receives group `zflow` and mode `0640`, which also covers a device udev does
+receives group `nid` and mode `0640`, which also covers a device udev does
 not class as a keyboard or pointer. Pass every selected device in one setup
 command by repeating `--device`.
 
@@ -276,20 +276,20 @@ lines are only needed to narrow capture:
 
 ```sh
 ./scripts/install.sh
-sudo /usr/local/bin/zflow doctor
-sudo /usr/local/bin/zflow devices
-sudo /usr/local/bin/zflow setup \
+sudo /usr/local/bin/nid doctor
+sudo /usr/local/bin/nid devices
+sudo /usr/local/bin/nid setup \
   --device /dev/input/eventX \
   --device /dev/input/eventY \
-  --udev-rules /etc/udev/rules.d/71-zflow-capture.rules
+  --udev-rules /etc/udev/rules.d/71-nid-capture.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger --action=change --subsystem-match=input
-sudo /usr/local/bin/zflow doctor
+sudo /usr/local/bin/nid doctor
 ```
 
 The default service starts at `multi-user.target` and does not wait for
-`network-online.target`. `zflow setup --prelogin on` adds
-`/etc/systemd/system/zflowd.service.d/prelogin.conf`, which orders daemon
+`network-online.target`. `nid setup --prelogin on` adds
+`/etc/systemd/system/nidd.service.d/prelogin.conf`, which orders daemon
 readiness before the display manager; `--prelogin off` removes it. Pre-login
 injection also needs the per-peer permission. Archive upgrades keep the drop-in
 only while the configuration enables pre-login input. Purging the package or
@@ -297,13 +297,13 @@ running the uninstaller deletes it. The sleep hook stops an active daemon
 before suspend and starts a fresh process after resume. This releases every
 evdev grab and discards stale sessions and clock state.
 
-The installer copies the uninstaller to `/usr/local/lib/zflow/uninstall.sh`.
+The installer copies the uninstaller to `/usr/local/lib/nid/uninstall.sh`.
 It keeps configuration, identity state, and the service account, removes the
 session files and firewall rules, and removes the capture rule to revoke
 event-device access:
 
 ```sh
-sudo /usr/local/lib/zflow/uninstall.sh
+sudo /usr/local/lib/nid/uninstall.sh
 ```
 
 Use `--purge` only when you also want to delete those files and the account.
@@ -311,11 +311,11 @@ Use `--purge` only when you also want to delete those files and the account.
 ## macOS app
 
 `scripts/build-macos-app.sh [--debug] [--universal] [--dmg] [--sign IDENTITY]`
-builds the app (`crates/zflow-app`, Rust on ala and penna) and the AWDL helper (a
+builds the app (`crates/nid-app`, Rust on ala and penna) and the AWDL helper (a
 small Swift package in `macos/`), fetches Sparkle with
-`scripts/fetch-sparkle.sh`, then assembles `target/{debug,release}/zflow.app`.
+`scripts/fetch-sparkle.sh`, then assembles `target/{debug,release}/Nidus.app`.
 It builds for the current CPU unless `--universal` asks for Apple silicon and
-Intel in one app. `--dmg`, or `just package dmg`, also packs `zflow.dmg` beside
+Intel in one app. `--dmg`, or `just package dmg`, also packs `nid.dmg` beside
 the app, signed with the app's identity unless that is ad hoc, and never
 notarized.
 The app requires macOS 26. It runs the engine in its own process, starts in the
@@ -331,19 +331,19 @@ rebuild as a new app that needs a fresh grant.
 
 Use an Apple-issued signing identity to install the privileged helper through
 the app. The app talks to the daemon over XPC directly; each side requires the
-same team and the other's exact identifier (`io.zflow.zflow` and
-`io.zflow.awdl-daemon`). Ad hoc
+same team and the other's exact identifier (`io.nid.nid` and
+`io.nid.awdl-daemon`). Ad hoc
 builds leave AWDL installation unavailable and can still run input sharing.
 The build script does not install services, launch the app, or notarize it.
 
 ## Linux desktop session
 
 Both install paths give every GNOME user the launcher, the D-Bus activation
-file for `io.zflow.Desktop`, and an autostart entry for the desktop agent. The
+file for `io.nid.Desktop`, and an autostart entry for the desktop agent. The
 curl installer then runs this as the desktop user, and so can you:
 
 ```sh
-zflow desktop-agent --install
+nid desktop-agent --install
 ```
 
 It sets up the GNOME extension and starts the agent in the current session.
@@ -351,7 +351,7 @@ First it removes the per-user launcher and D-Bus file that older versions
 wrote, since they would shadow the system files. Then:
 
 1. If GNOME Shell has not loaded the extension this session, it calls
-   `org.gnome.Shell.Extensions.InstallRemoteExtension("zflow@demfabris")`.
+   `org.gnome.Shell.Extensions.InstallRemoteExtension("nid@autistic.computer")`.
    GNOME shows its own dialog, downloads the extension from
    extensions.gnome.org, and loads it at once. GNOME 45 and later load a new
    extension without a logout only this way.
@@ -371,8 +371,8 @@ wrote, since they would shadow the system files. Then:
    cannot, so the Mac can connect without waiting for the next login. An agent
    that is already running is stopped first, so an update takes effect now.
 
-Opening zflow runs `zflow settings`, which starts the agent and opens the
-window, `zflow-app`. The window shows a banner until the extension runs:
+Opening Nidus runs `nid settings`, which starts the agent and opens the
+window, `nid-app`. The window shows a banner until the extension runs:
 **Install** (asks the agent to do the steps above), **Turn On** (for an
 extension GNOME loaded but that is off), or **Log Out** (for files GNOME has not
 loaded yet; GNOME asks to confirm). The banner lives in the app, outside the
@@ -388,10 +388,10 @@ The agent reconnects to the system service and serves desktop requests
 without opening a window. It obtains public
 peer/discovery settings through the credential-checked desktop API. It does not
 read the protected system configuration directly. For a foreground agent, run
-`zflow desktop-agent` and stop it with Ctrl+C.
+`nid desktop-agent` and stop it with Ctrl+C.
 Closing the settings window keeps the agent running. **Start at Login** is on
 while the system autostart entry applies. Turning it off writes
-`~/.config/autostart/io.zflow.desktop-agent.desktop` with `Hidden=true`, the
+`~/.config/autostart/io.nid.desktop-agent.desktop` with `Hidden=true`, the
 XDG way to override a system entry; turning it on again deletes that file.
 Opening settings can still start the agent on demand. Panel status checks do
 not activate a stopped agent.
@@ -400,8 +400,8 @@ The extension and the agent can come from different releases, since
 extensions.gnome.org updates the extension on its own schedule. Both carry an
 API level (`API` in `src/app/gnome.rs` and `packaging/gnome-extension/client.js`).
 The agent sends its level with every request, and the extension refuses a
-different one with a reason that starts with "Update zflow". The panel compares
-the level in the agent's snapshot and shows **Update zflow**. Raise both only
+different one with a reason that starts with "Update Nidus". The panel compares
+the level in the agent's snapshot and shows **Update Nidus**. Raise both only
 when the agent and the extension stop understanding each other.
 
 The system uninstaller and package removal do not touch home folders. The
@@ -411,11 +411,11 @@ GNOME extension and a `Hidden=true` autostart override stay in each account.
 
 `scripts/pack-extension.sh` (or `just package extension`) runs
 `gnome-extensions pack` and writes
-`target/dist/zflow@demfabris.shell-extension.zip`. It needs GNOME Shell's
+`target/dist/nid@autistic.computer.shell-extension.zip`. It needs GNOME Shell's
 `gnome-extensions` tool. The zip holds exactly the files that
 `desktop-agent --install` writes and the `.deb` installs: `metadata.json`,
 `extension.js`, `shell.js`, `indicator.js` and `client.js`. The settings window
-is the `zflow-app` program, not part of the extension.
+is the `nid-app` program, not part of the extension.
 `tests/install_test.py` checks that the three lists match.
 
 `metadata.json` has no `version`: extensions.gnome.org sets it on upload. That
@@ -423,10 +423,10 @@ also keeps GNOME's update check away from a bundled copy, which has no version
 to compare. List only released GNOME versions in `shell-version`.
 
 Upload the zip at <https://extensions.gnome.org/upload/> while signed in with
-the account that owns the `zflow@demfabris` UUID. Each upload becomes a new
+the account that owns the `nid@autistic.computer` UUID. Each upload becomes a new
 version that waits for review. Reviewers follow the
 [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html),
 and expect the author to explain the code. Upload a new zip whenever a release
 changes a file in the list above, or supports a new GNOME version. When a
 release raises the API level, get the new extension approved before publishing
-the release, so users do not see **Update zflow** in between.
+the release, so users do not see **Update Nidus** in between.

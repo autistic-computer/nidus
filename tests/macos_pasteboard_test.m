@@ -44,18 +44,18 @@ typedef struct {
 static Read read_board(const int64_t *unchanged_at, size_t limit) {
   Read read = {0};
   uint8_t *data = NULL;
-  read.status = zflow_mac_pasteboard_read(board_name, unchanged_at, limit, &read.kind, &data,
+  read.status = nid_mac_pasteboard_read(board_name, unchanged_at, limit, &read.kind, &data,
                                           &read.length, &read.count);
   if (data) {
     read.data = [NSData dataWithBytes:data length:read.length];
-    zflow_mac_pasteboard_free(data);
+    nid_mac_pasteboard_free(data);
   }
   return read;
 }
 
 static int64_t write_board(uint32_t kind, NSData *data) {
   int64_t count = -1;
-  assert(zflow_mac_pasteboard_write(board_name, kind, data.bytes, data.length, &count) == 0);
+  assert(nid_mac_pasteboard_write(board_name, kind, data.bytes, data.length, &count) == 0);
   return count;
 }
 
@@ -97,29 +97,29 @@ static void *checks(void *unused) {
   @autoreleasepool {
     assert(!pthread_main_np());
     Read empty = read_board(NULL, 1024);
-    assert(empty.status == 0 && empty.kind == ZFLOW_CLIP_EMPTY && !empty.data);
+    assert(empty.status == 0 && empty.kind == NID_CLIP_EMPTY && !empty.data);
 
-    NSData *text = [@"zflow ✓ text" dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *text = [@"Nidus ✓ text" dataUsingEncoding:NSUTF8StringEncoding];
     __block NSInteger before = 0;
     on_main_thread(^{
       before = board.changeCount;
     });
-    int64_t written = write_board(ZFLOW_CLIP_TEXT, text);
+    int64_t written = write_board(NID_CLIP_TEXT, text);
     on_main_thread(^{
       assert(written == before + 1);
       assert(board.changeCount == written);
       assert([board.types containsObject:NSPasteboardTypeString]);
-      assert([board.types containsObject:ZFLOW_CLIP_MARKER]);
-      assert([[board stringForType:NSPasteboardTypeString] isEqualToString:@"zflow ✓ text"]);
+      assert([board.types containsObject:NID_CLIP_MARKER]);
+      assert([[board stringForType:NSPasteboardTypeString] isEqualToString:@"Nidus ✓ text"]);
     });
     Read ours = read_board(&written, 1024);
-    assert(ours.status == 0 && ours.kind == ZFLOW_CLIP_UNCHANGED && !ours.data);
+    assert(ours.status == 0 && ours.kind == NID_CLIP_UNCHANGED && !ours.data);
     assert(ours.count == written);
     Read again = read_board(NULL, 1024);
-    assert(again.kind == ZFLOW_CLIP_TEXT && [again.data isEqualToData:text]);
+    assert(again.kind == NID_CLIP_TEXT && [again.data isEqualToData:text]);
 
     Read large = read_board(NULL, text.length - 1);
-    assert(large.status == 0 && large.kind == ZFLOW_CLIP_TEXT);
+    assert(large.status == 0 && large.kind == NID_CLIP_TEXT);
     assert(large.length == text.length && !large.data);
 
     NSData *png = image(CFSTR("public.png"), 3, 2);
@@ -129,7 +129,7 @@ static void *checks(void *unused) {
       [board setData:png forType:NSPasteboardTypePNG];
     });
     Read caption = read_board(&written, 1024);
-    assert(caption.kind == ZFLOW_CLIP_TEXT && caption.count != written);
+    assert(caption.kind == NID_CLIP_TEXT && caption.count != written);
     assert([caption.data isEqualToData:[@"caption" dataUsingEncoding:NSUTF8StringEncoding]]);
 
     for (NSString *marker in @[ CONCEALED_TYPE, TRANSIENT_TYPE ]) {
@@ -139,7 +139,7 @@ static void *checks(void *unused) {
         [board setData:[NSData data] forType:marker];
       });
       Read secret = read_board(&written, 1024);
-      assert(secret.status == 0 && secret.kind == ZFLOW_CLIP_EMPTY);
+      assert(secret.status == 0 && secret.kind == NID_CLIP_EMPTY);
       assert(!secret.data && secret.length == 0 && secret.count != written);
     }
 
@@ -148,7 +148,7 @@ static void *checks(void *unused) {
       [board setData:png forType:NSPasteboardTypePNG];
     });
     Read picture = read_board(NULL, 1 << 20);
-    assert(picture.kind == ZFLOW_CLIP_PNG && [picture.data isEqualToData:png]);
+    assert(picture.kind == NID_CLIP_PNG && [picture.data isEqualToData:png]);
 
     NSData *tiff = image(CFSTR("public.tiff"), 5, 4);
     on_main_thread(^{
@@ -156,7 +156,7 @@ static void *checks(void *unused) {
       [board setData:tiff forType:NSPasteboardTypeTIFF];
     });
     Read converted = read_board(NULL, 1 << 20);
-    assert(converted.status == 0 && converted.kind == ZFLOW_CLIP_PNG);
+    assert(converted.status == 0 && converted.kind == NID_CLIP_PNG);
     check_size(converted.data, 5, 4);
 
     on_main_thread(^{
@@ -166,26 +166,26 @@ static void *checks(void *unused) {
     });
     assert(read_board(NULL, 1 << 20).status == -1);
 
-    int64_t image_written = write_board(ZFLOW_CLIP_PNG, png);
+    int64_t image_written = write_board(NID_CLIP_PNG, png);
     on_main_thread(^{
       NSArray<NSPasteboardType> *types = board.types;
       assert([types containsObject:NSPasteboardTypePNG]);
-      assert([types containsObject:ZFLOW_CLIP_MARKER]);
+      assert([types containsObject:NID_CLIP_MARKER]);
       assert(![types containsObject:NSPasteboardTypeString]);
       assert(board.changeCount == image_written);
     });
     Read back = read_board(NULL, 1 << 20);
-    assert(back.kind == ZFLOW_CLIP_PNG && [back.data isEqualToData:png]);
+    assert(back.kind == NID_CLIP_PNG && [back.data isEqualToData:png]);
 
     int64_t count = 0;
     uint8_t *data = NULL;
     size_t length = 0;
-    assert(zflow_mac_pasteboard_read(board_name, NULL, 8, NULL, &data, &length, &count) == -1);
-    assert(zflow_mac_pasteboard_write(board_name, 7, png.bytes, png.length, &count) == -1);
-    assert(zflow_mac_pasteboard_write(board_name, ZFLOW_CLIP_TEXT, text.bytes, 0, &count) == -1);
-    assert(zflow_mac_pasteboard_write(board_name, ZFLOW_CLIP_TEXT, NULL, 4, &count) == -1);
+    assert(nid_mac_pasteboard_read(board_name, NULL, 8, NULL, &data, &length, &count) == -1);
+    assert(nid_mac_pasteboard_write(board_name, 7, png.bytes, png.length, &count) == -1);
+    assert(nid_mac_pasteboard_write(board_name, NID_CLIP_TEXT, text.bytes, 0, &count) == -1);
+    assert(nid_mac_pasteboard_write(board_name, NID_CLIP_TEXT, NULL, 4, &count) == -1);
 
-    zflow_pasteboard_wait = 0.05;
+    nid_pasteboard_wait = 0.05;
     dispatch_semaphore_t busy = dispatch_semaphore_create(0);
     dispatch_semaphore_t gave_up = dispatch_semaphore_create(0);
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -193,11 +193,11 @@ static void *checks(void *unused) {
       dispatch_semaphore_wait(gave_up, DISPATCH_TIME_FOREVER);
     });
     dispatch_semaphore_wait(busy, DISPATCH_TIME_FOREVER);
-    assert(zflow_mac_pasteboard_write(board_name, ZFLOW_CLIP_TEXT, text.bytes, text.length,
+    assert(nid_mac_pasteboard_write(board_name, NID_CLIP_TEXT, text.bytes, text.length,
                                       &count) == -1);
     assert(read_board(NULL, 8).status == -1);
     dispatch_semaphore_signal(gave_up);
-    zflow_pasteboard_wait = 3.0;
+    nid_pasteboard_wait = 3.0;
     on_main_thread(^{
       assert(board.changeCount == image_written);
       assert(![board.types containsObject:NSPasteboardTypeString]);
@@ -219,32 +219,32 @@ static void *checks(void *unused) {
       assert([board writeObjects:@[ item ]]);
       copied = board.changeCount;
     });
-    zflow_access_behavior = pretend;
+    nid_access_behavior = pretend;
     for (int refusal = 0; refusal < 2; refusal++) {
       pretended = refusal == 0 ? ACCESS_ASK : ACCESS_ALWAYS_DENY;
       Read held = read_board(NULL, 1024);
-      assert(held.status == 0 && held.kind == ZFLOW_CLIP_NOT_ALLOWED);
+      assert(held.status == 0 && held.kind == NID_CLIP_NOT_ALLOWED);
       assert(!held.data && held.length == 0 && held.count == copied);
-      assert(read_board(&copied, 1024).kind == ZFLOW_CLIP_UNCHANGED);
-      zflow_mac_pasteboard_ask(board_name);
+      assert(read_board(&copied, 1024).kind == NID_CLIP_UNCHANGED);
+      nid_mac_pasteboard_ask(board_name);
       on_main_thread(^{
       });
       assert(lazy.reads == 0);
     }
     pretended = ACCESS_ALWAYS_ALLOW;
-    zflow_mac_pasteboard_ask(board_name);
+    nid_mac_pasteboard_ask(board_name);
     on_main_thread(^{
     });
     assert(lazy.reads == 0);
     pretended = ACCESS_DEFAULT;
-    zflow_mac_pasteboard_ask(board_name);
+    nid_mac_pasteboard_ask(board_name);
     on_main_thread(^{
     });
     assert(lazy.reads == 1);
     Read first = read_board(NULL, 1024);
-    assert(first.kind == ZFLOW_CLIP_TEXT);
+    assert(first.kind == NID_CLIP_TEXT);
     assert([first.data isEqualToData:[@"lazy" dataUsingEncoding:NSUTF8StringEncoding]]);
-    zflow_access_behavior = access_behavior;
+    nid_access_behavior = access_behavior;
 
     dispatch_async(dispatch_get_main_queue(), ^{
       CFRunLoopStop(CFRunLoopGetMain());
@@ -258,7 +258,7 @@ int main(void) {
     board = [NSPasteboard pasteboardWithUniqueName];
     board_name = strdup(board.name.UTF8String);
     Read direct = read_board(NULL, 8);
-    assert(direct.status == 0 && direct.kind == ZFLOW_CLIP_EMPTY);
+    assert(direct.status == 0 && direct.kind == NID_CLIP_EMPTY);
     pthread_t thread;
     assert(pthread_create(&thread, NULL, checks, NULL) == 0);
     CFRunLoopRun();

@@ -37,12 +37,12 @@ if name == "xcrun" and args[:2] == ["stapler", "validate"] and mode == "bad-tick
 
 class NotarizationTest(unittest.TestCase):
     def run_notarization(self, mode, *extra):
-        with tempfile.TemporaryDirectory(prefix="zflow notary test ") as temp:
+        with tempfile.TemporaryDirectory(prefix="Nidus notary test ") as temp:
             root = Path(temp)
             (root / "scripts").mkdir()
             script = root / "scripts/notarize-macos-app.sh"
             shutil.copyfile(SCRIPT, script)
-            (root / "target/release/zflow.app").mkdir(parents=True)
+            (root / "target/release/Nidus.app").mkdir(parents=True)
             tools = root / "bin"
             tools.mkdir()
             for name in ("codesign", "ditto", "xcrun", "spctl"):
@@ -89,11 +89,11 @@ class NotarizationTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
     def test_disk_image_is_submitted_and_stapled_as_is(self):
-        result, calls, _ = self.run_notarization("accepted", "/release/zflow-v1.0.0-macos.dmg")
+        result, calls, _ = self.run_notarization("accepted", "/release/nid-v1.0.0-macos.dmg")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("ditto", [call[0] for call in calls])
-        self.assertIn(["xcrun", "notarytool", "submit", "/release/zflow-v1.0.0-macos.dmg"], [call[:4] for call in calls])
-        self.assertIn(["xcrun", "stapler", "staple", "/release/zflow-v1.0.0-macos.dmg"], calls)
+        self.assertIn(["xcrun", "notarytool", "submit", "/release/nid-v1.0.0-macos.dmg"], [call[:4] for call in calls])
+        self.assertIn(["xcrun", "stapler", "staple", "/release/nid-v1.0.0-macos.dmg"], calls)
         self.assertEqual(calls[-1][:4], ["spctl", "--assess", "--type", "open"])
 
 

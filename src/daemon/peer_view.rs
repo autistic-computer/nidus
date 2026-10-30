@@ -292,7 +292,7 @@ mod tests {
         let trusted =
             tokio::time::timeout(Duration::from_secs(10), dispatch_result(trust, &shared))
                 .await
-                .expect("zflow trust answered")
+                .expect("nid trust answered")
                 .unwrap();
         assert!(matches!(trusted, Response::Trusted { name, .. } if name == "laptop"));
         assert!(

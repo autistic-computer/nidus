@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn gui_changes_preserve_inline_table_comments() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let original = "macos = { sharing = true, block_awdl = false } # radio\n";
         fs::write(&path, original).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn gui_changes_preserve_comments_and_unrelated_toml() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let original = "# My desk\nversion = 1\n\n[transport] # network\ncheckpoint_ms = 25 # keep this\n\n[macos]\nblock_awdl = false # radio\n";
         fs::write(&path, original).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn missing_file_stays_missing_until_explicit_save() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("new/zflow.toml");
+        let path = directory.path().join("new/nid.toml");
         let mut document = ConfigDocument::open(path.clone()).unwrap();
         assert!(document.is_new());
         assert!(!document.is_dirty());
@@ -254,7 +254,7 @@ mod tests {
     #[test]
     fn save_preserves_peer_identity_and_device_attributes() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut original = Config::default();
         original.peers.insert(
             "ubuntu".into(),
@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn invalid_save_leaves_disk_unchanged() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         let before = fs::read(&path).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn external_edit_or_deletion_prevents_save() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
         document.draft.transport.checkpoint_ms = 100;
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn external_creation_prevents_new_file_save() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut document = ConfigDocument::open(path.clone()).unwrap();
         let outside = b"# created elsewhere\nversion = 1\n";
         fs::write(&path, outside).unwrap();
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn malformed_file_cannot_open_or_replace_current_draft_on_reload() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
         document.draft.transport.checkpoint_ms = 100;
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn reload_replaces_draft_and_save_snapshot() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         let mut document = ConfigDocument::open(path.clone()).unwrap();
         document.draft.transport.checkpoint_ms = 100;

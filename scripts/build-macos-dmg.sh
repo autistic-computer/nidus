@@ -11,7 +11,7 @@ die() {
 
 if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
     printf '%s\n' "$usage"
-    printf 'Write a disk image named zflow holding APP and a link to /Applications.\n'
+    printf 'Write a disk image named Nidus holding APP and a link to /Applications.\n'
     printf 'With --sign, sign the image with a secure timestamp (Developer ID for releases).\n'
     exit 0
 fi
@@ -39,7 +39,7 @@ done
 codesign --verify --strict --deep "$app"
 
 mkdir -p -- "$(dirname -- "$output")"
-work="$(mktemp -d "$(dirname -- "$output")/.zflow-dmg.XXXXXXXX")"
+work="$(mktemp -d "$(dirname -- "$output")/.nid-dmg.XXXXXXXX")"
 mount_dir=''
 cleanup() {
     if [[ -n "$mount_dir" ]]; then
@@ -49,28 +49,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir "$work/zflow"
-ditto "$app" "$work/zflow/zflow.app"
-ln -s /Applications "$work/zflow/Applications"
+mkdir "$work/nid"
+ditto "$app" "$work/nid/Nidus.app"
+ln -s /Applications "$work/nid/Applications"
 for attempt in 1 2 3 4; do
-    hdiutil create -quiet -ov -volname zflow -srcfolder "$work/zflow" -fs HFS+ \
-        -format UDZO -imagekey zlib-level=9 "$work/zflow.dmg" && break
+    hdiutil create -quiet -ov -volname nid -srcfolder "$work/nid" -fs HFS+ \
+        -format UDZO -imagekey zlib-level=9 "$work/nid.dmg" && break
     [[ "$attempt" -lt 4 ]] || die 'hdiutil could not create the image'
     sleep $((attempt * 5))
 done
-hdiutil verify -quiet "$work/zflow.dmg"
+hdiutil verify -quiet "$work/nid.dmg"
 
 mount_dir="$work/mount"
 mkdir "$mount_dir"
-hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" "$work/zflow.dmg"
-codesign --verify --strict --deep "$mount_dir/zflow.app"
+hdiutil attach -quiet -readonly -nobrowse -noautoopen -mountpoint "$mount_dir" "$work/nid.dmg"
+codesign --verify --strict --deep "$mount_dir/Nidus.app"
 [[ "$(readlink "$mount_dir/Applications")" == /Applications ]] || die 'the image has no Applications link'
 hdiutil detach -quiet "$mount_dir" || hdiutil detach -quiet -force "$mount_dir"
 mount_dir=''
 
 if [[ -n "$sign_identity" ]]; then
-    codesign --force --timestamp --sign "$sign_identity" "$work/zflow.dmg"
-    codesign --verify --strict "$work/zflow.dmg"
+    codesign --force --timestamp --sign "$sign_identity" "$work/nid.dmg"
+    codesign --verify --strict "$work/nid.dmg"
 fi
-mv -f -- "$work/zflow.dmg" "$output"
+mv -f -- "$work/nid.dmg" "$output"
 printf 'Built %s\n' "$output"

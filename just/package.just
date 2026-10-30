@@ -7,7 +7,7 @@ set working-directory := ".."
 default:
     @just --list package
 
-[doc("Pack the Mac app into target/release/zflow.dmg, signed like the app but not notarized.")]
+[doc("Pack the Mac app into target/release/nid.dmg, signed like the app but not notarized.")]
 dmg *args: (_platform "mac")
     ./scripts/build-macos-app.sh --dmg "$@"
 

@@ -2,17 +2,17 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly UFW_PROFILE="/etc/ufw/applications.d/zflow"
-readonly FIREWALLD_SERVICE="/etc/firewalld/services/zflow.xml"
+readonly UFW_PROFILE="/etc/ufw/applications.d/nid"
+readonly FIREWALLD_SERVICE="/etc/firewalld/services/nid.xml"
 readonly PORTS="UDP port 43119"
 
 die() {
-    printf 'zflow firewall: %s\n' "$*" >&2
+    printf 'Nidus firewall: %s\n' "$*" >&2
     exit 1
 }
 
 warn() {
-    printf 'zflow firewall: %s\n' "$*" >&2
+    printf 'Nidus firewall: %s\n' "$*" >&2
 }
 
 ufw_active() {
@@ -27,13 +27,13 @@ open_ports() {
     if ufw_active && [[ ! -e "$UFW_PROFILE" ]]; then
         [[ ! -L "$UFW_PROFILE" ]] || die "refusing symlink: $UFW_PROFILE"
         install -d -m 0755 "${UFW_PROFILE%/*}"
-        printf '[zflow]\ntitle=zflow\ndescription=Keyboard and pointer sharing between paired computers\nports=43119/udp\n' \
+        printf '[nid]\ntitle=Nidus\ndescription=Keyboard and pointer sharing between paired computers\nports=43119/udp\n' \
             > "$UFW_PROFILE"
         chmod 0644 "$UFW_PROFILE"
-        if ufw allow zflow >/dev/null; then
-            printf 'Opened %s in ufw (application profile zflow).\n' "$PORTS"
+        if ufw allow nid >/dev/null; then
+            printf 'Opened %s in ufw (application profile nid).\n' "$PORTS"
         else
-            warn "ufw refused the zflow profile. Allow $PORTS yourself."
+            warn "ufw refused the nid profile. Allow $PORTS yourself."
         fi
     fi
     if firewalld_running && [[ ! -e "$FIREWALLD_SERVICE" ]]; then
@@ -42,17 +42,17 @@ open_ports() {
         cat > "$FIREWALLD_SERVICE" <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
 <service>
-  <short>zflow</short>
+  <short>nid</short>
   <description>Keyboard and pointer sharing between paired computers.</description>
   <port protocol="udp" port="43119"/>
 </service>
 XML
         chmod 0644 "$FIREWALLD_SERVICE"
-        if firewall-cmd --reload >/dev/null && firewall-cmd --permanent --add-service=zflow >/dev/null \
-            && firewall-cmd --add-service=zflow >/dev/null; then
-            printf 'Opened %s in firewalld (service zflow, zone %s).\n' "$PORTS" "$(firewall-cmd --get-default-zone)"
+        if firewall-cmd --reload >/dev/null && firewall-cmd --permanent --add-service=nid >/dev/null \
+            && firewall-cmd --add-service=nid >/dev/null; then
+            printf 'Opened %s in firewalld (service nid, zone %s).\n' "$PORTS" "$(firewall-cmd --get-default-zone)"
         else
-            warn "firewalld refused the zflow service. Allow $PORTS yourself."
+            warn "firewalld refused the Nidus service. Allow $PORTS yourself."
         fi
     fi
 }
@@ -63,11 +63,11 @@ close_ports() {
     if [[ -f "$UFW_PROFILE" ]]; then
         if ! command -v ufw >/dev/null 2>&1; then
             rm -f -- "$UFW_PROFILE"
-        elif ufw delete allow zflow >/dev/null; then
+        elif ufw delete allow nid >/dev/null; then
             rm -f -- "$UFW_PROFILE"
-            printf 'Removed the zflow rule from ufw.\n'
+            printf 'Removed the Nidus rule from ufw.\n'
         else
-            warn "ufw kept the zflow rule. Remove it with: ufw delete allow zflow"
+            warn "ufw kept the Nidus rule. Remove it with: ufw delete allow nid"
         fi
     fi
     [[ -f "$FIREWALLD_SERVICE" ]] || return 0
@@ -81,15 +81,15 @@ close_ports() {
     fi
     IFS=' ' read -r -a zones <<< "$("${tool[@]}" --get-zones)"
     for zone in "${zones[@]}"; do
-        if "${tool[@]}" --zone="$zone" --query-service=zflow >/dev/null 2>&1 \
-            && ! "${tool[@]}" --zone="$zone" --remove-service=zflow >/dev/null; then
-            warn "firewalld kept the zflow service in zone $zone."
+        if "${tool[@]}" --zone="$zone" --query-service=nid >/dev/null 2>&1 \
+            && ! "${tool[@]}" --zone="$zone" --remove-service=nid >/dev/null; then
+            warn "firewalld kept the Nidus service in zone $zone."
             return 0
         fi
     done
     rm -f -- "$FIREWALLD_SERVICE"
     if firewalld_running; then firewall-cmd --reload >/dev/null || warn 'firewalld did not reload.'; fi
-    printf 'Removed the zflow service from firewalld.\n'
+    printf 'Removed the Nidus service from firewalld.\n'
 }
 
 [[ "$EUID" -eq 0 ]] || die "run as root"

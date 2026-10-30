@@ -6,31 +6,31 @@ export DEB_BUILD_OPTIONS = nostrip
 	dh $@ --buildsystem=none
 
 override_dh_auto_install:
-	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflow" debian/zflow/usr/bin/zflow
-	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflowd" debian/zflow/usr/bin/zflowd
-	install -D -m 0755 "$(ZFLOW_BIN_DIR)/zflow-app" debian/zflow/usr/bin/zflow-app
-	install -D -m 0644 packaging/systemd/zflowd.service debian/zflow/usr/lib/systemd/system/zflowd.service
-	sed -i 's|/usr/local/bin/zflowd|/usr/bin/zflowd|' debian/zflow/usr/lib/systemd/system/zflowd.service
-	install -D -m 0755 packaging/system-sleep/zflow debian/zflow/usr/lib/systemd/system-sleep/zflow
-	install -D -m 0644 packaging/modules-load.d/zflow.conf debian/zflow/usr/lib/modules-load.d/zflow.conf
-	install -D -m 0644 packaging/udev/70-zflow.rules debian/zflow/usr/lib/udev/rules.d/70-zflow.rules
-	install -D -m 0644 packaging/udev/71-zflow-capture.rules debian/zflow/usr/share/zflow/71-zflow-capture.rules
-	install -D -m 0644 packaging/config/zflow.toml debian/zflow/usr/share/zflow/zflow.toml
-	install -D -m 0755 packaging/linux/host-setup.sh debian/zflow/usr/lib/zflow/host-setup.sh
-	install -D -m 0755 packaging/linux/firewall.sh debian/zflow/usr/lib/zflow/firewall.sh
-	install -D -m 0644 packaging/linux/io.zflow.zflow.desktop debian/zflow/usr/share/applications/io.zflow.zflow.desktop
-	install -D -m 0644 assets/linux/io.zflow.zflow.svg debian/zflow/usr/share/icons/hicolor/scalable/apps/io.zflow.zflow.svg
-	install -D -m 0644 assets/linux/io.zflow.zflow-symbolic.svg debian/zflow/usr/share/icons/hicolor/symbolic/apps/io.zflow.zflow-symbolic.svg
-	install -D -m 0644 packaging/linux/io.zflow.Desktop.service debian/zflow/usr/share/dbus-1/services/io.zflow.Desktop.service
-	install -D -m 0644 packaging/linux/io.zflow.desktop-agent.desktop debian/zflow/etc/xdg/autostart/io.zflow.desktop-agent.desktop
-	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris
+	install -D -m 0755 "$(NID_BIN_DIR)/nid" debian/nid/usr/bin/nid
+	install -D -m 0755 "$(NID_BIN_DIR)/nidd" debian/nid/usr/bin/nidd
+	install -D -m 0755 "$(NID_BIN_DIR)/nid-app" debian/nid/usr/bin/nid-app
+	install -D -m 0644 packaging/systemd/nidd.service debian/nid/usr/lib/systemd/system/nidd.service
+	sed -i 's|/usr/local/bin/nidd|/usr/bin/nidd|' debian/nid/usr/lib/systemd/system/nidd.service
+	install -D -m 0755 packaging/system-sleep/nid debian/nid/usr/lib/systemd/system-sleep/nid
+	install -D -m 0644 packaging/modules-load.d/nid.conf debian/nid/usr/lib/modules-load.d/nid.conf
+	install -D -m 0644 packaging/udev/70-nid.rules debian/nid/usr/lib/udev/rules.d/70-nid.rules
+	install -D -m 0644 packaging/udev/71-nid-capture.rules debian/nid/usr/share/nid/71-nid-capture.rules
+	install -D -m 0644 packaging/config/nid.toml debian/nid/usr/share/nid/nid.toml
+	install -D -m 0755 packaging/linux/host-setup.sh debian/nid/usr/lib/nid/host-setup.sh
+	install -D -m 0755 packaging/linux/firewall.sh debian/nid/usr/lib/nid/firewall.sh
+	install -D -m 0644 packaging/linux/io.nid.nid.desktop debian/nid/usr/share/applications/io.nid.nid.desktop
+	install -D -m 0644 assets/linux/io.nid.nid.svg debian/nid/usr/share/icons/hicolor/scalable/apps/io.nid.nid.svg
+	install -D -m 0644 assets/linux/io.nid.nid-symbolic.svg debian/nid/usr/share/icons/hicolor/symbolic/apps/io.nid.nid-symbolic.svg
+	install -D -m 0644 packaging/linux/io.nid.Desktop.service debian/nid/usr/share/dbus-1/services/io.nid.Desktop.service
+	install -D -m 0644 packaging/linux/io.nid.desktop-agent.desktop debian/nid/etc/xdg/autostart/io.nid.desktop-agent.desktop
+	install -d debian/nid/usr/share/gnome-shell/extensions/nid@autistic.computer
 	install -m 0644 $(addprefix packaging/gnome-extension/,metadata.json extension.js shell.js indicator.js client.js) \
-		debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/
+		debian/nid/usr/share/gnome-shell/extensions/nid@autistic.computer/
 	build=build-$$(cat $(addprefix packaging/gnome-extension/,shell.js indicator.js client.js) | sha256sum | cut -c1-16); \
-	install -d debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/$$build && \
+	install -d debian/nid/usr/share/gnome-shell/extensions/nid@autistic.computer/$$build && \
 	install -m 0644 $(addprefix packaging/gnome-extension/,shell.js indicator.js client.js) \
-		debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/$$build/ && \
-	printf '%s\n' $$build > debian/zflow/usr/share/gnome-shell/extensions/zflow@demfabris/current
+		debian/nid/usr/share/gnome-shell/extensions/nid@autistic.computer/$$build/ && \
+	printf '%s\n' $$build > debian/nid/usr/share/gnome-shell/extensions/nid@autistic.computer/current
 
 override_dh_installsystemd:
-	dh_installsystemd --name=zflowd --restart-after-upgrade
+	dh_installsystemd --name=nidd --restart-after-upgrade

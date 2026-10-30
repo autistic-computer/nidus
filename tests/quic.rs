@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zflow::{
+use nid::{
     clipboard::{Clip, ClipKind, MAX_CLIP_BYTES},
     core::{
         ActivationId, ControlSequence, CumulativeMotion, MonotonicTimeMicros, MotionFrame,
@@ -489,8 +489,8 @@ async fn stopping_either_half_of_the_critical_stream_closes_the_connection() {
 }
 
 async fn input_pair() -> (
-    zflow::transport::InputChannels,
-    zflow::transport::InputChannels,
+    nid::transport::InputChannels,
+    nid::transport::InputChannels,
     quinn::Endpoint,
     quinn::Endpoint,
 ) {
@@ -549,7 +549,7 @@ async fn motion_stays_prompt_while_a_full_clip_transfers() {
     let mut image = b"\x89PNG\r\n\x1a\n".to_vec();
     image.resize(MAX_CLIP_BYTES, 0x5a);
     let clip = Clip::new(ClipKind::Png, image).unwrap();
-    let zflow::transport::InputChannels {
+    let nid::transport::InputChannels {
         clipboard: incoming,
         datagrams: received,
         ..

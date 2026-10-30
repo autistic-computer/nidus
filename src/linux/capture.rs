@@ -158,7 +158,7 @@ fn roll_back<T: GrabTarget>(
 pub enum CaptureSetError {
     #[error("the configured capture set is empty")]
     Empty,
-    #[error("refusing to capture zflow's own virtual device {0}")]
+    #[error("refusing to capture Nidus's own virtual device {0}")]
     VirtualDevice(PathBuf),
     #[error("capture device {path} appears more than once")]
     Duplicate { path: PathBuf },
@@ -224,7 +224,7 @@ impl CaptureSet {
         let mut set = Self::default();
         let mut seen = BTreeSet::new();
         for info in devices {
-            if info.is_zflow_virtual() {
+            if info.is_nid_virtual() {
                 return Err(CaptureSetError::VirtualDevice(info.path.clone()));
             }
             if !seen.insert(info.path.clone()) {
@@ -404,7 +404,7 @@ impl CaptureSet {
         let mut added = Vec::new();
         if !self.grabbed {
             for info in added_infos {
-                if info.is_zflow_virtual() {
+                if info.is_nid_virtual() {
                     return Err(CaptureSetError::VirtualDevice(info.path.clone()));
                 }
                 self.open_one(info)?;

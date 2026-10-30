@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+marker=/run/nidd-resume-after-sleep
+
+case "${1:-}" in
+    pre)
+        rm -f -- "$marker"
+        if systemctl is-active --quiet nidd.service; then
+            install -o root -g root -m 0600 /dev/null "$marker"
+            if ! systemctl stop nidd.service; then
+                rm -f -- "$marker"
+                exit 1
+            fi
+        fi
+        ;;
+    post)
+        if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+            rm -f -- "$marker"
+            systemctl start --no-block nidd.service
+        fi
+        ;;
+esac

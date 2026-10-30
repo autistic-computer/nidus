@@ -84,7 +84,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential debhelper pkg-config libclang-dev libpipewire-0.3-dev libspa-0.2-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libxcb1-dev libfontconfig-dev libfreetype-dev
-          cargo build --locked --release -p zflow-kvm -p zflow-app --bin zflow --bin zflowd --bin zflow-app
+          cargo build --locked --release -p nid-kvm -p nid-app --bin nid --bin nidd --bin nid-app
           ./scripts/build-deb.sh
           ./tests/deb_lifecycle.sh
       - name: macOS app
@@ -105,8 +105,8 @@ jobs:
           : "${MACOS_CERTIFICATE_PASSWORD:?Missing MACOS_CERTIFICATE_PASSWORD}"
           : "${MACOS_SIGNING_IDENTITY:?Missing MACOS_SIGNING_IDENTITY}"
           umask 077
-          certificate="$RUNNER_TEMP/zflow-signing.p12"
-          keychain="$RUNNER_TEMP/zflow-signing.keychain-db"
+          certificate="$RUNNER_TEMP/nid-signing.p12"
+          keychain="$RUNNER_TEMP/nid-signing.keychain-db"
           keychain_password=$(openssl rand -hex 32)
           echo "::add-mask::$keychain_password"
           printf '%s' "$MACOS_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
@@ -121,7 +121,7 @@ jobs:
         if: runner.os == 'macOS'
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-        run: ./scripts/sign-macos-app.sh "$MACOS_SIGNING_IDENTITY" target/release/zflow.app
+        run: ./scripts/sign-macos-app.sh "$MACOS_SIGNING_IDENTITY" target/release/Nidus.app
       - name: Notarize macOS app
         if: runner.os == 'macOS'
         env:
@@ -132,32 +132,32 @@ jobs:
           : "${APPLE_ID:?Missing APPLE_ID}"
           : "${APPLE_APP_SPECIFIC_PASSWORD:?Missing APPLE_APP_SPECIFIC_PASSWORD}"
           : "${APPLE_TEAM_ID:?Missing APPLE_TEAM_ID}"
-          keychain="$RUNNER_TEMP/zflow-signing.keychain-db"
-          xcrun notarytool store-credentials zflow-ci --keychain "$keychain" \
+          keychain="$RUNNER_TEMP/nid-signing.keychain-db"
+          xcrun notarytool store-credentials nid-ci --keychain "$keychain" \
             --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID"
-          ./scripts/notarize-macos-app.sh zflow-ci "$keychain"
+          ./scripts/notarize-macos-app.sh nid-ci "$keychain"
       - name: Build and notarize macOS disk image
         if: runner.os == 'macOS'
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
-          dmg="target/dist/zflow-v$version-macos.dmg"
-          ./scripts/build-macos-dmg.sh target/release/zflow.app "$dmg" --sign "$MACOS_SIGNING_IDENTITY"
-          ./scripts/notarize-macos-app.sh zflow-ci "$RUNNER_TEMP/zflow-signing.keychain-db" "$dmg"
+          dmg="target/dist/nid-v$version-macos.dmg"
+          ./scripts/build-macos-dmg.sh target/release/Nidus.app "$dmg" --sign "$MACOS_SIGNING_IDENTITY"
+          ./scripts/notarize-macos-app.sh nid-ci "$RUNNER_TEMP/nid-signing.keychain-db" "$dmg"
       - name: Sign macOS update feed
         if: runner.os == 'macOS'
         env:
           SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
         run: |
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
-          ./scripts/macos-update-feed.sh "target/dist/zflow-v$version-macos.dmg" "$version"
+          ./scripts/macos-update-feed.sh "target/dist/nid-v$version-macos.dmg" "$version"
       - name: Remove macOS signing credentials
         if: always() && runner.os == 'macOS'
         run: |
-          keychain="$RUNNER_TEMP/zflow-signing.keychain-db"
+          keychain="$RUNNER_TEMP/nid-signing.keychain-db"
           status=0
-          rm -f "$RUNNER_TEMP/zflow-signing.p12" || status=$?
+          rm -f "$RUNNER_TEMP/nid-signing.p12" || status=$?
           if [[ -f "$keychain" ]]; then security delete-keychain "$keychain" || status=$?; fi
           exit "$status"
       - name: Assemble release archive
@@ -169,14 +169,14 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
-          check_dir=$(mktemp -d "$RUNNER_TEMP/zflow-archive.XXXXXXXX")
+          check_dir=$(mktemp -d "$RUNNER_TEMP/nid-archive.XXXXXXXX")
           trap 'rm -rf -- "$check_dir"' EXIT
-          tar -xzf target/dist/zflow-v*-"$TARGET".tar.gz --strip-components=1 -C "$check_dir"
-          codesign --verify --strict --deep "$check_dir/zflow.app"
-          xcrun stapler validate "$check_dir/zflow.app"
-          spctl --assess --type execute --verbose=2 "$check_dir/zflow.app"
+          tar -xzf target/dist/nid-v*-"$TARGET".tar.gz --strip-components=1 -C "$check_dir"
+          codesign --verify --strict --deep "$check_dir/Nidus.app"
+          xcrun stapler validate "$check_dir/Nidus.app"
+          spctl --assess --type execute --verbose=2 "$check_dir/Nidus.app"
           version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
-          dmg="target/dist/zflow-v$version-macos.dmg"
+          dmg="target/dist/nid-v$version-macos.dmg"
           hdiutil verify "$dmg"
           codesign --verify --strict "$dmg"
           xcrun stapler validate "$dmg"
@@ -271,24 +271,24 @@ jobs:
             fi
           fi
           for target in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu universal-apple-darwin; do
-            test -s "target/dist/zflow-$tag-$target.tar.gz"
+            test -s "target/dist/nid-$tag-$target.tar.gz"
           done
-          test -s "target/dist/zflow-$tag-macos.dmg"
+          test -s "target/dist/nid-$tag-macos.dmg"
           test -s target/dist/appcast.xml
-          test -s "target/dist/zflow-$tag-windows-x86_64.zip"
-          test -s target/dist/zflow-windows-x86_64-Setup.exe
+          test -s "target/dist/nid-$tag-windows-x86_64.zip"
+          test -s target/dist/nid-windows-x86_64-Setup.exe
           test -s target/dist/install-windows.ps1
           test -s target/dist/releases.win-x64.json
-          test -s "target/dist/Zflow.App-$version-win-x64-full.nupkg"
-          test -s "target/dist/zflow_${version}_amd64.deb"
-          test -s "target/dist/zflow_${version}_arm64.deb"
+          test -s "target/dist/Nid.App-$version-win-x64-full.nupkg"
+          test -s "target/dist/nid_${version}_amd64.deb"
+          test -s "target/dist/nid_${version}_arm64.deb"
           cp install.sh target/dist/install.sh
           (cd target/dist && find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum | sed 's|  ./|  |') > target/SHA256SUMS
           mv target/SHA256SUMS target/dist/SHA256SUMS
           prerelease=()
           if [[ "$version" == *-* ]]; then prerelease=(--prerelease); fi
           gh release create "$tag" target/dist/* --target "$GITHUB_SHA" --draft \
-            --title "zflow $tag" --notes-file packaging/RELEASE_NOTES.md "${prerelease[@]}"
+            --title "Nidus $tag" --notes-file packaging/RELEASE_NOTES.md "${prerelease[@]}"
           if [[ "$version" == *-* ]]; then
             gh release edit "$tag" --draft=false --latest=false
           else

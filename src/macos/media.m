@@ -7,7 +7,7 @@
 typedef void (*display_fn)(int32_t, int32_t, int32_t, int32_t,
     const char *, const char *, uint32_t, uint32_t, void *);
 
-int zflow_mac_displays(display_fn callback, void *context) {
+int nid_mac_displays(display_fn callback, void *context) {
   @autoreleasepool {
     CGDirectDisplayID ids[16]; uint32_t count = 0;
     if (CGGetActiveDisplayList(16, ids, &count) != kCGErrorSuccess || !count) return 0;
@@ -38,7 +38,7 @@ int zflow_mac_displays(display_fn callback, void *context) {
   }
 }
 
-int zflow_mac_post_media_key(uint32_t key, int down, int64_t mark) {
+int nid_mac_post_media_key(uint32_t key, int down, int64_t mark) {
   @autoreleasepool {
     NSInteger state = down ? 0xA : 0xB;
     NSEvent *event = [NSEvent otherEventWithType:NSEventTypeSystemDefined
@@ -58,7 +58,7 @@ int zflow_mac_post_media_key(uint32_t key, int down, int64_t mark) {
   }
 }
 
-int zflow_mac_frontmost_bundle_id(char *buffer, size_t capacity) {
+int nid_mac_frontmost_bundle_id(char *buffer, size_t capacity) {
   if (!buffer || capacity == 0) return -1;
   @autoreleasepool {
     NSString *bundle = NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier;
@@ -68,11 +68,11 @@ int zflow_mac_frontmost_bundle_id(char *buffer, size_t capacity) {
   }
 }
 
-double zflow_mac_double_click_interval(void) {
+double nid_mac_double_click_interval(void) {
   return NSEvent.doubleClickInterval;
 }
 
-int zflow_mac_appkit_key_repeat(double *delay, double *interval) {
+int nid_mac_appkit_key_repeat(double *delay, double *interval) {
   if (!delay || !interval) return -1;
   *delay = NSEvent.keyRepeatDelay;
   *interval = NSEvent.keyRepeatInterval;

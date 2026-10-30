@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../packaging/gnome-extension/shell.js', import.meta.url), 'utf8')
-    .replace(/^import .*;\r?\n/gm, '').replace('export class ', 'class ') + '\nglobalThis.TestExtension = Zflow;';
+    .replace(/^import .*;\r?\n/gm, '').replace('export class ', 'class ') + '\nglobalThis.TestExtension = Nid;';
 
 function desktop(monitors = [{x: 0, y: 0, width: 1920, height: 1080}], monitorData = {}) {
     let pointer = {x: monitors[0].x + 100, y: monitors[0].y + 100};
@@ -426,7 +426,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
         return_dbus_error: name => replies.push(name),
         return_value: variant => replies.push(JSON.parse(variant.value[0]).status),
     });
-    assert.equal(d.watch.name, 'io.zflow.Desktop');
+    assert.equal(d.watch.name, 'io.nid.Desktop');
     await call(':1.99', prepare());
     await call(':1.99', {command: 'snapshot'});
     assert.equal(d.extension._lease, null);
@@ -448,7 +448,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
         d.display.handlers.get('notify::focus-window')();
     };
     const sent = () => d.emitted.splice(0).map(([to, path, bus, name, variant]) => {
-        assert.deepEqual([path, bus, name], ['/org/gnome/Shell/Extensions/Zflow', 'org.gnome.Shell.Extensions.Zflow', 'FocusChanged']);
+        assert.deepEqual([path, bus, name], ['/org/gnome/Shell/Extensions/Nid', 'org.gnome.Shell.Extensions.Nid', 'FocusChanged']);
         return [to, variant.value[0]];
     });
     assert.deepEqual(sent(), [[':1.7', false]]);
@@ -474,7 +474,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
     focus(null);
     focus(terminal);
     assert.deepEqual(sent(), [], 'nothing is sent without an agent');
-    d.watch.appeared(null, 'io.zflow.Desktop', ':1.8');
+    d.watch.appeared(null, 'io.nid.Desktop', ':1.8');
     assert.deepEqual(sent(), [[':1.8', true]]);
     d.extension.disable();
     assert.equal(d.display.disconnected, 3);
@@ -490,9 +490,9 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
     await call({command: 'snapshot', api: 1});
     await call({command: 'snapshot'});
     await call({command: 'snapshot', api: 6});
-    assert.match(replies[0].reason, /^Update zflow: its GNOME extension is older/);
-    assert.match(replies[1].reason, /^Update zflow: the app is older/);
-    assert.match(replies[2].reason, /^Update zflow: the app is older/, 'agents from before API levels speak API 1');
+    assert.match(replies[0].reason, /^Update Nidus: its GNOME extension is older/);
+    assert.match(replies[1].reason, /^Update Nidus: the app is older/);
+    assert.match(replies[2].reason, /^Update Nidus: the app is older/, 'agents from before API levels speak API 1');
     assert.equal(replies[3].status, 'snapshot');
     d.extension.disable();
 }
@@ -549,7 +549,7 @@ for (const [range, y] of [[{start: 185185, position: 185185}, 200], [{end: 50000
     d.watch.vanished();
     assert.equal(tracker.count, 0, 'without the agent the pointer shows again');
     assert.ok(d.barriers.every(b => b.destroyed), 'and no barrier is left');
-    d.watch.appeared(null, 'io.zflow.Desktop', ':1.7');
+    d.watch.appeared(null, 'io.nid.Desktop', ':1.7');
     await d.extension._request({command: 'sending', active: true});
     d.extension.disable();
     assert.equal(tracker.count, 0, 'disable shows the pointer again');
@@ -686,7 +686,7 @@ function clipboardCalls(d) {
     const notice = 'Clipboard not shared: 5.0 MB is over the 3 MB limit';
     assert.equal((await d.extension._request({command: 'notify', message: notice})).status, 'finished');
     await d.extension._request({command: 'notify', message: 'x'.repeat(300)});
-    assert.deepEqual(d.notices, [['zflow', notice], ['zflow', 'x'.repeat(256)]]);
+    assert.deepEqual(d.notices, [['Nidus', notice], ['Nidus', 'x'.repeat(256)]]);
     for (const message of [undefined, '', 7]) await assert.rejects(d.extension._request({command: 'notify', message}), /Invalid notice/);
     const replies = [];
     await d.extension.CallAsync([JSON.stringify({command: 'notify', message: 'hi', api: 6})], {

@@ -76,7 +76,7 @@ pub fn run(config_path: PathBuf) -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "zflow=info".into()),
+                .unwrap_or_else(|_| "nid=info".into()),
         )
         .init();
     let executor = tokio::runtime::Builder::new_multi_thread()
@@ -346,7 +346,7 @@ fn stop_on_signal(
 
 fn exit_after(deadline: Duration, exit: impl FnOnce() + Send + 'static) {
     let spawned = std::thread::Builder::new()
-        .name("zflow-stop".into())
+        .name("nid-stop".into())
         .spawn(move || {
             std::thread::sleep(deadline);
             exit();
@@ -1505,7 +1505,7 @@ fn dial_error(error: TransportError, own: bool, address: SocketAddr) -> anyhow::
         return error.into();
     }
     match crate::link::Fix::of_transport(&error) {
-        Some(_) => anyhow!("another zflow computer answered at {address}"),
+        Some(_) => anyhow!("another Nidus computer answered at {address}"),
         None => error.into(),
     }
 }
@@ -2433,7 +2433,7 @@ fn test_daemon() -> (Arc<Shared>, Box<dyn std::any::Any>) {
     config.daemon.state_dir = directory.path().join("state");
     config.daemon.control_socket = directory.path().join("control.sock");
     fs::create_dir_all(&config.daemon.state_dir).unwrap();
-    let config_path = directory.path().join("zflow.toml");
+    let config_path = directory.path().join("nid.toml");
     config.save(&config_path).unwrap();
     let identity = Arc::new(Identity::load_or_create(&config.daemon.state_dir).unwrap());
     let endpoint = Endpoint::client(SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0))).unwrap();
@@ -2487,7 +2487,7 @@ mod tests {
         assert!(
             nearby
                 .to_string()
-                .contains("another zflow computer answered")
+                .contains("another Nidus computer answered")
         );
         let saved = dial(vec![other_address]).await.err().unwrap();
         assert_eq!(crate::link::Fix::of(&saved), Some(crate::link::Fix::NewKey));

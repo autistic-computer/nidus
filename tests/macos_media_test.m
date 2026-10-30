@@ -38,9 +38,9 @@ static void *post_from_a_thread(void *unused) {
   (void)unused;
   assert(!pthread_main_np());
   unsigned int count = 0;
-  if (zflow_mac_displays(found_display, &count)) assert(count > 0);
-  assert(zflow_mac_post_media_key(NX_KEYTYPE_SOUND_UP, 1, MARK) == 0);
-  assert(zflow_mac_post_media_key(NX_KEYTYPE_PLAY, 0, MARK) == 0);
+  if (nid_mac_displays(found_display, &count)) assert(count > 0);
+  assert(nid_mac_post_media_key(NX_KEYTYPE_SOUND_UP, 1, MARK) == 0);
+  assert(nid_mac_post_media_key(NX_KEYTYPE_PLAY, 0, MARK) == 0);
   return NULL;
 }
 
@@ -65,11 +65,11 @@ int main(void) {
     for (size_t i = 0; i < posted_count; i++) CFRelease(posted[i]);
 
     char buffer[8];
-    assert(zflow_mac_frontmost_bundle_id(NULL, sizeof(buffer)) == -1);
-    assert(zflow_mac_frontmost_bundle_id(buffer, 0) == -1);
+    assert(nid_mac_frontmost_bundle_id(NULL, sizeof(buffer)) == -1);
+    assert(nid_mac_frontmost_bundle_id(buffer, 0) == -1);
     double delay = 0, interval = 0;
-    assert(zflow_mac_appkit_key_repeat(NULL, &interval) == -1);
-    assert(zflow_mac_appkit_key_repeat(&delay, NULL) == -1);
+    assert(nid_mac_appkit_key_repeat(NULL, &interval) == -1);
+    assert(nid_mac_appkit_key_repeat(&delay, NULL) == -1);
   }
   puts("macOS media tests passed (fake post)");
   return 0;

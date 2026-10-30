@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+if [[ "$1" == configure ]]; then
+    /usr/lib/nid/host-setup.sh /usr/share/nid/nid.toml \
+        /usr/share/nid/71-nid-capture.rules /usr/lib/udev/rules.d/70-nid.rules
+    /usr/lib/nid/firewall.sh open
+fi
+#DEBHELPER#

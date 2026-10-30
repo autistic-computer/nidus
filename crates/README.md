@@ -1,12 +1,12 @@
 # crates
 
-zflow's app.
+Nidus's app.
 
 | Crate | What it is |
 |---|---|
-| `zflow-app` | The app: one window with the computers and the settings, a menu bar or tray icon, and on a Mac the engine itself. The same code runs on Linux, macOS and Windows. |
+| `nid-app` | The app: one window with the computers and the settings, a menu bar or tray icon, and on a Mac the engine itself. The same code runs on Linux, macOS and Windows. |
 
-The app is built on [ala](https://github.com/autistic-computer/ala), a fork of Zed's GPUI, and [penna](https://github.com/autistic-computer/penna), its widget kit. Both come from their `main` branches on GitHub, and `Cargo.lock` pins the revisions. penna's `tray` feature draws the menu bar or tray icon. The app follows zz's design language: colors come from the theme, surfaces from roles, and it draws penna's Default interface theme in the system's light or dark mode. zflow's own roles and sizes live in `zflow-app`, and its `clippy.toml` keeps raw colors and role-less surfaces out.
+The app is built on [ala](https://github.com/autistic-computer/ala), a fork of Zed's GPUI, and [penna](https://github.com/autistic-computer/penna), its widget kit. Both come from their `main` branches on GitHub, and `Cargo.lock` pins the revisions. penna's `tray` feature draws the menu bar or tray icon. The app follows zz's design language: colors come from the theme, surfaces from roles, and it draws penna's Default interface theme in the system's light or dark mode. Nidus's own roles and sizes live in `nid-app`, and its `clippy.toml` keeps raw colors and role-less surfaces out.
 
 ## Checking other platforms from Linux
 

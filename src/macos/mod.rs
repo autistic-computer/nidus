@@ -129,16 +129,16 @@ pub struct DesktopRect {
 }
 
 pub fn accessibility_authorized(prompt: bool) -> bool {
-    unsafe { zflow_mac_accessibility_authorized(i32::from(prompt)) == 1 }
+    unsafe { nid_mac_accessibility_authorized(i32::from(prompt)) == 1 }
 }
 
 pub fn event_tap_allowed() -> bool {
-    unsafe { zflow_mac_event_tap_allowed() == 1 }
+    unsafe { nid_mac_event_tap_allowed() == 1 }
 }
 
 pub fn cursor_position() -> Result<CursorPosition> {
     let mut position = CursorPosition::default();
-    if unsafe { zflow_mac_cursor_position(&mut position) } != 0 {
+    if unsafe { nid_mac_cursor_position(&mut position) } != 0 {
         bail!("could not read the Mac cursor position");
     }
     Ok(position)
@@ -146,7 +146,7 @@ pub fn cursor_position() -> Result<CursorPosition> {
 
 pub fn active_desktop_rectangles() -> Result<Vec<DesktopRect>> {
     let mut rectangles = vec![DesktopRect::default(); 64];
-    let count = unsafe { zflow_mac_desktop_rectangles(rectangles.as_mut_ptr(), 64) };
+    let count = unsafe { nid_mac_desktop_rectangles(rectangles.as_mut_ptr(), 64) };
     if !(1..=64).contains(&count) {
         bail!("could not read active Mac displays");
     }
@@ -162,7 +162,7 @@ pub fn active_desktop_rectangles() -> Result<Vec<DesktopRect>> {
 }
 
 pub fn display_generation() -> u32 {
-    unsafe { zflow_mac_display_generation() }
+    unsafe { nid_mac_display_generation() }
 }
 
 static GEOMETRY: Mutex<Option<(u32, Geometry)>> = Mutex::new(None);
@@ -217,7 +217,7 @@ pub fn desktop_geometry() -> Result<Geometry> {
         displays: Vec::new(),
     };
     ensure!(
-        unsafe { zflow_mac_displays(found, (&mut geometry as *mut Geometry).cast()) } != 0,
+        unsafe { nid_mac_displays(found, (&mut geometry as *mut Geometry).cast()) } != 0,
         "Could not enumerate Mac displays"
     );
     geometry
@@ -257,20 +257,20 @@ pub(crate) struct EdgeGuard {
 }
 
 pub(crate) fn set_edge_guards(guards: &[EdgeGuard]) {
-    unsafe { zflow_mac_edge_guards(guards.as_ptr(), guards.len() as u32) };
+    unsafe { nid_mac_edge_guards(guards.as_ptr(), guards.len() as u32) };
 }
 
 pub fn watch_local_motion() -> Result<()> {
     ensure!(
-        unsafe { zflow_mac_motion_watch() } == 0,
-        "macOS refused to show zflow the Mac's pointer motion"
+        unsafe { nid_mac_motion_watch() } == 0,
+        "macOS refused to show Nidus the Mac's pointer motion"
     );
     Ok(())
 }
 
 pub fn take_local_motion() -> Option<LocalMotion> {
     let mut motion = NativeMotion::default();
-    (unsafe { zflow_mac_motion_take(&mut motion) } == 1).then(|| LocalMotion {
+    (unsafe { nid_mac_motion_take(&mut motion) } == 1).then(|| LocalMotion {
         dx: motion.dx,
         dy: motion.dy,
         age: Duration::from_nanos(motion.age_ns),
@@ -278,11 +278,11 @@ pub fn take_local_motion() -> Option<LocalMotion> {
 }
 
 pub fn input_is_neutral() -> bool {
-    unsafe { zflow_mac_input_is_neutral() == 1 }
+    unsafe { nid_mac_input_is_neutral() == 1 }
 }
 
 pub fn secure_input_enabled() -> bool {
-    unsafe { zflow_mac_secure_input_enabled() == 1 }
+    unsafe { nid_mac_secure_input_enabled() == 1 }
 }
 
 pub fn awdl_trouble() -> Option<String> {
@@ -1048,10 +1048,10 @@ struct NativeEvent {
 }
 
 unsafe extern "C" {
-    fn zflow_mac_accessibility_authorized(prompt: i32) -> i32;
-    fn zflow_mac_event_tap_allowed() -> i32;
-    fn zflow_mac_cursor_position(position: *mut CursorPosition) -> i32;
-    fn zflow_mac_displays(
+    fn nid_mac_accessibility_authorized(prompt: i32) -> i32;
+    fn nid_mac_event_tap_allowed() -> i32;
+    fn nid_mac_cursor_position(position: *mut CursorPosition) -> i32;
+    fn nid_mac_displays(
         callback: extern "C" fn(
             i32,
             i32,
@@ -1065,27 +1065,27 @@ unsafe extern "C" {
         ),
         context: *mut std::ffi::c_void,
     ) -> i32;
-    fn zflow_mac_desktop_rectangles(rectangles: *mut DesktopRect, capacity: u32) -> i32;
-    fn zflow_mac_display_generation() -> u32;
-    fn zflow_mac_input_is_neutral() -> i32;
-    fn zflow_mac_motion_watch() -> i32;
-    fn zflow_mac_edge_guards(guards: *const EdgeGuard, count: u32);
-    fn zflow_mac_motion_take(motion: *mut NativeMotion) -> i32;
-    fn zflow_mac_secure_input_enabled() -> i32;
-    fn zflow_mac_capture_start(
+    fn nid_mac_desktop_rectangles(rectangles: *mut DesktopRect, capacity: u32) -> i32;
+    fn nid_mac_display_generation() -> u32;
+    fn nid_mac_input_is_neutral() -> i32;
+    fn nid_mac_motion_watch() -> i32;
+    fn nid_mac_edge_guards(guards: *const EdgeGuard, count: u32);
+    fn nid_mac_motion_take(motion: *mut NativeMotion) -> i32;
+    fn nid_mac_secure_input_enabled() -> i32;
+    fn nid_mac_capture_start(
         raw_touch: i32,
         entry: *const DesktopRect,
         wake: extern "C" fn(),
     ) -> i32;
-    fn zflow_mac_capture_stop_at(position: *const CursorPosition) -> i32;
-    fn zflow_mac_capture_poll(event: *mut NativeEvent) -> i32;
-    fn zflow_mac_capture_stop_requested() -> i32;
-    fn zflow_mac_capture_pause_requested() -> i32;
-    fn zflow_mac_capture_last_error() -> *const c_char;
+    fn nid_mac_capture_stop_at(position: *const CursorPosition) -> i32;
+    fn nid_mac_capture_poll(event: *mut NativeEvent) -> i32;
+    fn nid_mac_capture_stop_requested() -> i32;
+    fn nid_mac_capture_pause_requested() -> i32;
+    fn nid_mac_capture_last_error() -> *const c_char;
     #[cfg(test)]
-    fn zflow_mac_modifier_pressed(keycode: u16, flags: u64) -> u8;
+    fn nid_mac_modifier_pressed(keycode: u16, flags: u64) -> u8;
     #[cfg(test)]
-    fn zflow_mac_should_forward_scroll(
+    fn nid_mac_should_forward_scroll(
         raw_touch: u8,
         raw_contact_active: u8,
         scroll_phase: i64,
@@ -1106,7 +1106,7 @@ impl MacCapture {
             width: f64::from(entry.width),
             height: f64::from(entry.height),
         };
-        let status = unsafe { zflow_mac_capture_start(i32::from(raw_touch), &entry, wake_capture) };
+        let status = unsafe { nid_mac_capture_start(i32::from(raw_touch), &entry, wake_capture) };
         if status < 0 {
             return Err(capture_start_error(status, Self::last_error()));
         }
@@ -1118,21 +1118,21 @@ impl MacCapture {
 
     fn poll(&mut self) -> Option<NativeEvent> {
         let mut event = NativeEvent::default();
-        (unsafe { zflow_mac_capture_poll(&mut event) } == 1).then_some(event)
+        (unsafe { nid_mac_capture_poll(&mut event) } == 1).then_some(event)
     }
 
     fn stop_requested(&self) -> bool {
-        unsafe { zflow_mac_capture_stop_requested() == 1 }
+        unsafe { nid_mac_capture_stop_requested() == 1 }
     }
 
     fn pause_requested(&self) -> bool {
-        unsafe { zflow_mac_capture_pause_requested() == 1 }
+        unsafe { nid_mac_capture_pause_requested() == 1 }
     }
 
     fn stop_at(&mut self, position: Option<CursorPosition>) -> Result<()> {
         if self.running {
             let status = unsafe {
-                zflow_mac_capture_stop_at(position.as_ref().map_or(std::ptr::null(), |point| point))
+                nid_mac_capture_stop_at(position.as_ref().map_or(std::ptr::null(), |point| point))
             };
             self.running = false;
             if status < 0 {
@@ -1143,7 +1143,7 @@ impl MacCapture {
     }
 
     fn last_error() -> String {
-        let pointer = unsafe { zflow_mac_capture_last_error() };
+        let pointer = unsafe { nid_mac_capture_last_error() };
         if pointer.is_null() {
             return "unknown error".to_owned();
         }
@@ -1393,11 +1393,11 @@ mod tests {
 
     fn forward_scroll(raw: bool, active: bool, scroll: i64, momentum: i64) -> bool {
         unsafe {
-            zflow_mac_should_forward_scroll(u8::from(raw), u8::from(active), scroll, momentum) == 1
+            nid_mac_should_forward_scroll(u8::from(raw), u8::from(active), scroll, momentum) == 1
         }
     }
 
     fn modifier_pressed(keycode: u16, flags: u64) -> bool {
-        unsafe { zflow_mac_modifier_pressed(keycode, flags) == 1 }
+        unsafe { nid_mac_modifier_pressed(keycode, flags) == 1 }
     }
 }

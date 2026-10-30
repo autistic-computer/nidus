@@ -1,4 +1,4 @@
-# zflow test plan
+# Nidus test plan
 
 > Release gates for beta and 1.0. The prototype gates (property tests, deterministic protocol tests, fuzz targets) live in SPEC.md under Validation. Snapshot 2026-08-31; refresh version claims before running a matrix.
 
@@ -7,8 +7,8 @@ Thresholds named "frozen" must be written down, with their measurement method, b
 ## Installation and updates without a checkout
 
 A release fails this gate if installing or updating on a supported computer
-requires cloning the repository, compiling zflow, or installing development
-tools. Run this matrix with downloaded artifacts on computers without a zflow
+requires cloning the repository, compiling Nidus, or installing development
+tools. Run this matrix with downloaded artifacts on computers without a Nidus
 checkout, Rust, Xcode, or a .NET SDK. System runtime packages and native
 permission dialogs are expected.
 
@@ -43,7 +43,7 @@ GitHub Actions builds all platforms.
 
 Install 0.7.0 on a Mac A and a GNOME B that trust each other, and log in to
 B again so GNOME Shell loads the new extension. On B, turn on "Can see this
-screen" for A in zflow's settings. Turn sharing on, and on A turn on "Reduce
+screen" for A in Nidus's settings. Turn sharing on, and on A turn on "Reduce
 Wi-Fi lag".
 
 - From A's menu bar choose "Look at B". Within a second the circle shows B's
@@ -82,7 +82,7 @@ themselves, so run the walk once more after forgetting C on B and B on C.
   C's tile stays where A placed it, on all three computers.
 - Type and click on C, then push home through C's edge to A if one touches, or
   back through B. Nothing may stay held on B or C afterwards.
-- With C asleep or its zflow stopped, push from B toward C: the pointer stays
+- With C asleep or its Nidus stopped, push from B toward C: the pointer stays
   on B and the way home still works.
 - With clipboard sharing on, copy on A and walk to C: C gets A's clipboard.
 - On the Mac, check in the log that a held modifier keeps the pointer on B
@@ -124,7 +124,7 @@ Existing layouts must migrate without losing paired computers or keys.
   boundaries, with slow and fast motion, partial edges, edge dwell, and held
   keys/buttons. A gap or disconnected peer must leave native navigation usable.
 - Keep moving across native boundaries where no connected remote monitor is
-  arranged: zflow must leave these local crossings alone.
+  arranged: Nidus must leave these local crossings alone.
 - Disable a monitor (including BetterDisplay disconnect), unplug it, and change
   resolution while receiving or sending. Input must release safely, the tile
   must disappear, and reconnecting must restore its position when still free.
@@ -170,16 +170,16 @@ pairing window.
 
 To make a computer fresh without losing its setup:
 
-- Ubuntu: `sudo systemctl stop zflowd`, move `/etc/zflow/zflow.toml` and
-  `/var/lib/zflow` aside, then `sudo just install linux`. Setup writes
-  `eligible` to `/var/lib/zflow/pairing-window`. Log in at the desktop. To
+- Ubuntu: `sudo systemctl stop nidd`, move `/etc/nid/nid.toml` and
+  `/var/lib/nid` aside, then `sudo just install linux`. Setup writes
+  `eligible` to `/var/lib/nid/pairing-window`. Log in at the desktop. To
   restore, stop the service and move both back.
-- Mac: quit zflow, then open it on a new configuration, which gets its own key
-  and window: `open -n target/debug/zflow.app --args --config /tmp/zflow-fresh/zflow.toml`.
+- Mac: quit Nidus, then open it on a new configuration, which gets its own key
+  and window: `open -n target/debug/Nidus.app --args --config /tmp/nid-fresh/nid.toml`.
 
 Checks:
 
-1. **Two fresh installs.** Make both computers fresh and open zflow on both.
+1. **Two fresh installs.** Make both computers fresh and open Nidus on both.
    Each shows "This computer is new" with its minutes left, then "Adding NAME"
    for about 5 s, then the other on its arrangement and "NAME joined" (a
    notification on the Mac, a row with Forget on Ubuntu). Each computer's mark
@@ -201,7 +201,7 @@ Checks:
    saved with part of its fingerprint after its name.
 5. **Window ends.** On a fresh computer with nobody else around, wait 10
    minutes: the banner goes, and a computer that shows up afterwards waits on
-   the shelf. Restarting `zflowd` or the Mac app while the window is open
+   the shelf. Restarting `nidd` or the Mac app while the window is open
    closes it too.
 6. **No window without a fresh install.** An upgrade over 0.2.0 (`sudo just
    install linux` with the configuration in place), an install over ssh with
@@ -210,10 +210,10 @@ Checks:
 7. **Introductions (0.6.0).** The Mac trusts Ubuntu and the VM, which do not
    trust each other. Within a few seconds of the Mac's layout reaching them,
    each adds the other ("NAME joined", with Forget), its tile stays where the
-   Mac put it, and `sudo zflow peers` lists it. A computer that only said
+   Mac put it, and `sudo nid peers` lists it. A computer that only said
    hello to Ubuntu, and that Ubuntu did not find itself, is not added.
 8. **Forget.** Forget a computer: it goes back to Found on this network at
-   once, and no introduction adds it back (`/var/lib/zflow/forgotten` lists
+   once, and no introduction adds it back (`/var/lib/nid/forgotten` lists
    its key). Dragging it in again works and takes it off that list. On
    Ubuntu, Forget asks nothing.
 9. **Reinstalled.** Make Ubuntu fresh while the Mac still trusts its old key.
@@ -222,64 +222,64 @@ Checks:
    it keeps its name, settings and tile, and pre-login input is off.
 10. **New address.** Renew Ubuntu's DHCP lease to a new address, or move it
     to another network the Mac can reach. The link reconnects within a minute,
-    without a drag, and `journalctl -u zflowd` shows the new address learned
+    without a drag, and `journalctl -u nidd` shows the new address learned
     without the link restarting.
 11. **Add by address.** With mDNS blocked (another subnet, or Tailscale), add
     the other computer's Tailscale IP with Add by Address on both. It shows up
     on the shelf; place it on both and cross. On Ubuntu without the window,
-    `sudo zflow nearby --add 100.64.0.7` and `sudo zflow trust NAME` do the
+    `sudo nid nearby --add 100.64.0.7` and `sudo nid trust NAME` do the
     same.
 12. **One port.** With ufw on, `sudo ufw status verbose` lists only UDP 43119
-    for zflow on a fresh install, and both checks above pass through it.
+    for Nidus on a fresh install, and both checks above pass through it.
     `ss -lunp | grep 43120` shows nothing.
 13. **Different version.** A computer still on 0.2.0 shows on the shelf as
-    "Different zflow version" and cannot be dragged. A computer that trusted
-    it before says "Different zflow version. Update both computers."
+    "Different Nidus version" and cannot be dragged. A computer that trusted
+    it before says "Different Nidus version. Update both computers."
 14. **Paused still answers.** Pause sharing on the Mac. Ubuntu's row for the
     Mac does not say "Hasn't added this computer yet", and a fresh computer
     still finds the Mac. Resume: crossing works within 5 s.
 15. **Hello flood.** From a third computer, open `zflow-hello/4` connections
     to Ubuntu's port 43119 in a tight loop, for example a few lines around
-    `zflow::transport::connect_hello`. Ubuntu answers at most five per 30 s
+    `nid::transport::connect_hello`. Ubuntu answers at most five per 30 s
     from that address and closes the rest, the shelf keeps one tile for that
     key, and crossings with the Mac do not stutter.
 16. **Only computers it found join.** On a fresh computer with nobody else
     around, make a computer it cannot see over mDNS (another subnet, or over
-    Tailscale) say hello to it: `sudo zflow nearby --add FRESH_IP` there. It
+    Tailscale) say hello to it: `sudo nid nearby --add FRESH_IP` there. It
     shows on the fresh computer's shelf, but the window never holds for it
     and nothing joins; dragging it in still works. As an ordinary user on the
     fresh computer, a hello to `127.0.0.1:43119` or to its own LAN address
     puts nothing on the shelf.
 17. **A flood closes the window.** On a fresh computer during its window,
-    publish more than 64 zflow records from a third computer, for example
+    publish more than 64 Nidus records from a third computer, for example
     `avahi-publish -s zf-$(openssl rand -hex 16) _zflow._udp 43119
     v=zflow/4 cap=keyboard,pointer name=x &` in a loop. The window closes as
     a rival and the computer that shows up next waits on the shelf.
 18. **A window that cannot be saved stays shut.** Make Ubuntu fresh, then
-    before logging in run `sudo chattr +i /var/lib/zflow/pairing-window`.
-    Log in: no "This computer is new" banner, `journalctl -u zflowd` says the
+    before logging in run `sudo chattr +i /var/lib/nid/pairing-window`.
+    Log in: no "This computer is new" banner, `journalctl -u nidd` says the
     window stays shut, and a lone computer waits on the shelf, also after
-    `sudo systemctl restart zflowd`. Undo with `sudo chattr -i`.
+    `sudo systemctl restart nidd`. Undo with `sudo chattr -i`.
 19. **Other addresses only to trusted computers.** With Tailscale up on
     Ubuntu, place Ubuntu on a fresh Mac before Ubuntu places the Mac. The
-    Mac's record for Ubuntu in its `zflow.toml` has Ubuntu's LAN address and
+    Mac's record for Ubuntu in its `nid.toml` has Ubuntu's LAN address and
     not its Tailscale one, since Ubuntu's hellos to a key it does not trust
     name no other addresses.
 20. **Only session addresses are saved on the Mac.** With the Mac and Ubuntu
     trusting each other, give Ubuntu an extra address (`sudo ip addr add
-    192.0.2.50/32 dev lo`) and restart zflowd. The Mac's `zflow.toml` never
+    192.0.2.50/32 dev lo`) and restart nidd. The Mac's `nid.toml` never
     gains 192.0.2.50, while a DHCP change (check 10) still saves the new
     address once a session comes up there.
 21. **No tile passes for this one.** Name the VM `This-Mac` (`sudo
-    hostnamectl set-hostname This-Mac`) and restart its zflowd. On the Mac,
+    hostnamectl set-hostname This-Mac`) and restart its nidd. On the Mac,
     and on Ubuntu, its shelf tile says "Computer" with its mark.
 22. **The mark comes with the name.** In check 1, each "NAME joined"
     notification gives the other computer's mark as six hex digits, and
     hovering the squares on that computer's own tile shows the same digits.
-    `sudo zflow trust NAME` prints "trusted NAME, mark MARK".
+    `sudo nid trust NAME` prints "trusted NAME, mark MARK".
 23. **Late login.** With the Ubuntu screen locked or nobody logged in, run
-    `sudo apt purge zflow`, then install the `.deb` over ssh. The install
-    passes even though the purge left `/var/lib/zflow` behind, and
+    `sudo apt purge nid`, then install the `.deb` over ssh. The install
+    passes even though the purge left `/var/lib/nid` behind, and
     `pairing-window` reads `eligible`. Wait two minutes, then log in: the
     window still takes the Mac within about 20 s.
 
@@ -290,18 +290,18 @@ One sitting with the Mac and the Ubuntu box, both from main. Both ends speak
 
 Setup on Ubuntu:
 
-1. `sudo just install linux`. It installs `zflow` and `zflowd`, reloads udev, so
-   every keyboard and pointer is readable by the `zflow` account, and restarts
+1. `sudo just install linux`. It installs `nid` and `nidd`, reloads udev, so
+   every keyboard and pointer is readable by the `nid` account, and restarts
    the service.
-2. Empty `capture_devices` in `/etc/zflow/zflow.toml`, then run `sudo zflow doctor`.
+2. Empty `capture_devices` in `/etc/nid/nid.toml`, then run `sudo nid doctor`.
    It should report "every keyboard and pointer". On the maintainer's box keyd
    grabs the PRO X 60 and OpenLogi grabs the PRO X 2, so a crossing grabs their
    virtual outputs and the journal names the busy sources it skipped.
-3. As the desktop user, run `zflow desktop-agent --install`, then log out and
+3. As the desktop user, run `nid desktop-agent --install`, then log out and
    back in so GNOME Shell loads the API 3 extension. The panel shows a status,
-   not "Update zflow".
-4. After the Mac connects, `journalctl -u zflowd` shows "layout adopted" and
-   "outbound edges placed", and `/var/lib/zflow/layout.json` holds the layout.
+   not "Update Nidus".
+4. After the Mac connects, `journalctl -u nidd` shows "layout adopted" and
+   "outbound edges placed", and `/var/lib/nid/layout.json` holds the layout.
 
 Checks:
 
@@ -327,9 +327,9 @@ Checks:
   resized", and the Mac's tile for Linux follows.
 - **Chord:** Ctrl+Super+F12 still sends to the Mac without preparing its desktop.
 - **Live link:** with sharing paused on the Mac, Linux settings show the Mac as
-  Paired and `journalctl -u zflowd` shows no dial toward it. After resuming on
+  Paired and `journalctl -u nidd` shows no dial toward it. After resuming on
   the Mac it shows Connected within seconds. Between two Linux computers, each
-  shows the other Connected. Stopping one's `zflowd` shows it as Paired on the
+  shows the other Connected. Stopping one's `nidd` shows it as Paired on the
   other, since its mDNS record goes away; starting it again shows Connected
   within seconds. Blocking UDP 43119 on one shows it as Unreachable on the
   other, and Retry dials at once instead of after the wait.
@@ -345,10 +345,10 @@ Setup on the Mac:
 1. `./scripts/build-macos-app.sh --debug`. It signs with the first Apple
    Development identity, so the Accessibility grant and any firewall answer
    survive rebuilds. Grant the app Accessibility.
-2. Launch it with logs, keeping zflow.app as its own Accessibility process:
-   `osascript -e 'quit app id "io.zflow.zflow"'`, then
-   `mkdir -p target/logs; log=target/logs/zflow-mac-$(date -u +%Y%m%dT%H%M%SZ).log`, then
-   `open -n --stderr "$PWD/$log" --stdout "$PWD/$log" --env RUST_LOG=warn,zflow=debug target/debug/zflow.app`.
+2. Launch it with logs, keeping Nidus.app as its own Accessibility process:
+   `osascript -e 'quit app id "io.nid.nid"'`, then
+   `mkdir -p target/logs; log=target/logs/nid-mac-$(date -u +%Y%m%dT%H%M%SZ).log`, then
+   `open -n --stderr "$PWD/$log" --stdout "$PWD/$log" --env RUST_LOG=warn,nid=debug target/debug/Nidus.app`.
    Running the binary from a shell makes the terminal the responsible process.
 3. On Ubuntu, `just debug daemon`.
 
@@ -360,7 +360,7 @@ Checks:
    Check that Local Network access still lets connections in (TN3179).
 2. **Chord.** The Mac shows "Controlled by ubuntu". Judge the feel with a slow,
    precise move and a fast flick across 3008 pt. Motion is one point per count
-   (`flat:0`). If needed, retune with `ZFLOW_MAC_POINTER=adaptive:SPEED` or
+   (`flat:0`). If needed, retune with `NID_MAC_POINTER=adaptive:SPEED` or
    `flat:SPEED` in the `open --env` line.
 3. **Clicks.** Single click. Double-click selects a word and triple-click a
    paragraph in TextEdit. Right-click opens a menu. Middle-click on a link in
@@ -406,7 +406,7 @@ Checks:
     After the escape chord, a Mac-to-Ubuntu edge crossing works. With the Mac
     crossed to Ubuntu, the Ubuntu chord is refused.
 13. **Release safety.** Hold Shift+A remotely, then
-    `sudo systemctl kill -s KILL zflowd`. Repeat stops and Shift is up within
+    `sudo systemctl kill -s KILL nidd`. Repeat stops and Shift is up within
     1 s (compare log timestamps). Repeat mid-drag with a button held.
 14. **Exit paths.** Quit the Mac app while a key is held remotely: nothing
     stays stuck. Turn off **Can control this computer** while controlled:
@@ -421,13 +421,13 @@ Checks:
     control back at the Mac's edge, then cross from the Mac within a second:
     the log shows "AWDL already off" for the crossing, never "AWDL is
     already in use", and AWDL stays down throughout. When the helper gives
-    no lease, as while another zflow build holds it, each crossing still
+    no lease, as while another Nidus build holds it, each crossing still
     works and logs "AWDL stays on"; after three in a row Settings shows the
     **Reduce Wi-Fi lag** warning, and sharing stays on.
 17. **Duplicates.** Turn Mac sharing off, then press Ctrl+Super+F12 on Ubuntu
-    at the moment you turn it back on, so the chord and zflowd's live link
+    at the moment you turn it back on, so the chord and nidd's live link
     dial the Mac while the Mac dials Ubuntu. After 10 s there is one session
-    on each side (`zflow status`; zero or one "superseded" line), and the
+    on each side (`nid status`; zero or one "superseded" line), and the
     chord still works. The link tests cover both dial orders.
 18. **One way only.** Turn off Ubuntu's **Can control this computer** for the
     Mac. The Mac shows a "Paired computers" warning that ubuntu takes no input
@@ -512,9 +512,9 @@ Live installation checks remain:
 ## One app on zz-gpui, October 21
 
 The SwiftUI, WinUI and GTK windows are replaced by one Rust app,
-`crates/zflow-app`, on zz's GPUI fork and widget kit. It reads the same
+`crates/nid-app`, on zz's GPUI fork and widget kit. It reads the same
 snapshot and sends the same requests on every system: in process on a Mac, over
-`io.zflow.Desktop` on Linux, and over the engine's pipe on Windows through
+`io.nid.Desktop` on Linux, and over the engine's pipe on Windows through
 `src/app/windows_view.rs`. The GNOME extension keeps the panel indicator and
 the Shell work; the Swift AWDL helper stays. The two sections below describe
 the windows this replaced.
@@ -523,7 +523,7 @@ Automated checks:
 
 ```sh
 cargo fmt --all --check
-cargo clippy --locked --all-targets -- -D warnings   # zflow, the app, the kit, the tray
+cargo clippy --locked --all-targets -- -D warnings   # nid, the app, the kit, the tray
 cargo test --locked --all-targets
 just test app
 ```
@@ -545,22 +545,22 @@ way.
 October 21 verification on Ubuntu 26.10 GNOME (Wayland, Xwayland for
 captures): the window rendered the live agent's snapshot (status, islands with
 a lit seam, the computer list, Settings with every check). A second launch
-showed the first copy's window and `zflow-app --quit` closed it. The `.deb`,
+showed the first copy's window and `nid-app --quit` closed it. The `.deb`,
 built in an Ubuntu 24.04 container, passed `tests/deb_lifecycle.sh`, and its
-`zflow-app` ran there under Xvfb with software Vulkan; a second launch handed
+`nid-app` ran there under Xvfb with software Vulkan; a second launch handed
 off and `--quit` closed it there too.
 
 October 22, CI run 39712515171 on a GitHub macOS 26 runner: the debug bundle
 opened its 960-point window on Settings in zz's light theme, with the menu bar
-icon and the zflow and Window menus, and its in-process engine wrote the
+icon and the Nidus and Window menus, and its in-process engine wrote the
 layout. macOS showed its Local Network prompt on first use, and the
 Accessibility and Paste rows read Allowed on the runner.
 
 October 22, CI run 39715437218 on a GitHub Windows Server 2025 runner (build
-26100): the built `Zflow.App.exe` showed one window with its drawn caption
-buttons, started `zflow.exe`, and both quit on `--quit`. v0.7.0, the last
+26100): the built `Nid.App.exe` showed one window with its drawn caption
+buttons, started `nid.exe`, and both quit on `--quit`. v0.7.0, the last
 WinUI release, installed with its own Setup.exe; its `Update.exe apply`
-replaced it with this build packed as 0.7.1, and `current\Zflow.App.exe`
+replaced it with this build packed as 0.7.1, and `current\Nid.App.exe`
 then opened, started the engine, quit the same way, and its Updates row
 checked GitHub through Velopack.
 
@@ -574,7 +574,7 @@ Live checks still to run:
 - Windows: install over the WinUI 0.6.x release through Velopack, the
   notification-area menu, Run at startup, Restart as administrator, Take
   control and Return here, a second launch showing the window, and
-  `Zflow.App.exe --quit` from `install-windows.ps1`.
+  `Nid.App.exe --quit` from `install-windows.ps1`.
 - GNOME: open from Applications and the panel, the setup banner's Install,
   Turn On and Log Out, an update install and restart, and the window on X11.
 - Every system: drag a computer and a found computer, adjust one screen,
@@ -606,7 +606,7 @@ two-computer pairing and input pause/release still need the checks below.
 
 Live checks after installing the updated service and desktop integration:
 
-- Open zflow from Applications, the panel, and GNOME Extensions preferences.
+- Open Nidus from Applications, the panel, and GNOME Extensions preferences.
   Confirm status, native theme, keyboard focus, and one desktop agent.
 - Pause while receiving and while sending. Held input must release and new
   connections must stay blocked. Resume must preserve the paired identities.
@@ -663,7 +663,7 @@ Native UI and live matrix:
 - Test Open at login and reboot with the final installed app path.
 - Keep Settings closed and cross repeatedly. Repeat on another Space, through
   Pause, emergency return, display changes, receiver loss, and clean Quit.
-- Run `zflow desktop-agent --install` as the Linux desktop user, then test
+- Run `nid desktop-agent --install` as the Linux desktop user, then test
   GNOME login autostart and daemon restart/reconnect.
 
 Actual input capture, radio changes, OS authorization, and two-computer latency
@@ -744,7 +744,7 @@ them by millimetres on a 200 x 150 mm pad. Unit tests cover the conversion on
 each source and the centered, clamped placement. Live check on Ubuntu GNOME
 with a Magic Trackpad sender:
 
-- `sudo libinput list-devices` shows `zflow remote touchpad` with
+- `sudo libinput list-devices` shows `nid remote touchpad` with
   `Size: 200x150mm`;
 - `sudo libinput debug-events` shows a finger dragged across the full
   trackpad width moving about 160 mm;
@@ -906,7 +906,7 @@ builds. Use `just debug mac`, `just debug linux` and `just debug daemon`:
 
 Automated verification for this follow-up: Mac passed 205 Rust tests with one
 native-desktop test ignored; Ubuntu passed 251 with two hardware-dependent tests
-ignored in `~/dev/zflow-review`. Both passed formatting/Clippy checks and GUI
+ignored in `~/dev/nid-review`. Both passed formatting/Clippy checks and GUI
 builds; Ubuntu also built the daemon. The GNOME simulation, native fake-cursor
 tests and AWDL guardian/pipe-process tests passed. Gate logs and task files are
 under `target/plan-tasks` on the Mac. These builds have not replaced the running
@@ -931,7 +931,7 @@ drops a session, and a prompt close. These need live checks on real hardware:
 - Leave sharing on and idle for 10 minutes, then cross without a reconnect.
 - Turn Wi-Fi off for 30 seconds while idle, and again while controlling
   Ubuntu. Expect `input link lost`, a reconnect after Wi-Fi returns, and a
-  working crossing. Repeat with a zflowd restart and a one-minute Mac sleep.
+  working crossing. Repeat with a nidd restart and a one-minute Mac sleep.
 - With a signed build, install the Wi-Fi helper, confirm Settings reports it
   ready, and cross with **Reduce Wi-Fi lag** on. `ifconfig awdl0` must
   show it down during capture and restored after return.
@@ -965,7 +965,7 @@ qualify this test; allow access through the normal system UI and retry.
 
 ### Desktop service access and detected displays
 
-The Linux desktop agent uses `/run/zflow-gui/peers.sock`, a separate desktop
+The Linux desktop agent uses `/run/nid-gui/peers.sock`, a separate desktop
 endpoint. The original control socket and private config/state paths retain
 their permissions. The endpoint accepts Status, user-confirmed pairing and
 an explicitly enabled desktop broker. It checks Unix credentials
@@ -982,7 +982,7 @@ from service settings. Native tests still need to cover hotplug, rotated
 displays, mixed scale factors, remote report removal, stale saved addresses,
 and Local Network permission denial.
 
-With the updated service installed, run `zflow desktop-agent` in the unlocked
+With the updated service installed, run `nid desktop-agent` in the unlocked
 GNOME session and open the native Mac app. Verify that one tile appears per
 computer and that arranging tiles does not modify the protected Linux config.
 
@@ -994,11 +994,11 @@ model mismatch with Synergy's computer tiles. The earlier generic Ubuntu monitor
 list also included an inactive output and rounded 133.33% scaling to 200%.
 
 After user authorization, the release daemon and updated unit were installed on
-Ubuntu and zflowd restarted at 12:36 local time. The desktop user queried the
+Ubuntu and nidd restarted at 12:36 local time. The desktop user queried the
 new socket and received the saved macbook and xps peer records; the server UID
-matched the zflow account. Config contents and the private config/state/control
+matched the Nidus account. Config contents and the private config/state/control
 permissions were unchanged. The previous daemon and unit remain in
-`/var/tmp/zflow-rollback.kB4qiU` on Ubuntu for rollback.
+`/var/tmp/nid-rollback.kB4qiU` on Ubuntu for rollback.
 
 The Mac pairing stores an IPv4-mapped IPv6 address. Display matching now treats
 that form as equivalent to the plain IPv4 address in mDNS, with a regression
@@ -1045,7 +1045,7 @@ Use a paused configuration for layout-only checks.
 
 Before calling the current prototype an alpha, install the package on two Linux hosts and exercise the real service, daemon account, evdev devices, uinput devices, and network path. The qualification run must cover:
 
-- setup, udev permissions, `zflow doctor`, pairing, revocation, and both pre-login permission gates;
+- setup, udev permissions, `nid doctor`, pairing, revocation, and both pre-login permission gates;
 - CLI and hotkey ownership changes with keys, buttons, relative motion, and high-resolution wheel input;
 - isolated loss, jitter bursts, a lost terminal frame, lease expiry, peer revocation, and an unknown or locked seat;
 - an incomplete capture set, a competing grabber, device removal, and hotplug enrollment;
@@ -1069,8 +1069,8 @@ For each stack:
 - measure switch-time leakage (events reaching the local session between chord detection and grab) against the frozen threshold;
 - hotplug: a device added to the capture-set configuration participates at the next activation without a daemon restart;
 - test competing EVIOCGRAB holders;
-- crash, kill, and SIGSTOP zflowd during Remote: the watchdog returns local input within the recovery bound; repeat while Idle: no local effect, and a restarted daemon is immediately functional;
-- verify that evdev monitoring and capture reject every zflow virtual device role (no self-capture loops);
+- crash, kill, and SIGSTOP nidd during Remote: the watchdog returns local input within the recovery bound; repeat while Idle: no local effect, and a restarted daemon is immediately functional;
+- verify that evdev monitoring and capture reject every Nidus virtual device role (no self-capture loops);
 - suspend/resume during Remote closes the activation and releases receiver state.
 
 The stack passes with zero stuck keys or buttons, zero missing or duplicate transitions across the routing boundary, zero self-capture, zero injection before authorization, correct final local and remote high-resolution wheel displacement, leakage under the frozen threshold, and local ownership within the recovery bound after crash, kill, or SIGSTOP. A cold boot proves uinput availability, permissions, and virtual-device enumeration with correct udev properties before the greeter appears. VT validation requires keyboard and media controls; pointer and wheel become VT requirements only where a console consumer exists.
@@ -1081,9 +1081,9 @@ The touchpad experiment adds Mutter, KWin, and wlroots gesture recognition plus 
 
 Freeze miss, false-activation, latency, and recovery thresholds before the soak. Run 10,000 portal crossings with high-speed motion, clicks during activation, monitor hotplug, ZonesChanged, fractional scaling, transforms, and lock/unlock.
 
-Cover portal v2 selection, clean disablement on v1, denied or cancelled consent, missing capabilities, EIS disconnect, portal/backend restart, and helper death during Remote. Kill, SIGKILL, and SIGSTOP/watchdog zflowd during an active portal capture; repeat for zflow-session and restart both processes. Assert that the portal closes within the recovery bound, old activations never reconnect, and key, button, pointer, and wheel state has zero duplicate transition.
+Cover portal v2 selection, clean disablement on v1, denied or cancelled consent, missing capabilities, EIS disconnect, portal/backend restart, and helper death during Remote. Kill, SIGKILL, and SIGSTOP/watchdog nidd during an active portal capture; repeat for nid-session and restart both processes. Assert that the portal closes within the recovery bound, old activations never reconnect, and key, button, pointer, and wheel state has zero duplicate transition.
 
-Verify that EIS never captures a zflow remote-injection device, that a portal activation and an evdev grab never coexist on the same capture set, and that a seat does not arm portal source capture while it receives peer input.
+Verify that EIS never captures a Nidus remote-injection device, that a portal activation and an evdev grab never coexist on the same capture set, and that a seat does not arm portal source capture while it receives peer input.
 
 Test layer surfaces at 1, 2, and 4 logical pixels across selected wlroots compositors and COSMIC. Include fullscreen windows, panels, overlay conflicts, and shared internal monitor edges. A compositor becomes a supported automatic-switch target only after it meets the frozen thresholds.
 
@@ -1154,7 +1154,7 @@ tests predated cursor disconnection and do not establish cursor isolation.
 
 Test final-path Developer ID and notarized builds on clean supported macOS versions and both CPU families where hardware exists. Cover:
 
-- absent, denied, granted, and reset TCC state on clean virtual machines, with correct zflow attribution in prompts and System Settings;
+- absent, denied, granted, and reset TCC state on clean virtual machines, with correct Nidus attribution in prompts and System Settings;
 - Aqua enrollment followed by lock, logout, LoginWindow, reboot, and fast-user switching;
 - an upgrade with the same Team ID and designated requirement but a replacement Developer ID leaf certificate;
 - Secure Event Input with immediate keyboard release and separate pointer/scroll results;
@@ -1175,7 +1175,7 @@ For CoreHID, verify the effective entitlement and embedded provisioning profile 
 
 For Karabiner, use the pinned upstream client from the named root process. Verify root-only socket access and protocol negotiation, inject keyboard, pointer, and Consumer reports, and test daemon/driver death, mismatch, reconnect, lock, and LoginWindow. Record each backend separately; CGEventPost success does not qualify a virtual-HID backend.
 
-zflow keeps macOS lock-screen and LoginWindow target injection out of the product promise until the selected backend passes keyboard and pointer injection in actual secure password fields. LoginWindow source keyboard capture remains unavailable while Secure Event Input is active; the matrix evaluates pointer and scroll as separate event classes.
+Nidus keeps macOS lock-screen and LoginWindow target injection out of the product promise until the selected backend passes keyboard and pointer injection in actual secure password fields. LoginWindow source keyboard capture remains unavailable while Secure Event Input is active; the matrix evaluates pointer and scroll as separate event classes.
 
 ## Radio, QoS, and playout (gates the frozen smoothing constants)
 

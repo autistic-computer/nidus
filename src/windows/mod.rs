@@ -12,8 +12,8 @@ pub use ipc::user_sid;
 use std::path::PathBuf;
 pub fn data_dir() -> PathBuf {
     PathBuf::from(std::env::var_os("LOCALAPPDATA").expect("Windows must provide LOCALAPPDATA"))
-        .join("zflow")
+        .join("nid")
 }
 pub fn config_path() -> PathBuf {
-    data_dir().join("zflow.toml")
+    data_dir().join("nid.toml")
 }

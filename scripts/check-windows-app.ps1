@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $log = Join-Path $Out 'app.log'
 $config = Join-Path $Out 'config/config.toml'
-$env:RUST_LOG = 'warn,zflow=debug'
+$env:RUST_LOG = 'warn,nid=debug'
 Start-Process -FilePath $App -ArgumentList '--config', "`"$config`"", '--show-settings' -RedirectStandardError $log
 Start-Sleep -Seconds 20
 
@@ -17,9 +17,9 @@ $picture = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
 [System.Drawing.Graphics]::FromImage($picture).CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
 $picture.Save((Join-Path $Out 'screen.png'))
 
-$windows = @(Get-Process Zflow.App -ErrorAction SilentlyContinue | Where-Object MainWindowTitle -eq 'zflow')
-$engines = @(Get-Process zflow -ErrorAction SilentlyContinue)
-Write-Host "zflow windows: $($windows.Count), engines: $($engines.Count)"
+$windows = @(Get-Process Nid.App -ErrorAction SilentlyContinue | Where-Object MainWindowTitle -eq 'Nidus')
+$engines = @(Get-Process nid -ErrorAction SilentlyContinue)
+Write-Host "Nidus windows: $($windows.Count), engines: $($engines.Count)"
 & $App --quit
 $quit = $true
 foreach ($process in @($windows) + @($engines)) {
@@ -30,8 +30,8 @@ foreach ($process in @($windows) + @($engines)) {
 }
 if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log }
 
-if ($windows.Count -ne 1) { throw "Expected one zflow window, found $($windows.Count)" }
+if ($windows.Count -ne 1) { throw "Expected one Nidus window, found $($windows.Count)" }
 if ($engines.Count -lt 1) { throw 'The app did not start the engine' }
 if (-not $quit) { throw 'The app or its engine did not quit when asked' }
 if ((Test-Path -LiteralPath $log) -and (Select-String -LiteralPath $log -Pattern panicked -Quiet)) { throw 'The app panicked' }
-Write-Host 'zflow opened, started the engine and quit'
+Write-Host 'Nidus opened, started the engine and quit'

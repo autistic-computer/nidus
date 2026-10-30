@@ -13,18 +13,18 @@ use std::{
 use tokio::sync::mpsc;
 
 unsafe extern "C" {
-    fn zflow_input_run(callback: extern "C" fn(i32, i32, i32, i32) -> i32) -> i32;
-    fn zflow_input_remote(enabled: i32);
-    fn zflow_input_is_remote() -> i32;
-    fn zflow_input_grab() -> i32;
-    fn zflow_input_pulse();
-    fn zflow_input_boundaries(items: *const Boundary, count: i32);
-    fn zflow_input_stop(thread: u32);
-    fn zflow_input_clean() -> i32;
-    fn zflow_input_elevated() -> i32;
-    fn zflow_desktop_available() -> i32;
-    fn zflow_input_post(kind: i32, code: i32, value: i32, extra: i32) -> i32;
-    fn zflow_monitors(
+    fn nid_input_run(callback: extern "C" fn(i32, i32, i32, i32) -> i32) -> i32;
+    fn nid_input_remote(enabled: i32);
+    fn nid_input_is_remote() -> i32;
+    fn nid_input_grab() -> i32;
+    fn nid_input_pulse();
+    fn nid_input_boundaries(items: *const Boundary, count: i32);
+    fn nid_input_stop(thread: u32);
+    fn nid_input_clean() -> i32;
+    fn nid_input_elevated() -> i32;
+    fn nid_desktop_available() -> i32;
+    fn nid_input_post(kind: i32, code: i32, value: i32, extra: i32) -> i32;
+    fn nid_monitors(
         callback: extern "C" fn(
             i32,
             i32,
@@ -38,7 +38,7 @@ unsafe extern "C" {
         ),
         context: *mut c_void,
     ) -> i32;
-    fn zflow_cursor(x: *mut i32, y: *mut i32, move_to: i32) -> i32;
+    fn nid_cursor(x: *mut i32, y: *mut i32, move_to: i32) -> i32;
 }
 
 pub enum Event {
@@ -127,7 +127,7 @@ impl Capture {
             .map_err(|_| anyhow::anyhow!("Input capture already started"))?;
         let join = std::thread::spawn(move || {
             unsafe {
-                zflow_input_run(event);
+                nid_input_run(event);
             }
             let _ = tx.blocking_send(Event::Stopped);
         });
@@ -147,7 +147,7 @@ impl Drop for Capture {
     fn drop(&mut self) {
         remote(false);
         unsafe {
-            zflow_input_stop(self.thread);
+            nid_input_stop(self.thread);
         }
         if let Some(join) = self.join.take() {
             let _ = join.join();
@@ -156,22 +156,22 @@ impl Drop for Capture {
 }
 pub fn remote(enabled: bool) {
     unsafe {
-        zflow_input_remote(i32::from(enabled));
+        nid_input_remote(i32::from(enabled));
     }
 }
 pub fn is_remote() -> bool {
-    unsafe { zflow_input_is_remote() != 0 }
+    unsafe { nid_input_is_remote() != 0 }
 }
 pub fn grab() -> Result<()> {
     ensure!(
-        unsafe { zflow_input_grab() } != 0,
+        unsafe { nid_input_grab() } != 0,
         "Release all keys and mouse buttons before switching"
     );
     Ok(())
 }
 pub fn pulse() {
     unsafe {
-        zflow_input_pulse();
+        nid_input_pulse();
     }
 }
 
@@ -224,7 +224,7 @@ impl Boundary {
 }
 pub fn boundaries(items: &[Boundary]) {
     unsafe {
-        zflow_input_boundaries(items.as_ptr(), items.len() as i32);
+        nid_input_boundaries(items.as_ptr(), items.len() as i32);
     }
 }
 
@@ -232,7 +232,7 @@ pub fn boundaries(items: &[Boundary]) {
 mod boundary_tests {
     use super::*;
     unsafe extern "C" {
-        fn zflow_boundary_hit(
+        fn nid_boundary_hit(
             boundary: *const Boundary,
             x: i32,
             y: i32,
@@ -244,7 +244,7 @@ mod boundary_tests {
     }
     fn hit(b: &Boundary, from: (i32, i32), to: (i32, i32)) -> Option<(i32, i32)> {
         let (mut x, mut y) = (0, 0);
-        (unsafe { zflow_boundary_hit(b, from.0, from.1, to.0, to.1, &mut x, &mut y) } != 0)
+        (unsafe { nid_boundary_hit(b, from.0, from.1, to.0, to.1, &mut x, &mut y) } != 0)
             .then_some((x, y))
     }
     #[test]
@@ -356,7 +356,7 @@ mod boundary_tests {
     }
 
     #[tokio::test]
-    #[ignore = "moves and restores the real pointer; pause other zflow instances first"]
+    #[ignore = "moves and restores the real pointer; pause other Nidus instances first"]
     async fn native_return_guard_stops_injected_motion_at_an_internal_edge() {
         let geometry = geometry().unwrap();
         let mut source = geometry.monitors[0];
@@ -409,13 +409,13 @@ mod boundary_tests {
     }
 }
 pub fn clean() -> bool {
-    unsafe { zflow_input_clean() != 0 }
+    unsafe { nid_input_clean() != 0 }
 }
 pub fn available() -> bool {
-    unsafe { zflow_desktop_available() != 0 }
+    unsafe { nid_desktop_available() != 0 }
 }
 pub fn elevated() -> bool {
-    unsafe { zflow_input_elevated() != 0 }
+    unsafe { nid_input_elevated() != 0 }
 }
 pub fn geometry() -> Result<Geometry> {
     extern "C" fn monitor(
@@ -464,7 +464,7 @@ pub fn geometry() -> Result<Geometry> {
         displays: Vec::new(),
     };
     ensure!(
-        unsafe { zflow_monitors(monitor, (&mut geometry as *mut Geometry).cast()) } != 0,
+        unsafe { nid_monitors(monitor, (&mut geometry as *mut Geometry).cast()) } != 0,
         "Could not enumerate Windows monitors"
     );
     geometry
@@ -477,14 +477,14 @@ pub fn geometry() -> Result<Geometry> {
 pub fn cursor() -> Result<Point> {
     let mut p = Point { x: 0, y: 0 };
     ensure!(
-        unsafe { zflow_cursor(&mut p.x, &mut p.y, 0) } != 0,
+        unsafe { nid_cursor(&mut p.x, &mut p.y, 0) } != 0,
         "Could not read the Windows pointer"
     );
     Ok(p)
 }
 pub fn move_to(mut p: Point) -> Result<()> {
     ensure!(
-        unsafe { zflow_cursor(&mut p.x, &mut p.y, 1) } != 0,
+        unsafe { nid_cursor(&mut p.x, &mut p.y, 1) } != 0,
         "Could not place the Windows pointer"
     );
     Ok(())
@@ -492,8 +492,8 @@ pub fn move_to(mut p: Point) -> Result<()> {
 
 fn post(kind: i32, code: i32, value: i32, extra: i32) -> Result<()> {
     ensure!(
-        unsafe { zflow_input_post(kind, code, value, extra) } != 0,
-        "Windows blocked remote input. To control administrator windows, open zflow Settings and choose Restart as administrator. Windows sign-in and UAC prompts require local input."
+        unsafe { nid_input_post(kind, code, value, extra) } != 0,
+        "Windows blocked remote input. To control administrator windows, open Nidus Settings and choose Restart as administrator. Windows sign-in and UAC prompts require local input."
     );
     Ok(())
 }
@@ -502,7 +502,7 @@ pub fn unblocked() -> Result<()> {
     post(4, 0, 0, 0)
 }
 
-const RELEASE_PENDING: &str = "Windows has not released the previous input. Focus a normal window locally, or restart zflow as administrator in Settings.";
+const RELEASE_PENDING: &str = "Windows has not released the previous input. Focus a normal window locally, or restart Nidus as administrator in Settings.";
 
 pub struct Injector {
     post: fn(i32, i32, i32, i32) -> Result<()>,

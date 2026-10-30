@@ -1,8 +1,8 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
-const BUS = 'io.zflow.Desktop';
-const PATH = '/io/zflow/Desktop';
+const BUS = 'io.nid.Desktop';
+const PATH = '/io/nid/Desktop';
 export const API = 6;
 
 export function compatible(snapshot) {
@@ -10,8 +10,8 @@ export function compatible(snapshot) {
 }
 
 export function statusText(snapshot) {
-    if (snapshot?.agent_error) return 'zflow is not running';
-    if (!compatible(snapshot)) return 'Update zflow';
+    if (snapshot?.agent_error) return 'Nidus is not running';
+    if (!compatible(snapshot)) return 'Update Nidus';
     return snapshot.status.title;
 }
 
@@ -60,7 +60,7 @@ export class Client {
         try {
             this.snapshot = await this.call({command: 'snapshot'});
         } catch (error) {
-            this.snapshot = {agent_error: true, error: `Open zflow settings to start the desktop agent. ${error.message}`};
+            this.snapshot = {agent_error: true, error: `Open nid settings to start the desktop agent. ${error.message}`};
         } finally {
             this._polling = false;
         }

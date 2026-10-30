@@ -1,9 +1,6 @@
 #![cfg(windows)]
 
-use serde_json::{Value, json};
-use std::{net::UdpSocket, path::Path, process::Stdio, time::Duration};
-use tokio::{process::Command, sync::mpsc, time::timeout};
-use zflow::{
+use nid::{
     config::Config,
     core::{ActivationId, SessionContext, SessionEpoch, TransportGeneration},
     desktop::{DesktopRequest, DesktopResponse, Geometry, Point, Rect},
@@ -12,9 +9,12 @@ use zflow::{
     transport::{self, Accepted},
     wire::{Hello, Os},
 };
+use serde_json::{Value, json};
+use std::{net::UdpSocket, path::Path, process::Stdio, time::Duration};
+use tokio::{process::Command, sync::mpsc, time::timeout};
 
 fn cli(path: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_zflow"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_nid"));
     command
         .args(["--config"])
         .arg(path)
@@ -52,7 +52,7 @@ async fn state_when(path: &Path, predicate: impl Fn(&Value) -> bool) -> Value {
 #[ignore = "requires an unlocked Windows desktop; does not capture or inject physical input"]
 async fn native_engine_pairs_persists_reconnects_and_stops() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("zflow.toml");
+    let path = directory.path().join("nid.toml");
     let mut config = Config::default();
     config.daemon.state_dir = directory.path().join("state");
     config.transport.discovery = false;

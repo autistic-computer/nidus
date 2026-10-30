@@ -37,7 +37,7 @@ impl Advertiser {
         };
         let instance = Some(discovery.instance_id().to_string());
         let spawned = std::thread::Builder::new()
-            .name("zflow-advertise".into())
+            .name("nid-advertise".into())
             .spawn(move || {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()

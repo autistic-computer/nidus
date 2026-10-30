@@ -388,7 +388,7 @@ fn run(
         .context("PipeWire is not running")?;
     let stream = pw::stream::StreamBox::new(
         &core,
-        "zflow-lens",
+        "nid-lens",
         pw::properties::properties! {
             *pw::keys::MEDIA_TYPE => "Video",
             *pw::keys::MEDIA_CATEGORY => "Capture",
@@ -507,7 +507,7 @@ impl Capture {
         let (quit, stop) = pw::channel::channel();
         let (ready, started) = std::sync::mpsc::channel();
         let thread = std::thread::Builder::new()
-            .name("zflow-lens-capture".into())
+            .name("nid-lens-capture".into())
             .spawn(move || {
                 let result = run(node, fps, screen, wake.clone(), stop, &ready);
                 if let Err(error) = result {
@@ -753,7 +753,7 @@ mod tests {
     #[ignore = "requires a GNOME session and PipeWire"]
     async fn a_live_session_records_the_monitor_and_takes_the_pointer() {
         let _ = tracing_subscriber::fmt()
-            .with_env_filter("zflow=debug")
+            .with_env_filter("nid=debug")
             .with_test_writer()
             .try_init();
         let bus = zbus::Connection::session().await.unwrap();

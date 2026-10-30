@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=io.zflow.Desktop
-Exec=/usr/bin/zflow desktop-agent

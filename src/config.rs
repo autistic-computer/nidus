@@ -88,8 +88,8 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             sharing: true,
-            state_dir: PathBuf::from("/var/lib/zflow"),
-            control_socket: PathBuf::from("/run/zflow/zflowd.sock"),
+            state_dir: PathBuf::from("/var/lib/nid"),
+            control_socket: PathBuf::from("/run/nid/nidd.sock"),
         }
     }
 }
@@ -498,14 +498,14 @@ mod tests {
     #[test]
     fn packaged_configuration_matches_code_defaults() {
         let packaged: Config =
-            toml::from_str(include_str!("../packaging/config/zflow.toml")).unwrap();
+            toml::from_str(include_str!("../packaging/config/nid.toml")).unwrap();
         assert_eq!(packaged, Config::default());
     }
 
     #[test]
     fn save_is_private_and_loads() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         assert_eq!(Config::load(&path).unwrap(), Config::default());
         #[cfg(unix)]
@@ -521,10 +521,10 @@ mod tests {
     #[test]
     fn save_ignores_a_temporary_file_left_by_a_killed_writer() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let leftover = directory
             .path()
-            .join(format!(".zflow.toml.tmp-{}", std::process::id()));
+            .join(format!(".nid.toml.tmp-{}", std::process::id()));
         fs::write(&leftover, "partial").unwrap();
 
         Config::default().save(&path).unwrap();
@@ -535,10 +535,7 @@ mod tests {
             .map(|entry| entry.unwrap().file_name())
             .collect::<Vec<_>>();
         names.sort();
-        assert_eq!(
-            names,
-            [leftover.file_name().unwrap(), "zflow.toml".as_ref()]
-        );
+        assert_eq!(names, [leftover.file_name().unwrap(), "nid.toml".as_ref()]);
     }
 
     #[test]
@@ -638,7 +635,7 @@ mod tests {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         Config::default().save(&path).unwrap();
         fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
         let before = fs::metadata(&path).unwrap();
@@ -660,7 +657,7 @@ mod tests {
 
         let directory = tempfile::tempdir().unwrap();
         let real = directory.path().join("real.toml");
-        let link = directory.path().join("zflow.toml");
+        let link = directory.path().join("nid.toml");
         Config::default().save(&real).unwrap();
         symlink(&real, &link).unwrap();
         assert!(matches!(

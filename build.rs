@@ -4,7 +4,7 @@ fn main() {
         cc::Build::new()
             .file("src/windows/input.c")
             .warnings(true)
-            .compile("zflow_windows_input");
+            .compile("nid_windows_input");
         println!("cargo:rustc-link-lib=user32");
         println!("cargo:rustc-link-lib=wtsapi32");
         println!("cargo:rustc-link-lib=advapi32");
@@ -25,13 +25,13 @@ fn main() {
         .file("src/macos/inject.c")
         .flag("-std=c11")
         .warnings(true)
-        .compile("zflow_macos_capture");
+        .compile("nid_macos_capture");
     cc::Build::new()
         .file("src/macos/media.m")
         .file("src/macos/pasteboard.m")
         .flag("-fobjc-arc")
         .warnings(true)
-        .compile("zflow_macos_media");
+        .compile("nid_macos_media");
     println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=ApplicationServices");
     println!("cargo:rustc-link-lib=framework=Carbon");

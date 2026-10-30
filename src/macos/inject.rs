@@ -706,7 +706,7 @@ impl Injector {
         let (commands, receiver) = mpsc::channel();
         let core = InjectorCore::new(backend, profile);
         let thread = std::thread::Builder::new()
-            .name("zflow-inject".to_owned())
+            .name("nid-inject".to_owned())
             .spawn(move || {
                 super::user_interactive();
                 run(core, receiver)
@@ -805,9 +805,9 @@ fn run<B: Backend>(mut core: InjectorCore<B>, commands: mpsc::Receiver<InjectCom
 }
 
 fn pointer_profile() -> Profile {
-    let profile = match std::env::var("ZFLOW_MAC_POINTER") {
+    let profile = match std::env::var("NID_MAC_POINTER") {
         Ok(value) => value.parse().unwrap_or_else(|error: anyhow::Error| {
-            tracing::warn!(value, error = %format!("{error:#}"), "ignoring ZFLOW_MAC_POINTER");
+            tracing::warn!(value, error = %format!("{error:#}"), "ignoring NID_MAC_POINTER");
             Profile::default()
         }),
         Err(_) => Profile::default(),
@@ -820,7 +820,7 @@ pub(crate) struct MacBackend(());
 
 impl MacBackend {
     pub fn open() -> Result<Self> {
-        if unsafe { zflow_mac_inject_open() } != 0 {
+        if unsafe { nid_mac_inject_open() } != 0 {
             bail!("could not create a Mac event source");
         }
         Ok(Self(()))
@@ -829,7 +829,7 @@ impl MacBackend {
     fn caps_lock(&mut self) -> Result<bool> {
         let mut on = 0;
         ensure!(
-            unsafe { zflow_mac_caps_lock(&mut on) } == 0,
+            unsafe { nid_mac_caps_lock(&mut on) } == 0,
             "could not read Caps Lock"
         );
         Ok(on != 0)
@@ -840,9 +840,9 @@ impl Backend for MacBackend {
     fn post(&mut self, event: &Posted) -> Result<()> {
         let status = match *event {
             Posted::Media { key, down } => unsafe {
-                zflow_mac_post_media_key(key, i32::from(down), POSTED_MARK)
+                nid_mac_post_media_key(key, i32::from(down), POSTED_MARK)
             },
-            _ => unsafe { zflow_mac_inject_post(&event.native()) },
+            _ => unsafe { nid_mac_inject_post(&event.native()) },
         };
         ensure!(status == 0, "could not post a Mac input event");
         Ok(())
@@ -851,14 +851,14 @@ impl Backend for MacBackend {
     fn toggle_caps_lock(&mut self) -> Result<()> {
         let on = !self.caps_lock()?;
         ensure!(
-            unsafe { zflow_mac_set_caps_lock(i32::from(on)) } == 0,
+            unsafe { nid_mac_set_caps_lock(i32::from(on)) } == 0,
             "could not set Caps Lock"
         );
         Ok(())
     }
 
     fn release_all(&mut self) {
-        unsafe { zflow_mac_inject_release_all() }
+        unsafe { nid_mac_inject_release_all() }
     }
 
     fn environment(&mut self) -> Environment {
@@ -892,7 +892,7 @@ impl Backend for MacBackend {
 
 impl Drop for MacBackend {
     fn drop(&mut self) {
-        unsafe { zflow_mac_inject_close() }
+        unsafe { nid_mac_inject_close() }
     }
 }
 
@@ -910,14 +910,14 @@ impl Default for KeyRepeat {
 
 pub(crate) fn key_repeat() -> KeyRepeat {
     let (mut initial, mut interval) = (0, 0);
-    if unsafe { zflow_mac_key_repeat_ns(&mut initial, &mut interval) } == 0 {
+    if unsafe { nid_mac_key_repeat_ns(&mut initial, &mut interval) } == 0 {
         return KeyRepeat {
             delay: Duration::from_nanos(initial).max(MIN_INTERVAL),
             interval: Duration::from_nanos(interval).max(MIN_INTERVAL),
         };
     }
     let (mut delay, mut every) = (0.0, 0.0);
-    if unsafe { zflow_mac_appkit_key_repeat(&mut delay, &mut every) } == 0 {
+    if unsafe { nid_mac_appkit_key_repeat(&mut delay, &mut every) } == 0 {
         return KeyRepeat {
             delay: seconds(delay).unwrap_or(DEFAULT_REPEAT.delay),
             interval: seconds(every).unwrap_or(DEFAULT_REPEAT.interval),
@@ -927,7 +927,7 @@ pub(crate) fn key_repeat() -> KeyRepeat {
 }
 
 pub(crate) fn double_click_interval() -> Duration {
-    seconds(unsafe { zflow_mac_double_click_interval() }).unwrap_or(DEFAULT_DOUBLE_CLICK)
+    seconds(unsafe { nid_mac_double_click_interval() }).unwrap_or(DEFAULT_DOUBLE_CLICK)
 }
 
 fn seconds(value: f64) -> Option<Duration> {
@@ -936,12 +936,12 @@ fn seconds(value: f64) -> Option<Duration> {
 }
 
 pub(crate) fn keyboard_is_iso() -> bool {
-    unsafe { zflow_mac_keyboard_is_iso() == 1 }
+    unsafe { nid_mac_keyboard_is_iso() == 1 }
 }
 
 pub(crate) fn frontmost_bundle_id() -> Option<String> {
     let mut buffer = [0u8; 256];
-    if unsafe { zflow_mac_frontmost_bundle_id(buffer.as_mut_ptr().cast(), buffer.len()) } < 0 {
+    if unsafe { nid_mac_frontmost_bundle_id(buffer.as_mut_ptr().cast(), buffer.len()) } < 0 {
         return None;
     }
     let bundle = CStr::from_bytes_until_nul(&buffer).ok()?;
@@ -949,23 +949,23 @@ pub(crate) fn frontmost_bundle_id() -> Option<String> {
 }
 
 pub(crate) fn session_locked() -> bool {
-    unsafe { zflow_mac_session_locked() != 0 }
+    unsafe { nid_mac_session_locked() != 0 }
 }
 
 pub(crate) fn post_allowed() -> bool {
-    unsafe { zflow_mac_post_allowed() == 1 }
+    unsafe { nid_mac_post_allowed() == 1 }
 }
 
 pub(crate) fn declare_user_activity() -> Result<()> {
     ensure!(
-        unsafe { zflow_mac_declare_user_activity() } == 0,
+        unsafe { nid_mac_declare_user_activity() } == 0,
         "could not wake the Mac display"
     );
     Ok(())
 }
 
 pub(crate) fn install_exit_handlers() {
-    unsafe { zflow_mac_inject_install_exit_handlers() }
+    unsafe { nid_mac_inject_install_exit_handlers() }
 }
 
 #[repr(u32)]
@@ -999,22 +999,22 @@ struct NativePosted {
 const _: () = assert!(std::mem::size_of::<NativePosted>() == 72);
 
 unsafe extern "C" {
-    fn zflow_mac_inject_open() -> i32;
-    fn zflow_mac_inject_post(posted: *const NativePosted) -> i32;
-    fn zflow_mac_inject_release_all();
-    fn zflow_mac_inject_close();
-    fn zflow_mac_caps_lock(on: *mut i32) -> i32;
-    fn zflow_mac_set_caps_lock(on: i32) -> i32;
-    fn zflow_mac_keyboard_is_iso() -> i32;
-    fn zflow_mac_key_repeat_ns(initial: *mut u64, interval: *mut u64) -> i32;
-    fn zflow_mac_session_locked() -> i32;
-    fn zflow_mac_post_allowed() -> i32;
-    fn zflow_mac_declare_user_activity() -> i32;
-    fn zflow_mac_inject_install_exit_handlers();
-    fn zflow_mac_post_media_key(key: u32, down: i32, mark: i64) -> i32;
-    fn zflow_mac_frontmost_bundle_id(buffer: *mut c_char, capacity: usize) -> i32;
-    fn zflow_mac_double_click_interval() -> f64;
-    fn zflow_mac_appkit_key_repeat(delay: *mut f64, interval: *mut f64) -> i32;
+    fn nid_mac_inject_open() -> i32;
+    fn nid_mac_inject_post(posted: *const NativePosted) -> i32;
+    fn nid_mac_inject_release_all();
+    fn nid_mac_inject_close();
+    fn nid_mac_caps_lock(on: *mut i32) -> i32;
+    fn nid_mac_set_caps_lock(on: i32) -> i32;
+    fn nid_mac_keyboard_is_iso() -> i32;
+    fn nid_mac_key_repeat_ns(initial: *mut u64, interval: *mut u64) -> i32;
+    fn nid_mac_session_locked() -> i32;
+    fn nid_mac_post_allowed() -> i32;
+    fn nid_mac_declare_user_activity() -> i32;
+    fn nid_mac_inject_install_exit_handlers();
+    fn nid_mac_post_media_key(key: u32, down: i32, mark: i64) -> i32;
+    fn nid_mac_frontmost_bundle_id(buffer: *mut c_char, capacity: usize) -> i32;
+    fn nid_mac_double_click_interval() -> f64;
+    fn nid_mac_appkit_key_repeat(delay: *mut f64, interval: *mut f64) -> i32;
 }
 
 #[cfg(test)]

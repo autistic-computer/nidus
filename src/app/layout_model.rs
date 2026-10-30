@@ -845,7 +845,7 @@ mod tests {
     #[test]
     fn sidecar_is_explicit_and_round_trips_without_touching_config() {
         let directory = tempfile::tempdir().unwrap();
-        let config = directory.path().join("new/zflow.toml");
+        let config = directory.path().join("new/nid.toml");
         let mut document = LayoutDocument::beside(&config).unwrap();
         assert!(document.is_new());
         assert!(!document.is_dirty());
@@ -856,7 +856,7 @@ mod tests {
             .push(monitor("revoked-peer", 0, 0, 100, 100));
         assert!(document.is_dirty());
         document.save().unwrap();
-        assert_eq!(document.path.file_name().unwrap(), "zflow.toml.layout.toml");
+        assert_eq!(document.path.file_name().unwrap(), "nid.toml.layout.toml");
         assert!(!config.exists());
         assert!(!document.is_new());
         assert!(!document.is_dirty());
@@ -872,7 +872,7 @@ mod tests {
     #[test]
     fn external_create_edit_delete_and_malformed_reload_preserve_draft() {
         let directory = tempfile::tempdir().unwrap();
-        let config = directory.path().join("zflow.toml");
+        let config = directory.path().join("nid.toml");
         let mut document = LayoutDocument::beside(&config).unwrap();
         fs::write(&document.path, "monitors = []\n").unwrap();
         assert!(document.save().is_err());
@@ -894,7 +894,7 @@ mod tests {
     #[test]
     fn invalid_save_preserves_existing_contents() {
         let directory = tempfile::tempdir().unwrap();
-        let mut document = LayoutDocument::beside(&directory.path().join("zflow.toml")).unwrap();
+        let mut document = LayoutDocument::beside(&directory.path().join("nid.toml")).unwrap();
         document.save().unwrap();
         let before = fs::read(&document.path).unwrap();
         document.draft.monitors.push(monitor("local", 0, 0, 0, 100));

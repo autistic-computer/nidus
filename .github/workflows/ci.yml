@@ -40,7 +40,7 @@ jobs:
       - name: Build Windows app
         run: ./scripts/build-windows.ps1
       - name: Open the app
-        run: ./scripts/check-windows-app.ps1 -App windows/dist/Zflow.App.exe -Out target/app-check/built
+        run: ./scripts/check-windows-app.ps1 -App windows/dist/Nid.App.exe -Out target/app-check/built
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: '10.0.x'
@@ -49,18 +49,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $check = New-Item -ItemType Directory -Force target/app-check/updated
-          gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern zflow-windows-x86_64-Setup.exe --dir $check
+          gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern nid-windows-x86_64-Setup.exe --dir $check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $root = Join-Path $env:LOCALAPPDATA 'Zflow.App'
-          $setup = Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
+          $root = Join-Path $env:LOCALAPPDATA 'Nid.App'
+          $setup = Start-Process (Join-Path $check 'nid-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
           if (-not $setup.WaitForExit(300000)) { throw 'The WinUI installer did not finish' }
-          if (-not (Test-Path (Join-Path $root 'current/Zflow.App.exe'))) { throw 'The WinUI release did not install' }
+          if (-not (Test-Path (Join-Path $root 'current/Nid.App.exe'))) { throw 'The WinUI release did not install' }
           Start-Sleep -Seconds 10
-          & (Join-Path $root 'current/Zflow.App.exe') --quit
+          & (Join-Path $root 'current/Nid.App.exe') --quit
           Start-Sleep -Seconds 5
-          Get-Process Zflow.App, zflow -ErrorAction SilentlyContinue | Stop-Process -Force
+          Get-Process Nid.App, nid -ErrorAction SilentlyContinue | Stop-Process -Force
           ./scripts/package-windows.ps1 -PackVersion 0.7.1
-          $package = Resolve-Path target/windows-release/Zflow.App-0.7.1-win-x64-full.nupkg
+          $package = Resolve-Path target/windows-release/Nid.App-0.7.1-win-x64-full.nupkg
           $update = Start-Process (Join-Path $root 'Update.exe') -PassThru `
             -ArgumentList 'apply', '--silent', '--norestart', '--package', "`"$package`""
           $null = $update.Handle
@@ -69,24 +69,24 @@ jobs:
           if ($update.ExitCode) { throw "Update.exe apply failed with $($update.ExitCode)" }
           $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
           if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'The update did not land' }
-          if (-not (Test-Path (Join-Path $root 'current/zflow.exe'))) { throw 'The update left out the engine' }
-          ./scripts/check-windows-app.ps1 -App (Join-Path $root 'current/Zflow.App.exe') -Out $check
+          if (-not (Test-Path (Join-Path $root 'current/nid.exe'))) { throw 'The update left out the engine' }
+          ./scripts/check-windows-app.ps1 -App (Join-Path $root 'current/Nid.App.exe') -Out $check
       - name: Upload app check
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zflow-app-check-windows
+          name: nid-app-check-windows
           path: target/app-check/
           if-no-files-found: ignore
       - name: Windows script checks
         run: |
-          pwsh -NoProfile -File windows/Zflow.UpdateTests/Install.Tests.ps1
+          pwsh -NoProfile -File windows/Nid.UpdateTests/Install.Tests.ps1
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          pwsh -NoProfile -File windows/Zflow.UpdateTests/Build.Tests.ps1
+          pwsh -NoProfile -File windows/Nid.UpdateTests/Build.Tests.ps1
       - name: Upload Windows preview
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zflow-windows-x64
+          name: nid-windows-x64
           path: windows/dist/
           if-no-files-found: error
 
@@ -124,8 +124,8 @@ jobs:
           python3 tests/macos_updates_test.py
       - name: Shell scripts
         run: |
-          shellcheck -x install.sh scripts/*.sh packaging/linux/*.sh packaging/system-sleep/zflow \
-            debian/zflow.postinst debian/zflow.postrm debian/zflow.preinst debian/zflow.prerm tests/deb_lifecycle.sh
+          shellcheck -x install.sh scripts/*.sh packaging/linux/*.sh packaging/system-sleep/nid \
+            debian/nid.postinst debian/nid.postrm debian/nid.preinst debian/nid.prerm tests/deb_lifecycle.sh
 
   linux-arm:
     name: Linux arm64
@@ -199,9 +199,9 @@ jobs:
           let mine = all.filter { $0[kCGWindowOwnerPID as String] as? Int == pid }
           for window in mine { print(window[kCGWindowBounds as String] ?? "") }
           let big = mine.contains { (($0[kCGWindowBounds as String] as? [String: Any])?["Width"] as? Double ?? 0) >= 700 }
-          if !big { print("no zflow window on screen"); exit(1) }
+          if !big { print("no Nidus window on screen"); exit(1) }
           SWIFT
-          RUST_LOG=warn,zflow=debug ../debug/zflow.app/Contents/MacOS/zflow-app \
+          RUST_LOG=warn,nid=debug ../debug/Nidus.app/Contents/MacOS/nid-app \
             --config "$PWD/config/config.toml" --show-settings 2> app.log &
           pid=$!
           sleep 20
@@ -216,7 +216,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: zflow-app-check-macos
+          name: nid-app-check-macos
           path: target/app-check/
           if-no-files-found: ignore
       - name: Installer
