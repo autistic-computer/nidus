@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use libfuzzer_sys::fuzz_target;
 use mdns_sd::{ResolvedService, ScopedIp, ServiceInfo, TxtProperties, TxtProperty};
-use zflow::discovery::{SERVICE_TYPE, parse_resolved_service};
+use nid::discovery::{SERVICE_TYPE, parse_resolved_service};
 
 fuzz_target!(|data: &[u8]| {
     if let Some(service) = resolved_service(data) {

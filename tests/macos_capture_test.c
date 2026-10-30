@@ -71,7 +71,7 @@ static bool lose_stop;
 static _Atomic bool invalidate_tap;
 static _Atomic int loop_runs;
 static _Atomic int wakes;
-static const ZFlowMacRect entry = {-1200, -100, 9, 200};
+static const NidMacRect entry = {-1200, -100, 9, 200};
 static CGPoint warped_position;
 static CGPoint cursor_position = {-1200, -50};
 static int held_key = -1;
@@ -130,7 +130,7 @@ enum { ANSI_KEYBOARD = 40, ISO_KEYBOARD = 41, JIS_KEYBOARD = 42 };
 static OSType fake_layout_type(SInt16 keyboard) {
   switch (keyboard) {
     case ANSI_KEYBOARD: return 0x414E5349;
-    case ISO_KEYBOARD: return ZFLOW_KEYBOARD_ISO;
+    case ISO_KEYBOARD: return NID_KEYBOARD_ISO;
     case JIS_KEYBOARD: return 0x4A495320;
     default: return 0x3F3F3F3F;
   }
@@ -143,21 +143,21 @@ static Boolean fake_trusted_options(CFDictionaryRef options) {
 }
 
 static void desktop_and_permission_tests(void) {
-  ZFlowMacPosition position;
-  assert(zflow_mac_cursor_position(&position) == 0);
+  NidMacPosition position;
+  assert(nid_mac_cursor_position(&position) == 0);
   assert(position.x == -1200 && position.y == -50);
-  assert(zflow_mac_cursor_position(NULL) == -1);
-  ZFlowMacRect rectangles[64];
-  assert(zflow_mac_desktop_rectangles(rectangles, 64) == 2);
+  assert(nid_mac_cursor_position(NULL) == -1);
+  NidMacRect rectangles[64];
+  assert(nid_mac_desktop_rectangles(rectangles, 64) == 2);
   assert(rectangles[1].x == -1920 && rectangles[1].y == -200);
-  assert(zflow_mac_desktop_rectangles(rectangles, 1) == -1);
-  assert(zflow_mac_input_is_neutral());
-  held_key = 0; assert(zflow_mac_input_is_neutral()); held_key = -1;
-  held_button = 0; assert(!zflow_mac_input_is_neutral()); held_button = -1;
-  held_flags = kCGEventFlagMaskCommand; assert(!zflow_mac_input_is_neutral());
-  held_flags = kCGEventFlagMaskAlphaShift; assert(zflow_mac_input_is_neutral());
+  assert(nid_mac_desktop_rectangles(rectangles, 1) == -1);
+  assert(nid_mac_input_is_neutral());
+  held_key = 0; assert(nid_mac_input_is_neutral()); held_key = -1;
+  held_button = 0; assert(!nid_mac_input_is_neutral()); held_button = -1;
+  held_flags = kCGEventFlagMaskCommand; assert(!nid_mac_input_is_neutral());
+  held_flags = kCGEventFlagMaskAlphaShift; assert(nid_mac_input_is_neutral());
   held_flags = 0;
-  g_entry_region = (ZFlowMacRect){-1200, -100, 9, 200};
+  g_entry_region = (NidMacRect){-1200, -100, 9, 200};
   assert(capture_entry_allowed() == 0);
   held_key = 10; assert(capture_entry_allowed() == 0); held_key = -1;
   held_button = 1; assert(capture_entry_allowed() == -2); held_button = -1;
@@ -170,13 +170,13 @@ static void desktop_and_permission_tests(void) {
   cursor_position.y = -100; assert(capture_entry_allowed() == 0);
   cursor_position.y = -100.1; assert(capture_entry_allowed() == -2);
 
-  g_entry_region = (ZFlowMacRect){-1250, -50, 100, 9};
+  g_entry_region = (NidMacRect){-1250, -50, 100, 9};
   cursor_position = CGPointMake(-1200, -50); assert(capture_entry_allowed() == 0);
   cursor_position.x += 11; assert(capture_entry_allowed() == 0);
   cursor_position.x = -1150; assert(capture_entry_allowed() == -2);
   cursor_position = CGPointMake(-1200, -41); assert(capture_entry_allowed() == -2);
 
-  ZFlowMacRect invalid_regions[] = {
+  NidMacRect invalid_regions[] = {
     {NAN, -100, 9, 200}, {-1200, INFINITY, 9, 200},
     {-1200, -100, NAN, 200}, {-1200, -100, 9, INFINITY},
     {-1200, -100, 0, 200}, {-1200, -100, 9, 0},
@@ -189,12 +189,12 @@ static void desktop_and_permission_tests(void) {
     assert(capture_entry_allowed() == -1);
     assert(strstr(g_error, "configured crossing edge is invalid"));
   }
-  g_entry_region = (ZFlowMacRect){-1200, -100, 9, 200};
+  g_entry_region = (NidMacRect){-1200, -100, 9, 200};
   cursor_position.x = NAN; assert(capture_entry_allowed() == -1);
   cursor_position = CGPointMake(-1200, -50);
-  assert(!zflow_mac_accessibility_authorized(0));
+  assert(!nid_mac_accessibility_authorized(0));
   assert(permission_prompts == 0);
-  assert(!zflow_mac_accessibility_authorized(1));
+  assert(!nid_mac_accessibility_authorized(1));
   assert(permission_prompts == 1);
 }
 
@@ -223,30 +223,30 @@ static void startup_release_tests(void) {
   assert(event_callback(NULL, kCGEventLeftMouseDown, button, NULL) == NULL);
   assert(event_callback(NULL, kCGEventLeftMouseUp, button, NULL) == NULL);
   CFRelease(button);
-  ZFlowMacEvent captured;
+  NidMacEvent captured;
   int count = 0;
-  while (zflow_mac_capture_poll(&captured)) count++;
+  while (nid_mac_capture_poll(&captured)) count++;
   assert(count == 4);
-  ZFlowMacEvent pre_capture = {.kind = ZFLOW_EVENT_TOUCH, .contact_count = 1};
+  NidMacEvent pre_capture = {.kind = NID_EVENT_TOUCH, .contact_count = 1};
   assert(enqueue(&pre_capture));
   clear_capture_queue();
-  assert(!zflow_mac_capture_poll(&captured));
+  assert(!nid_mac_capture_poll(&captured));
   assert(enqueue(&pre_capture));
-  assert(zflow_mac_capture_poll(&captured));
-  assert(captured.kind == ZFLOW_EVENT_TOUCH && captured.contact_count == 1);
+  assert(nid_mac_capture_poll(&captured));
+  assert(captured.kind == NID_EVENT_TOUCH && captured.contact_count == 1);
 
-  CGEventRef caps = CGEventCreateKeyboardEvent(NULL, ZFLOW_CAPS_LOCK, true);
+  CGEventRef caps = CGEventCreateKeyboardEvent(NULL, NID_CAPS_LOCK, true);
   assert(caps);
-  CGEventSetIntegerValueField(caps, kCGKeyboardEventKeycode, ZFLOW_CAPS_LOCK);
+  CGEventSetIntegerValueField(caps, kCGKeyboardEventKeycode, NID_CAPS_LOCK);
   for (int toggle = 0; toggle < 2; toggle++) {
     CGEventSetFlags(caps, toggle ? 0 : kCGEventFlagMaskAlphaShift);
     assert(event_callback(NULL, kCGEventFlagsChanged, caps, NULL) == NULL);
-    assert(zflow_mac_capture_poll(&captured) && captured.pressed);
-    assert(captured.kind == ZFLOW_EVENT_KEY && captured.code == ZFLOW_CAPS_LOCK);
-    assert(zflow_mac_capture_poll(&captured) && !captured.pressed);
-    assert(captured.kind == ZFLOW_EVENT_KEY && captured.code == ZFLOW_CAPS_LOCK);
+    assert(nid_mac_capture_poll(&captured) && captured.pressed);
+    assert(captured.kind == NID_EVENT_KEY && captured.code == NID_CAPS_LOCK);
+    assert(nid_mac_capture_poll(&captured) && !captured.pressed);
+    assert(captured.kind == NID_EVENT_KEY && captured.code == NID_CAPS_LOCK);
   }
-  assert(!zflow_mac_capture_poll(&captured));
+  assert(!nid_mac_capture_poll(&captured));
   CFRelease(caps);
 }
 
@@ -391,7 +391,7 @@ static CFMachPortRef fake_tap(CGEventTapLocation location,
   assert(placement == kCGHeadInsertEventTap);
   assert(options == kCGEventTapOptionDefault);
   assert(mask & CGEventMaskBit(kCGEventMouseMoved));
-  assert((mask & ZFLOW_SWALLOWED_EVENTS) == ZFLOW_SWALLOWED_EVENTS);
+  assert((mask & NID_SWALLOWED_EVENTS) == NID_SWALLOWED_EVENTS);
   assert(callback == event_callback && context == NULL);
   tap_calls++;
   return tap_available ? CFMachPortCreate(NULL, idle_port, NULL, NULL) : NULL;
@@ -443,36 +443,36 @@ static void reset(void) {
 static void count_wake(void) { atomic_fetch_add(&wakes, 1); }
 
 static void start_capture(void) {
-  assert(zflow_mac_capture_start(0, &entry, count_wake) == 0);
+  assert(nid_mac_capture_start(0, &entry, count_wake) == 0);
   assert(g_thread_valid && strcmp(calls, "BHD") == 0);
 }
 
 static void secure_input_tests(void) {
   reset();
   secure_input = true;
-  assert(zflow_mac_secure_input_enabled() == 1);
-  assert(zflow_mac_capture_start(0, &entry, NULL) == -2);
+  assert(nid_mac_secure_input_enabled() == 1);
+  assert(nid_mac_capture_start(0, &entry, NULL) == -2);
   assert(strstr(g_error, "secure keyboard entry"));
   assert(call_count == 0 && !g_thread_valid);
   assert(capture_entry_allowed() == -2);
   secure_input = false;
   assert(capture_entry_allowed() == 0);
-  assert(zflow_mac_secure_input_enabled() == 0);
+  assert(nid_mac_secure_input_enabled() == 0);
 }
 
 static void admission_tests(void) {
   reset();
   int taps = tap_calls;
-  assert(zflow_mac_capture_start(0, NULL, NULL) == -1);
+  assert(nid_mac_capture_start(0, NULL, NULL) == -1);
   assert(tap_calls == taps && !g_thread_valid);
   reset();
   held_button = 0;
-  assert(zflow_mac_capture_start(0, &entry, NULL) == -2);
+  assert(nid_mac_capture_start(0, &entry, NULL) == -2);
   assert(strstr(g_error, "release held buttons"));
   assert(tap_calls == taps + 1 && call_count == 0 && !g_thread_valid);
   held_button = -1;
   cursor_position.x = -1150;
-  assert(zflow_mac_capture_start(0, &entry, NULL) == -2);
+  assert(nid_mac_capture_start(0, &entry, NULL) == -2);
   assert(strstr(g_error, "left the configured crossing edge"));
   cursor_position.x = -1200;
 }
@@ -482,10 +482,10 @@ static void wake_tests(void) {
   atomic_store(&wakes, 0);
   start_capture();
   int started = atomic_load(&wakes);
-  ZFlowMacEvent motion = {.kind = ZFLOW_EVENT_MOTION};
+  NidMacEvent motion = {.kind = NID_EVENT_MOTION};
   assert(enqueue(&motion));
   assert(atomic_load(&wakes) == started + 1);
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   assert(atomic_load(&wakes) == started + 2);
   g_wake = NULL;
 }
@@ -494,11 +494,11 @@ static void invalidated_tap_tests(void) {
   reset();
   start_capture();
   atomic_store(&invalidate_tap, true);
-  while (!zflow_mac_capture_stop_requested()) sched_yield();
+  while (!nid_mac_capture_stop_requested()) sched_yield();
   atomic_store(&invalidate_tap, false);
-  assert(zflow_mac_capture_stop() == -1);
+  assert(nid_mac_capture_stop() == -1);
   assert(strstr(g_error, "macOS stopped input capture"));
-  assert(zflow_mac_capture_pause_requested() == 0);
+  assert(nid_mac_capture_pause_requested() == 0);
   assert(strcmp(calls, "BHDSC") == 0);
   g_wake = NULL;
 }
@@ -509,38 +509,38 @@ static void lost_stop_tests(void) {
   atomic_store(&loop_runs, 0);
   start_capture();
   while (atomic_load(&loop_runs) == 0) sched_yield();
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   assert(!g_thread_valid && !lose_stop);
   assert(strcmp(calls, "BHDSC") == 0);
 }
 
 static void return_cursor_tests(void) {
-  const ZFlowMacPosition target = {-1200, -50};
+  const NidMacPosition target = {-1200, -50};
   reset();
   expect_return_warp = true;
   start_capture();
-  assert(zflow_mac_capture_stop_at(&target) == 0);
+  assert(nid_mac_capture_stop_at(&target) == 0);
   assert(strcmp(calls, "BHDWSC") == 0);
   assert(warped_position.x == target.x && warped_position.y == target.y);
   assert(!g_return_pending && !g_thread_valid);
-  assert(zflow_mac_capture_stop() == 0);
-  assert(zflow_mac_capture_stop_at(&target) == -1);
+  assert(nid_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop_at(&target) == -1);
   assert(strcmp(calls, "BHDWSC") == 0);
 
   reset();
   start_capture();
   atomic_store(&g_stop, true);
   stop_capture_run_loop();
-  assert(zflow_mac_capture_stop_at(&target) == -1);
+  assert(nid_mac_capture_stop_at(&target) == -1);
   assert(strcmp(calls, "BHDSC") == 0);
   assert(connected && hide_count == 0 && background);
 
-  const ZFlowMacPosition invalid[] = {{NAN, 0}, {0, INFINITY},
+  const NidMacPosition invalid[] = {{NAN, 0}, {0, INFINITY},
                                     {1920, 0}, {-1200, -201}};
   for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); i++) {
     reset();
     start_capture();
-    assert(zflow_mac_capture_stop_at(&invalid[i]) == -1);
+    assert(nid_mac_capture_stop_at(&invalid[i]) == -1);
     assert(strcmp(calls, "BHDSC") == 0);
     assert(connected && hide_count == 0 && background);
   }
@@ -549,13 +549,13 @@ static void return_cursor_tests(void) {
   expect_return_warp = true;
   start_capture();
   fail_call = 'W';
-  assert(zflow_mac_capture_stop_at(&target) == -1);
+  assert(nid_mac_capture_stop_at(&target) == -1);
   assert(strcmp(calls, "BHDWSC") == 0);
   assert(connected && hide_count == 0 && background);
 
   reset();
   start_capture();
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   assert(strcmp(calls, "BHDSC") == 0);
 }
 
@@ -608,24 +608,24 @@ static void cursor_lifecycle_tests(void) {
 
 static void multitouch_tests(void) {
   reset();
-  assert(zflow_mac_capture_start(1, &entry, NULL) == 1);
+  assert(nid_mac_capture_start(1, &entry, NULL) == 1);
   assert(mt_registered == 1 && mt_started == 1);
   assert(g_raw_devices[0] == (MTDeviceRef)2);
   assert(g_raw_surfaces[0][0] == 16030 && g_raw_surfaces[0][1] == 11490);
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   assert(mt_stopped == 1 && mt_unregistered == 1);
 
   mt_size_status = -1;
   reset();
-  assert(zflow_mac_capture_start(1, &entry, NULL) == 1);
+  assert(nid_mac_capture_start(1, &entry, NULL) == 1);
   assert(g_raw_surfaces[0][0] == 0 && g_raw_surfaces[0][1] == 0);
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   mt_size_status = 0;
   mt_size_missing = true;
   reset();
-  assert(zflow_mac_capture_start(1, &entry, NULL) == 1);
+  assert(nid_mac_capture_start(1, &entry, NULL) == 1);
   assert(g_raw_surfaces[0][0] == 0 && g_raw_surfaces[0][1] == 0);
-  assert(zflow_mac_capture_stop() == 0);
+  assert(nid_mac_capture_stop() == 0);
   mt_size_missing = false;
   assert(mt_started == 3 && mt_stopped == 3);
 }
@@ -643,18 +643,18 @@ static void touch_tests(void) {
   touches[1].identifier = 2;
   touches[1].normalized.pos = (MTPoint){0.5f, 0.25f};
   contact_callback((MTDeviceRef)2, touches, 2, 0, 0);
-  ZFlowMacEvent captured;
-  assert(zflow_mac_capture_poll(&captured) && captured.kind == ZFLOW_EVENT_TOUCH);
+  NidMacEvent captured;
+  assert(nid_mac_capture_poll(&captured) && captured.kind == NID_EVENT_TOUCH);
   assert(captured.contact_count == 2);
   assert(captured.surface_width == 16030 && captured.surface_height == 11490);
   assert(captured.contacts[0].x == 1.0f && captured.contacts[0].y == 0.0f);
   assert(captured.contacts[1].x == 0.5f && captured.contacts[1].y == 0.25f);
   contact_callback((MTDeviceRef)3, touches, 2, 0, 0);
-  assert(zflow_mac_capture_poll(&captured));
+  assert(nid_mac_capture_poll(&captured));
   assert(captured.surface_width == 0 && captured.surface_height == 0);
   touches[0].normalized.pos.x = NAN;
   contact_callback((MTDeviceRef)2, touches, 2, 0, 0);
-  assert(!zflow_mac_capture_poll(&captured));
+  assert(!nid_mac_capture_poll(&captured));
 }
 
 static void event_tests(void) {
@@ -668,9 +668,9 @@ static void event_tests(void) {
                                kCGEventRightMouseDragged, kCGEventOtherMouseDragged};
   for (size_t i = 0; i < sizeof(motion) / sizeof(motion[0]); i++) {
     assert(event_callback(NULL, motion[i], event, NULL) == NULL);
-    ZFlowMacEvent captured;
-    assert(zflow_mac_capture_poll(&captured) == 1);
-    assert(captured.kind == ZFLOW_EVENT_MOTION);
+    NidMacEvent captured;
+    assert(nid_mac_capture_poll(&captured) == 1);
+    assert(captured.kind == NID_EVENT_MOTION);
     assert(captured.dx == 17 && captured.dy == -9);
   }
   CGEventRef scroll = CGEventCreateScrollWheelEvent2(
@@ -678,31 +678,31 @@ static void event_tests(void) {
   assert(scroll);
   assert(event_callback(NULL, kCGEventScrollWheel, scroll, NULL) == NULL);
   CFRelease(scroll);
-  ZFlowMacEvent scrolled;
-  assert(zflow_mac_capture_poll(&scrolled) == 1);
-  assert(scrolled.kind == ZFLOW_EVENT_MOTION);
+  NidMacEvent scrolled;
+  assert(nid_mac_capture_poll(&scrolled) == 1);
+  assert(scrolled.kind == NID_EVENT_MOTION);
   assert(scrolled.scroll_x == -7 && scrolled.scroll_y == -40);
   g_request_raw_touch = true;
   atomic_store(&g_raw_contact_active, true);
   assert(event_callback(NULL, kCGEventMouseMoved, event, NULL) == NULL);
-  ZFlowMacEvent captured;
-  assert(zflow_mac_capture_poll(&captured) == 0);
+  NidMacEvent captured;
+  assert(nid_mac_capture_poll(&captured) == 0);
 
   const CGEventType swallowed[] = {NX_SYSDEFINED, 18, 19, 20, 29, 30, 31, 32, 33, 34};
   for (size_t i = 0; i < sizeof(swallowed) / sizeof(swallowed[0]); i++) {
     assert(event_callback(NULL, swallowed[i], event, NULL) == NULL);
   }
   assert(event_callback(NULL, kCGEventTabletPointer, event, NULL) == event);
-  assert(zflow_mac_capture_poll(&captured) == 0);
+  assert(nid_mac_capture_poll(&captured) == 0);
 
   reset();
   g_event_tap = CFMachPortCreate(NULL, idle_port, NULL, NULL);
   int enables = tap_enables;
   assert(event_callback(NULL, kCGEventTapDisabledByTimeout, event, NULL) == event);
   assert(tap_enables == enables + 1);
-  assert(zflow_mac_capture_stop_requested() == 0 && g_capture_status == 0);
+  assert(nid_mac_capture_stop_requested() == 0 && g_capture_status == 0);
   assert(event_callback(NULL, kCGEventMouseMoved, event, NULL) == NULL);
-  assert(zflow_mac_capture_poll(&captured) == 1);
+  assert(nid_mac_capture_poll(&captured) == 1);
 
   reset();
   g_forwarded_keys[4] = g_forwarded_keys[55] = true;
@@ -712,11 +712,11 @@ static void event_tests(void) {
   held_key = 55;
   held_button = 1;
   assert(event_callback(NULL, kCGEventTapDisabledByTimeout, event, NULL) == event);
-  assert(zflow_mac_capture_poll(&captured) == 1);
-  assert(captured.kind == ZFLOW_EVENT_KEY && captured.code == 4 && !captured.pressed);
-  assert(zflow_mac_capture_poll(&captured) == 1);
-  assert(captured.kind == ZFLOW_EVENT_BUTTON && captured.button == 1 && !captured.pressed);
-  assert(zflow_mac_capture_poll(&captured) == 0);
+  assert(nid_mac_capture_poll(&captured) == 1);
+  assert(captured.kind == NID_EVENT_KEY && captured.code == 4 && !captured.pressed);
+  assert(nid_mac_capture_poll(&captured) == 1);
+  assert(captured.kind == NID_EVENT_BUTTON && captured.button == 1 && !captured.pressed);
+  assert(nid_mac_capture_poll(&captured) == 0);
   assert(!g_forwarded_keys[4] && g_forwarded_keys[55]);
   assert(!g_forwarded_buttons[1] && g_forwarded_buttons[2]);
 
@@ -726,18 +726,18 @@ static void event_tests(void) {
   int probes = probe_calls;
   assert(event_callback(NULL, kCGEventTapDisabledByTimeout, event, NULL) == event);
   assert(probe_calls == probes + 1 && tap_enables == enables);
-  assert(zflow_mac_capture_stop_requested() == 1 && g_capture_status == -1);
+  assert(nid_mac_capture_stop_requested() == 1 && g_capture_status == -1);
   CFRelease(g_event_tap);
   g_event_tap = NULL;
 
   reset();
   assert(capture_cursor());
   assert(event_callback(NULL, kCGEventTapDisabledByUserInput, event, NULL) == event);
-  assert(zflow_mac_capture_stop_requested() == 1);
-  assert(zflow_mac_capture_pause_requested() == 0);
+  assert(nid_mac_capture_stop_requested() == 1);
+  assert(nid_mac_capture_pause_requested() == 0);
   assert(g_capture_status == -1);
   assert(event_callback(NULL, kCGEventMouseMoved, event, NULL) == event);
-  assert(zflow_mac_capture_poll(&captured) == 0);
+  assert(nid_mac_capture_poll(&captured) == 0);
   assert(release_cursor());
 
   reset();
@@ -747,35 +747,35 @@ static void event_tests(void) {
   CGEventSetIntegerValueField(event, kCGKeyboardEventKeycode, 51);
   CGEventSetFlags(event, kCGEventFlagMaskControl | kCGEventFlagMaskCommand);
   assert(event_callback(NULL, kCGEventKeyDown, event, NULL) == NULL);
-  assert(zflow_mac_capture_stop_requested() == 1);
-  assert(zflow_mac_capture_pause_requested() == 1);
-  assert(zflow_mac_capture_poll(&captured) == 1);
-  assert(captured.kind == ZFLOW_EVENT_ESCAPE);
+  assert(nid_mac_capture_stop_requested() == 1);
+  assert(nid_mac_capture_pause_requested() == 1);
+  assert(nid_mac_capture_poll(&captured) == 1);
+  assert(captured.kind == NID_EVENT_ESCAPE);
 
   reset();
-  ZFlowMacEvent motion_event = {.kind = ZFLOW_EVENT_MOTION};
-  for (size_t i = 0; i < ZFLOW_QUEUE_CAPACITY - 1; i++) {
+  NidMacEvent motion_event = {.kind = NID_EVENT_MOTION};
+  for (size_t i = 0; i < NID_QUEUE_CAPACITY - 1; i++) {
     assert(enqueue(&motion_event));
   }
   assert(!enqueue(&motion_event));
   assert(event_callback(NULL, kCGEventKeyDown, event, NULL) == NULL);
-  assert(zflow_mac_capture_stop_requested() == 1);
-  assert(zflow_mac_capture_pause_requested() == 1);
-  while (zflow_mac_capture_poll(&captured)) {
-    assert(captured.kind == ZFLOW_EVENT_MOTION);
+  assert(nid_mac_capture_stop_requested() == 1);
+  assert(nid_mac_capture_pause_requested() == 1);
+  while (nid_mac_capture_poll(&captured)) {
+    assert(captured.kind == NID_EVENT_MOTION);
   }
   CFRelease(event);
 
   reset();
-  for (size_t i = 0; i < ZFLOW_QUEUE_CAPACITY - 1; i++) {
+  for (size_t i = 0; i < NID_QUEUE_CAPACITY - 1; i++) {
     assert(enqueue(&motion_event));
   }
   event = CGEventCreateKeyboardEvent(NULL, 0, false);
   assert(event);
   g_forwarded_keys[0] = true;
   assert(event_callback(NULL, kCGEventKeyUp, event, NULL) == NULL);
-  assert(zflow_mac_capture_stop_requested() == 1);
-  assert(zflow_mac_capture_pause_requested() == 0);
+  assert(nid_mac_capture_stop_requested() == 1);
+  assert(nid_mac_capture_pause_requested() == 0);
   assert(g_capture_status == -1 && strstr(g_error, "overflowed"));
   CFRelease(event);
 }
@@ -786,10 +786,10 @@ static uint16_t tap_key(uint16_t keycode, bool down, int64_t keyboard) {
   CGEventSetIntegerValueField(event, kCGKeyboardEventKeyboardType, keyboard);
   assert(event_callback(NULL, down ? kCGEventKeyDown : kCGEventKeyUp, event, NULL) == NULL);
   CFRelease(event);
-  ZFlowMacEvent captured, extra;
-  assert(zflow_mac_capture_poll(&captured));
-  assert(captured.kind == ZFLOW_EVENT_KEY && captured.pressed == down);
-  assert(!zflow_mac_capture_poll(&extra));
+  NidMacEvent captured, extra;
+  assert(nid_mac_capture_poll(&captured));
+  assert(captured.kind == NID_EVENT_KEY && captured.pressed == down);
+  assert(!nid_mac_capture_poll(&extra));
   return captured.code;
 }
 
@@ -822,12 +822,12 @@ static void iso_key_tests(void) {
   CGEventRef timeout = CGEventCreate(NULL);
   assert(timeout);
   assert(event_callback(NULL, kCGEventTapDisabledByTimeout, timeout, NULL) == timeout);
-  ZFlowMacEvent captured;
-  assert(zflow_mac_capture_poll(&captured));
-  assert(captured.kind == ZFLOW_EVENT_KEY && captured.code == 50 && !captured.pressed);
-  assert(zflow_mac_capture_poll(&captured));
-  assert(captured.kind == ZFLOW_EVENT_KEY && captured.code == 10 && !captured.pressed);
-  assert(!zflow_mac_capture_poll(&captured));
+  NidMacEvent captured;
+  assert(nid_mac_capture_poll(&captured));
+  assert(captured.kind == NID_EVENT_KEY && captured.code == 50 && !captured.pressed);
+  assert(nid_mac_capture_poll(&captured));
+  assert(captured.kind == NID_EVENT_KEY && captured.code == 10 && !captured.pressed);
+  assert(!nid_mac_capture_poll(&captured));
   assert(!g_forwarded_keys[10] && !g_forwarded_keys[50]);
   CFRelease(timeout);
   CFRelease(g_event_tap);
@@ -852,10 +852,10 @@ static void wait_for_motion_watch_to_end(void) {
 
 static void edge_guard_tests(void) {
   reset();
-  ZFlowMacEdgeGuard guard = {{0, 0, 1920, 1080}, 8, 1072, 1};
+  NidMacEdgeGuard guard = {{0, 0, 1920, 1080}, 8, 1072, 1};
   cursor_position = CGPointMake(1800, 400);
   g_motion_position_valid = false;
-  zflow_mac_edge_guards(&guard, 1);
+  nid_mac_edge_guards(&guard, 1);
   CGEventRef move = move_by(400, 200);
   cursor_position = CGPointMake(2200, 600);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == NULL);
@@ -866,91 +866,91 @@ static void edge_guard_tests(void) {
   cursor_position = CGPointMake(2200, 600);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   held_button = -1;
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  g_motion_position = (NidMacPosition){1800, 400};
   assert(motion_callback(NULL, kCGEventLeftMouseDragged, move, NULL) == move);
   cursor_position = CGPointMake(2210, 600);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  g_motion_position = (ZFlowMacPosition){1800, 400};
-  CGEventSetIntegerValueField(move, kCGEventSourceUserData, ZFLOW_POSTED_MARK);
+  g_motion_position = (NidMacPosition){1800, 400};
+  CGEventSetIntegerValueField(move, kCGEventSourceUserData, NID_POSTED_MARK);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   CGEventSetIntegerValueField(move, kCGEventSourceUserData, 0);
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  g_motion_position = (NidMacPosition){1800, 400};
   fail_call = 'W';
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   fail_call = 0;
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  g_motion_position = (NidMacPosition){1800, 400};
   held_flags = kCGEventFlagMaskCommand;
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   held_flags = 0;
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  g_motion_position = (NidMacPosition){1800, 400};
   secure_input = true;
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   secure_input = false;
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  g_motion_position = (NidMacPosition){1800, 400};
   g_edge_guard_until = 0;
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  zflow_mac_edge_guards(&guard, 1);
-  g_motion_position = (ZFlowMacPosition){1800, 400};
+  nid_mac_edge_guards(&guard, 1);
+  g_motion_position = (NidMacPosition){1800, 400};
   atomic_fetch_add(&g_display_generation, 1);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
-  ZFlowMacPosition held;
+  NidMacPosition held;
   for (uint32_t edge = 0; edge < 4; edge++) {
-    guard = (ZFlowMacEdgeGuard){{0, 0, 100, 100}, 25, 75, edge};
-    zflow_mac_edge_guards(&guard, 1);
-    ZFlowMacPosition to[] = {{-50, 50}, {150, 50}, {50, -50}, {50, 150}};
-    assert(guarded_move((ZFlowMacPosition){50, 50}, to[edge], &held));
+    guard = (NidMacEdgeGuard){{0, 0, 100, 100}, 25, 75, edge};
+    nid_mac_edge_guards(&guard, 1);
+    NidMacPosition to[] = {{-50, 50}, {150, 50}, {50, -50}, {50, 150}};
+    assert(guarded_move((NidMacPosition){50, 50}, to[edge], &held));
     assert((edge < 2 ? held.y : held.x) == 50);
     assert((edge < 2 ? held.x : held.y) == (edge % 2 ? 99 : 0));
-    assert(!guarded_move(to[edge], (ZFlowMacPosition){50, 50}, &held));
+    assert(!guarded_move(to[edge], (NidMacPosition){50, 50}, &held));
   }
-  guard = (ZFlowMacEdgeGuard){{0, 0, 100, 100}, 25, 75, 1};
-  zflow_mac_edge_guards(&guard, 1);
-  assert(!guarded_move((ZFlowMacPosition){50, 5}, (ZFlowMacPosition){150, 5}, &held));
-  assert(guarded_move((ZFlowMacPosition){99, 40}, (ZFlowMacPosition){120, 55}, &held));
+  guard = (NidMacEdgeGuard){{0, 0, 100, 100}, 25, 75, 1};
+  nid_mac_edge_guards(&guard, 1);
+  assert(!guarded_move((NidMacPosition){50, 5}, (NidMacPosition){150, 5}, &held));
+  assert(guarded_move((NidMacPosition){99, 40}, (NidMacPosition){120, 55}, &held));
   assert(held.x == 99 && held.y == 55);
-  assert(!guarded_move((ZFlowMacPosition){99, 55}, (ZFlowMacPosition){120, 80}, &held));
-  zflow_mac_edge_guards(NULL, 0);
-  assert(!guarded_move((ZFlowMacPosition){50, 50}, (ZFlowMacPosition){150, 50}, &held));
+  assert(!guarded_move((NidMacPosition){99, 55}, (NidMacPosition){120, 80}, &held));
+  nid_mac_edge_guards(NULL, 0);
+  assert(!guarded_move((NidMacPosition){50, 50}, (NidMacPosition){150, 50}, &held));
   CFRelease(move);
-  ZFlowMacMotion motion;
-  zflow_mac_motion_take(&motion);
+  NidMacMotion motion;
+  nid_mac_motion_take(&motion);
 }
 
 static void motion_tests(void) {
-  ZFlowMacMotion motion;
-  assert(!zflow_mac_motion_take(&motion) && !zflow_mac_motion_take(NULL));
+  NidMacMotion motion;
+  assert(!nid_mac_motion_take(&motion) && !nid_mac_motion_take(NULL));
   CGEventRef move = move_by(-2, 1);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   assert(motion_callback(NULL, kCGEventMouseMoved, move, NULL) == move);
   CGEventRef posted = move_by(-100, 0);
-  CGEventSetIntegerValueField(posted, kCGEventSourceUserData, ZFLOW_POSTED_MARK);
+  CGEventSetIntegerValueField(posted, kCGEventSourceUserData, NID_POSTED_MARK);
   assert(motion_callback(NULL, kCGEventMouseMoved, posted, NULL) == posted);
   assert(motion_callback(NULL, kCGEventTapDisabledByTimeout, move, NULL) == move);
-  assert(zflow_mac_motion_take(&motion) == 1);
+  assert(nid_mac_motion_take(&motion) == 1);
   assert(motion.dx == -4.0 && motion.dy == 2.0 && motion.age_ns < 1000000000ULL);
-  assert(!zflow_mac_motion_take(&motion));
+  assert(!nid_mac_motion_take(&motion));
   CGEventRef right = move_by(3, 0);
   assert(motion_callback(NULL, kCGEventMouseMoved, right, NULL) == right);
-  assert(zflow_mac_motion_take(&motion) == 1 && motion.dx == 3.0 && motion.dy == 0.0);
+  assert(nid_mac_motion_take(&motion) == 1 && motion.dx == 3.0 && motion.dy == 0.0);
   assert(motion_callback(NULL, kCGEventMouseMoved, posted, NULL) == posted);
-  assert(!zflow_mac_motion_take(&motion));
+  assert(!nid_mac_motion_take(&motion));
   CGEventRef unmarked = move_by(50, 0);
   CGEventSetIntegerValueField(unmarked, kCGEventSourceUnixProcessID, getpid());
   assert(motion_callback(NULL, kCGEventMouseMoved, unmarked, NULL) == unmarked);
-  assert(!zflow_mac_motion_take(&motion));
+  assert(!nid_mac_motion_take(&motion));
   CFRelease(move);
   CFRelease(posted);
   CFRelease(right);
   CFRelease(unmarked);
 
   tap_available = false;
-  assert(zflow_mac_motion_watch() == -1 && !atomic_load(&g_motion_watching));
+  assert(nid_mac_motion_watch() == -1 && !atomic_load(&g_motion_watching));
   assert(motion_taps == 1 && g_motion_tap == NULL);
   tap_available = true;
-  assert(zflow_mac_motion_watch() == 0 && zflow_mac_motion_watch() == 0);
+  assert(nid_mac_motion_watch() == 0 && nid_mac_motion_watch() == 0);
   assert(motion_taps == 2);
   wait_for_motion_watch_to_end();
-  assert(zflow_mac_motion_watch() == 0 && motion_taps == 3);
+  assert(nid_mac_motion_watch() == 0 && motion_taps == 3);
   wait_for_motion_watch_to_end();
 }
 
@@ -974,8 +974,8 @@ int main(void) {
   tap_available = false;
   int taps = tap_calls;
   atomic_store(&g_pause_requested, true);
-  assert(zflow_mac_capture_start(0, &entry, NULL) == -1);
-  assert(zflow_mac_capture_pause_requested() == 0);
+  assert(nid_mac_capture_start(0, &entry, NULL) == -1);
+  assert(nid_mac_capture_pause_requested() == 0);
   assert(tap_calls == taps + 1 && call_count == 0);
   assert(!g_thread_valid);
   motion_tests();

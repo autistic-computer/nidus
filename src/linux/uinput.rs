@@ -17,7 +17,7 @@ use crate::core::{
 };
 
 use super::{
-    MAX_TOUCHPAD_CONTACTS, MappingError, VirtualDeviceRole, ZFLOW_DEVICE_VERSION, ZFLOW_VENDOR_ID,
+    MAX_TOUCHPAD_CONTACTS, MappingError, NID_DEVICE_VERSION, NID_VENDOR_ID, VirtualDeviceRole,
     hid_to_evdev_key, mapped_evdev_keys, mapped_pointer_buttons, pointer_button_to_evdev,
 };
 
@@ -74,15 +74,15 @@ fn build_virtual_device(
     relative_axes: Option<&evdev::AttributeSetRef<RelativeAxisCode>>,
     properties: Option<&evdev::AttributeSetRef<PropType>>,
 ) -> Result<VirtualDevice, InjectionError> {
-    let phys = CString::new(role.physical_path()).expect("stable zflow phys has no NUL");
+    let phys = CString::new(role.physical_path()).expect("stable Nidus phys has no NUL");
     let result = (|| {
         let mut builder = VirtualDevice::builder()?
             .name(role.name())
             .input_id(InputId::new(
                 BusType::BUS_VIRTUAL,
-                ZFLOW_VENDOR_ID,
+                NID_VENDOR_ID,
                 role.product_id(),
-                ZFLOW_DEVICE_VERSION,
+                NID_DEVICE_VERSION,
             ))
             .with_phys(&phys)?
             .with_keys(keys)?;
@@ -380,7 +380,7 @@ impl VirtualTouchpad {
         let mut properties = AttributeSet::<PropType>::new();
         properties.insert(PropType::POINTER);
         properties.insert(PropType::BUTTONPAD);
-        let phys = CString::new(role.physical_path()).expect("stable zflow phys has no NUL");
+        let phys = CString::new(role.physical_path()).expect("stable Nidus phys has no NUL");
         let axis = |code, maximum| {
             UinputAbsSetup::new(code, AbsInfo::new(0, 0, maximum, 0, 0, TOUCHPAD_RESOLUTION))
         };
@@ -389,9 +389,9 @@ impl VirtualTouchpad {
                 .name(role.name())
                 .input_id(InputId::new(
                     BusType::BUS_VIRTUAL,
-                    ZFLOW_VENDOR_ID,
+                    NID_VENDOR_ID,
                     role.product_id(),
-                    ZFLOW_DEVICE_VERSION,
+                    NID_DEVICE_VERSION,
                 ))
                 .with_phys(&phys)?
                 .with_properties(&properties)?

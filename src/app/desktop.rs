@@ -83,7 +83,7 @@ impl Drop for DesktopReceiver {
 async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Result<()> {
     use crate::desktop::{DesktopRequest, DesktopResponse};
     use anyhow::{Context, ensure};
-    const ENABLE: &str = "Enable the zflow GNOME integration; a newly installed extension may require logging out and back in";
+    const ENABLE: &str = "Enable the Nidus GNOME integration; a newly installed extension may require logging out and back in";
     let bus = zbus::fdo::DBusProxy::new(connection).await?;
     let mut waiting = false;
     let owner = loop {
@@ -93,7 +93,7 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
         {
             Ok(owner) => break owner,
             Err(zbus::fdo::Error::NameHasNoOwner(_)) if !waiting => {
-                tracing::debug!("waiting for the zflow GNOME extension");
+                tracing::debug!("waiting for the Nidus GNOME extension");
                 lock(state).message = ENABLE.into();
                 waiting = true;
             }
@@ -104,7 +104,7 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
     };
     ensure!(
         owner == bus.get_name_owner("org.gnome.Shell".try_into()?).await?,
-        "Another program owns the zflow GNOME integration name"
+        "Another program owns the Nidus GNOME integration name"
     );
     let proxy = zbus::Proxy::new(
         connection,
@@ -126,17 +126,17 @@ async fn run(connection: &zbus::Connection, state: &Mutex<State>) -> anyhow::Res
         matches!(snapshot, DesktopResponse::Snapshot { .. }),
         "Unexpected GNOME response"
     );
-    let daemon_uid = nix::unistd::User::from_name("zflow")?
-        .context("Install the zflow service first")?
+    let daemon_uid = nix::unistd::User::from_name("nid")?
+        .context("Install the Nidus service first")?
         .uid
         .as_raw();
     let mut stream = tokio::net::UnixStream::connect(crate::peer_view::SOCKET_PATH)
         .await
-        .context("Start the installed zflow service first")?;
+        .context("Start the installed Nidus service first")?;
     let uid = crate::control::peer_uid(&stream)?;
     ensure!(
         uid == daemon_uid || uid == 0,
-        "The desktop API is not owned by the zflow service"
+        "The desktop API is not owned by the Nidus service"
     );
     crate::control::write_message(&mut stream, &crate::peer_view::Request::Desktop {}).await?;
     let ready: DesktopResponse = tokio::time::timeout(
@@ -200,7 +200,7 @@ impl IdleInhibitor {
                     let reason = "Controlling another computer";
                     self.0 = Some(
                         proxy
-                            .call("Inhibit", &("zflow", 0_u32, reason, Self::IDLE))
+                            .call("Inhibit", &("Nidus", 0_u32, reason, Self::IDLE))
                             .await?,
                     );
                 }
@@ -396,7 +396,7 @@ async fn forward_signals(
                 let (_, _, new): (&str, &str, &str) = body.deserialize()?;
                 Some(match new {
                     "" => false,
-                    new if new == owner => anyhow::bail!("The zflow GNOME extension restarted"),
+                    new if new == owner => anyhow::bail!("The Nidus GNOME extension restarted"),
                     _ => anyhow::bail!("GNOME Shell restarted"),
                 })
             }
@@ -599,7 +599,7 @@ pub async fn install_extension(shell: Option<&zbus::Connection>) -> anyhow::Resu
             Some(ACTIVE) => return Ok(true),
             Some(OUT_OF_DATE) => {
                 anyhow::bail!(
-                    "The zflow extension does not support this GNOME version. Update zflow"
+                    "The Nidus extension does not support this GNOME version. Update Nidus"
                 )
             }
             _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
@@ -864,7 +864,7 @@ mod tests {
 
     struct Shell(Arc<Mutex<Vec<(String, serde_json::Value)>>>);
 
-    #[zbus::interface(name = "org.gnome.Shell.Extensions.Zflow")]
+    #[zbus::interface(name = "org.gnome.Shell.Extensions.Nid")]
     impl Shell {
         fn call(&self, #[zbus(header)] header: zbus::message::Header<'_>, json: &str) -> String {
             let sender = header.sender().unwrap().to_string();
@@ -966,7 +966,7 @@ mod tests {
             early.is_err(),
             "the receiver keeps waiting for the extension"
         );
-        assert!(lock(&state).message.starts_with("Enable the zflow"));
+        assert!(lock(&state).message.starts_with("Enable the Nidus"));
         let shell = zbus::connection::Builder::session()
             .unwrap()
             .name("org.gnome.Shell")
@@ -1003,7 +1003,7 @@ mod tests {
         calls: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
-    #[zbus::interface(name = "org.gnome.Shell.Extensions.Zflow")]
+    #[zbus::interface(name = "org.gnome.Shell.Extensions.Nid")]
     impl ClipboardShell {
         fn call(&self, json: &str) -> String {
             let request = serde_json::from_str(json).unwrap();
@@ -1152,7 +1152,7 @@ mod tests {
 
     struct FocusShell;
 
-    #[zbus::interface(name = "org.gnome.Shell.Extensions.Zflow")]
+    #[zbus::interface(name = "org.gnome.Shell.Extensions.Nid")]
     impl FocusShell {
         fn call(&self, json: &str) -> String {
             let request: serde_json::Value = serde_json::from_str(json).unwrap();
@@ -1259,7 +1259,7 @@ mod tests {
         );
         shell.request_name(BUS_NAME).await.unwrap();
         let error = forward.await.unwrap().unwrap_err();
-        assert_eq!(format!("{error:#}"), "The zflow GNOME extension restarted");
+        assert_eq!(format!("{error:#}"), "The Nidus GNOME extension restarted");
         assert_eq!(reports.recv().await, None);
     }
 }

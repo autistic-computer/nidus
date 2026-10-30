@@ -10,9 +10,9 @@ pub const LEASE_MS: u64 = 2_000;
 pub const POLL_HOLD_MS: u64 = 200;
 pub const REQUEST_TIMEOUT_MS: u64 = 1_000;
 pub const MAX_MESSAGE_BYTES: usize = 32_768;
-pub const EXTENSION_ID: &str = "zflow@demfabris";
-pub const BUS_NAME: &str = "org.gnome.Shell.Extensions.Zflow";
-pub const OBJECT_PATH: &str = "/org/gnome/Shell/Extensions/Zflow";
+pub const EXTENSION_ID: &str = "nid@autistic.computer";
+pub const BUS_NAME: &str = "org.gnome.Shell.Extensions.Nid";
+pub const OBJECT_PATH: &str = "/org/gnome/Shell/Extensions/Nid";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -13,11 +13,11 @@
 #include <stdint.h>
 #include <string.h>
 
-#define ZFLOW_POSTED_MARK 0x7A666C6F77LL
-#define ZFLOW_HELD_KEYS 128
-#define ZFLOW_HELD_BUTTONS 32
-#define ZFLOW_KEYBOARD_ISO 0x49534F20
-#define ZFLOW_REPEAT_TICK_NS 15000000ULL
+#define NID_POSTED_MARK 0x7A666C6F77LL
+#define NID_HELD_KEYS 128
+#define NID_HELD_BUTTONS 32
+#define NID_KEYBOARD_ISO 0x49534F20
+#define NID_REPEAT_TICK_NS 15000000ULL
 
 extern OSType KBGetLayoutType(SInt16 keyboard_type);
 extern UInt8 LMGetKbdType(void);
@@ -34,27 +34,27 @@ typedef struct {
   uint8_t padding[7];
   int64_t click_state;
   uint64_t flags;
-} ZFlowMacPosted;
+} NidMacPosted;
 
-_Static_assert(sizeof(ZFlowMacPosted) == 72, "Rust's NativePosted has this layout");
+_Static_assert(sizeof(NidMacPosted) == 72, "Rust's NativePosted has this layout");
 
 enum {
-  ZFLOW_POST_MOVE = 1,
-  ZFLOW_POST_BUTTON = 2,
-  ZFLOW_POST_KEY = 3,
-  ZFLOW_POST_MODIFIER = 4,
-  ZFLOW_POST_SCROLL = 5,
+  NID_POST_MOVE = 1,
+  NID_POST_BUTTON = 2,
+  NID_POST_KEY = 3,
+  NID_POST_MODIFIER = 4,
+  NID_POST_SCROLL = 5,
 };
 
 static pthread_mutex_t g_inject_lock = PTHREAD_MUTEX_INITIALIZER;
 static CGEventSourceRef g_source;
 static io_connect_t g_hid_system;
-static bool g_held_keys[ZFLOW_HELD_KEYS];
-static bool g_held_modifiers[ZFLOW_HELD_KEYS];
-static bool g_held_buttons[ZFLOW_HELD_BUTTONS];
+static bool g_held_keys[NID_HELD_KEYS];
+static bool g_held_modifiers[NID_HELD_KEYS];
+static bool g_held_buttons[NID_HELD_BUTTONS];
 static bool g_exiting;
 
-int zflow_mac_inject_open(void) {
+int nid_mac_inject_open(void) {
   pthread_mutex_lock(&g_inject_lock);
   if (!g_source) {
     CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
@@ -70,7 +70,7 @@ int zflow_mac_inject_open(void) {
         source, permit, kCGEventSuppressionStateSuppressionInterval);
     CGEventSourceSetLocalEventsFilterDuringSuppressionState(
         source, permit, kCGEventSuppressionStateRemoteMouseDrag);
-    CGEventSourceSetUserData(source, ZFLOW_POSTED_MARK);
+    CGEventSourceSetUserData(source, NID_POSTED_MARK);
     g_source = source;
   }
   pthread_mutex_unlock(&g_inject_lock);
@@ -93,14 +93,14 @@ static CGEventType drag_type(uint16_t button) {
   }
 }
 
-static CGEventRef create_event(const ZFlowMacPosted *posted) {
+static CGEventRef create_event(const NidMacPosted *posted) {
   CGPoint point = CGPointMake(posted->x, posted->y);
-  bool pointer = posted->kind == ZFLOW_POST_MOVE || posted->kind == ZFLOW_POST_BUTTON;
+  bool pointer = posted->kind == NID_POST_MOVE || posted->kind == NID_POST_BUTTON;
   if (pointer && (!isfinite(posted->x) || !isfinite(posted->y) ||
-                  posted->code >= ZFLOW_HELD_BUTTONS)) return NULL;
+                  posted->code >= NID_HELD_BUTTONS)) return NULL;
   CGEventRef event = NULL;
   switch (posted->kind) {
-    case ZFLOW_POST_MOVE:
+    case NID_POST_MOVE:
       event = CGEventCreateMouseEvent(
           g_source, posted->drag ? drag_type(posted->code) : kCGEventMouseMoved,
           point, (CGMouseButton)posted->code);
@@ -110,24 +110,24 @@ static CGEventRef create_event(const ZFlowMacPosted *posted) {
       if (posted->drag)
         CGEventSetIntegerValueField(event, kCGMouseEventClickState, posted->click_state);
       break;
-    case ZFLOW_POST_BUTTON:
+    case NID_POST_BUTTON:
       event = CGEventCreateMouseEvent(g_source, button_type(posted->code, posted->down),
                                       point, (CGMouseButton)posted->code);
       if (!event) return NULL;
       CGEventSetIntegerValueField(event, kCGMouseEventClickState, posted->click_state);
       break;
-    case ZFLOW_POST_KEY:
-    case ZFLOW_POST_MODIFIER:
-      if (posted->code >= ZFLOW_HELD_KEYS) return NULL;
+    case NID_POST_KEY:
+    case NID_POST_MODIFIER:
+      if (posted->code >= NID_HELD_KEYS) return NULL;
       event = CGEventCreateKeyboardEvent(g_source, posted->code, posted->down);
       if (!event) return NULL;
-      if (posted->kind == ZFLOW_POST_MODIFIER) {
+      if (posted->kind == NID_POST_MODIFIER) {
         CGEventSetType(event, kCGEventFlagsChanged);
       } else if (posted->autorepeat) {
         CGEventSetIntegerValueField(event, kCGKeyboardEventAutorepeat, 1);
       }
       break;
-    case ZFLOW_POST_SCROLL:
+    case NID_POST_SCROLL:
       event = CGEventCreateScrollWheelEvent2(g_source, kCGScrollEventUnitPixel, 2,
                                              posted->wheel_y, posted->wheel_x, 0);
       if (!event) return NULL;
@@ -139,20 +139,20 @@ static CGEventRef create_event(const ZFlowMacPosted *posted) {
   CGEventFlags caps = CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState) &
       kCGEventFlagMaskAlphaShift;
   CGEventSetFlags(event, ((CGEventFlags)posted->flags & ~kCGEventFlagMaskAlphaShift) | caps);
-  CGEventSetIntegerValueField(event, kCGEventSourceUserData, ZFLOW_POSTED_MARK);
+  CGEventSetIntegerValueField(event, kCGEventSourceUserData, NID_POSTED_MARK);
   return event;
 }
 
-static void track(const ZFlowMacPosted *posted) {
+static void track(const NidMacPosted *posted) {
   switch (posted->kind) {
-    case ZFLOW_POST_BUTTON: g_held_buttons[posted->code] = posted->down; break;
-    case ZFLOW_POST_KEY: g_held_keys[posted->code] = posted->down; break;
-    case ZFLOW_POST_MODIFIER: g_held_modifiers[posted->code] = posted->down; break;
+    case NID_POST_BUTTON: g_held_buttons[posted->code] = posted->down; break;
+    case NID_POST_KEY: g_held_keys[posted->code] = posted->down; break;
+    case NID_POST_MODIFIER: g_held_modifiers[posted->code] = posted->down; break;
     default: break;
   }
 }
 
-int zflow_mac_inject_post(const ZFlowMacPosted *posted) {
+int nid_mac_inject_post(const NidMacPosted *posted) {
   if (!posted) return -1;
   pthread_mutex_lock(&g_inject_lock);
   CGEventRef event = g_source && !g_exiting ? create_event(posted) : NULL;
@@ -170,18 +170,18 @@ int zflow_mac_inject_post(const ZFlowMacPosted *posted) {
 static void post_release(CGEventRef event) {
   if (!event) return;
   CGEventSetFlags(event, 0);
-  CGEventSetIntegerValueField(event, kCGEventSourceUserData, ZFLOW_POSTED_MARK);
+  CGEventSetIntegerValueField(event, kCGEventSourceUserData, NID_POSTED_MARK);
   CGEventPost(kCGHIDEventTap, event);
   CFRelease(event);
 }
 
 static void release_held(void) {
-  for (uint16_t code = 0; code < ZFLOW_HELD_KEYS; code++) {
+  for (uint16_t code = 0; code < NID_HELD_KEYS; code++) {
     if (!g_held_keys[code]) continue;
     g_held_keys[code] = false;
     post_release(CGEventCreateKeyboardEvent(g_source, code, false));
   }
-  for (uint16_t code = 0; code < ZFLOW_HELD_KEYS; code++) {
+  for (uint16_t code = 0; code < NID_HELD_KEYS; code++) {
     if (!g_held_modifiers[code]) continue;
     g_held_modifiers[code] = false;
     CGEventRef event = CGEventCreateKeyboardEvent(g_source, code, false);
@@ -194,7 +194,7 @@ static void release_held(void) {
     cursor = CGEventGetLocation(now);
     CFRelease(now);
   }
-  for (uint16_t button = 0; button < ZFLOW_HELD_BUTTONS; button++) {
+  for (uint16_t button = 0; button < NID_HELD_BUTTONS; button++) {
     if (!g_held_buttons[button]) continue;
     g_held_buttons[button] = false;
     post_release(CGEventCreateMouseEvent(g_source, button_type(button, false), cursor,
@@ -202,13 +202,13 @@ static void release_held(void) {
   }
 }
 
-void zflow_mac_inject_release_all(void) {
+void nid_mac_inject_release_all(void) {
   pthread_mutex_lock(&g_inject_lock);
   release_held();
   pthread_mutex_unlock(&g_inject_lock);
 }
 
-void zflow_mac_inject_close(void) {
+void nid_mac_inject_close(void) {
   pthread_mutex_lock(&g_inject_lock);
   release_held();
   if (g_source) CFRelease(g_source);
@@ -230,7 +230,7 @@ static bool open_hid_system(void) {
   return result == KERN_SUCCESS;
 }
 
-int zflow_mac_caps_lock(int *on) {
+int nid_mac_caps_lock(int *on) {
   if (!on) return -1;
   pthread_mutex_lock(&g_inject_lock);
   bool state = false;
@@ -242,7 +242,7 @@ int zflow_mac_caps_lock(int *on) {
   return status;
 }
 
-int zflow_mac_set_caps_lock(int on) {
+int nid_mac_set_caps_lock(int on) {
   pthread_mutex_lock(&g_inject_lock);
   int status = open_hid_system() &&
       IOHIDSetModifierLockState(g_hid_system, kIOHIDCapsLockState, on != 0) == KERN_SUCCESS
@@ -251,8 +251,8 @@ int zflow_mac_set_caps_lock(int on) {
   return status;
 }
 
-int zflow_mac_keyboard_is_iso(void) {
-  return KBGetLayoutType((SInt16)LMGetKbdType()) == ZFLOW_KEYBOARD_ISO ? 1 : 0;
+int nid_mac_keyboard_is_iso(void) {
+  return KBGetLayoutType((SInt16)LMGetKbdType()) == NID_KEYBOARD_ISO ? 1 : 0;
 }
 
 static bool positive_number(CFTypeRef value, uint64_t *out) {
@@ -268,11 +268,11 @@ static bool preference_ticks(CFStringRef key, uint64_t *out) {
   CFPropertyListRef value = CFPreferencesCopyAppValue(key, kCFPreferencesAnyApplication);
   bool found = positive_number(value, out);
   if (value) CFRelease(value);
-  if (found) *out *= ZFLOW_REPEAT_TICK_NS;
+  if (found) *out *= NID_REPEAT_TICK_NS;
   return found;
 }
 
-int zflow_mac_key_repeat_ns(uint64_t *initial, uint64_t *interval) {
+int nid_mac_key_repeat_ns(uint64_t *initial, uint64_t *interval) {
   if (!initial || !interval) return -1;
   io_service_t service = IOServiceGetMatchingService(
       kIOMainPortDefault, IOServiceMatching(kIOHIDSystemClass));
@@ -302,7 +302,7 @@ static bool dictionary_flag(CFDictionaryRef dictionary, CFStringRef key, bool mi
   return missing;
 }
 
-int zflow_mac_session_locked(void) {
+int nid_mac_session_locked(void) {
   CFDictionaryRef session = CGSessionCopyCurrentDictionary();
   if (!session) return 1;
   bool locked = dictionary_flag(session, CFSTR("CGSSessionScreenIsLocked"), false) ||
@@ -311,15 +311,15 @@ int zflow_mac_session_locked(void) {
   return locked ? 1 : 0;
 }
 
-int zflow_mac_post_allowed(void) {
+int nid_mac_post_allowed(void) {
   return CGPreflightPostEventAccess() ? 1 : 0;
 }
 
-int zflow_mac_declare_user_activity(void) {
+int nid_mac_declare_user_activity(void) {
   static IOPMAssertionID assertion = kIOPMNullAssertionID;
   pthread_mutex_lock(&g_inject_lock);
   IOReturn result = IOPMAssertionDeclareUserActivity(
-      CFSTR("zflow remote input"), kIOPMUserActiveLocal, &assertion);
+      CFSTR("Nidus remote input"), kIOPMUserActiveLocal, &assertion);
   pthread_mutex_unlock(&g_inject_lock);
   return result == kIOReturnSuccess ? 0 : -1;
 }
@@ -348,7 +348,7 @@ static void install_exit_handlers(void) {
   }
 }
 
-void zflow_mac_inject_install_exit_handlers(void) {
+void nid_mac_inject_install_exit_handlers(void) {
   static pthread_once_t once = PTHREAD_ONCE_INIT;
   pthread_once(&once, install_exit_handlers);
 }

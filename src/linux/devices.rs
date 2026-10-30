@@ -7,17 +7,17 @@ use evdev::{
     AbsoluteAxisCode, AttributeSetRef, BusType, Device, KeyCode, PropType, RelativeAxisCode,
 };
 
-pub const ZFLOW_VENDOR_ID: u16 = 0x1209;
-pub const ZFLOW_KEYBOARD_PRODUCT_ID: u16 = 0x5a01;
-pub const ZFLOW_POINTER_PRODUCT_ID: u16 = 0x5a02;
-pub const ZFLOW_TOUCHPAD_PRODUCT_ID: u16 = 0x5a03;
-pub const ZFLOW_DEVICE_VERSION: u16 = 1;
-pub const ZFLOW_KEYBOARD_NAME: &str = "zflow remote keyboard";
-pub const ZFLOW_POINTER_NAME: &str = "zflow remote pointer";
-pub const ZFLOW_TOUCHPAD_NAME: &str = "zflow remote touchpad";
-pub const ZFLOW_KEYBOARD_PHYS: &str = "zflow/remote/keyboard";
-pub const ZFLOW_POINTER_PHYS: &str = "zflow/remote/pointer";
-pub const ZFLOW_TOUCHPAD_PHYS: &str = "zflow/remote/touchpad";
+pub const NID_VENDOR_ID: u16 = 0x1209;
+pub const NID_KEYBOARD_PRODUCT_ID: u16 = 0x5a01;
+pub const NID_POINTER_PRODUCT_ID: u16 = 0x5a02;
+pub const NID_TOUCHPAD_PRODUCT_ID: u16 = 0x5a03;
+pub const NID_DEVICE_VERSION: u16 = 1;
+pub const NID_KEYBOARD_NAME: &str = "nid remote keyboard";
+pub const NID_POINTER_NAME: &str = "nid remote pointer";
+pub const NID_TOUCHPAD_NAME: &str = "nid remote touchpad";
+pub const NID_KEYBOARD_PHYS: &str = "nid/remote/keyboard";
+pub const NID_POINTER_PHYS: &str = "nid/remote/pointer";
+pub const NID_TOUCHPAD_PHYS: &str = "nid/remote/touchpad";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtualDeviceRole {
@@ -29,25 +29,25 @@ pub enum VirtualDeviceRole {
 impl VirtualDeviceRole {
     pub const fn product_id(self) -> u16 {
         match self {
-            Self::Keyboard => ZFLOW_KEYBOARD_PRODUCT_ID,
-            Self::Pointer => ZFLOW_POINTER_PRODUCT_ID,
-            Self::Touchpad => ZFLOW_TOUCHPAD_PRODUCT_ID,
+            Self::Keyboard => NID_KEYBOARD_PRODUCT_ID,
+            Self::Pointer => NID_POINTER_PRODUCT_ID,
+            Self::Touchpad => NID_TOUCHPAD_PRODUCT_ID,
         }
     }
 
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Keyboard => ZFLOW_KEYBOARD_NAME,
-            Self::Pointer => ZFLOW_POINTER_NAME,
-            Self::Touchpad => ZFLOW_TOUCHPAD_NAME,
+            Self::Keyboard => NID_KEYBOARD_NAME,
+            Self::Pointer => NID_POINTER_NAME,
+            Self::Touchpad => NID_TOUCHPAD_NAME,
         }
     }
 
     pub const fn physical_path(self) -> &'static str {
         match self {
-            Self::Keyboard => ZFLOW_KEYBOARD_PHYS,
-            Self::Pointer => ZFLOW_POINTER_PHYS,
-            Self::Touchpad => ZFLOW_TOUCHPAD_PHYS,
+            Self::Keyboard => NID_KEYBOARD_PHYS,
+            Self::Pointer => NID_POINTER_PHYS,
+            Self::Touchpad => NID_TOUCHPAD_PHYS,
         }
     }
 }
@@ -129,10 +129,10 @@ impl DeviceInfo {
         }
     }
 
-    pub fn zflow_role(&self) -> Option<VirtualDeviceRole> {
+    pub fn nid_role(&self) -> Option<VirtualDeviceRole> {
         if self.bus != BusType::BUS_VIRTUAL.0
-            || self.vendor != ZFLOW_VENDOR_ID
-            || self.version != ZFLOW_DEVICE_VERSION
+            || self.vendor != NID_VENDOR_ID
+            || self.version != NID_DEVICE_VERSION
         {
             return None;
         }
@@ -149,8 +149,8 @@ impl DeviceInfo {
         })
     }
 
-    pub fn is_zflow_virtual(&self) -> bool {
-        self.zflow_role().is_some()
+    pub fn is_nid_virtual(&self) -> bool {
+        self.nid_role().is_some()
     }
 }
 
@@ -170,7 +170,7 @@ impl DeviceScan {
     pub fn physical_devices(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.devices
             .iter()
-            .filter(|device| !device.is_zflow_virtual())
+            .filter(|device| !device.is_nid_virtual())
     }
 }
 
@@ -378,11 +378,11 @@ mod tests {
             let path = format!("/dev/input/event{}", index + 8);
             let mut virtual_device = info(&path, role.name());
             virtual_device.bus = BusType::BUS_VIRTUAL.0;
-            virtual_device.vendor = ZFLOW_VENDOR_ID;
+            virtual_device.vendor = NID_VENDOR_ID;
             virtual_device.product = role.product_id();
-            virtual_device.version = ZFLOW_DEVICE_VERSION;
+            virtual_device.version = NID_DEVICE_VERSION;
             virtual_device.physical_path = Some(role.physical_path().into());
-            assert_eq!(virtual_device.zflow_role(), Some(role));
+            assert_eq!(virtual_device.nid_role(), Some(role));
 
             let scan = DeviceScan {
                 devices: vec![virtual_device],

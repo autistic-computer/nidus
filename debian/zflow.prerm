@@ -1,8 +1,0 @@
-#!/bin/sh
-set -eu
-case "$1" in
-    remove)
-        /usr/lib/zflow/firewall.sh close
-        ;;
-esac
-#DEBHELPER#

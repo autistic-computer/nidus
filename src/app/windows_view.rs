@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn the_engine_status_reads_as_the_shared_snapshot() {
-        let snapshot = snapshot(status(), Path::new("C:/zflow.toml")).unwrap();
+        let snapshot = snapshot(status(), Path::new("C:/nid.toml")).unwrap();
         assert_eq!(snapshot.status.title, "Controlling mac");
         assert_eq!(snapshot.peers[0].state, PeerState::ControlledFromHere);
         assert_eq!(snapshot.peers[0].mark, "996615");

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Nidus
+Comment=Share your keyboard, pointer, and trackpad
+Exec=/usr/bin/nid settings
+Icon=io.nid.nid
+Terminal=false
+Categories=Settings;GNOME;
+StartupNotify=true

@@ -11,7 +11,7 @@ pub fn run(install: bool) -> Result<()> {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn,zflow=info".into()),
+                .unwrap_or_else(|_| "warn,nid=info".into()),
         )
         .try_init();
     if let Err(error) = super::desktop::refresh_extension() {
@@ -33,7 +33,7 @@ pub fn run(install: bool) -> Result<()> {
                 _=interrupt.recv() => break,
                 _=timer.tick() => {
                     if let Some(path) = std::fs::read_link("/proc/self/exe").ok().and_then(|exe| replaced(&exe)) {
-                        tracing::info!("zflow was updated; restarting the desktop agent");
+                        tracing::info!("Nidus was updated; restarting the desktop agent");
                         updated=Some(path);
                         break;
                     }
@@ -92,7 +92,7 @@ fn install_agent() -> Result<()> {
     );
     super::gnome::install()?;
     println!(
-        "Adding the zflow GNOME extension. GNOME may ask to download it from extensions.gnome.org."
+        "Adding the Nidus GNOME extension. GNOME may ask to download it from extensions.gnome.org."
     );
     let running = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -106,9 +106,9 @@ fn install_agent() -> Result<()> {
             Ok::<_, anyhow::Error>(running)
         })?;
     if running {
-        println!("GNOME integration is ready. Open zflow from Applications.");
+        println!("GNOME integration is ready. Open Nidus from Applications.");
     } else {
-        println!("Log out and back in to finish setting up zflow in GNOME.");
+        println!("Log out and back in to finish setting up Nidus in GNOME.");
     }
     Ok(())
 }
@@ -120,7 +120,7 @@ mod tests {
     #[test]
     fn an_update_restarts_the_agent_from_the_new_binary() {
         let directory = tempfile::tempdir().unwrap();
-        let binary = directory.path().join("zflow");
+        let binary = directory.path().join("nid");
         let deleted = |path: &std::path::Path| format!("{} (deleted)", path.display());
         assert_eq!(
             replaced(deleted(&binary).as_ref()),

@@ -4,7 +4,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 profile=${1:?usage: notarize-macos-app.sh KEYCHAIN_PROFILE [KEYCHAIN_PATH [APP_OR_DMG]]}
 auth=(--keychain-profile "$profile")
 if [[ -n "${2:-}" ]]; then auth+=(--keychain "$2"); fi
-item=${3:-$root/target/release/zflow.app}
+item=${3:-$root/target/release/Nidus.app}
 output="$root/target/notarization"
 if [[ "$item" == *.dmg ]]; then
     output="$output/dmg"
@@ -14,7 +14,7 @@ if [[ "$item" == *.dmg ]]; then
 else
     mkdir -p "$output"
     codesign --verify --strict --deep "$item"
-    upload="$output/zflow.zip"
+    upload="$output/nid.zip"
     ditto -c -k --keepParent "$item" "$upload"
 fi
 xcrun notarytool submit "$upload" "${auth[@]}" --output-format json > "$output/submission.json"

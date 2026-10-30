@@ -1,4 +1,4 @@
-#define ZFLOW_AWDL_HELPER_TEST
+#define NID_AWDL_HELPER_TEST
 #include "../src/macos/awdl_helper.c"
 #include <assert.h>
 #include <fcntl.h>

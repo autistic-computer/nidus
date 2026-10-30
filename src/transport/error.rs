@@ -22,7 +22,7 @@ pub enum TransportError {
     DatagramQueueClosed,
     #[error("wire message is invalid: {0}")]
     Wire(#[from] WireError),
-    #[error("peer runs a different zflow protocol version")]
+    #[error("peer runs a different Nidus protocol version")]
     InvalidAlpn,
     #[error("peer did not present exactly one raw public key")]
     MissingPeerIdentity,
@@ -32,7 +32,7 @@ pub enum TransportError {
     NotTrusted,
     #[error("critical control stream ended")]
     CriticalStreamClosed,
-    #[error("first bidirectional stream was not the zflow critical control stream")]
+    #[error("first bidirectional stream was not the Nidus critical control stream")]
     InvalidControlPreface,
     #[error("critical control stream frame is {actual} bytes; maximum is {maximum}")]
     ControlFrameTooLarge { actual: usize, maximum: usize },
@@ -59,7 +59,7 @@ pub enum TransportError {
     HelloExporter,
     #[error("hello stream failed: {0}")]
     HelloStream(String),
-    #[error("first hello stream did not have the zflow hello preface")]
+    #[error("first hello stream did not have the Nidus hello preface")]
     InvalidHelloPreface,
     #[error("hello frame is {actual} bytes; maximum is {maximum}")]
     HelloFrameTooLarge { actual: usize, maximum: usize },

@@ -269,15 +269,15 @@ impl Shared {
             })
             .collect();
         match matches[..] {
-            [] => bail!("No computer called {computer} was found; run zflow nearby"),
+            [] => bail!("No computer called {computer} was found; run nid nearby"),
             [tile] => match tile.state {
                 UnplacedState::Ready | UnplacedState::DuplicateName => Ok(tile.clone()),
                 UnplacedState::Identifying => bail!("{computer} has not answered yet; try again"),
                 UnplacedState::DifferentVersion => {
-                    bail!("{computer} runs another zflow version. Update both computers")
+                    bail!("{computer} runs another Nidus version. Update both computers")
                 }
             },
-            _ => bail!("Several computers are called {computer}; use the mark zflow nearby shows"),
+            _ => bail!("Several computers are called {computer}; use the mark nid nearby shows"),
         }
     }
 
@@ -289,7 +289,7 @@ impl Shared {
     ) -> Result<String> {
         let key = id
             .strip_prefix("key:")
-            .context("zflow is still looking up that computer")?;
+            .context("Nidus is still looking up that computer")?;
         let neighbor = self
             .neighbors
             .borrow()
@@ -386,7 +386,7 @@ impl Shared {
 
 fn joined_message(name: &str, mark: &str) -> String {
     format!(
-        "{name} joined, with mark {mark}. It can share this computer's keyboard and mouse. Not yours? Forget it in zflow settings."
+        "{name} joined, with mark {mark}. It can share this computer's keyboard and mouse. Not yours? Forget it in Nidus settings."
     )
 }
 

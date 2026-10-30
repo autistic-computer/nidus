@@ -13,6 +13,6 @@ codesign --force "${options[@]}" "$timestamp" --preserve-metadata=entitlements -
 codesign --force "${options[@]}" "$timestamp" --sign "$identity" "$framework/Versions/B/Autoupdate"
 codesign --force "${options[@]}" "$timestamp" --sign "$identity" "$framework/Versions/B/Updater.app"
 codesign --force "${options[@]}" "$timestamp" --sign "$identity" "$framework"
-codesign --force "${options[@]}" "$timestamp" --identifier io.zflow.awdl-daemon --sign "$identity" "$app/Contents/MacOS/zflow-awdl-daemon"
-codesign --force "${options[@]}" "$timestamp" --identifier io.zflow.zflow --sign "$identity" "$app"
+codesign --force "${options[@]}" "$timestamp" --identifier io.nid.awdl-daemon --sign "$identity" "$app/Contents/MacOS/nid-awdl-daemon"
+codesign --force "${options[@]}" "$timestamp" --identifier io.nid.nid --sign "$identity" "$app"
 codesign --verify --strict --deep "$app"

@@ -201,7 +201,7 @@ impl Hub {
         let Some(broker) = broker else {
             tracing::debug!(operation, "desktop request has no connected desktop agent");
             return unavailable(
-                "Run zflow desktop-agent in the Linux desktop session and enable the zflow GNOME extension",
+                "Run nid desktop-agent in the Linux desktop session and enable the Nidus GNOME extension",
             );
         };
         let (reply, receipt) = tokio::sync::oneshot::channel();

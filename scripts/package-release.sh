@@ -5,7 +5,7 @@ version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$root/Cargo.toml" | head -n 1)
 target=${1:?usage: package-release.sh TARGET [BINARY_DIRECTORY]}
 binary_dir=${2:-$root/target/release}
 output="$root/target/dist"
-name="zflow-v$version-$target"
+name="nid-v$version-$target"
 mkdir -p "$output"
 stage=$(mktemp -d "$output/.archive.XXXXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
@@ -13,7 +13,7 @@ mkdir "$stage/$name"
 case "$target" in
     x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu)
         install -d "$stage/$name/bin" "$stage/$name/scripts" "$stage/$name/packaging" "$stage/$name/assets"
-        install -m 0755 "$binary_dir/zflow" "$binary_dir/zflowd" "$binary_dir/zflow-app" "$stage/$name/bin/"
+        install -m 0755 "$binary_dir/nid" "$binary_dir/nidd" "$binary_dir/nid-app" "$stage/$name/bin/"
         install -m 0755 "$root/scripts/install.sh" "$root/scripts/uninstall.sh" "$stage/$name/scripts/"
         for directory in config linux modules-load.d system-sleep systemd udev; do
             cp -R "$root/packaging/$directory" "$stage/$name/packaging/"
@@ -21,13 +21,13 @@ case "$target" in
         cp -R "$root/assets/linux" "$stage/$name/assets/"
         ;;
     universal-apple-darwin)
-        for executable in "$binary_dir/zflow.app/Contents/MacOS/"*; do
+        for executable in "$binary_dir/Nidus.app/Contents/MacOS/"*; do
             for arch in arm64 x86_64; do
                 lipo "$executable" -verify_arch "$arch" || { printf '%s has no %s code\n' "$executable" "$arch" >&2; exit 1; }
             done
         done
-        codesign --verify --strict --deep "$binary_dir/zflow.app"
-        ditto "$binary_dir/zflow.app" "$stage/$name/zflow.app"
+        codesign --verify --strict --deep "$binary_dir/Nidus.app"
+        ditto "$binary_dir/Nidus.app" "$stage/$name/Nidus.app"
         ;;
     *) printf 'Unsupported release target: %s\n' "$target" >&2; exit 1 ;;
 esac

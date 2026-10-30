@@ -1,7 +1,7 @@
 {
-  "uuid": "zflow@demfabris",
-  "name": "zflow desktop input sharing",
-  "description": "Panel menu and desktop hooks for zflow, which shares keyboard, pointer and trackpad input between paired computers. It places the cursor when another computer hands input over and hands it back at the screen edge.\n\nRequires the zflow app from https://github.com/autistic-computer/zflow",
+  "uuid": "nid@autistic.computer",
+  "name": "Nidus desktop input sharing",
+  "description": "Panel menu and desktop hooks for Nidus, which shares keyboard, pointer and trackpad input between paired computers. It places the cursor when another computer hands input over and hands it back at the screen edge.\n\nRequires the Nidus app from https://github.com/autistic-computer/nidus",
   "shell-version": ["46", "47", "48", "49", "50", "51"],
-  "url": "https://github.com/autistic-computer/zflow"
+  "url": "https://github.com/autistic-computer/nidus"
 }

@@ -1,18 +1,18 @@
 [package]
-name = "zflow-kvm"
+name = "nid-kvm"
 version = "0.7.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 description = "Low-latency, loss-resilient input sharing for Linux, macOS and Windows"
-repository = "https://github.com/autistic-computer/zflow"
+repository = "https://github.com/autistic-computer/nidus"
 rust-version = "1.99"
 
 [lib]
-name = "zflow"
+name = "nid"
 path = "src/lib.rs"
 
 [[bin]]
-name = "zflow"
+name = "nid"
 path = "src/main.rs"
 
 [dependencies]
@@ -72,7 +72,7 @@ strip = "none"
 
 [workspace]
 members = [".", "crates/*"]
-default-members = [".", "crates/zflow-app"]
+default-members = [".", "crates/nid-app"]
 resolver = "3"
 
 [workspace.package]

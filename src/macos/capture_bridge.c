@@ -11,13 +11,13 @@
 #include <time.h>
 #include <unistd.h>
 
-#define ZFLOW_QUEUE_CAPACITY 1024
-#define ZFLOW_MAX_CONTACTS 5
-#define ZFLOW_MAX_DISPLAYS 64
-#define ZFLOW_CAPS_LOCK 57
-#define ZFLOW_KEYBOARD_ISO 0x49534F20
+#define NID_QUEUE_CAPACITY 1024
+#define NID_MAX_CONTACTS 5
+#define NID_MAX_DISPLAYS 64
+#define NID_CAPS_LOCK 57
+#define NID_KEYBOARD_ISO 0x49534F20
 
-#define ZFLOW_SWALLOWED_EVENTS                                              \
+#define NID_SWALLOWED_EVENTS                                              \
   (CGEventMaskBit(NX_SYSDEFINED) | CGEventMaskBit(18) | CGEventMaskBit(19) | \
    CGEventMaskBit(20) | CGEventMaskBit(29) | CGEventMaskBit(30) |           \
    CGEventMaskBit(31) | CGEventMaskBit(32) | CGEventMaskBit(33) |           \
@@ -26,15 +26,15 @@
 extern Boolean IsSecureEventInputEnabled(void);
 extern OSType KBGetLayoutType(SInt16 keyboard_type);
 
-typedef struct { double x, y; } ZFlowMacPosition;
-typedef struct { double x, y, width, height; } ZFlowMacRect;
+typedef struct { double x, y; } NidMacPosition;
+typedef struct { double x, y, width, height; } NidMacRect;
 
-static bool rect_contains(ZFlowMacRect rect, ZFlowMacPosition point) {
+static bool rect_contains(NidMacRect rect, NidMacPosition point) {
   return point.x >= rect.x && point.x < rect.x + rect.width &&
          point.y >= rect.y && point.y < rect.y + rect.height;
 }
 
-int zflow_mac_accessibility_authorized(int prompt) {
+int nid_mac_accessibility_authorized(int prompt) {
   if (!prompt) return AXIsProcessTrusted() ? 1 : 0;
   const void *keys[] = {kAXTrustedCheckOptionPrompt};
   const void *values[] = {kCFBooleanTrue};
@@ -55,7 +55,7 @@ static CGEventRef pass_event(CGEventTapProxy proxy, CGEventType type,
   return event;
 }
 
-int zflow_mac_event_tap_allowed(void) {
+int nid_mac_event_tap_allowed(void) {
   CFMachPortRef tap = CGEventTapCreate(
       kCGHIDEventTap, kCGTailAppendEventTap, kCGEventTapOptionDefault,
       CGEventMaskBit(kCGEventOtherMouseDown), pass_event, NULL);
@@ -66,29 +66,29 @@ int zflow_mac_event_tap_allowed(void) {
   return 1;
 }
 
-int zflow_mac_cursor_position(ZFlowMacPosition *position) {
+int nid_mac_cursor_position(NidMacPosition *position) {
   if (!position) return -1;
   CGEventRef event = CGEventCreate(NULL);
   if (!event) return -1;
   CGPoint point = CGEventGetLocation(event);
   CFRelease(event);
   if (!isfinite(point.x) || !isfinite(point.y)) return -1;
-  *position = (ZFlowMacPosition){point.x, point.y};
+  *position = (NidMacPosition){point.x, point.y};
   return 0;
 }
 
-int zflow_mac_desktop_rectangles(ZFlowMacRect *rectangles, uint32_t capacity) {
-  CGDirectDisplayID displays[ZFLOW_MAX_DISPLAYS];
+int nid_mac_desktop_rectangles(NidMacRect *rectangles, uint32_t capacity) {
+  CGDirectDisplayID displays[NID_MAX_DISPLAYS];
   uint32_t count = 0;
-  if (!rectangles || capacity < ZFLOW_MAX_DISPLAYS ||
-      CGGetActiveDisplayList(ZFLOW_MAX_DISPLAYS, displays, &count) != kCGErrorSuccess ||
-      count == 0 || count > ZFLOW_MAX_DISPLAYS) return -1;
+  if (!rectangles || capacity < NID_MAX_DISPLAYS ||
+      CGGetActiveDisplayList(NID_MAX_DISPLAYS, displays, &count) != kCGErrorSuccess ||
+      count == 0 || count > NID_MAX_DISPLAYS) return -1;
   for (uint32_t i = 0; i < count; i++) {
     CGRect bounds = CGDisplayBounds(displays[i]);
     if (!isfinite(bounds.origin.x) || !isfinite(bounds.origin.y) ||
         !isfinite(bounds.size.width) || !isfinite(bounds.size.height) ||
         bounds.size.width <= 0 || bounds.size.height <= 0) return -1;
-    rectangles[i] = (ZFlowMacRect){bounds.origin.x, bounds.origin.y,
+    rectangles[i] = (NidMacRect){bounds.origin.x, bounds.origin.y,
                                   bounds.size.width, bounds.size.height};
   }
   return (int)count;
@@ -108,17 +108,17 @@ static void watch_displays(void) {
   CGDisplayRegisterReconfigurationCallback(displays_changed, NULL);
 }
 
-uint32_t zflow_mac_display_generation(void) {
+uint32_t nid_mac_display_generation(void) {
   static pthread_once_t once = PTHREAD_ONCE_INIT;
   pthread_once(&once, watch_displays);
   return atomic_load(&g_display_generation);
 }
 
-int zflow_mac_secure_input_enabled(void) {
+int nid_mac_secure_input_enabled(void) {
   return IsSecureEventInputEnabled() ? 1 : 0;
 }
 
-int zflow_mac_input_is_neutral(void) {
+int nid_mac_input_is_neutral(void) {
   for (CGMouseButton button = 0; button < 32; button++)
     if (CGEventSourceButtonState(kCGEventSourceStateHIDSystemState, button)) return 0;
   CGEventFlags held = kCGEventFlagMaskShift | kCGEventFlagMaskControl |
@@ -126,42 +126,42 @@ int zflow_mac_input_is_neutral(void) {
   return (CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState) & held) == 0;
 }
 
-#define ZFLOW_POSTED_MARK 0x7A666C6F77LL
+#define NID_POSTED_MARK 0x7A666C6F77LL
 
 typedef struct {
   double dx, dy;
   uint64_t age_ns;
-} ZFlowMacMotion;
+} NidMacMotion;
 
 static pthread_mutex_t g_motion_lock = PTHREAD_MUTEX_INITIALIZER;
-static ZFlowMacMotion g_motion;
+static NidMacMotion g_motion;
 static bool g_motion_pending;
 static uint64_t g_motion_at;
 static pthread_mutex_t g_motion_watch_lock = PTHREAD_MUTEX_INITIALIZER;
 static _Atomic bool g_motion_watching;
 static CFMachPortRef g_motion_tap;
 
-#define ZFLOW_MAX_EDGE_GUARDS 256
-#define ZFLOW_EDGE_GUARD_NS 500000000ULL
+#define NID_MAX_EDGE_GUARDS 256
+#define NID_EDGE_GUARD_NS 500000000ULL
 typedef struct {
-  ZFlowMacRect bounds;
+  NidMacRect bounds;
   double start, end;
   uint32_t edge;
-} ZFlowMacEdgeGuard;
-static ZFlowMacEdgeGuard g_edge_guards[ZFLOW_MAX_EDGE_GUARDS];
+} NidMacEdgeGuard;
+static NidMacEdgeGuard g_edge_guards[NID_MAX_EDGE_GUARDS];
 static uint32_t g_edge_guard_count, g_edge_guard_generation;
 static uint64_t g_edge_guard_until;
-static ZFlowMacPosition g_motion_position;
+static NidMacPosition g_motion_position;
 static bool g_motion_position_valid;
 
-void zflow_mac_edge_guards(const ZFlowMacEdgeGuard *guards, uint32_t count) {
-  ZFlowMacPosition cursor;
-  bool located = zflow_mac_cursor_position(&cursor) == 0;
+void nid_mac_edge_guards(const NidMacEdgeGuard *guards, uint32_t count) {
+  NidMacPosition cursor;
+  bool located = nid_mac_cursor_position(&cursor) == 0;
   pthread_mutex_lock(&g_motion_lock);
-  g_edge_guard_count = guards && count <= ZFLOW_MAX_EDGE_GUARDS ? count : 0;
+  g_edge_guard_count = guards && count <= NID_MAX_EDGE_GUARDS ? count : 0;
   if (g_edge_guard_count) memcpy(g_edge_guards, guards, count * sizeof(*guards));
-  g_edge_guard_until = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + ZFLOW_EDGE_GUARD_NS;
-  g_edge_guard_generation = zflow_mac_display_generation();
+  g_edge_guard_until = clock_gettime_nsec_np(CLOCK_UPTIME_RAW) + NID_EDGE_GUARD_NS;
+  g_edge_guard_generation = nid_mac_display_generation();
   if (!g_motion_position_valid && located) {
     g_motion_position = cursor;
     g_motion_position_valid = true;
@@ -169,11 +169,11 @@ void zflow_mac_edge_guards(const ZFlowMacEdgeGuard *guards, uint32_t count) {
   pthread_mutex_unlock(&g_motion_lock);
 }
 
-static bool guarded_move(ZFlowMacPosition from, ZFlowMacPosition to,
-                         ZFlowMacPosition *held) {
+static bool guarded_move(NidMacPosition from, NidMacPosition to,
+                         NidMacPosition *held) {
   double first = 2.0;
   for (uint32_t i = 0; i < g_edge_guard_count; i++) {
-    ZFlowMacEdgeGuard guard = g_edge_guards[i];
+    NidMacEdgeGuard guard = g_edge_guards[i];
     if (!rect_contains(guard.bounds, from)) continue;
     bool vertical = guard.edge < 2;
     bool negative = guard.edge == 0 || guard.edge == 2;
@@ -186,7 +186,7 @@ static bool guarded_move(ZFlowMacPosition from, ZFlowMacPosition to,
     double along = vertical ? from.y + t * (to.y - from.y) : from.x + t * (to.x - from.x);
     if (t >= first || along < guard.start || along >= guard.end) continue;
     first = t;
-    *held = vertical ? (ZFlowMacPosition){line, along} : (ZFlowMacPosition){along, line};
+    *held = vertical ? (NidMacPosition){line, along} : (NidMacPosition){along, line};
   }
   return first <= 1.0;
 }
@@ -208,8 +208,8 @@ static CGEventRef motion_callback(CGEventTapProxy proxy, CGEventType type,
   if (type != kCGEventMouseMoved && type != kCGEventLeftMouseDragged &&
       type != kCGEventRightMouseDragged && type != kCGEventOtherMouseDragged) return event;
   CGPoint location = CGEventGetLocation(event);
-  ZFlowMacPosition position = {location.x, location.y};
-  bool own = CGEventGetIntegerValueField(event, kCGEventSourceUserData) != ZFLOW_POSTED_MARK &&
+  NidMacPosition position = {location.x, location.y};
+  bool own = CGEventGetIntegerValueField(event, kCGEventSourceUserData) != NID_POSTED_MARK &&
       CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID) != getpid();
   uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
   pthread_mutex_lock(&g_motion_lock);
@@ -220,11 +220,11 @@ static CGEventRef motion_callback(CGEventTapProxy proxy, CGEventType type,
     g_motion_at = now;
     g_motion_pending = true;
   }
-  ZFlowMacPosition held;
+  NidMacPosition held;
   bool blocked = own && type == kCGEventMouseMoved && g_edge_guard_count &&
       g_motion_position_valid && now < g_edge_guard_until &&
       g_edge_guard_generation == atomic_load(&g_display_generation) &&
-      zflow_mac_input_is_neutral() && !IsSecureEventInputEnabled() &&
+      nid_mac_input_is_neutral() && !IsSecureEventInputEnabled() &&
       guarded_move(g_motion_position, position, &held);
   if (blocked) {
     static pthread_once_t warp_freeze = PTHREAD_ONCE_INIT;
@@ -238,7 +238,7 @@ static CGEventRef motion_callback(CGEventTapProxy proxy, CGEventType type,
   return blocked ? NULL : event;
 }
 
-int zflow_mac_motion_take(ZFlowMacMotion *motion) {
+int nid_mac_motion_take(NidMacMotion *motion) {
   if (!motion) return 0;
   pthread_mutex_lock(&g_motion_lock);
   bool pending = g_motion_pending;
@@ -270,7 +270,7 @@ static void *motion_thread(void *context) {
   return NULL;
 }
 
-int zflow_mac_motion_watch(void) {
+int nid_mac_motion_watch(void) {
   if (atomic_load(&g_motion_watching)) return 0;
   pthread_mutex_lock(&g_motion_watch_lock);
   if (atomic_load(&g_motion_watching)) {
@@ -329,7 +329,7 @@ typedef struct {
   int32_t id;
   float x;
   float y;
-} ZFlowMacContact;
+} NidMacContact;
 
 typedef struct {
   uint32_t kind;
@@ -344,18 +344,18 @@ typedef struct {
   uint8_t padding[2];
   int32_t surface_width;
   int32_t surface_height;
-  ZFlowMacContact contacts[ZFLOW_MAX_CONTACTS];
-} ZFlowMacEvent;
+  NidMacContact contacts[NID_MAX_CONTACTS];
+} NidMacEvent;
 
 enum {
-  ZFLOW_EVENT_MOTION = 1,
-  ZFLOW_EVENT_KEY = 2,
-  ZFLOW_EVENT_BUTTON = 3,
-  ZFLOW_EVENT_TOUCH = 4,
-  ZFLOW_EVENT_ESCAPE = 5,
+  NID_EVENT_MOTION = 1,
+  NID_EVENT_KEY = 2,
+  NID_EVENT_BUTTON = 3,
+  NID_EVENT_TOUCH = 4,
+  NID_EVENT_ESCAPE = 5,
 };
 
-static ZFlowMacEvent g_queue[ZFLOW_QUEUE_CAPACITY];
+static NidMacEvent g_queue[NID_QUEUE_CAPACITY];
 static size_t g_queue_head;
 static size_t g_queue_tail;
 static pthread_mutex_t g_queue_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -367,7 +367,7 @@ static bool g_thread_valid;
 static bool g_start_ready;
 static int g_start_status;
 static bool g_request_raw_touch;
-static ZFlowMacRect g_entry_region;
+static NidMacRect g_entry_region;
 static void (*g_wake)(void);
 static bool g_forwarded_keys[128];
 static uint16_t g_forwarded_codes[128];
@@ -379,7 +379,7 @@ static int g_capture_status;
 static char g_error[256] = "no diagnostic";
 static CFRunLoopRef g_run_loop;
 static bool g_return_pending;
-static ZFlowMacPosition g_return_position;
+static NidMacPosition g_return_position;
 static CFMachPortRef g_event_tap;
 static bool g_cursor_hidden;
 static bool g_cursor_disconnected;
@@ -429,7 +429,7 @@ static bool release_cursor(void) {
   return ok;
 }
 
-static bool take_return_position(ZFlowMacPosition *position) {
+static bool take_return_position(NidMacPosition *position) {
   pthread_mutex_lock(&g_run_loop_lock);
   g_run_loop = NULL;
   bool pending = g_return_pending;
@@ -439,11 +439,11 @@ static bool take_return_position(ZFlowMacPosition *position) {
   return pending;
 }
 
-static bool release_cursor_at(const ZFlowMacPosition *position) {
+static bool release_cursor_at(const NidMacPosition *position) {
   bool ok = true;
   if (position) {
-    ZFlowMacRect displays[ZFLOW_MAX_DISPLAYS];
-    int count = zflow_mac_desktop_rectangles(displays, ZFLOW_MAX_DISPLAYS);
+    NidMacRect displays[NID_MAX_DISPLAYS];
+    int count = nid_mac_desktop_rectangles(displays, NID_MAX_DISPLAYS);
     bool on_display = false;
     for (int i = 0; i < count; i++)
       if (rect_contains(displays[i], *position)) on_display = true;
@@ -511,12 +511,12 @@ static int capture_entry_allowed(void) {
     set_error("the configured crossing edge is invalid");
     return -1;
   }
-  ZFlowMacPosition current;
-  if (zflow_mac_cursor_position(&current) != 0) {
+  NidMacPosition current;
+  if (nid_mac_cursor_position(&current) != 0) {
     set_error("could not read the Mac cursor position");
     return -1;
   }
-  if (!zflow_mac_input_is_neutral()) {
+  if (!nid_mac_input_is_neutral()) {
     set_error("release held buttons and modifier keys before crossing to the other computer");
     return -2;
   }
@@ -537,16 +537,16 @@ static uint16_t physical_keycode(CGEventRef event, uint16_t keycode) {
   if (keycode != 10 && keycode != 50) return keycode;
   SInt16 keyboard = (SInt16)CGEventGetIntegerValueField(
       event, kCGKeyboardEventKeyboardType);
-  return KBGetLayoutType(keyboard) == ZFLOW_KEYBOARD_ISO ? 60 - keycode : keycode;
+  return KBGetLayoutType(keyboard) == NID_KEYBOARD_ISO ? 60 - keycode : keycode;
 }
 
 static void wake(void) {
   if (g_wake) g_wake();
 }
 
-static bool enqueue(const ZFlowMacEvent *event) {
+static bool enqueue(const NidMacEvent *event) {
   pthread_mutex_lock(&g_queue_lock);
-  size_t next = (g_queue_head + 1) % ZFLOW_QUEUE_CAPACITY;
+  size_t next = (g_queue_head + 1) % NID_QUEUE_CAPACITY;
   if (next == g_queue_tail) {
     pthread_mutex_unlock(&g_queue_lock);
     return false;
@@ -569,8 +569,8 @@ static int contact_callback(MTDeviceRef device, MTTouch *touches, int count,
                             double timestamp, int frame) {
   (void)timestamp;
   (void)frame;
-  ZFlowMacEvent event = {0};
-  event.kind = ZFLOW_EVENT_TOUCH;
+  NidMacEvent event = {0};
+  event.kind = NID_EVENT_TOUCH;
   for (size_t i = 0; i < sizeof(g_raw_devices) / sizeof(g_raw_devices[0]); i++) {
     if (g_raw_devices[i] == device) {
       event.surface_width = g_raw_surfaces[i][0];
@@ -578,7 +578,7 @@ static int contact_callback(MTDeviceRef device, MTTouch *touches, int count,
       break;
     }
   }
-  for (int i = 0; i < count && event.contact_count < ZFLOW_MAX_CONTACTS; i++) {
+  for (int i = 0; i < count && event.contact_count < NID_MAX_CONTACTS; i++) {
     if (touches[i].state != 3 && touches[i].state != 4) continue;
 
     atomic_store(&g_raw_contact_active, true);
@@ -587,7 +587,7 @@ static int contact_callback(MTDeviceRef device, MTTouch *touches, int count,
     float y = touches[i].normalized.pos.y;
     if (!isfinite(x) || !isfinite(y)) return 0;
 
-    ZFlowMacContact *contact = &event.contacts[event.contact_count++];
+    NidMacContact *contact = &event.contacts[event.contact_count++];
     contact->id = touches[i].identifier;
     contact->x = fminf(fmaxf(x, 0.0f), 1.0f);
     contact->y = fminf(fmaxf(y, 0.0f), 1.0f);
@@ -607,7 +607,7 @@ static uint8_t side_modifier_pressed(CGEventFlags flags,
   return (flags & aggregate_mask) != 0;
 }
 
-uint8_t zflow_mac_modifier_pressed(uint16_t keycode, uint64_t raw_flags) {
+uint8_t nid_mac_modifier_pressed(uint16_t keycode, uint64_t raw_flags) {
   CGEventFlags flags = (CGEventFlags)raw_flags;
   switch (keycode) {
     case 54: return side_modifier_pressed(
@@ -654,14 +654,14 @@ static void end_capture(const char *error) {
   wake();
 }
 
-static CGEventRef forward(const ZFlowMacEvent *event) {
+static CGEventRef forward(const NidMacEvent *event) {
   if (!enqueue(event))
     end_capture("the capture queue overflowed; input returned to the Mac");
   return NULL;
 }
 
 static void release_lifted_input(void) {
-  ZFlowMacEvent release = {.kind = ZFLOW_EVENT_KEY};
+  NidMacEvent release = {.kind = NID_EVENT_KEY};
   for (uint16_t key = 0; key < 128; key++) {
     if (!g_forwarded_keys[key] ||
         CGEventSourceKeyState(kCGEventSourceStateHIDSystemState, key)) continue;
@@ -669,7 +669,7 @@ static void release_lifted_input(void) {
     release.code = g_forwarded_codes[key];
     forward(&release);
   }
-  release = (ZFlowMacEvent){.kind = ZFLOW_EVENT_BUTTON};
+  release = (NidMacEvent){.kind = NID_EVENT_BUTTON};
   for (uint16_t button = 1; button < 33; button++) {
     if (!g_forwarded_buttons[button] ||
         CGEventSourceButtonState(kCGEventSourceStateHIDSystemState,
@@ -680,7 +680,7 @@ static void release_lifted_input(void) {
   }
 }
 
-uint8_t zflow_mac_should_forward_scroll(uint8_t raw_touch,
+uint8_t nid_mac_should_forward_scroll(uint8_t raw_touch,
                                         uint8_t raw_contact_active,
                                         int64_t scroll_phase,
                                         int64_t momentum_phase) {
@@ -693,7 +693,7 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
   (void)proxy;
   (void)context;
   if (type == kCGEventTapDisabledByTimeout) {
-    if (!zflow_mac_event_tap_allowed()) {
+    if (!nid_mac_event_tap_allowed()) {
       end_capture("Accessibility access was removed; ending remote control");
       return event;
     }
@@ -706,10 +706,10 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
     return event;
   }
   if (atomic_load(&g_stop)) return event;
-  if ((uint32_t)type < 64 && (ZFLOW_SWALLOWED_EVENTS & CGEventMaskBit(type)))
+  if ((uint32_t)type < 64 && (NID_SWALLOWED_EVENTS & CGEventMaskBit(type)))
     return NULL;
 
-  ZFlowMacEvent captured = {0};
+  NidMacEvent captured = {0};
   switch (type) {
     case kCGEventKeyDown:
     case kCGEventKeyUp:
@@ -720,22 +720,22 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
       if (type == kCGEventKeyDown && keycode == 51 &&
           (flags & kCGEventFlagMaskControl) &&
           (flags & kCGEventFlagMaskCommand)) {
-        captured.kind = ZFLOW_EVENT_ESCAPE;
+        captured.kind = NID_EVENT_ESCAPE;
         atomic_store(&g_pause_requested, true);
         enqueue(&captured);
         end_capture(NULL);
         return NULL;
       }
-      captured.kind = ZFLOW_EVENT_KEY;
+      captured.kind = NID_EVENT_KEY;
       captured.code = keycode;
-      if (type == kCGEventFlagsChanged && keycode == ZFLOW_CAPS_LOCK) {
+      if (type == kCGEventFlagsChanged && keycode == NID_CAPS_LOCK) {
         captured.pressed = 1;
         forward(&captured);
         captured.pressed = 0;
         return forward(&captured);
       }
       captured.pressed = type == kCGEventFlagsChanged
-          ? zflow_mac_modifier_pressed(keycode, flags)
+          ? nid_mac_modifier_pressed(keycode, flags)
           : type == kCGEventKeyDown;
       if (type == kCGEventKeyDown && keycode < 128 && !g_forwarded_keys[keycode] &&
           CGEventGetIntegerValueField(event, kCGKeyboardEventAutorepeat)) return NULL;
@@ -753,7 +753,7 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
     case kCGEventLeftMouseUp:
     case kCGEventRightMouseUp:
     case kCGEventOtherMouseUp:
-      captured.kind = ZFLOW_EVENT_BUTTON;
+      captured.kind = NID_EVENT_BUTTON;
       captured.button = (uint16_t)CGEventGetIntegerValueField(
           event, kCGMouseEventButtonNumber) + 1;
       captured.pressed = type == kCGEventLeftMouseDown ||
@@ -767,18 +767,18 @@ static CGEventRef event_callback(CGEventTapProxy proxy, CGEventType type,
     case kCGEventRightMouseDragged:
     case kCGEventOtherMouseDragged:
       if (!g_request_raw_touch || !atomic_load(&g_raw_contact_active)) {
-        captured.kind = ZFLOW_EVENT_MOTION;
+        captured.kind = NID_EVENT_MOTION;
         captured.dx = CGEventGetIntegerValueField(event, kCGMouseEventDeltaX);
         captured.dy = CGEventGetIntegerValueField(event, kCGMouseEventDeltaY);
         return forward(&captured);
       }
       return NULL;
     case kCGEventScrollWheel:
-      if (zflow_mac_should_forward_scroll(
+      if (nid_mac_should_forward_scroll(
               g_request_raw_touch, atomic_load(&g_raw_contact_active),
               CGEventGetIntegerValueField(event, kCGScrollWheelEventScrollPhase),
               CGEventGetIntegerValueField(event, kCGScrollWheelEventMomentumPhase))) {
-        captured.kind = ZFLOW_EVENT_MOTION;
+        captured.kind = NID_EVENT_MOTION;
         captured.scroll_x = -CGEventGetIntegerValueField(
             event, kCGScrollWheelEventPointDeltaAxis2);
         captured.scroll_y = CGEventGetIntegerValueField(
@@ -885,7 +885,7 @@ static void *capture_thread(void *context) {
       CGEventMaskBit(kCGEventRightMouseDragged) |
       CGEventMaskBit(kCGEventOtherMouseDragged) |
       CGEventMaskBit(kCGEventScrollWheel) |
-      ZFLOW_SWALLOWED_EVENTS;
+      NID_SWALLOWED_EVENTS;
   g_event_tap = CGEventTapCreate(
       kCGHIDEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
       mask, event_callback, NULL);
@@ -927,7 +927,7 @@ static void *capture_thread(void *context) {
     }
   }
 
-  ZFlowMacPosition return_position;
+  NidMacPosition return_position;
   bool returning = take_return_position(&return_position);
   CGEventTapEnable(g_event_tap, false);
   CFRunLoopRemoveSource(run_loop, source, kCFRunLoopCommonModes);
@@ -943,7 +943,7 @@ static void *capture_thread(void *context) {
   return NULL;
 }
 
-int zflow_mac_capture_start(int raw_touch, const ZFlowMacRect *entry,
+int nid_mac_capture_start(int raw_touch, const NidMacRect *entry,
                             void (*wake)(void)) {
   if (g_thread_valid) {
     set_error("capture is already running");
@@ -986,27 +986,27 @@ int zflow_mac_capture_start(int raw_touch, const ZFlowMacRect *entry,
   return status;
 }
 
-int zflow_mac_capture_poll(ZFlowMacEvent *event) {
+int nid_mac_capture_poll(NidMacEvent *event) {
   if (!event || pthread_mutex_trylock(&g_queue_lock) != 0) return 0;
   if (g_queue_tail == g_queue_head) {
     pthread_mutex_unlock(&g_queue_lock);
     return 0;
   }
   *event = g_queue[g_queue_tail];
-  g_queue_tail = (g_queue_tail + 1) % ZFLOW_QUEUE_CAPACITY;
+  g_queue_tail = (g_queue_tail + 1) % NID_QUEUE_CAPACITY;
   pthread_mutex_unlock(&g_queue_lock);
   return 1;
 }
 
-int zflow_mac_capture_stop_requested(void) {
+int nid_mac_capture_stop_requested(void) {
   return atomic_load(&g_stop) ? 1 : 0;
 }
 
-int zflow_mac_capture_pause_requested(void) {
+int nid_mac_capture_pause_requested(void) {
   return atomic_load(&g_pause_requested) ? 1 : 0;
 }
 
-int zflow_mac_capture_stop_at(const ZFlowMacPosition *position) {
+int nid_mac_capture_stop_at(const NidMacPosition *position) {
   const char *request_error = NULL;
   if (!g_thread_valid) {
     if (position) {
@@ -1039,10 +1039,10 @@ int zflow_mac_capture_stop_at(const ZFlowMacPosition *position) {
   return g_capture_status;
 }
 
-int zflow_mac_capture_stop(void) {
-  return zflow_mac_capture_stop_at(NULL);
+int nid_mac_capture_stop(void) {
+  return nid_mac_capture_stop_at(NULL);
 }
 
-const char *zflow_mac_capture_last_error(void) {
+const char *nid_mac_capture_last_error(void) {
   return g_error;
 }

@@ -80,7 +80,7 @@ pub fn pipe_name(path: &Path) -> Result<String> {
     let hash = crate::identity::encode_hex(&Sha256::digest(
         path.to_string_lossy().to_lowercase().as_bytes(),
     ));
-    Ok(format!(r"\\.\pipe\zflow-{}", &hash[..24]))
+    Ok(format!(r"\\.\pipe\nid-{}", &hash[..24]))
 }
 
 pub fn user_sid() -> Result<String> {
@@ -147,7 +147,7 @@ fn server(name: &str, first: bool) -> Result<NamedPipeServer> {
                 (&mut attributes as *mut SECURITY_ATTRIBUTES).cast(),
             );
         LocalFree(descriptor);
-        result.context("Cannot listen for the app. Is zflow already running?")
+        result.context("Cannot listen for the app. Is Nidus already running?")
     }
 }
 
@@ -200,7 +200,7 @@ pub async fn request(path: &Path, command: Command) -> Result<Value> {
                 }
                 Err(e) => {
                     return Err(e)
-                        .context("zflow is not running. Open the Windows app or run `zflow run`");
+                        .context("Nidus is not running. Open the Windows app or run `nid run`");
                 }
             }
         };

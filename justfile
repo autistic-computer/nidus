@@ -26,10 +26,10 @@ run platform *args: (_platform platform)
     shift
     if [[ "$platform" == mac ]]; then
         ./scripts/build-macos-app.sh --debug
-        open target/debug/zflow.app --args "$@"
+        open target/debug/Nidus.app --args "$@"
     else
-        cargo build --locked -p zflow-app
-        cargo run --locked --bin zflow -- settings "$@"
+        cargo build --locked -p nid-app
+        cargo run --locked --bin nid -- settings "$@"
     fi
 
 [doc("Package the Mac app, or build the Linux service, its command and the app.")]
@@ -41,8 +41,8 @@ build platform *args: (_platform platform)
     if [[ "$platform" == mac ]]; then
         ./scripts/build-macos-app.sh "$@"
     else
-        cargo build --locked --bin zflow --bin zflowd "$@"
-        cargo build --locked -p zflow-app "$@"
+        cargo build --locked --bin nid --bin nidd "$@"
+        cargo build --locked -p nid-app "$@"
     fi
 
 [doc("Lint Rust code.")]

@@ -22,9 +22,9 @@ const LINGER: Duration = Duration::from_secs(1);
 const TROUBLE_AFTER: u32 = 3;
 
 unsafe extern "C" {
-    fn zflow_awdl_check() -> i32;
-    fn zflow_signing_team() -> i32;
-    fn zflow_awdl_lease(
+    fn nid_awdl_check() -> i32;
+    fn nid_signing_team() -> i32;
+    fn nid_awdl_lease(
         input: *mut i32,
         output: *mut i32,
         error: *mut c_char,
@@ -33,11 +33,11 @@ unsafe extern "C" {
 }
 
 pub fn helper_ready() -> bool {
-    unsafe { zflow_awdl_check() != 0 }
+    unsafe { nid_awdl_check() != 0 }
 }
 
 pub fn signed_by_team() -> bool {
-    unsafe { zflow_signing_team() != 0 }
+    unsafe { nid_signing_team() != 0 }
 }
 
 pub(super) struct AwDlLease {
@@ -115,7 +115,7 @@ fn request() -> Result<(OwnedFd, OwnedFd)> {
     let (mut input, mut output) = (-1, -1);
     let mut error = [0 as c_char; 256];
     let status =
-        unsafe { zflow_awdl_lease(&mut input, &mut output, error.as_mut_ptr(), error.len()) };
+        unsafe { nid_awdl_lease(&mut input, &mut output, error.as_mut_ptr(), error.len()) };
     if status != 0 {
         let message = unsafe { CStr::from_ptr(error.as_ptr()) };
         bail!("AWDL helper: {}", message.to_string_lossy());

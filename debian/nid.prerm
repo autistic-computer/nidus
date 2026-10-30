@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+case "$1" in
+    remove)
+        /usr/lib/nid/firewall.sh close
+        ;;
+esac
+#DEBHELPER#

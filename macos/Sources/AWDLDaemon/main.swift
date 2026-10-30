@@ -26,7 +26,7 @@ final class Peer: XPCPeerHandler, @unchecked Sendable {
   func handleIncomingRequest(_ request: XPCDictionary) -> XPCDictionary? {
     var reply = XPCDictionary()
     let command: String? = request["command"]
-    guard zflow_awdl_check() == 0 else {
+    guard nid_awdl_check() == 0 else {
       reply["error"] = "AWDL is unavailable"
       return reply
     }
@@ -61,7 +61,7 @@ final class Peer: XPCPeerHandler, @unchecked Sendable {
     let guardian = guardian
     guardian.workers.enter()
     DispatchQueue.global(qos: .userInitiated).async {
-      _ = zflow_awdl_run(readFD, writeFD)
+      _ = nid_awdl_run(readFD, writeFD)
       close(readFD)
       close(writeFD)
       guardian.release()
@@ -78,14 +78,14 @@ signal(SIGINT, SIG_IGN)
 let guardian = Guardian()
 let termination = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
 termination.setEventHandler {
-  zflow_awdl_stop()
+  nid_awdl_stop()
   guardian.workers.wait()
   exit(0)
 }
 termination.resume()
 let listener = try XPCListener(
-  service: "io.zflow.awdl",
-  requirement: .isFromSameTeam(andMatchesSigningIdentifier: "io.zflow.zflow")
+  service: "io.nid.awdl",
+  requirement: .isFromSameTeam(andMatchesSigningIdentifier: "io.nid.nid")
 ) { request in
   request.accept { (_: XPCSession) -> Peer in Peer(guardian) }
 }

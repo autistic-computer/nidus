@@ -1,20 +1,20 @@
 import Gio from 'gi://Gio';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-export default class ZflowLoader extends Extension {
+export default class NidLoader extends Extension {
     enable() {
         const token = this._token = {};
-        import(`./${this._build()}shell.js`).then(({Zflow}) => {
+        import(`./${this._build()}shell.js`).then(({Nid}) => {
             if (token !== this._token) return;
-            this._zflow = new Zflow();
-            this._zflow.enable();
-        }).catch(error => logError(error, 'zflow could not load'));
+            this._nid = new Nid();
+            this._nid.enable();
+        }).catch(error => logError(error, 'Nidus could not load'));
     }
 
     disable() {
         this._token = null;
-        this._zflow?.disable();
-        this._zflow = null;
+        this._nid?.disable();
+        this._nid = null;
     }
 
     _build() {

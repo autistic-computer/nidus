@@ -38,7 +38,7 @@ impl Fix {
 
 pub fn reason(error: &anyhow::Error) -> String {
     match Fix::of(error) {
-        Some(Fix::Update) => "Different zflow version. Update both computers.".into(),
+        Some(Fix::Update) => "Different Nidus version. Update both computers.".into(),
         Some(Fix::NewKey) => "Reset or reinstalled. Drag its new tile onto its old one.".into(),
         Some(Fix::WaitingForThem) => "Hasn't added this computer yet.".into(),
         None => format!("{error:#}"),
@@ -65,7 +65,7 @@ mod tests {
         };
         assert_eq!(
             reason(&failed(TransportError::InvalidAlpn)),
-            "Different zflow version. Update both computers."
+            "Different Nidus version. Update both computers."
         );
         assert_eq!(
             reason(&failed(TransportError::PeerIdentityMismatch)),

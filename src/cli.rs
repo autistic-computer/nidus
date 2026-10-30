@@ -29,12 +29,12 @@ use crate::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "zflow", version, about = "Headless zflow setup and control")]
+#[command(name = "nid", version, about = "Headless Nidus setup and control")]
 pub struct Cli {
     #[arg(
         long,
         global = true,
-        default_value = "/etc/zflow/zflow.toml",
+        default_value = "/etc/nid/nid.toml",
         help = "Configuration file used by setup and offline diagnostics"
     )]
     config: PathBuf,
@@ -84,7 +84,7 @@ enum Command {
         add: Option<String>,
     },
     #[command(
-        about = "Trust a computer `zflow nearby` lists, by name or mark, as dragging it into the arrangement does"
+        about = "Trust a computer `nid nearby` lists, by name or mark, as dragging it into the arrangement does"
     )]
     Trust {
         #[arg(help = "Its name, or its mark when two share a name")]
@@ -200,8 +200,8 @@ fn playout_mode() -> impl TypedValueParser<Value = PlayoutMode> {
     })
 }
 
-const PRELOGIN_DROPIN: &str = "/etc/systemd/system/zflowd.service.d/prelogin.conf";
-const PRELOGIN_ORDERING: &str = include_str!("../packaging/systemd/zflowd-prelogin.conf");
+const PRELOGIN_DROPIN: &str = "/etc/systemd/system/nidd.service.d/prelogin.conf";
+const PRELOGIN_ORDERING: &str = include_str!("../packaging/systemd/nidd-prelogin.conf");
 
 pub fn run(cli: Cli) -> Result<()> {
     let path = cli.config;
@@ -218,7 +218,7 @@ pub fn run(cli: Cli) -> Result<()> {
             }
             #[cfg(not(target_os = "linux"))]
             {
-                bail!("Open Settings from the native zflow menu-bar app")
+                bail!("Open Settings from the native Nidus menu-bar app")
             }
         }
         Command::DesktopAgent { install } => {
@@ -411,7 +411,7 @@ fn setup(path: PathBuf, options: SetupOptions, prelogin_dropin: Option<PathBuf>)
     if restart_required {
         println!("daemon restart required to apply this setup (changed: transport.listen)");
     }
-    println!("run `zflow devices` to inspect capture candidates");
+    println!("run `nid devices` to inspect capture candidates");
     Ok(())
 }
 
@@ -669,19 +669,19 @@ fn doctor_daemon_status(socket: &Path) -> Result<Box<DaemonStatus>> {
 
 #[cfg(target_os = "linux")]
 fn doctor_linux(config: &Config, failed: &mut bool) {
-    let service_group = match nix::unistd::Group::from_name("zflow") {
+    let service_group = match nix::unistd::Group::from_name("nid") {
         Ok(Some(group)) => {
-            println!("ok  service group: zflow ({})", group.gid.as_raw());
+            println!("ok  service group: nid ({})", group.gid.as_raw());
             Some(group.gid.as_raw())
         }
         Ok(None) => {
             *failed = true;
-            println!("fail service group: zflow does not exist");
+            println!("fail service group: nid does not exist");
             None
         }
         Err(error) => {
             *failed = true;
-            println!("fail service group: could not resolve zflow: {error}");
+            println!("fail service group: could not resolve nid: {error}");
             None
         }
     };
@@ -795,13 +795,13 @@ fn doctor_linux(config: &Config, failed: &mut bool) {
                 doctor_device_access(&path, group, 0o040, "capture access", failed);
             }
             match udev_properties(&path) {
-                Ok(properties) if properties.get("ZFLOW_CAPTURE") == Some("1") => {
+                Ok(properties) if properties.get("NID_CAPTURE") == Some("1") => {
                     println!("ok  capture udev property: {}", path.display());
                 }
                 Ok(_) => {
                     *failed = true;
                     println!(
-                        "fail capture udev property {}: ZFLOW_CAPTURE=1 is missing",
+                        "fail capture udev property {}: NID_CAPTURE=1 is missing",
                         path.display()
                     );
                 }
@@ -839,10 +839,10 @@ fn doctor_linux(config: &Config, failed: &mut bool) {
     {
         for remapper in keyboard_remappers(&devices) {
             println!(
-                "warn keyboard remapper: {remapper} may also remap zflow's keyboard; scope it away from \"{}\" (vendor {:04x}, product {:04x})",
-                crate::linux::ZFLOW_KEYBOARD_NAME,
-                crate::linux::ZFLOW_VENDOR_ID,
-                crate::linux::ZFLOW_KEYBOARD_PRODUCT_ID
+                "warn keyboard remapper: {remapper} may also remap Nidus's keyboard; scope it away from \"{}\" (vendor {:04x}, product {:04x})",
+                crate::linux::NID_KEYBOARD_NAME,
+                crate::linux::NID_VENDOR_ID,
+                crate::linux::NID_KEYBOARD_PRODUCT_ID
             );
         }
     }
@@ -880,10 +880,8 @@ fn doctor_touchpad_integration(failed: &mut bool) {
         .and_then(|scan| {
             scan.devices
                 .into_iter()
-                .find(|device| {
-                    device.zflow_role() == Some(crate::linux::VirtualDeviceRole::Touchpad)
-                })
-                .context("could not open the zflow remote touchpad")
+                .find(|device| device.nid_role() == Some(crate::linux::VirtualDeviceRole::Touchpad))
+                .context("could not open the nid remote touchpad")
         })
         .and_then(|touchpad| udev_properties(&touchpad.path));
     match properties {
@@ -904,7 +902,7 @@ fn doctor_touchpad_integration(failed: &mut bool) {
 #[cfg(target_os = "linux")]
 fn doctor_prelogin_ordering(failed: &mut bool) {
     let ordered = systemctl_show("display-manager.service", "Id").and_then(|manager| {
-        let before = systemctl_show("zflowd.service", "Before")?;
+        let before = systemctl_show("nidd.service", "Before")?;
         Ok(before
             .split_ascii_whitespace()
             .any(|unit| unit == manager.trim()))
@@ -914,7 +912,7 @@ fn doctor_prelogin_ordering(failed: &mut bool) {
         Ok(false) => {
             *failed = true;
             println!(
-                "fail pre-login boot ordering: zflowd.service is not ordered before display-manager.service"
+                "fail pre-login boot ordering: nidd.service is not ordered before display-manager.service"
             );
         }
         Err(error) => {
@@ -1005,12 +1003,12 @@ fn require_group_access(
     let mode = metadata.mode() & 0o7777;
     if metadata.gid() != group {
         bail!(
-            "group gid {} does not match zflow gid {group}",
+            "group gid {} does not match nid gid {group}",
             metadata.gid()
         );
     }
     if mode & required_group_mode != required_group_mode {
-        bail!("mode {mode:04o} lacks required zflow group access {required_group_mode:04o}");
+        bail!("mode {mode:04o} lacks required nid group access {required_group_mode:04o}");
     }
     if mode & 0o007 != 0 {
         bail!("mode {mode:04o} grants access to other users");
@@ -1103,7 +1101,7 @@ fn devices(path: PathBuf) -> Result<()> {
             eprintln!("! {}: {}", failure.path.display(), failure.error);
         }
         if scan.devices.is_empty() && !scan.failures.is_empty() {
-            bail!("could not open any input devices; run `zflow devices` as root");
+            bail!("could not open any input devices; run `nid devices` as root");
         }
 
         let mut count = 0;
@@ -1177,8 +1175,8 @@ fn load_or_create_identity(state_dir: &Path) -> Result<Identity> {
             .filter(|path| fs::symlink_metadata(path).is_err())
             .collect::<Vec<_>>();
         let owner = if nix::unistd::geteuid().is_root() && !created.is_empty() {
-            let user = nix::unistd::User::from_name("zflow")?.context(
-                "the zflow service account does not exist; install zflow before running setup as root",
+            let user = nix::unistd::User::from_name("nid")?.context(
+                "the Nidus service account does not exist; install Nidus before running setup as root",
             )?;
             Some((user.uid.as_raw(), user.gid.as_raw()))
         } else {
@@ -1189,7 +1187,7 @@ fn load_or_create_identity(state_dir: &Path) -> Result<Identity> {
             for path in created {
                 std::os::unix::fs::chown(path, Some(uid), Some(gid)).with_context(|| {
                     format!(
-                        "could not give {} to the zflow service account",
+                        "could not give {} to the Nidus service account",
                         path.display()
                     )
                 })?;
@@ -1206,9 +1204,9 @@ fn resolve_device_selector(path: PathBuf) -> Result<crate::config::DeviceSelecto
     let device = evdev::Device::open(&path)
         .with_context(|| format!("could not open capture device {}", path.display()))?;
     let info = crate::linux::DeviceInfo::from_device(path.clone(), &device);
-    if info.is_zflow_virtual() {
+    if info.is_nid_virtual() {
         bail!(
-            "refusing to capture zflow virtual device {}",
+            "refusing to capture Nidus virtual device {}",
             path.display()
         );
     }
@@ -1281,7 +1279,7 @@ fn render_capture_rules(devices: &[crate::config::DeviceSelector]) -> Result<Str
     }
 
     let mut text = String::from(
-        "# Generated by zflow setup. Local edits may be replaced.\n\
+        "# Generated by nid setup. Local edits may be replaced.\n\
          # Narrows capture to the configured physical devices.\n",
     );
     for device in devices {
@@ -1292,7 +1290,7 @@ fn render_capture_rules(devices: &[crate::config::DeviceSelector]) -> Result<Str
             .product
             .context("selected device has no product identifier")?;
         let mut matches = format!(
-            "ACTION==\"add|change\", SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{{ZFLOW_CAPTURE_EXCLUDE}}!=\"1\", ATTRS{{id/vendor}}==\"{vendor:04x}\", ATTRS{{id/product}}==\"{product:04x}\""
+            "ACTION==\"add|change\", SUBSYSTEM==\"input\", KERNEL==\"event*\", ENV{{NID_CAPTURE_EXCLUDE}}!=\"1\", ATTRS{{id/vendor}}==\"{vendor:04x}\", ATTRS{{id/product}}==\"{product:04x}\""
         );
         let physical_path = device
             .phys
@@ -1311,7 +1309,7 @@ fn render_capture_rules(devices: &[crate::config::DeviceSelector]) -> Result<Str
                 escape_udev_value(uniq)?
             ));
         }
-        matches.push_str(", ENV{ZFLOW_CAPTURE}=\"1\", GROUP=\"zflow\", MODE=\"0640\"\n");
+        matches.push_str(", ENV{NID_CAPTURE}=\"1\", GROUP=\"nid\", MODE=\"0640\"\n");
         text.push_str(&matches);
     }
     Ok(text)
@@ -1423,7 +1421,7 @@ fn nearby(path: PathBuf, add: Option<String>) -> Result<()> {
         println!("{}", nearby_line(computer));
     }
     if computers.is_empty() {
-        println!("no other zflow computers found");
+        println!("no other Nidus computers found");
     }
     if let (crate::pairing_window::State::Open, Some(seconds)) = (window.state, window.seconds_left)
     {
@@ -1440,7 +1438,7 @@ fn nearby_line(computer: &crate::neighbors::Unplaced) -> String {
     let state = match computer.state {
         UnplacedState::Identifying => "not answered yet",
         UnplacedState::Ready => "ready",
-        UnplacedState::DifferentVersion => "different zflow version",
+        UnplacedState::DifferentVersion => "different Nidus version",
         UnplacedState::DuplicateName => "ready; shares its name, so trust it by mark",
     };
     let os = match computer.os {
@@ -1461,7 +1459,7 @@ fn trust(path: PathBuf, computer: String) -> Result<()> {
     let config = Config::load(&path)?;
     match daemon_request(&config.daemon.control_socket, Request::Trust { computer })? {
         Response::Trusted { name, mark } => {
-            println!("trusted {name}, mark {mark}; arrange it in zflow settings");
+            println!("trusted {name}, mark {mark}; arrange it in Nidus settings");
             Ok(())
         }
         Response::Error { message } => bail!("daemon rejected trust request: {message}"),
@@ -1599,7 +1597,7 @@ mod tests {
     #[test]
     fn setup_cannot_move_paths_the_sandboxed_daemon_depends_on() {
         for flag in ["--state-dir", "--control-socket"] {
-            assert!(Cli::try_parse_from(["zflow", "setup", flag, "/tmp/zflow"]).is_err());
+            assert!(Cli::try_parse_from(["nid", "setup", flag, "/tmp/nid"]).is_err());
         }
     }
 
@@ -1656,7 +1654,7 @@ N: Name=\"Apple Internal Keyboard\"
 P: Phys=usb-0000:00:14.0-1/input0
 
 I: Bus=0006 Vendor=1209 Product=5a01 Version=0001
-N: Name=\"zflow remote keyboard\"
+N: Name=\"nid remote keyboard\"
 
 I: Bus=0003 Vendor=1234 Product=5678 Version=0001
 N: Name=\"xremap pid=4242\"
@@ -1669,16 +1667,16 @@ N: Name=\"keyd virtual keyboard\"
             keyboard_remappers("N: Name=\"XWayKeyz (virtual) Keyboard\"\n"),
             ["Toshy"]
         );
-        assert!(keyboard_remappers("N: Name=\"zflow remote keyboard\"\n").is_empty());
+        assert!(keyboard_remappers("N: Name=\"nid remote keyboard\"\n").is_empty());
     }
 
     #[cfg(target_os = "linux")]
     #[test]
     fn doctor_expects_the_touchpad_integration_the_packaged_rule_sets() {
         let (property, value) = TOUCHPAD_INTEGRATION;
-        let rules = include_str!("../packaging/udev/70-zflow.rules");
+        let rules = include_str!("../packaging/udev/70-nid.rules");
         assert!(rules.lines().any(|rule| {
-            rule.contains("ENV{ZFLOW_DEVICE_ROLE}=\"remote-touchpad\"")
+            rule.contains("ENV{NID_DEVICE_ROLE}=\"remote-touchpad\"")
                 && rule.contains(&format!("ENV{{{property}}}=\"{value}\""))
         }));
     }
@@ -1732,7 +1730,7 @@ N: Name=\"keyd virtual keyboard\"
         .unwrap();
         assert!(rule.contains("ATTRS{id/vendor}==\"1234\""));
         assert!(rule.contains("ATTRS{id/product}==\"abcd\""));
-        assert!(rule.contains("ENV{ZFLOW_CAPTURE_EXCLUDE}!=\"1\""));
+        assert!(rule.contains("ENV{NID_CAPTURE_EXCLUDE}!=\"1\""));
         assert!(rule.contains("ATTRS{phys}==\"usb-1/input0\""));
         assert!(rule.contains("ATTRS{uniq}==\"aa:bb:cc:dd:ee:ff\""));
     }
@@ -1757,7 +1755,7 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn setup_can_revoke_global_prelogin_permission() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.daemon.control_socket = directory.path().join("missing.sock");
@@ -1780,8 +1778,8 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn setup_hands_the_experimental_touchpad_to_a_running_daemon() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
-        let socket = directory.path().join("zflowd.sock");
+        let path = directory.path().join("nid.toml");
+        let socket = directory.path().join("nidd.sock");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.daemon.control_socket = socket.clone();
@@ -1823,8 +1821,8 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn peer_keyboard_saves_offline_and_asks_a_running_daemon() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
-        let socket = directory.path().join("zflowd.sock");
+        let path = directory.path().join("nid.toml");
+        let socket = directory.path().join("nidd.sock");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.daemon.control_socket = socket.clone();
@@ -1836,7 +1834,7 @@ N: Name=\"keyd virtual keyboard\"
         let keyboard = |peer: &str, mode: &str| {
             let config = path.to_str().unwrap();
             run(
-                Cli::try_parse_from(["zflow", "--config", config, "peer", "keyboard", peer, mode])
+                Cli::try_parse_from(["nid", "--config", config, "peer", "keyboard", peer, mode])
                     .unwrap(),
             )
         };
@@ -1845,9 +1843,7 @@ N: Name=\"keyd virtual keyboard\"
         keyboard("desk", "pc-positions").unwrap();
         let saved = Config::load(&path).unwrap();
         assert_eq!(saved.peers["desk"].keyboard, KeyboardMode::PcPositions);
-        assert!(
-            Cli::try_parse_from(["zflow", "peer", "keyboard", "desk", "pc_positions"]).is_err()
-        );
+        assert!(Cli::try_parse_from(["nid", "peer", "keyboard", "desk", "pc_positions"]).is_err());
 
         let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -1883,7 +1879,7 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn pending_restart_makes_a_later_live_setup_fail_closed() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let stale_socket = directory.path().join("stale.sock");
         let new_listen = "127.0.0.1:43219".parse().unwrap();
         let mut config = Config::default();
@@ -1923,7 +1919,7 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn setup_live_reload_failure_restores_the_original_file() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let stale_socket = directory.path().join("stale.sock");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
@@ -1950,7 +1946,7 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn setup_rejects_an_unknown_chord_before_writing_configuration() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.daemon.control_socket = directory.path().join("missing.sock");
@@ -1973,8 +1969,8 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn setup_rejects_broad_capture_rules_before_writing_either_file() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
-        let rules_path = directory.path().join("71-zflow-capture.rules");
+        let path = directory.path().join("nid.toml");
+        let rules_path = directory.path().join("71-nid-capture.rules");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");
         config.daemon.control_socket = directory.path().join("missing.sock");
@@ -2008,7 +2004,7 @@ N: Name=\"keyd virtual keyboard\"
     #[test]
     fn playout_reload_failure_restores_the_original_file() {
         let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("zflow.toml");
+        let path = directory.path().join("nid.toml");
         let stale_socket = directory.path().join("stale.sock");
         let mut config = Config::default();
         config.daemon.state_dir = directory.path().join("state");

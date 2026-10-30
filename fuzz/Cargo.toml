@@ -1,5 +1,5 @@
 [package]
-name = "zflow-kvm-fuzz"
+name = "nid-kvm-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -13,7 +13,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 mdns-sd = { version = "0.21.1", default-features = false }
-zflow-kvm = { path = ".." }
+nid-kvm = { path = ".." }
 
 [[bin]]
 name = "negotiation"

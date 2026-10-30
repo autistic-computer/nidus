@@ -2,17 +2,17 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly SERVICE_USER="zflow"
-readonly SERVICE_GROUP="zflow"
-readonly CONFIG_DIR="/etc/zflow"
-readonly CONFIG_FILE="$CONFIG_DIR/zflow.toml"
-readonly STATE_DIR="/var/lib/zflow"
+readonly SERVICE_USER="nid"
+readonly SERVICE_GROUP="nid"
+readonly CONFIG_DIR="/etc/nid"
+readonly CONFIG_FILE="$CONFIG_DIR/nid.toml"
+readonly STATE_DIR="/var/lib/nid"
 readonly PAIRING_WINDOW_FILE="$STATE_DIR/pairing-window"
-readonly CAPTURE_RULE_FILE="/etc/udev/rules.d/71-zflow-capture.rules"
-readonly SAVED_CAPTURE_RULE_FILE="/etc/udev/71-zflow-capture.rules.disabled"
+readonly CAPTURE_RULE_FILE="/etc/udev/rules.d/71-nid-capture.rules"
+readonly SAVED_CAPTURE_RULE_FILE="/etc/udev/71-nid-capture.rules.disabled"
 
 die() {
-    printf 'zflow setup: %s\n' "$*" >&2
+    printf 'nid setup: %s\n' "$*" >&2
     exit 1
 }
 
@@ -48,7 +48,7 @@ ensure_service_account() {
         --home-dir "$STATE_DIR" \
         --no-create-home \
         --shell "$nologin" \
-        --comment "zflow input daemon" \
+        --comment "Nidus input daemon" \
         "$SERVICE_USER"
 }
 
@@ -102,7 +102,7 @@ if [[ -d /run/systemd/system && -S /run/udev/control ]]; then
 
     shopt -s nullglob
     for event_node in /dev/input/event*; do
-        if udevadm info --query=property --name="$event_node" | grep -qx 'ZFLOW_CAPTURE=1'; then
+        if udevadm info --query=property --name="$event_node" | grep -qx 'NID_CAPTURE=1'; then
             runuser -u "$SERVICE_USER" -- /usr/bin/test -r "$event_node" \
                 || die "$SERVICE_USER cannot read selected device $event_node"
         fi

@@ -12,9 +12,9 @@ static void set_message(char *error, size_t size, const char *message) {
 API_AVAILABLE(macos(14.4))
 static int request_lease(int *input, int *output, char *error, size_t error_size) {
   xpc_connection_t connection = xpc_connection_create_mach_service(
-      "io.zflow.awdl", NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
+      "io.nid.awdl", NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
   if (xpc_connection_set_peer_team_identity_requirement(
-          connection, "io.zflow.awdl-daemon") != 0) {
+          connection, "io.nid.awdl-daemon") != 0) {
     set_message(error, error_size, "could not require the AWDL helper's signature");
     xpc_release(connection);
     return -1;
@@ -51,7 +51,7 @@ static int request_lease(int *input, int *output, char *error, size_t error_size
   return status;
 }
 
-int zflow_awdl_lease(int *input, int *output, char *error, size_t error_size) {
+int nid_awdl_lease(int *input, int *output, char *error, size_t error_size) {
   *input = -1;
   *output = -1;
   if (__builtin_available(macOS 14.4, *)) {
@@ -64,9 +64,9 @@ int zflow_awdl_lease(int *input, int *output, char *error, size_t error_size) {
 API_AVAILABLE(macos(14.4))
 static int check_helper(void) {
   xpc_connection_t connection = xpc_connection_create_mach_service(
-      "io.zflow.awdl", NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
+      "io.nid.awdl", NULL, XPC_CONNECTION_MACH_SERVICE_PRIVILEGED);
   if (xpc_connection_set_peer_team_identity_requirement(
-          connection, "io.zflow.awdl-daemon") != 0) {
+          connection, "io.nid.awdl-daemon") != 0) {
     xpc_release(connection);
     return 0;
   }
@@ -92,14 +92,14 @@ static int check_helper(void) {
   return ready;
 }
 
-int zflow_awdl_check(void) {
+int nid_awdl_check(void) {
   if (__builtin_available(macOS 14.4, *)) {
     return check_helper();
   }
   return 0;
 }
 
-int zflow_signing_team(void) {
+int nid_signing_team(void) {
   SecCodeRef code = NULL;
   SecStaticCodeRef static_code = NULL;
   CFDictionaryRef information = NULL;

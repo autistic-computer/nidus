@@ -17,7 +17,7 @@ use crate::{
     pairing_window::View as PairingWindow,
 };
 
-pub const SOCKET_PATH: &str = "/run/zflow-gui/peers.sock";
+pub const SOCKET_PATH: &str = "/run/nid-gui/peers.sock";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LensOpened {
@@ -258,16 +258,16 @@ pub fn set_peer(
 #[cfg(target_os = "linux")]
 pub async fn connect_service() -> anyhow::Result<tokio::net::UnixStream> {
     use anyhow::{Context, bail};
-    let expected = nix::unistd::User::from_name("zflow")?
-        .context("The zflow service account is not installed")?
+    let expected = nix::unistd::User::from_name("nid")?
+        .context("The Nidus service account is not installed")?
         .uid
         .as_raw();
     let stream = tokio::net::UnixStream::connect(SOCKET_PATH).await.context(
-        "Cannot reach the desktop API. Install the updated zflow service and restart it",
+        "Cannot reach the desktop API. Install the updated Nidus service and restart it",
     )?;
     let uid = crate::control::peer_uid(&stream)?;
     if uid != expected && uid != 0 {
-        bail!("The desktop API is not owned by the zflow service");
+        bail!("The desktop API is not owned by the Nidus service");
     }
     Ok(stream)
 }
@@ -382,7 +382,7 @@ pub async fn request(request: &Request) -> anyhow::Result<DesktopReply> {
 pub async fn status() -> anyhow::Result<DesktopStatus> {
     match request(&Request::Status {}).await? {
         DesktopReply::Status(status) => Ok(*status),
-        _ => anyhow::bail!("Unexpected response; update the zflow service"),
+        _ => anyhow::bail!("Unexpected response; update the Nidus service"),
     }
 }
 
@@ -394,11 +394,11 @@ mod tests {
     fn desktop_protocol_rejects_arbitrary_control_keys_and_permissions() {
         for json in [
             r#"{"command":"set_sharing","enabled":true,"permissions":{"inject_prelogin":true}}"#,
-            r#"{"command":"forget","name":"desk","path":"/etc/zflow"}"#,
+            r#"{"command":"forget","name":"desk","path":"/etc/nid"}"#,
             r#"{"command":"activate","peer":"desk"}"#,
             r#"{"command":"local"}"#,
             r#"{"command":"reload_config"}"#,
-            r#"{"command":"status","path":"/etc/zflow"}"#,
+            r#"{"command":"status","path":"/etc/nid"}"#,
             r#"{"command":"snapshot"}"#,
             r#"{"command":"pair","remote":null,"code":null}"#,
             r#"{"command":"pair_respond","allow":true}"#,

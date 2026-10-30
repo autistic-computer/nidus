@@ -156,7 +156,7 @@ pub async fn run(path: PathBuf) -> Result<()> {
     let identity = Identity::load_or_create(&config.daemon.state_dir)?;
     let server = server_config(&identity, &config)?;
     let endpoint = quinn::Endpoint::client(config.transport.listen)
-        .context("Cannot listen on the zflow UDP port")?;
+        .context("Cannot listen on the Nidus UDP port")?;
     endpoint.set_server_config(Some(server.quinn_config()));
     let (mut commands, ipc_task) = ipc::listen(&path)?;
     let (_capture, mut captured) = input::Capture::start().await?;
@@ -244,7 +244,7 @@ pub async fn run(path: PathBuf) -> Result<()> {
                     engine.local();engine.config.daemon.sharing=false;
                     if let Err(error)=engine.save_config(){engine.config.daemon.sharing=false;engine.notice=Some(format!("{error:#}"));}
                 },
-                Some(input::Event::Stalled)=>if engine.outbound.is_some(){engine.local();engine.notice=Some("Input returned to Windows because zflow stopped responding".into());},
+                Some(input::Event::Stalled)=>if engine.outbound.is_some(){engine.local();engine.notice=Some("Input returned to Windows because Nidus stopped responding".into());},
                 Some(input::Event::Activate)=>{
                     if engine.outbound.is_some(){engine.local();}else if let Some(peer)=engine.links.keys().next().cloned(){engine.pending_activation=Some((peer,Instant::now()+Duration::from_secs(3)));}
                 },
@@ -384,7 +384,7 @@ impl Engine {
                             .await;
                     }
                     result => {
-                        let reason=match result {Ok(Err(e))=>crate::link::reason(&e).to_string(),_=>"No zflow answer. Check the address, the other app, and UDP port 43119 in its firewall.".into()};
+                        let reason=match result {Ok(Err(e))=>crate::link::reason(&e).to_string(),_=>"No Nidus answer. Check the address, the other app, and UDP port 43119 in its firewall.".into()};
                         let _ = reply.send(json!({"error":reason}));
                     }
                 }

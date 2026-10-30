@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Nidus
+Comment=Connect Nidus to the GNOME desktop
+Exec=/usr/bin/nid desktop-agent
+TryExec=/usr/bin/nid
+OnlyShowIn=GNOME;
+Terminal=false

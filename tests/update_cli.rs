@@ -9,7 +9,7 @@ fn fixture(path: &Path, name: &str, script: &str) {
 }
 
 fn command(path: &Path) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_zflow"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_nid"));
     command.env("PATH", path).arg("update");
     command
 }
@@ -20,7 +20,7 @@ fn check_is_read_only_and_reports_the_running_version() {
     fixture(
         directory.path(),
         "curl",
-        "printf https://github.com/autistic-computer/zflow/releases/tag/v999.0.0",
+        "printf https://github.com/autistic-computer/nidus/releases/tag/v999.0.0",
     );
     let output = command(directory.path()).arg("check").output().unwrap();
     assert!(
@@ -35,7 +35,7 @@ fn check_is_read_only_and_reports_the_running_version() {
     assert_eq!(result["can_install"], false);
     assert!(result["reason"].as_str().unwrap().contains("built locally"));
 
-    fixture(directory.path(), "pacman", "printf zflow-git");
+    fixture(directory.path(), "pacman", "printf nid-git");
     let output = command(directory.path()).arg("check").output().unwrap();
     let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(result["can_install"], false);
@@ -47,9 +47,9 @@ fn unavailable_or_invalid_releases_are_errors_without_installing() {
     let directory = tempfile::tempdir().unwrap();
     for script in [
         "printf offline >&2; exit 7",
-        "printf https://github.com/another/zflow/releases/tag/v999.0.0",
-        "printf https://github.com/autistic-computer/zflow/releases/tag/v999.0.0-rc.1",
-        "printf https://github.com/autistic-computer/zflow/releases/latest",
+        "printf https://github.com/another/nid/releases/tag/v999.0.0",
+        "printf https://github.com/autistic-computer/nidus/releases/tag/v999.0.0-rc.1",
+        "printf https://github.com/autistic-computer/nidus/releases/latest",
     ] {
         fixture(directory.path(), "curl", script);
         let output = command(directory.path()).arg("check").output().unwrap();

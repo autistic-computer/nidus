@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::linux::{
-    DeviceInfo, VirtualDeviceRole, ZFLOW_KEYBOARD_NAME, ZFLOW_POINTER_NAME, ZFLOW_TOUCHPAD_NAME,
+    DeviceInfo, NID_KEYBOARD_NAME, NID_POINTER_NAME, NID_TOUCHPAD_NAME, VirtualDeviceRole,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -51,32 +51,32 @@ impl VirtualDeviceReadiness {
     }
 
     pub fn observe(&mut self, device: &DeviceInfo, properties: &UdevProperties) {
-        let Some(role) = device.zflow_role() else {
+        let Some(role) = device.nid_role() else {
             return;
         };
         let on_seat_zero = properties.get("ID_SEAT") == Some("seat0");
-        let common = properties.is_one("ZFLOW_VIRTUAL_DEVICE")
-            && properties.is_one("ZFLOW_CAPTURE_EXCLUDE")
+        let common = properties.is_one("NID_VIRTUAL_DEVICE")
+            && properties.is_one("NID_CAPTURE_EXCLUDE")
             && properties.is_one("ID_INPUT")
             && on_seat_zero;
         match role {
             VirtualDeviceRole::Keyboard => {
                 self.keyboard |= common
-                    && device.name.as_deref() == Some(ZFLOW_KEYBOARD_NAME)
-                    && properties.get("ZFLOW_DEVICE_ROLE") == Some("remote-keyboard")
+                    && device.name.as_deref() == Some(NID_KEYBOARD_NAME)
+                    && properties.get("NID_DEVICE_ROLE") == Some("remote-keyboard")
                     && properties.is_one("ID_INPUT_KEY")
                     && properties.is_one("ID_INPUT_KEYBOARD");
             }
             VirtualDeviceRole::Pointer => {
                 self.pointer |= common
-                    && device.name.as_deref() == Some(ZFLOW_POINTER_NAME)
-                    && properties.get("ZFLOW_DEVICE_ROLE") == Some("remote-pointer")
+                    && device.name.as_deref() == Some(NID_POINTER_NAME)
+                    && properties.get("NID_DEVICE_ROLE") == Some("remote-pointer")
                     && properties.is_one("ID_INPUT_MOUSE");
             }
             VirtualDeviceRole::Touchpad => {
                 self.touchpad |= common
-                    && device.name.as_deref() == Some(ZFLOW_TOUCHPAD_NAME)
-                    && properties.get("ZFLOW_DEVICE_ROLE") == Some("remote-touchpad")
+                    && device.name.as_deref() == Some(NID_TOUCHPAD_NAME)
+                    && properties.get("NID_DEVICE_ROLE") == Some("remote-touchpad")
                     && properties.is_one("ID_INPUT_TOUCHPAD");
             }
         }
@@ -117,7 +117,7 @@ pub fn probe_virtual_device_readiness_in(
         let Some(device) = device_info_from_sysfs(input_dir.join(name), &entry.path()) else {
             continue;
         };
-        if device.zflow_role().is_none() {
+        if device.nid_role().is_none() {
             continue;
         }
         match read_udev_properties(&device.path, database_dir) {
@@ -162,29 +162,29 @@ mod tests {
 
     use super::*;
     use crate::linux::{
-        ZFLOW_DEVICE_VERSION, ZFLOW_KEYBOARD_PHYS, ZFLOW_KEYBOARD_PRODUCT_ID, ZFLOW_POINTER_PHYS,
-        ZFLOW_POINTER_PRODUCT_ID, ZFLOW_TOUCHPAD_PHYS, ZFLOW_TOUCHPAD_PRODUCT_ID, ZFLOW_VENDOR_ID,
+        NID_DEVICE_VERSION, NID_KEYBOARD_PHYS, NID_KEYBOARD_PRODUCT_ID, NID_POINTER_PHYS,
+        NID_POINTER_PRODUCT_ID, NID_TOUCHPAD_PHYS, NID_TOUCHPAD_PRODUCT_ID, NID_VENDOR_ID,
     };
 
     fn virtual_info(role: VirtualDeviceRole) -> DeviceInfo {
         let (path, name, physical_path, product) = match role {
             VirtualDeviceRole::Keyboard => (
                 "/dev/input/event10",
-                ZFLOW_KEYBOARD_NAME,
-                ZFLOW_KEYBOARD_PHYS,
-                ZFLOW_KEYBOARD_PRODUCT_ID,
+                NID_KEYBOARD_NAME,
+                NID_KEYBOARD_PHYS,
+                NID_KEYBOARD_PRODUCT_ID,
             ),
             VirtualDeviceRole::Pointer => (
                 "/dev/input/event11",
-                ZFLOW_POINTER_NAME,
-                ZFLOW_POINTER_PHYS,
-                ZFLOW_POINTER_PRODUCT_ID,
+                NID_POINTER_NAME,
+                NID_POINTER_PHYS,
+                NID_POINTER_PRODUCT_ID,
             ),
             VirtualDeviceRole::Touchpad => (
                 "/dev/input/event12",
-                ZFLOW_TOUCHPAD_NAME,
-                ZFLOW_TOUCHPAD_PHYS,
-                ZFLOW_TOUCHPAD_PRODUCT_ID,
+                NID_TOUCHPAD_NAME,
+                NID_TOUCHPAD_PHYS,
+                NID_TOUCHPAD_PRODUCT_ID,
             ),
         };
         DeviceInfo {
@@ -193,9 +193,9 @@ mod tests {
             physical_path: Some(physical_path.into()),
             unique_name: None,
             bus: BusType::BUS_VIRTUAL.0,
-            vendor: ZFLOW_VENDOR_ID,
+            vendor: NID_VENDOR_ID,
             product,
-            version: ZFLOW_DEVICE_VERSION,
+            version: NID_DEVICE_VERSION,
             class: None,
         }
     }
@@ -203,11 +203,11 @@ mod tests {
     #[test]
     fn parses_udev_database_and_udevadm_property_forms() {
         let properties = UdevProperties::parse(
-            "I:123\nE:ID_INPUT=1\nE:ID_SEAT=seat0\nZFLOW_DEVICE_ROLE=remote-keyboard\n",
+            "I:123\nE:ID_INPUT=1\nE:ID_SEAT=seat0\nNID_DEVICE_ROLE=remote-keyboard\n",
         );
         assert_eq!(properties.get("ID_INPUT"), Some("1"));
         assert_eq!(properties.get("ID_SEAT"), Some("seat0"));
-        assert_eq!(properties.get("ZFLOW_DEVICE_ROLE"), Some("remote-keyboard"));
+        assert_eq!(properties.get("NID_DEVICE_ROLE"), Some("remote-keyboard"));
         assert_eq!(properties.get("I:123"), None);
     }
 
@@ -215,13 +215,13 @@ mod tests {
     fn readiness_requires_both_exact_roles_and_classification() {
         let mut readiness = VirtualDeviceReadiness::default();
         let keyboard = UdevProperties::parse(
-            "E:ZFLOW_VIRTUAL_DEVICE=1\nE:ZFLOW_CAPTURE_EXCLUDE=1\nE:ZFLOW_DEVICE_ROLE=remote-keyboard\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_KEY=1\nE:ID_INPUT_KEYBOARD=1\n",
+            "E:NID_VIRTUAL_DEVICE=1\nE:NID_CAPTURE_EXCLUDE=1\nE:NID_DEVICE_ROLE=remote-keyboard\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_KEY=1\nE:ID_INPUT_KEYBOARD=1\n",
         );
         readiness.observe(&virtual_info(VirtualDeviceRole::Keyboard), &keyboard);
         assert!(!readiness.is_ready());
 
         let pointer = UdevProperties::parse(
-            "E:ZFLOW_VIRTUAL_DEVICE=1\nE:ZFLOW_CAPTURE_EXCLUDE=1\nE:ZFLOW_DEVICE_ROLE=remote-pointer\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_MOUSE=1\n",
+            "E:NID_VIRTUAL_DEVICE=1\nE:NID_CAPTURE_EXCLUDE=1\nE:NID_DEVICE_ROLE=remote-pointer\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_MOUSE=1\n",
         );
         readiness.observe(&virtual_info(VirtualDeviceRole::Pointer), &pointer);
         assert!(readiness.is_ready());
@@ -229,7 +229,7 @@ mod tests {
         assert!(!readiness.is_ready_for(true));
 
         let touchpad = UdevProperties::parse(
-            "E:ZFLOW_VIRTUAL_DEVICE=1\nE:ZFLOW_CAPTURE_EXCLUDE=1\nE:ZFLOW_DEVICE_ROLE=remote-touchpad\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_TOUCHPAD=1\n",
+            "E:NID_VIRTUAL_DEVICE=1\nE:NID_CAPTURE_EXCLUDE=1\nE:NID_DEVICE_ROLE=remote-touchpad\nE:ID_SEAT=seat0\nE:ID_INPUT=1\nE:ID_INPUT_TOUCHPAD=1\n",
         );
         readiness.observe(&virtual_info(VirtualDeviceRole::Touchpad), &touchpad);
         assert!(readiness.is_ready_for(true));
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn wrong_seat_or_missing_classification_is_not_ready() {
         let properties = UdevProperties::parse(
-            "E:ZFLOW_VIRTUAL_DEVICE=1\nE:ZFLOW_CAPTURE_EXCLUDE=1\nE:ZFLOW_DEVICE_ROLE=remote-pointer\nE:ID_SEAT=seat1\nE:ID_INPUT=1\n",
+            "E:NID_VIRTUAL_DEVICE=1\nE:NID_CAPTURE_EXCLUDE=1\nE:NID_DEVICE_ROLE=remote-pointer\nE:ID_SEAT=seat1\nE:ID_INPUT=1\n",
         );
         let mut readiness = VirtualDeviceReadiness::default();
         readiness.observe(&virtual_info(VirtualDeviceRole::Pointer), &properties);

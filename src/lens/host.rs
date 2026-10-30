@@ -97,7 +97,7 @@ async fn run(stream: UnixStream, opened: &LensOpened, desk: Arc<Desk>) -> Result
     let encoder = {
         let (work, pacer, screen, out) = (work.clone(), pacer.clone(), screen.clone(), out.clone());
         std::thread::Builder::new()
-            .name("zflow-lens".into())
+            .name("nid-lens".into())
             .spawn(move || {
                 let mut sent = Sent::default();
                 encode(&work, &pacer, &screen, &out, &mut sent);
@@ -375,7 +375,7 @@ async fn keys(desk: &Desk, edges: Vec<(HidUsage, bool)>) -> Result<()> {
 async fn copy(desk: &Desk, remap: &KeyRemap) -> Result<String> {
     anyhow::ensure!(
         FOCUS_KNOWN.load(Ordering::Relaxed),
-        "this desktop cannot tell which app has focus; update its zflow GNOME extension"
+        "this desktop cannot tell which app has focus; update its Nidus GNOME extension"
     );
     let generation = desk.selection_generation();
     let terminal = FOCUSED_TERMINAL.load(Ordering::Relaxed);

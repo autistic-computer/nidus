@@ -2,11 +2,11 @@
 set -Eeuo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd "$root"
-repo=autistic-computer/zflow
+repo=autistic-computer/nidus
 dry_run=false
 wait_for_release=true
 
-die() { printf 'zflow release: %s\n' "$*" >&2; exit 1; }
+die() { printf 'Nidus release: %s\n' "$*" >&2; exit 1; }
 
 for argument in "$@"; do
     case "$argument" in
@@ -35,8 +35,8 @@ commit=$(git rev-parse HEAD)
     || die "The repository must be $repo."
 remote_url=$(git remote get-url --push origin)
 case "$remote_url" in
-    git@github.com:autistic-computer/zflow.git|git@github.com:autistic-computer/zflow|https://github.com/autistic-computer/zflow.git|https://github.com/autistic-computer/zflow) ;;
-    *) die 'origin must push to autistic-computer/zflow on GitHub.' ;;
+    git@github.com:autistic-computer/nidus.git|git@github.com:autistic-computer/nidus|https://github.com/autistic-computer/nidus.git|https://github.com/autistic-computer/nidus) ;;
+    *) die 'origin must push to autistic-computer/nidus on GitHub.' ;;
 esac
 public_key=$(gh variable list --repo "$repo" --json name,value \
     --jq '.[] | select(.name == "SPARKLE_PUBLIC_ED_KEY") | .value') \
@@ -93,7 +93,7 @@ wait_for_run ci.yml push main
 [[ "$(git rev-parse HEAD)" == "$commit" && -z "$(git status --porcelain)" ]] \
     || die 'The checkout changed while CI ran; no release tag was pushed.'
 if ! git show-ref --verify --quiet "refs/tags/$tag"; then
-    git tag --annotate "$tag" "$commit" --message "zflow $tag"
+    git tag --annotate "$tag" "$commit" --message "Nidus $tag"
 fi
 tag_object=$(git rev-parse "refs/tags/$tag")
 [[ "$(git cat-file -t "$tag_object")" == tag && "$(git rev-parse "$tag_object^{commit}")" == "$commit" ]] \

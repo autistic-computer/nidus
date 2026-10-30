@@ -7,7 +7,7 @@ use windows_sys::Win32::{
 
 const UNICODE_TEXT: u32 = 13;
 unsafe extern "C" {
-    fn zflow_clipboard_window() -> *mut std::ffi::c_void;
+    fn nid_clipboard_window() -> *mut std::ffi::c_void;
 }
 struct Open;
 impl Drop for Open {
@@ -19,7 +19,7 @@ impl Drop for Open {
 }
 fn open() -> Result<Open> {
     ensure!(
-        unsafe { OpenClipboard(zflow_clipboard_window()) } != 0,
+        unsafe { OpenClipboard(nid_clipboard_window()) } != 0,
         "Clipboard is busy; it stayed on this computer"
     );
     Ok(Open)

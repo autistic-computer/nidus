@@ -1,13 +1,13 @@
-Source: zflow
+Source: nid
 Section: utils
 Priority: optional
 Maintainer: Fabricio Dematte <demfabris@gmail.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.7.0
-Homepage: https://github.com/autistic-computer/zflow
+Homepage: https://github.com/autistic-computer/nidus
 Rules-Requires-Root: no
 
-Package: zflow
+Package: nid
 Architecture: amd64 arm64
 Depends: ${shlibs:Depends}, ${misc:Depends}, passwd, kmod, udev (>= 254), systemd (>= 254),
  libwayland-client0, libvulkan1

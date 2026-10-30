@@ -1,6 +1,6 @@
-# zflow
+# Nidus
 
-zflow shares keyboard, pointer, and trackpad input over authenticated QUIC.
+Nidus shares keyboard, pointer, and trackpad input over authenticated QUIC.
 One app runs on Linux, macOS and Windows: a window with the computers and the
 settings, built in Rust on zz's UI stack ([`crates/`](../crates/README.md)). Windows
 is a preview with keyboard and pointer sharing, screen arrangement, clipboard
@@ -38,7 +38,7 @@ tools are needed. Once installed, use the app's update controls below.
 Run as your normal user on Linux or macOS:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/nidus/releases/latest/download/install.sh | bash
 ```
 
 The installer downloads prebuilt GitHub release artifacts and verifies their
@@ -58,35 +58,35 @@ once, through GNOME's password dialog when available, or `sudo` in the
 terminal. That prompt is the only confirmation.
 
 On GNOME, the installer then sets up your account and starts the desktop agent,
-so the Mac can connect right away. GNOME asks to download the zflow extension
+so the Mac can connect right away. GNOME asks to download the Nidus extension
 from extensions.gnome.org, then loads it without a logout. If it can't (the
 extension isn't published there yet, no network, extension installs turned off
-by policy, no version for your GNOME, or you choose Cancel), zflow uses the
-copy it ships and asks you to log out and back in once. Every GNOME user on the computer gets the zflow launcher
+by policy, no version for your GNOME, or you choose Cancel), Nidus uses the
+copy it ships and asks you to log out and back in once. Every GNOME user on the computer gets the Nidus launcher
 and starts the desktop agent at login; **Start at Login** in Settings turns
 that off for one account. When ufw or firewalld is on, the installer allows
 UDP port 43119 and says so. It never turns a firewall on.
 
-On macOS, download `zflow-vVERSION-macos.dmg` from
-[Releases](https://github.com/autistic-computer/zflow/releases/latest), open it, and
-drag zflow onto Applications. One image covers Apple silicon and Intel. To
-update, quit zflow and drag the new version over the old one. Releases after
+On macOS, download `nid-vVERSION-macos.dmg` from
+[Releases](https://github.com/autistic-computer/nidus/releases/latest), open it, and
+drag Nidus onto Applications. One image covers Apple silicon and Intel. To
+update, quit Nidus and drag the new version over the old one. Releases after
 v0.1.0 include the image. The curl command also works on macOS: it places
-`zflow.app` in `/Applications` and replaces an older copy there.
+`Nidus.app` in `/Applications` and replaces an older copy there.
 
 The release workflow signs Mac apps with Developer ID and notarizes them, but
 v0.1.0 was built before that: its Mac apps are ad-hoc signed. Input sharing works,
 but they can't install the optional AWDL helper. Releases built by the signing
 workflow can install it from the app with administrator approval.
 
-On Windows, run the [Windows installer](https://github.com/autistic-computer/zflow/releases/latest/download/zflow-windows-x86_64-Setup.exe).
+On Windows, run the [Windows installer](https://github.com/autistic-computer/nidus/releases/latest/download/nid-windows-x86_64-Setup.exe).
 It installs for your account and adds a Start menu shortcut. See
 [Windows instructions](../windows/README.md) for portable copies and migration
 from the earlier ZIP installation.
 
 Installed releases can check for updates from the app's Settings page:
 
-- **macOS:** choose **Check for Updates…** from the zflow menu. Settings controls
+- **macOS:** choose **Check for Updates…** from the Nidus menu. Settings controls
   automatic checks and downloads. Sparkle verifies the signed update and
   handles installation and relaunch.
 - **GNOME:** **Updates** checks when you open the window and every six hours
@@ -113,56 +113,56 @@ itself after an update: the extension loads GNOME Shell's code from a folder
 named after that code, and the desktop agent turns the extension off and on
 when it finds it older than the app. Updating from 0.6.1 or older still needs
 one more login. If the extension and the app get too far apart,
-the panel and settings say **Update zflow**. Until the extension is set up,
-the zflow window shows a banner with the step that is left: **Install**,
+the panel and settings say **Update Nidus**. Until the extension is set up,
+the Nidus window shows a banner with the step that is left: **Install**,
 **Turn On**, or **Log Out**.
 
 Pass options after `bash -s --`:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash -s -- --version v0.3.0 --no-launch
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/nidus/releases/latest/download/install.sh | bash -s -- --version v0.3.0 --no-launch
 ```
 
 Omit `--version` for the latest release. `--headless` skips GNOME integration.
 `--yes` is still accepted, but there is no question left for it to answer.
 The script does not fall back to compiling if a release is unavailable.
 
-You can also download a `.deb` from [Releases](https://github.com/autistic-computer/zflow/releases)
-and install it with `sudo apt install ./zflow_0.3.0_amd64.deb` (use `arm64` on ARM).
-Then open zflow from Applications and follow its banner, or run
-`zflow desktop-agent --install` as yourself for the same setup the installer does.
+You can also download a `.deb` from [Releases](https://github.com/autistic-computer/nidus/releases)
+and install it with `sudo apt install ./nid_0.3.0_amd64.deb` (use `arm64` on ARM).
+Then open Nidus from Applications and follow its banner, or run
+`nid desktop-agent --install` as yourself for the same setup the installer does.
 See [packaging/README.md](../packaging/README.md) for migration from a source/archive
 installation, package removal, and building releases.
 
-To remove zflow from Linux, run `sudo apt remove zflow` on a `.deb` install
-(`apt purge zflow` also deletes the configuration and device selections). An
-archive install keeps its uninstaller at `/usr/local/lib/zflow/uninstall.sh`;
+To remove Nidus from Linux, run `sudo apt remove nid` on a `.deb` install
+(`apt purge nid` also deletes the configuration and device selections). An
+archive install keeps its uninstaller at `/usr/local/lib/nid/uninstall.sh`;
 run it with `sudo`, adding `--purge` to also delete the configuration, keys,
 and the service account. Both close the firewall port the installer opened. The GNOME extension stays in each account until you remove
 it in Extensions.
 
 ## Mac → Ubuntu setup
 
-Install zflow on both computers using the command above. Open zflow from
-Applications on GNOME and `/Applications/zflow.app` on macOS. Keep the GNOME
+Install Nidus on both computers using the command above. Open Nidus from
+Applications on GNOME and `/Applications/Nidus.app` on macOS. Keep the GNOME
 desktop agent running during use; it supplies cursor placement, desktop
 dimensions, and the barriers where the pointer leaves.
 
-On Ubuntu, open zflow. Computers running zflow on the same network show up
+On Ubuntu, open Nidus. Computers running Nidus on the same network show up
 under **Found on this network**, below the arrangement.
 
 The Mac app lives in the menu bar. While no computer is added, it opens its
-window at launch; otherwise choose **Open zflow** from the menu-bar icon, or
-open zflow again from Applications. When zflow runs from its disk image or
+window at launch; otherwise choose **Open Nidus** from the menu-bar icon, or
+open Nidus again from Applications. When Nidus runs from its disk image or
 another temporary place, it first asks you to drag it into Applications and
 open it from there. Until a computer is added, **Computers** walks through the
 first one:
 
-1. **Let zflow move the pointer here**, shown until Accessibility is on:
-   choose **Allow…** and turn on zflow in the list.
-2. **Add your other computers**: zflow starts looking for computers here, so
+1. **Let Nidus move the pointer here**, shown until Accessibility is on:
+   choose **Allow…** and turn on Nidus in the list.
+2. **Add your other computers**: Nidus starts looking for computers here, so
    macOS asks for Local Network access now. Choose **Allow**. If access stays
-   off, the page says where to turn it on. Computers running zflow on the
+   off, the page says where to turn it on. Computers running Nidus on the
    network show up beside the arrangement, each with its name and a mark of
    four colored squares. Drag one next to a screen to add it. For a computer
    not listed, the page shows the install command with a copy button.
@@ -184,7 +184,7 @@ dropped it. **Start at login** and **Reduce Wi-Fi lag**, which installs the
 AWDL helper described below, are in **Settings** (⌘,).
 
 To add another computer later, drag it in from **Found on this network** on
-**Computers**; the menu-bar menu lists it with **Place…**. For one zflow
+**Computers**; the menu-bar menu lists it with **Place…**. For one Nidus
 cannot find on the network, such as a computer across Tailscale, use **+**
 (**Add a Computer by Address**) and type its IP address: it joins the shelf
 once it answers. A computer that was reset or reinstalled shows up with a new
@@ -216,12 +216,12 @@ While Ubuntu controls the Mac, the Mac's own keyboard and trackpad still work,
 and the Mac starts no crossing of its own. The Mac listens on UDP port 43119
 for computers that connect first, also while sharing is paused, so the
 others still find it and never hear that it has not added them. If macOS
-asks whether zflow may accept incoming connections, choose **Allow**; if it can't listen, a health row says
+asks whether Nidus may accept incoming connections, choose **Allow**; if it can't listen, a health row says
 so, the Mac tries again every 2 seconds, and Ubuntu still controls the Mac
 over the connection the Mac opens.
 
 Closing the window leaves sharing running from the menu bar. Turning
-**Sharing** off returns input to the Mac; **Quit zflow** stops the engine and
+**Sharing** off returns input to the Mac; **Quit Nidus** stops the engine and
 finishes cleanup. While sharing is
 on, the engine keeps one authenticated connection open to each paired receiver,
 reads its desktop, and reuses the connection for every crossing. A lost
@@ -250,18 +250,18 @@ window, from **Keys from NAME** on that computer's page in the Mac window, or
 from the Linux CLI:
 
 ```sh
-sudo zflow peer keyboard desk mac
+sudo nid peer keyboard desk mac
 ```
 
-Toshy, keyd, xremap and kanata also grab `zflow remote keyboard`, so use
+Toshy, keyd, xremap and kanata also grab `nid remote keyboard`, so use
 `standard` with them or keep them off it. Toshy takes it for a PC keyboard; set
-`keyboards_UserCustom_dct = {'zflow remote keyboard': 'Apple'}` in its config.
-To keep keyd off it, add `-1209:5a01` under `[ids]`. `zflow doctor` warns when
+`keyboards_UserCustom_dct = {'nid remote keyboard': 'Apple'}` in its config.
+To keep keyd off it, add `-1209:5a01` under `[ids]`. `nid doctor` warns when
 it finds one of them while a computer uses another mode.
 
 ## Lens
 
-The lens shows another computer's screen in a circle around your pointer, live and exact. Click, type and scroll there, select text and press Cmd+C to bring it back. Escape, or a click outside the circle, closes it. Choose "Look at <computer>" in the Mac's menu bar, or press Ctrl+Option+L to open or close a lens on the computer you looked at last. For now a Mac can look at a GNOME computer, which records its primary monitor through Mutter, and that computer must allow it: turn on "Can see this screen" for the Mac in its zflow settings. It is off by default. See SPEC.md, "Lens".
+The lens shows another computer's screen in a circle around your pointer, live and exact. Click, type and scroll there, select text and press Cmd+C to bring it back. Escape, or a click outside the circle, closes it. Choose "Look at <computer>" in the Mac's menu bar, or press Ctrl+Option+L to open or close a lens on the computer you looked at last. For now a Mac can look at a GNOME computer, which records its primary monitor through Mutter, and that computer must allow it: turn on "Can see this screen" for the Mac in its Nidus settings. It is off by default. See SPEC.md, "Lens".
 
 The computer being looked at sends the circle first, then a ring around it, then the rest of its desktop, at the pace the link allows, so moving the lens stays instant once the desktop has arrived. A slow link shows blocky previews that sharpen within a round trip or two.
 
@@ -269,11 +269,11 @@ The computer being looked at sends the circle first, then a ring around it, then
 
 The Mac window exposes finding, adding and arranging computers, each computer's
 settings, **Reduce Wi-Fi lag**, **Start at login**, banners for problems with
-their fixes, and the permissions zflow needs. Network, pointer, scrolling, raw
-touch, and playout settings live in TOML, which **zflow › Open Configuration…**
+their fixes, and the permissions Nidus needs. Network, pointer, scrolling, raw
+touch, and playout settings live in TOML, which **Nidus › Open Configuration…**
 opens.
 
-The Mac configuration is `~/Library/Application Support/zflow/zflow.toml`.
+The Mac configuration is `~/Library/Application Support/nid/nid.toml`.
 It is created on first launch. These are the Mac app defaults:
 
 ```toml
@@ -294,10 +294,10 @@ on the network, **Add by Address…**, keyboard modes, forgetting computers,
 **Share Clipboard**, and **Start at Login**. Forget asks nothing: the computer
 goes back on the shelf. Each paired computer
 shows as Connected, Connecting, or why it cannot be reached, such as
-**Different zflow version. Update both computers.** or **Reset or
+**Different Nidus version. Update both computers.** or **Reset or
 reinstalled. Drag its new tile onto its old one.** Only those two make the status say
 **Needs attention**; a computer that is asleep or away is a warning, and
-zflow keeps trying. A **Retry** button tries again without waiting. Its
+Nidus keeps trying. A **Retry** button tries again without waiting. Its
 panel menu shows
 the current sender or receiver and a sharing switch, and **Settings…** opens
 the window. Closing the window leaves the desktop agent running.
@@ -318,7 +318,7 @@ Added computers and their permissions stay unchanged. Set
 `sharing = true` in that section and restart the service to resume from the CLI.
 
 Advanced Linux settings remain in
-`/etc/zflow/zflow.toml` and are managed through the CLI or a text editor.
+`/etc/nid/nid.toml` and are managed through the CLI or a text editor.
 
 ## Arrange computers
 
@@ -334,8 +334,8 @@ goes between one computer's own screens remains the operating system's job.
 Paired computers share one layout: a tile moved on one computer moves on the
 other, and each computer writes its own tile's size. Until the Mac first
 connects, it arranges tiles from each paired computer's desktop size. It keeps
-the shared layout in `zflow.toml.shared-layout.toml` and its own view of it in
-`zflow.toml.layout.toml`, beside the configuration. The receiver's geometry is
+the shared layout in `nid.toml.shared-layout.toml` and its own view of it in
+`nid.toml.layout.toml`, beside the configuration. The receiver's geometry is
 checked again at each crossing. Moving, resizing, or removing a tile stops the
 old arrangement before the updated layout arms.
 
@@ -343,13 +343,13 @@ old arrangement before the updated layout arms.
 
 Each computer advertises its input port and its name over mDNS and browses
 for others. A record is never trusted: the name only labels a tile on the
-shelf. zflow says hello to each zflow computer it finds, on the same UDP port
+shelf. Nidus says hello to each Nidus computer it finds, on the same UDP port
 43119, and the hello proves which key answered. The computer then shows on the
-shelf with its name, system, version and mark, or as **Different zflow
+shelf with its name, system, version and mark, or as **Different Nidus
 version** if it cannot be added. Adding one is always a person's choice,
 apart from a fresh install's first 10 minutes described above.
 
-zflow finds an added computer by its key, not its address, so a new DHCP
+Nidus finds an added computer by its key, not its address, so a new DHCP
 lease or another network reconnects on its own once the computer answers.
 It saves the last addresses each computer used, so a computer across a VPN
 such as Tailscale is still reached after it was added by address. While
@@ -362,7 +362,7 @@ computers, so the Mac waits for the first-computer page. Once a computer is
 added, it looks from launch, and keeps looking while the app runs, even with
 its window closed.
 
-If nothing shows up, check zflow under **System Settings → Privacy & Security
+If nothing shows up, check Nidus under **System Settings → Privacy & Security
 → Local Network**, or add the computer by address. Terminal tools have different
 permission rules from app bundles. See [Apple's local-network guidance](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).
 
@@ -370,29 +370,29 @@ permission rules from app bundles. See [Apple's local-network guidance](https://
 
 With `capture_devices` empty, the default, a Linux machine that sends
 captures every keyboard, mouse, and touchpad. The packaged udev rule lets the
-zflow account read them. A device another program already grabbed is skipped:
+Nidus account read them. A device another program already grabbed is skipped:
 keyd, for example, holds the physical keyboard and types through `keyd virtual
-keyboard`, and zflow captures that one instead. `sudo zflow doctor` lists what
+keyboard`, and Nidus captures that one instead. `sudo nid doctor` lists what
 it would capture. A laptop touchpad drives the other computer like a mouse:
 one finger moves the pointer, two scroll, and taps and pad presses click.
 
 To capture only some devices, list them:
 
 ```sh
-sudo zflow devices
+sudo nid devices
 ```
 
 Select every keyboard, mouse, and touchpad node that must move together. Repeat
 `--device` in one command so the capture set is updated atomically:
 
 ```sh
-sudo zflow setup \
+sudo nid setup \
   --device /dev/input/eventX \
   --device /dev/input/eventY \
-  --udev-rules /etc/udev/rules.d/71-zflow-capture.rules
+  --udev-rules /etc/udev/rules.d/71-nid-capture.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger --action=change --subsystem-match=input
-sudo zflow doctor
+sudo nid doctor
 ```
 
 A listed device must be free: if another program grabbed it, every crossing
@@ -403,13 +403,13 @@ daemon applies it without a restart: it creates the virtual touchpad and ends
 open sessions, so the next connection negotiates touch:
 
 ```sh
-sudo zflow setup --experimental-touchpad on
-sudo zflow doctor
+sudo nid setup --experimental-touchpad on
+sudo nid doctor
 ```
 
-`zflow doctor` should report the keyboard, pointer, and experimental touchpad
+`nid doctor` should report the keyboard, pointer, and experimental touchpad
 as ready. On the receiving machine, `sudo libinput list-devices` should list
-`zflow remote touchpad` with `pointer gesture` capabilities and a size of
+`nid remote touchpad` with `pointer gesture` capabilities and a size of
 `200x150mm`. Contacts keep their real size on it, centered.
 
 Setup records stable physical attributes. It refuses to write a broad udev
@@ -423,11 +423,11 @@ as `KEY_LEFTCTRL`.
 
 ## Add computers from the command line
 
-On a Linux computer without a desktop, list the zflow computers the service
+On a Linux computer without a desktop, list the Nidus computers the service
 found:
 
 ```sh
-sudo zflow nearby
+sudo nid nearby
 ```
 
 Each line shows a name, its mark, its system and version, and whether it can
@@ -435,7 +435,7 @@ be added. `--add 192.0.2.10` says hello to an address mDNS cannot reach first.
 Add one by name, or by mark when two share a name:
 
 ```sh
-sudo zflow trust desk
+sudo nid trust desk
 ```
 
 That trusts it as dragging its tile would. The other computer still has to
@@ -445,21 +445,21 @@ Adding a computer never grants pre-login input. Grant that permission separately
 only if you need input at a greeter or lock screen:
 
 ```sh
-sudo zflow peer allow-prelogin desk on
+sudo nid peer allow-prelogin desk on
 ```
 
 The global pre-login gate must also be enabled with
-`zflow setup --prelogin on`. Unknown seat state always denies injection.
+`nid setup --prelogin on`. Unknown seat state always denies injection.
 
 ## Use and inspect it
 
 ```sh
-sudo zflow switch desk
-sudo zflow local
-sudo zflow status
-sudo zflow status --json
-sudo zflow peers
-journalctl -u zflowd.service -f
+sudo nid switch desk
+sudo nid local
+sudo nid status
+sudo nid status --json
+sudo nid peers
+journalctl -u nidd.service -f
 ```
 
 The source waits for a complete evdev frame and a neutral ownership boundary
@@ -467,12 +467,12 @@ before grabbing the configured set. Loss of a device, transport, lease,
 process, or authorization releases held input. The packaged sleep hook stops
 an active daemon before suspend and starts a fresh process after resume.
 Alternate launchers must provide an equivalent suspend boundary; running
-`zflowd` manually is intended for development.
+`nidd` manually is intended for development.
 
 Revocation is local and immediate:
 
 ```sh
-sudo zflow peer revoke desk
+sudo nid peer revoke desk
 ```
 
 ### macOS source cursor capture
@@ -507,7 +507,7 @@ remaining checks.
 ### macOS Wi-Fi latency
 
 If macOS input stutters or rubber-bands, measure LAN latency before changing
-zflow buffering. A low baseline with repeated spikes above one 60 Hz frame
+Nidus buffering. A low baseline with repeated spikes above one 60 Hz frame
 (about 17 ms) can produce the symptom even when signal strength is excellent:
 
 ```sh
@@ -521,11 +521,11 @@ did not isolate the two interfaces.
 
 Enable **Block AWDL while sharing** in Settings. If the background helper is
 missing, use **Install…**; if macOS needs approval, use **Allow…**. macOS owns the
-authorization prompt. zflow never reads or stores an administrator password.
+authorization prompt. Nidus never reads or stores an administrator password.
 
 The signed bundle registers its daemon with `SMAppService`. The app connects to
 it over XPC directly, and each side requires the same Team ID and the other's
-exact signing identifier, so only the signed zflow app can take a lease.
+exact signing identifier, so only the signed Nidus app can take a lease.
 The privileged service can only check `awdl0` or lease its suppression. It
 accepts no shell commands or arbitrary interface names. Installation and health
 checks do not change radio state.
@@ -545,7 +545,7 @@ before the session.
 
 The earlier setuid helper is no longer used or installed. If you installed it
 manually, an administrator can remove
-`/Library/PrivilegedHelperTools/io.zflow.awdl-helper` after stopping old builds.
+`/Library/PrivilegedHelperTools/io.nid.awdl-helper` after stopping old builds.
 
 Historical measurements from the previous helper transport follow; they do not
 qualify the new signed XPC installation path.
@@ -563,7 +563,7 @@ the problem to capture or playout behavior.
 
 ## Develop
 
-These commands are for developing and publishing zflow. Installing or updating
+These commands are for developing and publishing Nidus. Installing or updating
 it on another computer uses the published downloads and app controls above.
 
 Use just 1.45 or newer. Grouped commands follow `just <action> <target> [args]`.
@@ -611,24 +611,24 @@ Clippy, Rust tests, the C harnesses and an app bundle build on macOS; and
 Clippy, Rust tests and the app build on Windows, for every pull request and push
 to `main`.
 
-The Linux settings window is `zflow-app` (`crates/zflow-app`), installed next
-to `zflow`. The GNOME extension supplies the panel/tray icon, without an
-AppIndicator extension. `zflow settings` opens the window and starts one
+The Linux settings window is `nid-app` (`crates/nid-app`), installed next
+to `nid`. The GNOME extension supplies the panel/tray icon, without an
+AppIndicator extension. `nid settings` opens the window and starts one
 desktop agent per session; the daemon retains input ownership and privileged
 configuration. Install the updated system service
 before using the new controls.
 
-Mac builds produce `target/{debug,release}/zflow.app`. The app is
-`crates/zflow-app`; `src/app/` holds the services it shows, and `macos/` only the
+Mac builds produce `target/{debug,release}/Nidus.app`. The app is
+`crates/nid-app`; `src/app/` holds the services it shows, and `macos/` only the
 Swift AWDL helper. The engine runs on its own thread of the app, so input
 sharing does not depend on the window. No web view or embedded browser is used.
 The app draws zz's Default theme and follows the system's light or dark mode.
 
 For an isolated configuration, launch the bundle executable with
-`--config /absolute/path/zflow.toml`. `RUST_LOG` controls Rust diagnostics.
+`--config /absolute/path/nid.toml`. `RUST_LOG` controls Rust diagnostics.
 `just debug mac` and `just debug linux` capture logs with private file permissions.
 Read Linux daemon logs with
-`journalctl -u zflowd -o short-iso-precise --since "10 minutes ago"`.
+`journalctl -u nidd -o short-iso-precise --since "10 minutes ago"`.
 
 ```sh
 cargo test --locked --all-targets
@@ -648,4 +648,4 @@ See [SPEC.md](../SPEC.md) for protocol and safety invariants,
 [TESTPLAN.md](../TESTPLAN.md) for the hardware and desktop validation matrix, and
 [ROADMAP.md](../ROADMAP.md) for the plan to make input work both ways.
 
-zflow is licensed under GPL-3.0-or-later.
+Nidus is licensed under GPL-3.0-or-later.
