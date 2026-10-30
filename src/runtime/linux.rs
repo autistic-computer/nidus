@@ -310,7 +310,7 @@ impl InputThread {
     fn spawn(body: impl FnOnce() + Send + 'static) -> io::Result<Self> {
         let (exited_tx, exited) = tokio::sync::oneshot::channel::<()>();
         let handle = thread::Builder::new()
-            .name("zflow-linux-input".into())
+            .name("nid-linux-input".into())
             .spawn(move || {
                 let _exited = exited_tx;
                 body();
@@ -1214,7 +1214,7 @@ fn select_configured<'a>(
     if selectors.is_empty() {
         return CaptureSelection {
             selected: devices
-                .filter(|device| device.class.is_some() && !device.is_zflow_virtual())
+                .filter(|device| device.class.is_some() && !device.is_nid_virtual())
                 .cloned()
                 .collect(),
             ..CaptureSelection::default()
@@ -1269,7 +1269,7 @@ fn select_configured<'a>(
 }
 
 pub fn capture_selector_matches(selector: &ConfigDeviceSelector, device: &DeviceInfo) -> bool {
-    if device.is_zflow_virtual() {
+    if device.is_nid_virtual() {
         return false;
     }
     let stable_identity_available = selector
@@ -1416,8 +1416,8 @@ mod tests {
 
     use super::*;
     use crate::linux::{
-        DeviceClass, FrameAccumulator, ZFLOW_DEVICE_VERSION, ZFLOW_POINTER_NAME,
-        ZFLOW_POINTER_PHYS, ZFLOW_POINTER_PRODUCT_ID, ZFLOW_VENDOR_ID,
+        DeviceClass, FrameAccumulator, NID_DEVICE_VERSION, NID_POINTER_NAME, NID_POINTER_PHYS,
+        NID_POINTER_PRODUCT_ID, NID_VENDOR_ID,
     };
 
     fn frame(events: &[(KeyCode, i32)]) -> CaptureFrame {
@@ -1737,7 +1737,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_path_fallback_does_not_capture_zflow_virtual_devices() {
+    fn exact_path_fallback_does_not_capture_nid_virtual_devices() {
         let configured = ConfigDeviceSelector {
             path: "/dev/input/event8".into(),
             name: None,
@@ -1748,13 +1748,13 @@ mod tests {
         };
         let mut virtual_pointer = device(
             "/dev/input/event8",
-            ZFLOW_POINTER_NAME,
-            ZFLOW_POINTER_PHYS,
-            ZFLOW_VENDOR_ID,
-            ZFLOW_POINTER_PRODUCT_ID,
+            NID_POINTER_NAME,
+            NID_POINTER_PHYS,
+            NID_VENDOR_ID,
+            NID_POINTER_PRODUCT_ID,
         );
         virtual_pointer.bus = BusType::BUS_VIRTUAL.0;
-        virtual_pointer.version = ZFLOW_DEVICE_VERSION;
+        virtual_pointer.version = NID_DEVICE_VERSION;
 
         let selection = select_configured(&[configured], [&virtual_pointer].into_iter());
 
@@ -1770,22 +1770,22 @@ mod tests {
         }
     }
 
-    fn zflow_pointer(path: &str) -> DeviceInfo {
+    fn nid_pointer(path: &str) -> DeviceInfo {
         let mut pointer = device(
             path,
-            ZFLOW_POINTER_NAME,
-            ZFLOW_POINTER_PHYS,
-            ZFLOW_VENDOR_ID,
-            ZFLOW_POINTER_PRODUCT_ID,
+            NID_POINTER_NAME,
+            NID_POINTER_PHYS,
+            NID_VENDOR_ID,
+            NID_POINTER_PRODUCT_ID,
         );
         pointer.bus = BusType::BUS_VIRTUAL.0;
-        pointer.version = ZFLOW_DEVICE_VERSION;
+        pointer.version = NID_DEVICE_VERSION;
         pointer.class = Some(DeviceClass::Pointer);
         pointer
     }
 
     #[test]
-    fn empty_selectors_capture_every_keyboard_and_pointer_but_zflows_own() {
+    fn empty_selectors_capture_every_keyboard_and_pointer_but_nids_own() {
         let keyboard = classified(
             "/dev/input/event3",
             "AT Translated Set 2 keyboard",
@@ -1809,7 +1809,7 @@ mod tests {
             Some(DeviceClass::Pointer),
         );
         openlogi.bus = BusType::BUS_VIRTUAL.0;
-        let own = zflow_pointer("/dev/input/event22");
+        let own = nid_pointer("/dev/input/event22");
 
         let selection = select_configured(
             &[],
@@ -1831,7 +1831,7 @@ mod tests {
     #[test]
     fn empty_selectors_without_a_keyboard_or_pointer_cannot_activate() {
         let power = classified("/dev/input/event4", "Power Button", None);
-        let own = zflow_pointer("/dev/input/event22");
+        let own = nid_pointer("/dev/input/event22");
 
         let selection = select_configured(&[], [&power, &own].into_iter());
         let nothing = select_configured(&[], [].iter());

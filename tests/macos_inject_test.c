@@ -210,7 +210,7 @@ static CFDictionaryRef fake_session(void) {
 static OSType fake_layout_type(SInt16 keyboard) {
   switch (keyboard) {
     case 40: return 0x414E5349;
-    case 41: return ZFLOW_KEYBOARD_ISO;
+    case 41: return NID_KEYBOARD_ISO;
     default: return 0x4A495320;
   }
 }
@@ -230,8 +230,8 @@ static IOReturn fake_user_activity(CFStringRef name, IOPMUserActiveType type,
 
 static sig_t fake_signal(int number, sig_t handler) {
   if (print_posts && handler == SIG_DFL) {
-    ZFlowMacPosted key = {.kind = ZFLOW_POST_KEY, .code = 41, .down = 1};
-    printf("late post %d\n", zflow_mac_inject_post(&key));
+    NidMacPosted key = {.kind = NID_POST_KEY, .code = 41, .down = 1};
+    printf("late post %d\n", nid_mac_inject_post(&key));
     fflush(stdout);
   }
   return signal(number, handler);
@@ -242,12 +242,12 @@ static void clear_posted(void) {
   posted_count = 0;
 }
 
-static CGEventRef post_one(ZFlowMacPosted event) {
+static CGEventRef post_one(NidMacPosted event) {
   size_t before = posted_count;
-  assert(zflow_mac_inject_post(&event) == 0);
+  assert(nid_mac_inject_post(&event) == 0);
   assert(posted_count == before + 1);
   CGEventRef result = posted[before];
-  assert(CGEventGetIntegerValueField(result, kCGEventSourceUserData) == ZFLOW_POSTED_MARK);
+  assert(CGEventGetIntegerValueField(result, kCGEventSourceUserData) == NID_POSTED_MARK);
   return result;
 }
 
@@ -256,22 +256,22 @@ static int64_t field(CGEventRef event, CGEventField name) {
 }
 
 static void source_tests(void) {
-  ZFlowMacPosted key = {.kind = ZFLOW_POST_KEY, .code = 0, .down = 1};
-  assert(zflow_mac_inject_post(&key) == -1);
+  NidMacPosted key = {.kind = NID_POST_KEY, .code = 0, .down = 1};
+  assert(nid_mac_inject_post(&key) == -1);
   assert(posted_count == 0);
-  assert(zflow_mac_inject_open() == 0);
+  assert(nid_mac_inject_open() == 0);
   assert(interval_calls == 1 && last_interval == 0);
   assert(filter_calls == 2 && filters[0] && filters[1]);
-  assert(CGEventSourceGetUserData(g_source) == ZFLOW_POSTED_MARK);
+  assert(CGEventSourceGetUserData(g_source) == NID_POSTED_MARK);
   assert(CGEventSourceGetSourceStateID(g_source) == kCGEventSourceStateHIDSystemState);
   CGEventSourceRef source = g_source;
-  assert(zflow_mac_inject_open() == 0);
+  assert(nid_mac_inject_open() == 0);
   assert(g_source == source && interval_calls == 1);
 }
 
 static void pointer_tests(void) {
-  CGEventRef event = post_one((ZFlowMacPosted){
-      .kind = ZFLOW_POST_MOVE, .x = 100.5, .y = 200, .dx = 3, .dy = -4,
+  CGEventRef event = post_one((NidMacPosted){
+      .kind = NID_POST_MOVE, .x = 100.5, .y = 200, .dx = 3, .dy = -4,
       .flags = kCGEventFlagMaskCommand | NX_DEVICELCMDKEYMASK});
   assert(CGEventGetType(event) == kCGEventMouseMoved);
   CGPoint location = CGEventGetLocation(event);
@@ -282,7 +282,7 @@ static void pointer_tests(void) {
   const CGEventType drags[] = {kCGEventLeftMouseDragged, kCGEventRightMouseDragged,
                                kCGEventOtherMouseDragged, kCGEventOtherMouseDragged};
   for (uint16_t button = 0; button < 4; button++) {
-    event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MOVE, .code = button, .drag = 1,
+    event = post_one((NidMacPosted){.kind = NID_POST_MOVE, .code = button, .drag = 1,
                                       .x = 1, .y = 2, .click_state = 2});
     assert(CGEventGetType(event) == drags[button]);
     assert(field(event, kCGMouseEventClickState) == 2);
@@ -295,8 +295,8 @@ static void pointer_tests(void) {
                              kCGEventOtherMouseUp};
   for (uint16_t button = 0; button < 3; button++) {
     for (int down = 1; down >= 0; down--) {
-      event = post_one((ZFlowMacPosted){
-          .kind = ZFLOW_POST_BUTTON, .code = button, .down = (uint8_t)down,
+      event = post_one((NidMacPosted){
+          .kind = NID_POST_BUTTON, .code = button, .down = (uint8_t)down,
           .x = 5, .y = 6, .click_state = 3, .flags = kCGEventFlagMaskShift});
       assert(CGEventGetType(event) == (down ? downs[button] : ups[button]));
       assert(field(event, kCGMouseEventClickState) == 3);
@@ -304,50 +304,50 @@ static void pointer_tests(void) {
       assert(CGEventGetLocation(event).x == 5 && CGEventGetLocation(event).y == 6);
     }
   }
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_BUTTON, .code = 31, .down = 1});
+  event = post_one((NidMacPosted){.kind = NID_POST_BUTTON, .code = 31, .down = 1});
   assert(field(event, kCGMouseEventButtonNumber) == 31);
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_BUTTON, .code = 31});
+  event = post_one((NidMacPosted){.kind = NID_POST_BUTTON, .code = 31});
   assert(CGEventGetType(event) == kCGEventOtherMouseUp);
 }
 
 static void key_tests(void) {
-  CGEventRef event = post_one((ZFlowMacPosted){
-      .kind = ZFLOW_POST_KEY, .code = 0, .down = 1,
+  CGEventRef event = post_one((NidMacPosted){
+      .kind = NID_POST_KEY, .code = 0, .down = 1,
       .flags = kCGEventFlagMaskShift | NX_DEVICELSHIFTKEYMASK});
   assert(CGEventGetType(event) == kCGEventKeyDown);
   assert(field(event, kCGKeyboardEventKeycode) == 0);
   assert(field(event, kCGKeyboardEventAutorepeat) == 0);
   assert(CGEventGetFlags(event) == (kCGEventFlagMaskShift | NX_DEVICELSHIFTKEYMASK));
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0, .down = 1,
+  event = post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 0, .down = 1,
                                     .autorepeat = 1});
   assert(CGEventGetType(event) == kCGEventKeyDown);
   assert(field(event, kCGKeyboardEventAutorepeat) == 1);
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0});
+  event = post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 0});
   assert(CGEventGetType(event) == kCGEventKeyUp);
 
-  event = post_one((ZFlowMacPosted){
-      .kind = ZFLOW_POST_MODIFIER, .code = 54, .down = 1,
+  event = post_one((NidMacPosted){
+      .kind = NID_POST_MODIFIER, .code = 54, .down = 1,
       .flags = kCGEventFlagMaskCommand | NX_DEVICERCMDKEYMASK});
   assert(CGEventGetType(event) == kCGEventFlagsChanged);
   assert(field(event, kCGKeyboardEventKeycode) == 54);
   assert(CGEventGetFlags(event) == (kCGEventFlagMaskCommand | NX_DEVICERCMDKEYMASK));
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MODIFIER, .code = 54});
+  event = post_one((NidMacPosted){.kind = NID_POST_MODIFIER, .code = 54});
   assert(CGEventGetType(event) == kCGEventFlagsChanged && CGEventGetFlags(event) == 0);
 
   live_flags = kCGEventFlagMaskAlphaShift | kCGEventFlagMaskControl;
-  event = post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0, .down = 1,
+  event = post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 0, .down = 1,
                                     .flags = kCGEventFlagMaskCommand});
   assert(CGEventGetFlags(event) == (kCGEventFlagMaskAlphaShift | kCGEventFlagMaskCommand));
   live_flags = 0;
-  event = post_one((ZFlowMacPosted){
-      .kind = ZFLOW_POST_KEY, .code = 0,
+  event = post_one((NidMacPosted){
+      .kind = NID_POST_KEY, .code = 0,
       .flags = kCGEventFlagMaskAlphaShift | kCGEventFlagMaskCommand});
   assert(CGEventGetFlags(event) == kCGEventFlagMaskCommand);
 }
 
 static void scroll_tests(void) {
-  CGEventRef event = post_one((ZFlowMacPosted){
-      .kind = ZFLOW_POST_SCROLL, .wheel_x = 7, .wheel_y = -40,
+  CGEventRef event = post_one((NidMacPosted){
+      .kind = NID_POST_SCROLL, .wheel_x = 7, .wheel_y = -40,
       .flags = kCGEventFlagMaskAlternate});
   assert(CGEventGetType(event) == kCGEventScrollWheel);
   assert(field(event, kCGScrollWheelEventIsContinuous) == 1);
@@ -358,33 +358,33 @@ static void scroll_tests(void) {
 
 static void refusal_tests(void) {
   size_t before = posted_count;
-  ZFlowMacPosted bad[] = {
-    {.kind = ZFLOW_POST_KEY, .code = 128},
-    {.kind = ZFLOW_POST_MODIFIER, .code = 200},
-    {.kind = ZFLOW_POST_BUTTON, .code = 32},
-    {.kind = ZFLOW_POST_MOVE, .x = NAN},
-    {.kind = ZFLOW_POST_BUTTON, .y = INFINITY},
+  NidMacPosted bad[] = {
+    {.kind = NID_POST_KEY, .code = 128},
+    {.kind = NID_POST_MODIFIER, .code = 200},
+    {.kind = NID_POST_BUTTON, .code = 32},
+    {.kind = NID_POST_MOVE, .x = NAN},
+    {.kind = NID_POST_BUTTON, .y = INFINITY},
     {.kind = 0},
     {.kind = 99},
   };
   for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++)
-    assert(zflow_mac_inject_post(&bad[i]) == -1);
-  assert(zflow_mac_inject_post(NULL) == -1);
+    assert(nid_mac_inject_post(&bad[i]) == -1);
+  assert(nid_mac_inject_post(NULL) == -1);
   assert(posted_count == before);
 }
 
 static void release_tests(void) {
   clear_posted();
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_BUTTON, .code = 0, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_BUTTON, .code = 3, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MODIFIER, .code = 56, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MODIFIER, .code = 55, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 40, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 0, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 40});
+  post_one((NidMacPosted){.kind = NID_POST_BUTTON, .code = 0, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_BUTTON, .code = 3, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_MODIFIER, .code = 56, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_MODIFIER, .code = 55, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 40, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 0, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 40});
   clear_posted();
 
-  zflow_mac_inject_release_all();
+  nid_mac_inject_release_all();
   assert(posted_count == 5);
   assert(CGEventGetType(posted[0]) == kCGEventKeyUp && field(posted[0], kCGKeyboardEventKeycode) == 0);
   assert(CGEventGetType(posted[1]) == kCGEventFlagsChanged && field(posted[1], kCGKeyboardEventKeycode) == 55);
@@ -393,75 +393,75 @@ static void release_tests(void) {
   assert(CGEventGetType(posted[4]) == kCGEventOtherMouseUp && field(posted[4], kCGMouseEventButtonNumber) == 3);
   for (size_t i = 0; i < posted_count; i++) {
     assert(CGEventGetFlags(posted[i]) == 0);
-    assert(field(posted[i], kCGEventSourceUserData) == ZFLOW_POSTED_MARK);
+    assert(field(posted[i], kCGEventSourceUserData) == NID_POSTED_MARK);
   }
   assert(CGEventGetLocation(posted[3]).x == cursor.x && CGEventGetLocation(posted[4]).y == cursor.y);
   clear_posted();
-  zflow_mac_inject_release_all();
+  nid_mac_inject_release_all();
   assert(posted_count == 0);
 
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 12, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 12, .down = 1});
   clear_posted();
-  zflow_mac_inject_close();
+  nid_mac_inject_close();
   assert(posted_count == 1 && CGEventGetType(posted[0]) == kCGEventKeyUp);
   assert(!g_source);
-  ZFlowMacPosted key = {.kind = ZFLOW_POST_KEY, .code = 12, .down = 1};
-  assert(zflow_mac_inject_post(&key) == -1);
-  assert(zflow_mac_inject_open() == 0 && interval_calls == 2);
+  NidMacPosted key = {.kind = NID_POST_KEY, .code = 12, .down = 1};
+  assert(nid_mac_inject_post(&key) == -1);
+  assert(nid_mac_inject_open() == 0 && interval_calls == 2);
   clear_posted();
 }
 
 static void caps_tests(void) {
   size_t before = posted_count;
   int on = -1;
-  assert(zflow_mac_caps_lock(&on) == 0 && on == 0);
+  assert(nid_mac_caps_lock(&on) == 0 && on == 0);
   assert(opens == 1);
-  assert(zflow_mac_set_caps_lock(1) == 0 && caps_state);
-  assert(zflow_mac_caps_lock(&on) == 0 && on == 1);
-  assert(zflow_mac_set_caps_lock(0) == 0 && !caps_state);
+  assert(nid_mac_set_caps_lock(1) == 0 && caps_state);
+  assert(nid_mac_caps_lock(&on) == 0 && on == 1);
+  assert(nid_mac_set_caps_lock(0) == 0 && !caps_state);
   assert(opens == 1 && lock_calls == 4);
   assert(posted_count == before);
-  assert(zflow_mac_caps_lock(NULL) == -1);
+  assert(nid_mac_caps_lock(NULL) == -1);
 
-  zflow_mac_inject_close();
+  nid_mac_inject_close();
   assert(closes == 1);
   open_fails = true;
-  assert(zflow_mac_caps_lock(&on) == -1 && zflow_mac_set_caps_lock(1) == -1);
+  assert(nid_mac_caps_lock(&on) == -1 && nid_mac_set_caps_lock(1) == -1);
   open_fails = false;
   service_missing = true;
-  assert(zflow_mac_set_caps_lock(1) == -1 && !caps_state);
+  assert(nid_mac_set_caps_lock(1) == -1 && !caps_state);
   service_missing = false;
-  assert(zflow_mac_inject_open() == 0);
+  assert(nid_mac_inject_open() == 0);
 }
 
 static void environment_tests(void) {
-  keyboard_type = 40; assert(zflow_mac_keyboard_is_iso() == 0);
-  keyboard_type = 41; assert(zflow_mac_keyboard_is_iso() == 1);
-  keyboard_type = 42; assert(zflow_mac_keyboard_is_iso() == 0);
+  keyboard_type = 40; assert(nid_mac_keyboard_is_iso() == 0);
+  keyboard_type = 41; assert(nid_mac_keyboard_is_iso() == 1);
+  keyboard_type = 42; assert(nid_mac_keyboard_is_iso() == 0);
 
   uint64_t initial = 0, interval = 0;
-  assert(zflow_mac_key_repeat_ns(&initial, &interval) == 0);
+  assert(nid_mac_key_repeat_ns(&initial, &interval) == 0);
   assert(initial == 250000000 && interval == 33333333);
   registry_missing = true;
-  assert(zflow_mac_key_repeat_ns(&initial, &interval) == 0);
+  assert(nid_mac_key_repeat_ns(&initial, &interval) == 0);
   assert(initial == 225000000 && interval == 30000000);
   registry_missing = false;
   repeat_parameters[1] = 0;
-  assert(zflow_mac_key_repeat_ns(&initial, &interval) == 0);
+  assert(nid_mac_key_repeat_ns(&initial, &interval) == 0);
   assert(initial == 225000000 && interval == 30000000);
   service_missing = true;
   preferences_missing = true;
-  assert(zflow_mac_key_repeat_ns(&initial, &interval) == -1);
-  assert(zflow_mac_key_repeat_ns(NULL, &interval) == -1);
+  assert(nid_mac_key_repeat_ns(&initial, &interval) == -1);
+  assert(nid_mac_key_repeat_ns(NULL, &interval) == -1);
   service_missing = false;
   preferences_missing = false;
   repeat_parameters[1] = 33333333;
 
-  assert(zflow_mac_post_allowed() == 1);
+  assert(nid_mac_post_allowed() == 1);
   post_access = false;
-  assert(zflow_mac_post_allowed() == 0);
-  assert(zflow_mac_declare_user_activity() == 0);
-  assert(zflow_mac_declare_user_activity() == 0);
+  assert(nid_mac_post_allowed() == 0);
+  assert(nid_mac_declare_user_activity() == 0);
+  assert(nid_mac_declare_user_activity() == 0);
   assert(activity_calls == 2);
 }
 
@@ -491,7 +491,7 @@ static void session_tests(void) {
   };
   for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
     session = cases[i].session;
-    assert(zflow_mac_session_locked() == cases[i].locked);
+    assert(nid_mac_session_locked() == cases[i].locked);
     if (session) CFRelease(session);
   }
   session = NULL;
@@ -501,12 +501,12 @@ static void session_tests(void) {
 
 static int signal_child(void) {
   alarm(10);
-  assert(zflow_mac_inject_open() == 0);
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_KEY, .code = 40, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_MODIFIER, .code = 56, .down = 1});
-  post_one((ZFlowMacPosted){.kind = ZFLOW_POST_BUTTON, .code = 1, .down = 1});
-  zflow_mac_inject_install_exit_handlers();
-  zflow_mac_inject_install_exit_handlers();
+  assert(nid_mac_inject_open() == 0);
+  post_one((NidMacPosted){.kind = NID_POST_KEY, .code = 40, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_MODIFIER, .code = 56, .down = 1});
+  post_one((NidMacPosted){.kind = NID_POST_BUTTON, .code = 1, .down = 1});
+  nid_mac_inject_install_exit_handlers();
+  nid_mac_inject_install_exit_handlers();
   print_posts = true;
   while (!atomic_load(&handler_posted)) {
     kill(getpid(), SIGTERM);
@@ -570,7 +570,7 @@ int main(int argc, char **argv) {
   environment_tests();
   session_tests();
   signal_tests();
-  zflow_mac_inject_close();
+  nid_mac_inject_close();
   clear_posted();
   puts("macOS inject tests passed (fake post, IOKit and session APIs)");
   return 0;

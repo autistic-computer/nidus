@@ -26,7 +26,7 @@ const context = {
                 }
                 queueMicrotask(() => callback({call_finish() {
                     if (cancel.is_cancelled()) throw new Error('cancelled');
-                    if (agentDown) throw new Error('The name io.zflow.Desktop was not provided');
+                    if (agentDown) throw new Error('The name io.nid.Desktop was not provided');
                     return {deep_unpack: () => [JSON.stringify(request.command === 'snapshot' ? snapshot : {ok: true})]};
                 }}, {}));
             },
@@ -62,19 +62,19 @@ await new Promise(setImmediate);
 assert.equal(calls[0].flags, 1, 'panel reads must not override disabled login startup');
 assert.equal(panel._status.label.text, 'Controlled by Mac');
 assert.equal(panel._sharing.state, true);
-assert.equal(panel._icon.icon_name, 'io.zflow.zflow-symbolic');
+assert.equal(panel._icon.icon_name, 'io.nid.nid-symbolic');
 const sharingRequests = () => calls.filter(call => call.request.command === 'set_sharing')
     .map(call => call.request.enabled);
 agentDown = true;
 await panel._client.refresh();
-assert.equal(panel._status.label.text, 'zflow is not running');
+assert.equal(panel._status.label.text, 'Nidus is not running');
 assert.equal(panel._sharing.state, false);
 agentDown = false;
 snapshot.sharing = null;
 await panel._client.refresh();
 snapshot.api = 7;
 await panel._client.refresh();
-assert.equal(panel._status.label.text, 'Update zflow');
+assert.equal(panel._status.label.text, 'Update Nidus');
 snapshot.api = 6;
 snapshot.sharing = true;
 await panel._client.refresh();
@@ -88,7 +88,7 @@ assert.equal(panel._sharing.state, false);
 assert.equal(panel._icon.icon_name, 'media-playback-pause-symbolic');
 snapshot.api = 7;
 await panel._client.refresh();
-assert.equal(panel._status.label.text, 'Update zflow');
+assert.equal(panel._status.label.text, 'Update Nidus');
 assert.equal(panel._icon.icon_name, 'dialog-warning-symbolic');
 snapshot.api = 6;
 await panel._client.refresh();

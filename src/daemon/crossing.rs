@@ -103,7 +103,7 @@ impl Shared {
                 OwnershipPhase::Idle if armed => return Ok(()),
                 OwnershipPhase::Idle => ensure!(
                     started.elapsed() < ARMING_START,
-                    "the crossing did not start arming; check `zflow doctor`"
+                    "the crossing did not start arming; check `nid doctor`"
                 ),
                 OwnershipPhase::Arming => {
                     armed = true;

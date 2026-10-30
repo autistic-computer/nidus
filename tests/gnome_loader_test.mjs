@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../packaging/gnome-extension/extension.js', import.meta.url), 'utf8')
     .replace(/^import .*;\r?\n/gm, '').replace('export default class ', 'class ')
-    .replace('import(', 'load(') + '\nglobalThis.Loader = ZflowLoader;';
+    .replace('import(', 'load(') + '\nglobalThis.Loader = NidLoader;';
 
 function loader(current) {
     const loads = [];
@@ -23,7 +23,7 @@ function loader(current) {
         load(path) {
             let resolve;
             const loaded = new Promise(done => {resolve = done;});
-            loads.push({path, resolve: () => resolve({Zflow: class {
+            loads.push({path, resolve: () => resolve({Nid: class {
                 enable() {started.push(path);}
                 disable() {started.push(`off ${path}`);}
             }})});

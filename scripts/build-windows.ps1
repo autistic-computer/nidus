@@ -23,13 +23,13 @@ try {
             [IO.File]::WriteAllText($configFile, 'target.x86_64-pc-windows-msvc.rustflags=["-C","target-feature=+crt-static"]', [Text.UTF8Encoding]::new($false))
             $cargoConfig = @('--config', $configFile)
         }
-        & cargo build --locked --release --target $target -p zflow-kvm -p zflow-app --bin zflow --bin zflow-app @cargoConfig
+        & cargo build --locked --release --target $target -p nid-kvm -p nid-app --bin nid --bin nid-app @cargoConfig
         if ($LASTEXITCODE -ne 0) { throw 'Rust build failed' }
     } finally {
         if ($flagVariable) { [Environment]::SetEnvironmentVariable($flagVariable, $previousFlags) }
         if ($configFile) { Remove-Item -LiteralPath $configFile -Force }
     }
-    $binaries = [ordered]@{ 'zflow-app.exe' = 'Zflow.App.exe'; 'zflow.exe' = 'zflow.exe' }
+    $binaries = [ordered]@{ 'nid-app.exe' = 'Nid.App.exe'; 'nid.exe' = 'nid.exe' }
     $output = Join-Path $repo 'windows/dist'
     if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
     New-Item -ItemType Directory -Path $output | Out-Null
@@ -58,6 +58,6 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-windows.ps1') -Destination $output
     Copy-Item -LiteralPath (Join-Path $repo 'windows/README.md') -Destination $output
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $output
-    Write-Host "Built zflow in $output"
-    if ($Launch) { Start-Process -FilePath (Join-Path $output 'Zflow.App.exe') }
+    Write-Host "Built Nidus in $output"
+    if ($Launch) { Start-Process -FilePath (Join-Path $output 'Nid.App.exe') }
 } finally { Pop-Location }

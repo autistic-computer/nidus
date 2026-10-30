@@ -355,7 +355,7 @@ mod tests {
         assert_eq!(failed.elapsed(), Duration::from_secs(1));
         assert_eq!(
             *test.link.status.borrow(),
-            unreachable("Different zflow version. Update both computers.", true)
+            unreachable("Different Nidus version. Update both computers.", true)
         );
         answer.send(Err(anyhow!("timed out"))).unwrap();
 

@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail, ensure};
 use semver::Version;
 use serde::Serialize;
 
-const RELEASES: &str = "https://github.com/autistic-computer/zflow/releases/";
+const RELEASES: &str = "https://github.com/autistic-computer/nidus/releases/";
 const INSTALLER: &str = include_str!("../../install.sh");
 
 #[derive(Serialize)]
@@ -64,7 +64,7 @@ fn latest() -> Result<String> {
         ])
         .arg(format!("{RELEASES}latest"))
         .output()
-        .context("Install curl to check for zflow updates")?;
+        .context("Install curl to check for Nidus updates")?;
     ensure!(
         output.status.success(),
         "Could not check for updates. Check your internet connection and try again. {}",
@@ -87,13 +87,12 @@ fn owns(program: &str, arguments: &[&str], executable: &Path) -> Option<String> 
 
 fn install_reason(path: &Path, owner: Option<(&str, &str)>) -> Option<String> {
     match (path.to_str(), owner) {
-        (Some("/usr/bin/zflow"), Some(("dpkg", "zflow")))
-        | (Some("/usr/local/bin/zflow"), None) => None,
+        (Some("/usr/bin/nid"), Some(("dpkg", "nid"))) | (Some("/usr/local/bin/nid"), None) => None,
         (_, Some((manager, package))) => Some(format!(
             "Update {package} through {manager}, which manages this installation."
         )),
         _ => Some(
-            "This copy was built locally. Install a zflow release to enable updates here.".into(),
+            "This copy was built locally. Install a Nidus release to enable updates here.".into(),
         ),
     }
 }
@@ -163,7 +162,7 @@ pub async fn remind(connection: zbus::Connection) {
 
 fn read_settings() -> Option<Vec<u8>> {
     let config = super::gnome::xdg("XDG_CONFIG_HOME", ".config").ok()?;
-    std::fs::read(config.join("zflow/updates.json")).ok()
+    std::fs::read(config.join("nid/updates.json")).ok()
 }
 
 fn automatic(settings: Option<&[u8]>) -> bool {
@@ -251,23 +250,23 @@ type Notification<'a> = (
 
 fn notification(tag: &str) -> Notification<'static> {
     (
-        "zflow",
+        "Nidus",
         0,
-        "io.zflow.zflow",
-        format!("zflow {tag} is available"),
-        "Open zflow to install it.",
-        vec!["default", "Open zflow"],
-        HashMap::from([("desktop-entry", "io.zflow.zflow".into())]),
+        "io.nid.nid",
+        format!("Nidus {tag} is available"),
+        "Open Nidus to install it.",
+        vec!["default", "Open Nidus"],
+        HashMap::from([("desktop-entry", "io.nid.nid".into())]),
         -1,
     )
 }
 
 fn open_settings() {
-    tracing::info!("opening zflow from the update notification");
+    tracing::info!("opening Nidus from the update notification");
     let opened = std::env::current_exe()
-        .and_then(|zflow| tokio::process::Command::new(zflow).arg("settings").spawn());
+        .and_then(|nid| tokio::process::Command::new(nid).arg("settings").spawn());
     if let Err(error) = opened {
-        tracing::warn!(%error, "could not open zflow settings");
+        tracing::warn!(%error, "could not open Nidus settings");
     }
 }
 
@@ -287,7 +286,7 @@ pub fn install(tag: &str, gui: bool) -> Result<()> {
     command.args([
         "-c",
         INSTALLER,
-        "zflow-update",
+        "nid-update",
         "--update",
         env!("CARGO_PKG_VERSION"),
         "--no-launch",
@@ -299,7 +298,7 @@ pub fn install(tag: &str, gui: bool) -> Result<()> {
     }
     let status = command
         .status()
-        .context("Could not start the zflow installer")?;
+        .context("Could not start the Nidus installer")?;
     if status.code() == Some(126) {
         bail!("Update cancelled. Nothing was installed.");
     }
@@ -372,10 +371,10 @@ mod tests {
             "v0.6.0"
         );
         for url in [
-            "http://github.com/autistic-computer/zflow/releases/tag/v0.6.0",
-            "https://github.com/other/zflow/releases/tag/v0.6.0",
-            "https://github.com/autistic-computer/zflow/releases/latest",
-            "https://github.com/autistic-computer/zflow/releases/tag/v0.6.0/download",
+            "http://github.com/autistic-computer/nidus/releases/tag/v0.6.0",
+            "https://github.com/other/nid/releases/tag/v0.6.0",
+            "https://github.com/autistic-computer/nidus/releases/latest",
+            "https://github.com/autistic-computer/nidus/releases/tag/v0.6.0/download",
         ] {
             assert!(release_tag(url).is_err(), "{url}");
         }
@@ -383,15 +382,15 @@ mod tests {
 
     #[test]
     fn updates_preserve_package_ownership() {
-        assert!(install_reason(Path::new("/usr/local/bin/zflow"), None).is_none());
-        assert!(install_reason(Path::new("/usr/bin/zflow"), Some(("dpkg", "zflow"))).is_none());
+        assert!(install_reason(Path::new("/usr/local/bin/nid"), None).is_none());
+        assert!(install_reason(Path::new("/usr/bin/nid"), Some(("dpkg", "nid"))).is_none());
         for (path, owner) in [
-            ("/usr/bin/zflow", None),
-            ("/tmp/zflow", None),
-            ("/usr/bin/zflow", Some(("dpkg", "another-package"))),
-            ("/usr/bin/zflow", Some(("pacman", "zflow"))),
-            ("/usr/local/bin/zflow", Some(("rpm", "zflow"))),
-            ("/usr/local/bin/zflow", Some(("dpkg", "zflow"))),
+            ("/usr/bin/nid", None),
+            ("/tmp/nid", None),
+            ("/usr/bin/nid", Some(("dpkg", "another-package"))),
+            ("/usr/bin/nid", Some(("pacman", "nid"))),
+            ("/usr/local/bin/nid", Some(("rpm", "nid"))),
+            ("/usr/local/bin/nid", Some(("dpkg", "nid"))),
         ] {
             assert!(install_reason(Path::new(path), owner).is_some(), "{path}");
         }

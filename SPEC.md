@@ -1,19 +1,19 @@
-# zflow
+# Nidus
 
 > Specification v0.3, draft, 2026-08-31
 >
 > Implementation status: the headless Linux prototype is implemented. It is not yet a qualified alpha: the privileged, packaged two-host qualification run in [TESTPLAN.md](TESTPLAN.md) has not run.
 > September 16 implementation: macOS uses a native SwiftUI menu-bar app linked to the Rust core through a C ABI. Linux uses a headless desktop agent and GNOME extension for cursor placement and return barriers. AWDL suppression uses a signed, same-team XPC service registered through SMAppService. Live two-host and signed-helper qualification remain outstanding; broader portal and macOS receiver matrices below are future work.
-> October 21 implementation: one Rust app on zz's GPUI stack (`crates/zflow-app`) replaces the SwiftUI, WinUI and GTK windows on every system. On a Mac it runs the engine in process on its own thread, with no C ABI; on Linux it talks to the desktop agent over D-Bus; on Windows it talks to the engine's pipe.
+> October 21 implementation: one Rust app on zz's GPUI stack (`crates/nid-app`) replaces the SwiftUI, WinUI and GTK windows on every system. On a Mac it runs the engine in process on its own thread, with no C ABI; on Linux it talks to the desktop agent over D-Bus; on Windows it talks to the engine's pipe.
 > September 28 implementation: the Mac app also receives. A paired computer controls the logged-in Mac through CGEventPost from the app's own process, over the same authenticated sessions the Mac uses to send. The two-way sitting in [TESTPLAN.md](TESTPLAN.md) has not run yet. The LoginWindow process model and virtual-HID backends below remain future work.
 >
 > v0.3 records three maintainer decisions after adversarial review: on-demand device grabs, raw-contact capture in the signed macOS baseline behind a flag, and the split of release matrices into [TESTPLAN.md](TESTPLAN.md).
 
-zflow shares a keyboard, pointer, wheel, and selected trackpad data between Linux Wayland and macOS machines. It targets links with low baseline latency and short jitter bursts. The receiver preserves input state through loss, reordering, reconnects, and process failure.
+Nidus shares a keyboard, pointer, wheel, and selected trackpad data between Linux Wayland and macOS machines. It targets links with low baseline latency and short jitter bursts. The receiver preserves input state through loss, reordering, reconnects, and process failure.
 
 The first product slice supports Linux-to-Linux keyboard, pointer, and high-resolution wheel input through explicit hotkey switching. Linux login-screen support, desktop edge switching, logged-in macOS support, native gestures, radio tuning, and path failover follow through measured gates.
 
-Rust owns the core. Linux supports Wayland sessions and the kernel input path. zflow does not support an X11 host mode or Windows. Xwayland applications inside a Wayland session receive input through the compositor's normal path.
+Rust owns the core. Linux supports Wayland sessions and the kernel input path. Nidus does not support an X11 host mode or Windows. Xwayland applications inside a Wayland session receive input through the compositor's normal path.
 
 The experimental GNOME return path holds a Poll for up to 200 ms and responds
 when an exit barrier fires. The Mac starts the next poll after the reply,
@@ -31,7 +31,7 @@ Each platform claim has one of three statuses:
 
 - **Required**: implementation work may rely on a standard, public API, or demonstrated kernel contract.
 - **Provisional**: the design has credible evidence, but measurements must select parameters.
-- **Experiment**: zflow makes no product promise until the named test passes.
+- **Experiment**: Nidus makes no product promise until the named test passes.
 
 Numeric bounds in this specification (the 250 ms checkpoint interval, the one-second lease cap, the two-second recovery default) are engineering defaults. Validation freezes final values before beta; the one-second lease cap alone is a hard ceiling.
 
@@ -41,7 +41,7 @@ Source links point to standards, platform documentation, upstream source, or a d
 
 ### Required behavior
 
-zflow MUST:
+Nidus MUST:
 
 1. Preserve key, button, modifier, and gesture lifecycle state across packet loss.
 2. Release all receiver-owned input within one second of the last valid lease renewal.
@@ -74,7 +74,7 @@ zflow MUST:
 | Lens: a live lossless view of a GNOME screen around a Mac pointer | experiment; built, not yet run live | Lens sitting in TESTPLAN.md |
 | File transfer | deferred | Separate bulk transport |
 
-Linux pre-login scope begins in real-root userspace once zflowd is active. Graphical-greeter support begins when the display manager starts; VT keyboard support may begin earlier. Firmware, initramfs, LUKS, macOS FileVault preboot, and other environments where zflow code cannot run remain excluded.
+Linux pre-login scope begins in real-root userspace once nidd is active. Graphical-greeter support begins when the display manager starts; VT keyboard support may begin earlier. Firmware, initramfs, LUKS, macOS FileVault preboot, and other environments where Nidus code cannot run remain excluded.
 
 ## Evidence and motivation
 
@@ -97,48 +97,48 @@ Linux mac80211 uses a dynamic power-save timeout on drivers that support that mo
 
 Reverse-engineering research describes AWDL availability windows on the shared Wi-Fi radio. See the [AWDL security analysis](https://www.usenix.org/conference/usenixsecurity19/presentation/stute). Developers have also reported latency changes correlated with a private “realtimeMode.” Apple DTS confirmed that no documented API enables that mode; DTS did not confirm a universal cadence or causal explanation. See the [Apple Developer Forums report and DTS response](https://developer.apple.com/forums/thread/819926).
 
-zflow treats radio wake traffic, QoS, and smoothing constants as measurements. Runtime diagnostics say that a trace is “consistent with power saving or radio coexistence” and offer controlled checks. They MUST NOT claim a cause from RTT alone.
+Nidus treats radio wake traffic, QoS, and smoothing constants as measurements. Runtime diagnostics say that a trace is “consistent with power saving or radio coexistence” and offer controlled checks. They MUST NOT claim a cause from RTT alone.
 
 ### Existing tools
 
 This table records a source snapshot from 2026-08-31. Maintainers must refresh it before external publication.
 
-| Project | Transport and current finding | Relevance to zflow |
+| Project | Transport and current finding | Relevance to Nidus |
 |---|---|---|
 | [Deskflow](https://github.com/deskflow/deskflow) | Its [protocol reference](https://github.com/deskflow/deskflow/blob/master/docs/dev/protocol_reference.md) uses TCP port 24800. The project lists Wayland as supported. | One ordered byte stream can delay fresh input behind lost or bulk data. |
-| [Input Leap](https://github.com/input-leap/input-leap) | The maintainers archived the repository in July 2026. It inherits the Synergy TCP protocol family. | zflow cannot depend on future maintenance there. |
+| [Input Leap](https://github.com/input-leap/input-leap) | The maintainers archived the repository in July 2026. It inherits the Synergy TCP protocol family. | Nidus cannot depend on future maintenance there. |
 | [Lan Mouse](https://github.com/feschber/lan-mouse/tree/6b1eddef7ab3ae0b06f2ed3d9b21165e03ea4cad) | Current main sends input as DTLS application datagrams. It tracks held keys and releases them on teardown, but it has no per-event delivery or periodic button reconciliation. An isolated lost release can persist until cleanup. | Its input-capture, input-emulation, input-event, and protocol crates may save platform work. |
 | [rkvm](https://github.com/htrefil/rkvm) | It uses TCP with TLS and has seen little source activity since 2024. | Its hotkey model remains useful for session-free switching. |
 
 ### The unserved gap
 
-The reproductions below establish demand, not contracts, but the pattern is consistent. Synergy's vendor documents its lag fix as [switching to an ethernet connection](https://symless.com/synergy/help/fix-lagging-issues-using-ethernet). A Barrier user reports that wireless lag disappears "unless a speedtest is running in the background" ([barrier #1755](https://github.com/debauchee/barrier/issues/1755)), which is the radio-wake mechanism zflow probes deliberately. A Lan Mouse contributor concludes that on lossy networks "there is no way around these types of problem (short of plugging the laptop into corded network)" ([lan-mouse #307](https://github.com/feschber/lan-mouse/issues/307)).
+The reproductions below establish demand, not contracts, but the pattern is consistent. Synergy's vendor documents its lag fix as [switching to an ethernet connection](https://symless.com/synergy/help/fix-lagging-issues-using-ethernet). A Barrier user reports that wireless lag disappears "unless a speedtest is running in the background" ([barrier #1755](https://github.com/debauchee/barrier/issues/1755)), which is the radio-wake mechanism Nidus probes deliberately. A Lan Mouse contributor concludes that on lossy networks "there is no way around these types of problem (short of plugging the laptop into corded network)" ([lan-mouse #307](https://github.com/feschber/lan-mouse/issues/307)).
 
 Interactive-input transport over lossy links has decades of working practice in games: [Quake 3's redundant unacked sends](https://fabiensanglard.net/quake3/network.php), [GGPO's per-packet input history](https://www.ggpo.net/), and [Source's interpolation delay](https://developer.valvesoftware.com/wiki/Source_Multiplayer_Networking). No software KVM in the table applies any of it. That gap is the product.
 
-zflow's differentiators are bounded receiver-side state recovery, cumulative motion over unreliable delivery, measured playout, pre-login Linux injection, and explicit platform capability gates.
+Nidus's differentiators are bounded receiver-side state recovery, cumulative motion over unreliable delivery, measured playout, pre-login Linux injection, and explicit platform capability gates.
 
 ### Reuse gate
 
-Before zflow writes Linux and macOS backends from zero, one bounded spike MUST adapt the zflow event model to Lan Mouse's input-event, input-capture, and input-emulation crates. The result must record:
+Before Nidus writes Linux and macOS backends from zero, one bounded spike MUST adapt the Nidus event model to Lan Mouse's input-event, input-capture, and input-emulation crates. The result must record:
 
 - API and lifecycle fit;
 - missing greeter, ownership, gesture, and failure semantics;
 - maintenance cost against an independent backend;
-- GPL-3.0 compatibility with zflow's chosen license.
+- GPL-3.0 compatibility with Nidus's chosen license.
 
-The team will reuse code only after choosing a compatible license. It may still keep zflow as a separate product and protocol.
+The team will reuse code only after choosing a compatible license. It may still keep Nidus as a separate product and protocol.
 
 ## Architecture
 
-zflow separates system authority, session integration, and the pure protocol state machine.
+Nidus separates system authority, session integration, and the pure protocol state machine.
 
 ~~~~text
                     authenticated QUIC
        ┌─────────────────────────────────────────┐
        │                                         │
 ┌──────▼─────────────────┐             ┌─────────▼──────────────┐
-│ zflowd                 │             │ zflowd                 │
+│ nidd                 │             │ nidd                 │
 │                        │             │                        │
 │ Linux peer/session     │             │ macOS peer/session     │
 │ transport and probes   │             │ transport and probes   │
@@ -148,7 +148,7 @@ zflow separates system authority, session integration, and the pure protocol sta
 └──────────▲─────────────┘             └──────────▲─────────────┘
            │ authenticated local IPC              │
 ┌──────────▼─────────────┐             ┌──────────▼─────────────┐
-│ Linux zflow-session    │             │ macOS session agent    │
+│ Linux nid-session    │             │ macOS session agent    │
 │                        │             │                        │
 │ geometry and UI        │             │ WindowServer capture   │
 │ portal/EIS bridge      │             │ WindowServer posting   │
@@ -162,16 +162,16 @@ The implementation SHOULD begin as one Rust workspace with the fewest crate boun
 
 ## Input ownership
 
-On Linux, physical devices stay on their normal kernel path while zflow is idle. zflowd monitors the configured capture set read-only to detect the activation chord and to track key state; monitoring never blocks, delays, or alters local delivery.
+On Linux, physical devices stay on their normal kernel path while Nidus is idle. nidd monitors the configured capture set read-only to detect the activation chord and to track key state; monitoring never blocks, delays, or alters local delivery.
 
 Each input source follows four routing states:
 
 1. **Idle**: no grabs exist. Local input flows normally. A daemon crash, restart, or package upgrade in this state cannot affect local input, and a restarted daemon is immediately fully functional.
-2. **Arming**: zflow has selected and authenticated a peer and an activation was requested (hotkey chord, or a portal edge event). For the hotkey path, zflowd waits until every key and button across the capture set is neutral (verified through EVIOCGKEY and tracked state), then takes EVIOCGRAB on every node in the set, all or none. EBUSY or any failure releases acquired grabs and returns to Idle with a diagnostic. One exception: with no configured devices the set is every keyboard, mouse and touchpad, and a node another program already grabbed (EBUSY) is skipped and never released, since it was never zflow's. A remapper such as keyd holds its source that way and re-emits on a virtual node, which zflow grabs instead. Arming then succeeds if at least one node was grabbed; any other failure still releases the whole set. A touchpad holds BTN_TOUCH and BTN_TOOL_* while a finger rests on it; those are not presses, so a finger on the pad, as in an edge push made with it, does not hold arming back. Pressing a clickpad does.
+2. **Arming**: Nidus has selected and authenticated a peer and an activation was requested (hotkey chord, or a portal edge event). For the hotkey path, nidd waits until every key and button across the capture set is neutral (verified through EVIOCGKEY and tracked state), then takes EVIOCGRAB on every node in the set, all or none. EBUSY or any failure releases acquired grabs and returns to Idle with a diagnostic. One exception: with no configured devices the set is every keyboard, mouse and touchpad, and a node another program already grabbed (EBUSY) is skipped and never released, since it was never Nidus's. A remapper such as keyd holds its source that way and re-emits on a virtual node, which Nidus grabs instead. Arming then succeeds if at least one node was grabbed; any other failure still releases the whole set. A touchpad holds BTN_TOUCH and BTN_TOOL_* while a finger rests on it; those are not presses, so a finger on the pad, as in an edge push made with it, does not hold arming back. Pressing a clickpad does.
 3. **Remote**: grabbed physical events serialize to the peer. The local escape chord works without network cooperation because the daemon reads every event.
-4. **Releasing**: zflow queues a terminal state when the connection remains live, ungrabs the set at a complete SYN_REPORT boundary, and the physical devices return to normal kernel consumers. The receiver cleans up through that terminal state or its lease and lifecycle rules.
+4. **Releasing**: Nidus queues a terminal state when the connection remains live, ungrabs the set at a complete SYN_REPORT boundary, and the physical devices return to normal kernel consumers. The receiver cleans up through that terminal state or its lease and lifecycle rules.
 
-**Edge crossings on GNOME**: the GNOME extension places a barrier on each outer edge that the layout connects to a paired computer. A push against one makes zflowd prepare that peer's desktop at the matching entry point, then arm exactly as for the chord, and poll the peer until the pointer leaves through one of the peer's exits. When that exit leads home, it puts the pointer at the matching point here, gives input back and finishes the handoff. The chord still activates without preparing the peer. With "Pause at edges" on (`[switching] pause_at_edges`), a push crosses only after the pointer rests 250 ms against the barrier, and leaving the barrier first cancels it. While another computer holds this desktop for a crossing, these barriers are down: Mutter runs a warp through barriers like any motion, and one the pointer rests on pins the entry to the edge. The extension takes them down before it places the pointer, puts the exit barriers up once the pointer is in, and puts its own back when the handoff ends. While this computer sends, the extension hides the pointer and the desktop agent holds a gnome-session idle inhibitor, because grabbed devices give GNOME no input and it would otherwise lock the screen. Only zflowd can ask for barriers, pointer moves or hiding; these are local agent requests that no input session can carry.
+**Edge crossings on GNOME**: the GNOME extension places a barrier on each outer edge that the layout connects to a paired computer. A push against one makes nidd prepare that peer's desktop at the matching entry point, then arm exactly as for the chord, and poll the peer until the pointer leaves through one of the peer's exits. When that exit leads home, it puts the pointer at the matching point here, gives input back and finishes the handoff. The chord still activates without preparing the peer. With "Pause at edges" on (`[switching] pause_at_edges`), a push crosses only after the pointer rests 250 ms against the barrier, and leaving the barrier first cancels it. While another computer holds this desktop for a crossing, these barriers are down: Mutter runs a warp through barriers like any motion, and one the pointer rests on pins the entry to the edge. The extension takes them down before it places the pointer, puts the exit barriers up once the pointer is in, and puts its own back when the handoff ends. While this computer sends, the extension hides the pointer and the desktop agent holds a gnome-session idle inhibitor, because grabbed devices give GNOME no input and it would otherwise lock the screen. Only nidd can ask for barriers, pointer moves or hiding; these are local agent requests that no input session can carry.
 
 **Exits and hops**: the computer whose input it is, the source, routes every crossing. Prepare lists the exits of the desktop being entered: each stretch of that computer's tiles that the source's layout shows touching another tile, as a monitor, an edge and a range of it. One leads home, back through the edge the pointer came in at, and others may lead home through other edges or on to a third computer that the source trusts, may send to, and has a ready session with. The receiver watches every exit (GNOME with a barrier on each, the Mac and Windows by watching the cursor) and answers a Poll with `exited`: which exit, and where along it. A Poll answers each report once. A Poll after that means the source kept the pointer there, so the receiver forgets the report, and the next push out reports again; a cursor that only rests on an exit's edge has to move off it first. Toward home, the source ends the crossing as above. Toward a third computer, it moves on only while no key or button is held; otherwise it polls again and the pointer stays. Moving on prepares the third computer's desktop at the matching point of its edge, with that computer's own exits, sends Leave to the computer the pointer was on and Enter to the new one with a new activation, sends the source's clipboard along as a crossing does, and finishes the handoff it left. Capture stays on the whole time: Linux keeps its grabs and the runtime stays Remote, and the Mac keeps its event tap. The computers the pointer passes through need not trust each other, since every hop goes through the source. Windows sources list only the ways home for now.
 
@@ -181,7 +181,7 @@ Each input source follows four routing states:
 
 **Decision (2026-08-31)**: the alternative permanent-grab-and-relay design removes this race entirely, but it routes all local input through the daemon at all times, leaves sharing disabled after any daemon restart until the next reboot, and delays new-device sharing to the next boot. The maintainer chose on-demand grabs: the arming leak is bounded and cosmetic, and the operational costs of the alternative are not. Mid-session enrollment becomes baseline behavior as a direct consequence: a device added to the capture-set configuration participates at the next Arming transition.
 
-Portal edge activation performs no evdev grab at all. The compositor diverts input into EIS, which is the sole capture source for a portal-controlled Remote phase. zflowd MUST NOT hold grabs on the same capture set while a portal activation is live, and MUST NOT forward a physical copy in parallel with EIS events.
+Portal edge activation performs no evdev grab at all. The compositor diverts input into EIS, which is the sole capture source for a portal-controlled Remote phase. nidd MUST NOT hold grabs on the same capture set while a portal activation is live, and MUST NOT forward a physical copy in parallel with EIS events.
 
 The service-manager watchdog kills a killable hung daemon within the configured bound; closing the daemon removes its virtual devices and releases any physical grabs, returning the devices to normal kernel consumers. While Idle there is nothing to release.
 
@@ -189,7 +189,7 @@ The service-manager watchdog kills a killable hung daemon within the configured 
 
 ### Versioning and limits
 
-The QUIC ALPN is the only protocol version. Input connections use `zflow/N` and hellos `zflow-hello/N`, both on the input port; any change to the wire format bumps them, so a peer on another version fails the TLS handshake and reports a version mismatch. Messages carry no version field.
+The QUIC ALPN is the only protocol version. Input connections use `nid/N` and hellos `nid-hello/N`, both on the input port; any change to the wire format bumps them, so a peer on another version fails the TLS handshake and reports a version mismatch. Messages carry no version field.
 
 Each input-session message names its family and carries the session epoch, transport generation, and activation identifier. Control and motion messages add their channel-specific sequences. A hello is the one message computers trade before either trusts the other; it travels on a connection of its own and carries no session fields.
 
@@ -203,7 +203,7 @@ Payloads are the core model types in postcard behind a three-byte header (magic 
 
 ### Shared layout
 
-Every paired computer keeps one arrangement of all their desktops. Tiles are keyed by key fingerprint, because each computer names the others differently, and hold at most 16 computers so one desktop message carries the whole layout. Each edit raises the layout's version and records its editor's fingerprint; the higher (version, editor) wins, so both ends keep the same layout without a coordinator. A computer sends its layout when a session starts and after each change, keeps a newer one it receives, passes it on to its other peers, and answers an older one with its own. A computer shows and crosses only to computers it trusts, and computes its own crossing edges from its own tile. It keeps the other tiles where its peers put them, so an edit here does not move a computer it cannot show; a tile its edit covers is left out, since the person could not see it. A tile adds trust only through an introduction (see Arrange to pair). A computer a person places gets its tile where it was dropped, snapped to an edge within reach, as a new version from the computer it was placed on. One that joined through the pairing window or `zflow trust`, or was added to the configuration by hand, gets a tile beside the tile of the computer that added it, to the right, left, below or above, whichever is free. A computer that adopts a layout without its own tile adds it beside the first tile, at its own desktop's size.
+Every paired computer keeps one arrangement of all their desktops. Tiles are keyed by key fingerprint, because each computer names the others differently, and hold at most 16 computers so one desktop message carries the whole layout. Each edit raises the layout's version and records its editor's fingerprint; the higher (version, editor) wins, so both ends keep the same layout without a coordinator. A computer sends its layout when a session starts and after each change, keeps a newer one it receives, passes it on to its other peers, and answers an older one with its own. A computer shows and crosses only to computers it trusts, and computes its own crossing edges from its own tile. It keeps the other tiles where its peers put them, so an edit here does not move a computer it cannot show; a tile its edit covers is left out, since the person could not see it. A tile adds trust only through an introduction (see Arrange to pair). A computer a person places gets its tile where it was dropped, snapped to an edge within reach, as a new version from the computer it was placed on. One that joined through the pairing window or `nid trust`, or was added to the configuration by hand, gets a tile beside the tile of the computer that added it, to the right, left, below or above, whichever is free. A computer that adopts a layout without its own tile adds it beside the first tile, at its own desktop's size.
 
 Authenticated session negotiation selects the maximum datagram size, input capabilities, pointer units, scroll fields, contact limit, receiver lease, and checkpoint bound. A required capability mismatch prevents activation.
 
@@ -224,7 +224,7 @@ The receiver MUST release state from the prior epoch before accepting a new epoc
 | Lens | one bidirectional QUIC stream per lens, below the control stream's priority | the viewer's moves, acknowledgements, buttons, keys, scroll and copies; the viewed computer's tile packets |
 | Bulk | separate best-effort QUIC connection and socket | file data after v1 |
 
-Input control MUST NOT share a stream with clipboard or file data. If zflow applies a socket service class, bulk traffic MUST use an unmarked endpoint.
+Input control MUST NOT share a stream with clipboard or file data. If Nidus applies a socket service class, bulk traffic MUST use an unmarked endpoint.
 
 ### Clipboard
 
@@ -234,7 +234,7 @@ The clipboard goes with the pointer and moves at no other time. The computer the
 
 A lens shows another computer's screen in a circle around this computer's pointer, live and pixel exact, so a person can read, click, select and copy there without crossing over. The viewer opens one bidirectional stream on the input connection, prefaced `zflow-lens\0` and sent below the control stream's priority; either end of a connection may open one. Messages are the `Lens` family behind a four-byte length, and a `Frame` is followed by its tile packet the same way. The viewed computer refuses a lens with a reason unless its sharing is on and the viewer's peer record has `share_screen`, off by default, and it serves one lens at a time. Only a GNOME computer can be viewed for now, and only from a Mac.
 
-The viewed computer records one monitor, the primary, through a Mutter remote desktop session in the desktop agent, which owns the session bus; zflowd checks permission and relays the stream to the agent without reading it. Frames arrive over PipeWire in shared memory with Mutter's damage rectangles. Nothing is copied: the newest buffer stays out of the stream while the encoder reads it in place, and goes back to Mutter when a newer frame arrives. Damage limits which tiles are compared. The encoder cuts the desktop into 64×64 tiles and keeps the pixels behind what the viewer shows, so it sends a tile only when those differ. A tile packet is zstd-compressed records, each a tile id, a level and its pixels; the decoder MUST check a whole packet before changing any pixel.
+The viewed computer records one monitor, the primary, through a Mutter remote desktop session in the desktop agent, which owns the session bus; nidd checks permission and relays the stream to the agent without reading it. Frames arrive over PipeWire in shared memory with Mutter's damage rectangles. Nothing is copied: the newest buffer stays out of the stream while the encoder reads it in place, and goes back to Mutter when a newer frame arrives. Damage limits which tiles are compared. The encoder cuts the desktop into 64×64 tiles and keeps the pixels behind what the viewer shows, so it sends a tile only when those differ. A tile packet is zstd-compressed records, each a tile id, a level and its pixels; the decoder MUST check a whole packet before changing any pixel.
 
 The viewer acknowledges every frame, and the viewed computer keeps about two round trips of data unacknowledged, sized from the delivery rate the acknowledgements show. It never queues more: whatever waits merges into the next frame, since the encoder diffs against what the viewer has. Each frame spends that budget in order:
 
@@ -382,13 +382,13 @@ A Linux source sends raw touchpad contacts only when the session negotiated touc
 - A clickpad press clicks by the fingers on the pad, as libinput's clickfinger method: one is left, two are right, three are middle. Two fingers more than 40 mm apart across or 30 mm down are a finger and a resting thumb, so left. The button that went down is the one that comes up. While the pad is pressed, the finger that moves drives the pointer instead of scrolling.
 - A tap clicks when every finger lifts within 180 ms of the first landing and none travelled more than 1.3 mm: one finger is left, two right, three middle. A press cancels it. There is no tap-and-drag.
 - Contacts the kernel marks as palms (MT_TOOL_PALM) are ignored. Three or more fingers, counted by BTN_TOOL_* even past the pad's slots, move and scroll nothing.
-- Tap to click and natural scrolling follow GNOME's defaults. zflowd runs without a session bus and does not read the user's GNOME touchpad settings yet.
+- Tap to click and natural scrolling follow GNOME's defaults. nidd runs without a session bus and does not read the user's GNOME touchpad settings yet.
 
 ## Transport and path management
 
 ### QUIC
 
-zflow uses QUIC through [Quinn](https://github.com/quinn-rs/quinn) for the first prototype. QUIC supplies TLS 1.3, reliable streams, unreliable datagrams, congestion control, and standard connection lifecycle.
+Nidus uses QUIC through [Quinn](https://github.com/quinn-rs/quinn) for the first prototype. QUIC supplies TLS 1.3, reliable streams, unreliable datagrams, congestion control, and standard connection lifecycle.
 
 [RFC 9221](https://www.rfc-editor.org/rfc/rfc9221.html) requires QUIC datagrams to follow congestion control. Low average bitrate does not bypass congestion, pacing, shared packet loss, or a reduced congestion window.
 
@@ -406,7 +406,7 @@ Raw UDP plus a custom reliability and cryptographic layer is not a planned fallb
 
 QUIC v1 supports address validation and constrained connection migration. It does not provide the proposed arbitrary multipath system. See [RFC 9000 connection migration](https://www.rfc-editor.org/rfc/rfc9000.html#section-9), [RFC 9308](https://www.rfc-editor.org/rfc/rfc9308.html), and Quinn's [Endpoint rebind API](https://docs.rs/quinn/latest/quinn/struct.Endpoint.html#method.rebind).
 
-zflow v1 uses application-level candidate racing:
+Nidus v1 uses application-level candidate racing:
 
 1. Discovery yields candidate addresses.
 2. Each local candidate gets an Endpoint and UDP socket bound to that address or interface.
@@ -430,7 +430,7 @@ SessionTakeover names the prior generation, proposed next generation, random pro
 5. rejects traffic from older generations;
 6. acknowledges the takeover.
 
-The user may plug in Ethernet or Thunderbolt mid-session. zflow may move the session after it authenticates and validates a new connection. The product does not promise a single QUIC connection that “jumps” between arbitrary address pairs.
+The user may plug in Ethernet or Thunderbolt mid-session. Nidus may move the session after it authenticates and validates a new connection. The product does not promise a single QUIC connection that “jumps” between arbitrary address pairs.
 
 ### Discovery
 
@@ -444,7 +444,7 @@ Known peers may derive rotating discovery tokens. Discovery loss cannot revoke o
 
 ### Application probes
 
-Quinn's keepalive timer prevents idle timeout after inactivity; it does not create a fixed bilateral sampling stream. Input sessions send one after 5 s without other traffic and time out after 15 s, so a source can keep its session open between crossings; that rate is far below any radio-wake cadence. zflow uses an explicit authenticated Probe and ProbeEcho datagram when it needs RTT, path health, or a radio-wake cadence. See [Quinn TransportConfig](https://docs.rs/quinn/latest/quinn/struct.TransportConfig.html#method.keep_alive_interval).
+Quinn's keepalive timer prevents idle timeout after inactivity; it does not create a fixed bilateral sampling stream. Input sessions send one after 5 s without other traffic and time out after 15 s, so a source can keep its session open between crossings; that rate is far below any radio-wake cadence. Nidus uses an explicit authenticated Probe and ProbeEcho datagram when it needs RTT, path health, or a radio-wake cadence. See [Quinn TransportConfig](https://docs.rs/quinn/latest/quinn/struct.TransportConfig.html#method.keep_alive_interval).
 
 The first radio experiment compares:
 
@@ -457,17 +457,17 @@ A 20-byte payload at 50 Hz consumes 8 kbit/s per direction before QUIC, UDP, IP,
 
 The selected cadence MAY vary by path and platform. It runs only while a remote-input activation is live and stops on release.
 
-Measured 2026-08-31 (spikes/a-radio/RESULT.md): on the reference link, keepalive DEGRADED latency in BOTH directions: wired-host-originated (monotonic with rate, both arm orders) and mac-originated (100 Hz made jitter worse and unstable). Traffic-based radio wake is dead on this evidence; a peer MUST NOT send wake traffic on behalf of the other side, and zflow ships no keepalive-as-treatment without a link-specific measurement proving it helps. Probes remain for RTT/path measurement only.
+Measured 2026-08-31 (spikes/a-radio/RESULT.md): on the reference link, keepalive DEGRADED latency in BOTH directions: wired-host-originated (monotonic with rate, both arm orders) and mac-originated (100 Hz made jitter worse and unstable). Traffic-based radio wake is dead on this evidence; a peer MUST NOT send wake traffic on behalf of the other side, and Nidus ships no keepalive-as-treatment without a link-specific measurement proving it helps. Probes remain for RTT/path measurement only.
 
 The same session identified the dominant jitter source: **AWDL**. `ifconfig awdl0 down` on the mac collapsed p80 delay variation 40x (to 1-3 ms) and stopped frame loss entirely, with the adaptive playout delay self-settling from 35 ms to 3 ms. The macOS radio layer is therefore **AWDL suppression**: the root daemon MAY hold awdl0 down while a remote-input session is active, strictly opt-in with a clear consent flow, restoring it on session end, with the documented cost that AirDrop, Handoff, and Universal Control are unavailable while suppressed. Diagnostics detect the AWDL stall signature and suggest enabling this. macOS may re-enable awdl0 on its own; the daemon re-applies while the session stays active.
 
 ### Service class
 
-zflow starts with best-effort traffic. It tests a standards-aligned real-time interactive class, including DSCP CS4 / WMM AC_VI, against best effort and voice treatment. [RFC 8325](https://www.rfc-editor.org/rfc/rfc8325.html#section-4.2.4) recommends mapping real-time interactive CS4 to UP4/AC_VI and voice EF to UP6/AC_VO; host, AP maps, and network policy may produce different treatment.
+Nidus starts with best-effort traffic. It tests a standards-aligned real-time interactive class, including DSCP CS4 / WMM AC_VI, against best effort and voice treatment. [RFC 8325](https://www.rfc-editor.org/rfc/rfc8325.html#section-4.2.4) recommends mapping real-time interactive CS4 to UP4/AC_VI and voice EF to UP6/AC_VO; host, AP maps, and network policy may produce different treatment.
 
 Apple says network service types describe traffic characteristics and warns that marking bulk traffic as voice can cause loss in smaller queues. See [QA1934](https://developer.apple.com/library/archive/qa/qa1934/_index.html) and the current [XNU service-type definitions](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/sys/socket.h#L218-L308). Linux wireless mapping depends on socket fields, qdisc policy, driver behavior, and AP mapping; see the [Linux wireless QoS documentation](https://wireless.docs.kernel.org/en/latest/en/developers/documentation/qos.html).
 
-A successful setsockopt call does not prove over-the-air priority. The experiment MUST capture DSCP plus radiotap user priority/access category in both directions and test concurrent bulk traffic. zflow ships QoS marking only on combinations where the capture and latency data show a benefit without starvation or excess loss.
+A successful setsockopt call does not prove over-the-air priority. The experiment MUST capture DSCP plus radiotap user priority/access category in both directions and test concurrent bulk traffic. Nidus ships QoS marking only on combinations where the capture and latency data show a benefit without starvation or excess loss.
 
 ## Receiver playout
 
@@ -485,7 +485,7 @@ The adaptive experiment compares a fixed delay with a delay based on a recent pa
 
 Field results so far (2026-08-31, spikes/b-smoothing/RESULT.md): adaptive with velocity-scaled catch-up beat raw and fixed at every tuning in a live hand test on a hostile link; the percentile and delay cap MUST be runtime-tunable (p80/35 ms beat p95/80 ms untreated); and on a treated link the delay self-settled to 3 ms, so a correctly adapting estimator needs no per-link configuration.
 
-The [1 Euro filter](https://gery.casiez.net/1euro/) remains an optional clock-estimator experiment. zflow adds it only if trace replay improves residual clock error or catch-up behavior against a simpler affine fit.
+The [1 Euro filter](https://gery.casiez.net/1euro/) remains an optional clock-estimator experiment. Nidus adds it only if trace replay improves residual clock error or catch-up behavior against a simpler affine fit.
 
 ## Linux
 
@@ -493,15 +493,15 @@ The [1 Euro filter](https://gery.casiez.net/1euro/) remains an optional clock-es
 
 Linux uses evdev for physical capture and uinput for remote injection. EVIOCGRAB makes one evdev handle the sole event recipient for a device; closing the handle releases the grab. See the [kernel input subsystem documentation](https://docs.kernel.org/driver-api/input.html). The kernel delivers uinput events to userspace and in-kernel consumers; see the [uinput documentation](https://docs.kernel.org/input/uinput.html).
 
-zflowd grabs the configured capture set on demand at the Arming transition and releases it when Remote ends, per the Input ownership section. While Idle it holds no grabs and reads the set only to detect the activation chord and track state. This keeps the daemon out of the local input path, keeps upgrades and restarts harmless, and lets a hotplugged device join the set without a reboot; the cost is the bounded arming leak, measured by the backbone matrix.
+nidd grabs the configured capture set on demand at the Arming transition and releases it when Remote ends, per the Input ownership section. While Idle it holds no grabs and reads the set only to detect the activation chord and track state. This keeps the daemon out of the local input path, keeps upgrades and restarts harmless, and lets a hotplugged device join the set without a reboot; the cost is the bounded arming leak, measured by the backbone matrix.
 
-zflowd runs as a dedicated service account unless a platform test proves that root is required. The account may read keyboard and pointer evdev nodes and open /dev/uinput. Membership in the broad input group grants keylogger-level access, so installers MUST NOT add interactive users to it.
+nidd runs as a dedicated service account unless a platform test proves that root is required. The account may read keyboard and pointer evdev nodes and open /dev/uinput. Membership in the broad input group grants keylogger-level access, so installers MUST NOT add interactive users to it.
 
-The installer ensures that uinput exists as a built-in driver or loaded module, grants zflowd write access to /dev/uinput, read access to every keyboard and pointer evdev node, and write access only to nodes that need negotiated LED feedback. It verifies those permissions after a cold boot.
+The installer ensures that uinput exists as a built-in driver or loaded module, grants nidd write access to /dev/uinput, read access to every keyboard and pointer evdev node, and write access only to nodes that need negotiated LED feedback. It verifies those permissions after a cold boot.
 
-The service starts from multi-user.target and retries network discovery without blocking the display manager on network-online.target. When pre-login support is enabled, zflowd orders before the enabled display-manager unit and uses Type=notify. It sends READY=1 only after /dev/uinput is accessible, the baseline virtual devices exist, and their matching udev add events expose the required properties, so a pre-login client can receive input before the greeter appears. Network availability does not delay readiness. A daemon start at any later time is equally functional; no state depends on starting before the session.
+The service starts from multi-user.target and retries network discovery without blocking the display manager on network-online.target. When pre-login support is enabled, nidd orders before the enabled display-manager unit and uses Type=notify. It sends READY=1 only after /dev/uinput is accessible, the baseline virtual devices exist, and their matching udev add events expose the required properties, so a pre-login client can receive input before the greeter appears. Network availability does not delay readiness. A daemon start at any later time is equally functional; no state depends on starting before the session.
 
-zflowd uses WatchdogSec, WatchdogSignal=SIGKILL, KillMode=control-group, and Restart=on-failure. The capture event loop emits watchdog notifications; a separate liveness thread MUST NOT mask a stalled input loop. Capture descriptors use O_CLOEXEC and helpers never inherit them. The default local recovery bound for a killable userspace hang while devices are grabbed is two seconds, including watchdog expiry. An uninterruptible kernel task or service-manager failure can exceed that bound. While Idle a hang affects nothing local. See the [systemd service documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html).
+nidd uses WatchdogSec, WatchdogSignal=SIGKILL, KillMode=control-group, and Restart=on-failure. The capture event loop emits watchdog notifications; a separate liveness thread MUST NOT mask a stalled input loop. Capture descriptors use O_CLOEXEC and helpers never inherit them. The default local recovery bound for a killable userspace hang while devices are grabbed is two seconds, including watchdog expiry. An uninterruptible kernel task or service-manager failure can exceed that bound. While Idle a hang affects nothing local. See the [systemd service documentation](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html).
 
 Service hardening includes NoNewPrivileges, a protected state directory, filesystem restrictions, AF_UNIX, AF_INET, and AF_INET6. It retains AF_NETLINK when libudev monitors hotplug. PrivateDevices=yes is forbidden because it hides input nodes.
 
@@ -509,11 +509,11 @@ The effective daemon account owns its identity keys in a mode 0700 state directo
 
 ### Virtual devices
 
-The baseline creates a remote-injection keyboard and pointer pair. The touchpad remains behind an experiment flag. No local-relay devices exist; local input never passes through zflow.
+The baseline creates a remote-injection keyboard and pointer pair. The touchpad remains behind an experiment flag. No local-relay devices exist; local input never passes through Nidus.
 
 When available, Linux touch reports carry receiver-mapped capture timestamps in CLOCK_MONOTONIC, including touch state from reliable anchors. The backend bounds timestamps by its previous report and the current time; unstamped begins and emergency cleanup use the current time. Delivery never waits for this metadata. This preserves capture intervals through network bursts without inventing intermediate contacts. Kernel timestamp limits still apply; see [uinput timestamp validation](https://github.com/torvalds/linux/blob/v7.0/drivers/input/misc/uinput.c#L615).
 
-Each uinput device has stable zflow vendor, product, role, name, and physical identifiers. evdev monitoring and capture filters exclude those identifiers to prevent loops, and portal/EIS source capture MUST never capture a zflow remote-injection device.
+Each uinput device has stable Nidus vendor, product, role, name, and physical identifiers. evdev monitoring and capture filters exclude those identifiers to prevent loops, and portal/EIS source capture MUST never capture a Nidus remote-injection device.
 
 Before UI_DEV_CREATE, each virtual device advertises every event code supported by its negotiated HID mapping. The session drops and counts a key or button usage the virtual devices do not advertise before it reaches the backend. The receiver still tracks it in held state, so control ordering and releases stay in step with the sender. A backend I/O failure still stops the descriptor-owning runtime so device destruction can clear uncertain kernel state. A capability change requires device recreation while input is neutral. The pointer advertises REL_X, REL_Y, required buttons, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES, and matching legacy wheel events required by the [Linux event-code contract](https://docs.kernel.org/input/event-codes.html).
 
@@ -529,7 +529,7 @@ libinput requires udev classification and device-specific properties; a uinput n
 
 ### Capture
 
-A configured capture set is all-or-none: at Arming, zflowd opens and grabs every event node in the configured logical set, and EVIOCGRAB returning EBUSY or any setup failure releases the whole set and returns to Idle with a diagnostic. With no configured devices, zflowd captures every keyboard, mouse and touchpad except its own virtual devices, and skips a node that returns EBUSY, as the Input ownership section describes.
+A configured capture set is all-or-none: at Arming, nidd opens and grabs every event node in the configured logical set, and EVIOCGRAB returning EBUSY or any setup failure releases the whole set and returns to Idle with a diagnostic. With no configured devices, nidd captures every keyboard, mouse and touchpad except its own virtual devices, and skips a node that returns EBUSY, as the Input ownership section describes.
 
 The daemon handles:
 
@@ -547,10 +547,10 @@ A process crash closes physical and virtual descriptors. The kernel releases gra
 
 ### Session helper and portals
 
-The current GNOME integration is `zflow desktop-agent`, connected to the existing
+The current GNOME integration is `nid desktop-agent`, connected to the existing
 desktop API with Unix credential checks. The portal design below is future work.
 
-zflow-session owns desktop geometry, consent UI, portal integration, and the future configuration UI. It authenticates to zflowd through filesystem mode and SO_PEERCRED.
+nid-session owns desktop geometry, consent UI, portal integration, and the future configuration UI. It authenticates to nidd through filesystem mode and SO_PEERCRED.
 
 For portal interface version 2 or newer, the freedesktop InputCapture lifecycle is:
 
@@ -559,29 +559,29 @@ CreateSession2 -> Start -> ConnectToEIS -> GetZones
 -> SetPointerBarriers -> Enable -> Activated / EIS events
 ~~~~
 
-During a portal activation, zflow-session requests keyboard and pointer capabilities and uses EIS as the sole remote capture source. It forwards each supported EIS event to zflowd and releases the portal when remote ownership ends. The compositor captures physical input directly; zflowd MUST NOT grab or forward the physical devices in parallel with a live portal activation. See the [InputCapture portal specification](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.InputCapture.html).
+During a portal activation, nid-session requests keyboard and pointer capabilities and uses EIS as the sole remote capture source. It forwards each supported EIS event to nidd and releases the portal when remote ownership ends. The compositor captures physical input directly; nidd MUST NOT grab or forward the physical devices in parallel with a live portal activation. See the [InputCapture portal specification](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.InputCapture.html).
 
-zflow-session binds each portal session to its authenticated daemon IPC connection and activation epoch. On daemon EOF, epoch replacement, heartbeat expiry, or authentication failure, it stops forwarding and closes EIS plus the portal session. It never reconnects an old activation. The session helper runs under a user-service watchdog whose event/IPC loop sends watchdog notifications; killing a wedged helper closes its D-Bus and EIS ownership. Portal support uses the same two-second local recovery bound as zflowd.
+nid-session binds each portal session to its authenticated daemon IPC connection and activation epoch. On daemon EOF, epoch replacement, heartbeat expiry, or authentication failure, it stops forwarding and closes EIS plus the portal session. It never reconnects an old activation. The session helper runs under a user-service watchdog whose event/IPC loop sends watchdog notifications; killing a wedged helper closes its D-Bus and EIS ownership. Portal support uses the same two-second local recovery bound as nidd.
 
-The v1 portal lifecycle remains disabled in the first implementation. zflow disables edge switching with a clear diagnostic when the public interface version is below 2.
+The v1 portal lifecycle remains disabled in the first implementation. Nidus disables edge switching with a clear diagnostic when the public interface version is below 2.
 
 Portal barriers cover the outside boundary of the union of exposed zones. They cannot place a remote screen between two touching local monitors. ZonesChanged requires a new zone query and new barriers.
 
-GNOME added InputCapture support in [GNOME 45](https://release.gnome.org/45/). KDE announced portal support for [Plasma 6.1](https://kde.org/announcements/plasma/6/6.0.90/). zflow checks the public portal interface version, SupportedCapabilities, session capabilities, EIS device capabilities, and every method result. Backend package and version information serves diagnostics only.
+GNOME added InputCapture support in [GNOME 45](https://release.gnome.org/45/). KDE announced portal support for [Plasma 6.1](https://kde.org/announcements/plasma/6/6.0.90/). Nidus checks the public portal interface version, SupportedCapabilities, session capabilities, EIS device capabilities, and every method result. Backend package and version information serves diagnostics only.
 
-[xdg-desktop-portal-wlr](https://github.com/emersion/xdg-desktop-portal-wlr) does not expose InputCapture in the audited snapshot. A transparent layer-shell edge surface receives normal pointer events but has no protocol guarantee of a global pointer barrier. See [wlr-layer-shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1). zflow labels layer-surface switching experimental until the crossing matrix passes.
+[xdg-desktop-portal-wlr](https://github.com/emersion/xdg-desktop-portal-wlr) does not expose InputCapture in the audited snapshot. A transparent layer-shell edge surface receives normal pointer events but has no protocol guarantee of a global pointer barrier. See [wlr-layer-shell](https://wayland.app/protocols/wlr-layer-shell-unstable-v1). Nidus labels layer-surface switching experimental until the crossing matrix passes.
 
 ### Greeter and lock behavior
 
-A Linux target can inject through uinput without a user session after zflowd and its virtual devices start.
+A Linux target can inject through uinput without a user session after nidd and its virtual devices start.
 
-For this specification, allow_prelogin_input gates injection whenever zflowd cannot establish that the active seat has an unlocked, authenticated user session. This includes graphical greeters, lock screens, unauthenticated VTs, and unknown session state. An authenticated active VT follows normal-session permission. Unknown or contradictory login/lock state fails closed.
+For this specification, allow_prelogin_input gates injection whenever nidd cannot establish that the active seat has an unlocked, authenticated user session. This includes graphical greeters, lock screens, unauthenticated VTs, and unknown session state. An authenticated active VT follows normal-session permission. Unknown or contradictory login/lock state fails closed.
 
 A Linux source at a greeter has no portal helper. It uses the configured local hotkey and the normal Arming transition.
 
-zflow does not rely on libei as its system backbone. libei defines a Unix-socket protocol and may support future session paths; no standard greeter-wide EIS service exists. The audited libei documentation reports 1.6.0 while gesture APIs carry “Since 1.7” markers, and the author described 1.7 as forthcoming in July 2026. See the [libei documentation](https://libinput.pages.freedesktop.org/libei/) and [gesture announcement](https://who-t.blogspot.com/2026/07/libei-and-gesture-events.html).
+Nidus does not rely on libei as its system backbone. libei defines a Unix-socket protocol and may support future session paths; no standard greeter-wide EIS service exists. The audited libei documentation reports 1.6.0 while gesture APIs carry “Since 1.7” markers, and the author described 1.7 as forthcoming in July 2026. See the [libei documentation](https://libinput.pages.freedesktop.org/libei/) and [gesture announcement](https://who-t.blogspot.com/2026/07/libei-and-gesture-events.html).
 
-ei_gestures carries recognized gestures rather than raw MT contacts. It cannot replace zflow's target-native raw-contact path.
+ei_gestures carries recognized gestures rather than raw MT contacts. It cannot replace Nidus's target-native raw-contact path.
 
 ## macOS
 
@@ -623,7 +623,7 @@ A root LaunchDaemon owns networking, peer state, console-session arbitration, an
 
 Each agent connection binds to its audit-session identifier, session type, and console UID. Both XPC peers enforce the expected Team ID, signing identifier, and designated requirement through peer code-signing requirements. Exactly one active WindowServer session may receive input. A console-session transition releases old state, advances the session epoch, and rejects stale-agent messages. See Apple's [XPC peer-validation guidance](https://developer.apple.com/forums/thread/681053).
 
-The legacy LaunchAgent plist declares AssociatedBundleIdentifiers for the user-visible zflow app. Permission enrollment occurs in Aqua. A LoginWindow agent never attempts to prompt and remains unsupported unless the same final-path responsible-code identity retains its grant after logout and reboot. See Apple's [helper attribution guidance](https://developer.apple.com/documentation/servicemanagement/updating-helper-executables-from-earlier-versions-of-macos) and [TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+The legacy LaunchAgent plist declares AssociatedBundleIdentifiers for the user-visible Nidus app. Permission enrollment occurs in Aqua. A LoginWindow agent never attempts to prompt and remains unsupported unless the same final-path responsible-code identity retains its grant after logout and reboot. See Apple's [helper attribution guidance](https://developer.apple.com/documentation/servicemanagement/updating-helper-executables-from-earlier-versions-of-macos) and [TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
 
 The CoreHID experiment must name and diagram the exact entitled process before implementation. No CoreHID result applies to the baseline process model until that signed process passes the gate.
 
@@ -633,7 +633,7 @@ LoginWindow target injection remains an experiment until a signed final-path pac
 
 ### Capture
 
-The logged-in baseline uses one CGEvent session tap. For listen-only operation, the agent uses CGPreflightListenEventAccess and CGRequestListenEventAccess. Active filtering and CGEventPost use CGPreflightPostEventAccess and CGRequestPostEventAccess for Accessibility authority. zflow does not require a separate Input Monitoring grant when Accessibility already authorizes listening. An active tap suppresses local events only while zflow owns input.
+The logged-in baseline uses one CGEvent session tap. For listen-only operation, the agent uses CGPreflightListenEventAccess and CGRequestListenEventAccess. Active filtering and CGEventPost use CGPreflightPostEventAccess and CGRequestPostEventAccess for Accessibility authority. Nidus does not require a separate Input Monitoring grant when Accessibility already authorizes listening. An active tap suppresses local events only while Nidus owns input.
 
 The adapter:
 
@@ -648,7 +648,7 @@ The adapter:
 
 Apple's [CGEvent tap API](https://developer.apple.com/documentation/coregraphics/cgevent/tapcreate%28tap%3Aplace%3Aoptions%3Aeventsofinterest%3Acallback%3Auserinfo%3A%29) and [CGEventField](https://developer.apple.com/documentation/coregraphics/cgeventfield) define the public surface.
 
-Secure Event Input protects keyboard entry from interceptors. zflow treats that condition as “keyboard capture unavailable,” releases forwarded keys, and shows the reason. It tests pointer and scroll behavior as separate event classes. See [TN2150](https://developer.apple.com/library/archive/technotes/tn2150/_index.html).
+Secure Event Input protects keyboard entry from interceptors. Nidus treats that condition as “keyboard capture unavailable,” releases forwarded keys, and shows the reason. It tests pointer and scroll behavior as separate event classes. See [TN2150](https://developer.apple.com/library/archive/technotes/tn2150/_index.html).
 
 ### Injection
 
@@ -661,7 +661,7 @@ Logged-in v1 uses CGEventPost for keyboard, pointer, and scroll. The Mac app pos
 - macOS does not repeat a posted key, so the receiver repeats the last pressed key at this Mac's repeat rate.
 - Caps Lock flips the real lock through `IOHIDSetModifierLockState`; a posted keycode 57 only sets the flag.
 - Each peer has a keyboard mode. Mac shortcuts means Ctrl and Cmd trade places on this Mac, except in terminals.
-- A peer may inject when sharing is on, its record may connect and send, Accessibility lets zflow post, and the console session is unlocked. An injecting batch on a locked screen closes the session. Locking the screen while a peer controls this Mac releases its input and closes its session within 250 ms. With "Pause at edges" on, a Mac edge crossing waits until the pointer rests 250 ms against the edge, and leaving the edge first cancels it. After a peer lets go of this Mac, motion from the hand-back is not a push: a push on the edge the pointer rests on counts once the pointer has been still for 200 ms or left the edge, and the Mac does not cross to that peer for 500 ms while it finishes its own crossing. A peer that answers that it is sending its own input cancels the crossing, and sharing stays armed. With clipboard sharing on, the Mac reads the general pasteboard on the main thread, only at the two clipboard triggers and only when macOS allows it without asking. It writes received clips beside an `io.zflow.clip` marker and remembers the change count of its own write, so its own write is never read back as a new copy, and it never sends copies that password managers mark concealed or transient.
+- A peer may inject when sharing is on, its record may connect and send, Accessibility lets Nidus post, and the console session is unlocked. An injecting batch on a locked screen closes the session. Locking the screen while a peer controls this Mac releases its input and closes its session within 250 ms. With "Pause at edges" on, a Mac edge crossing waits until the pointer rests 250 ms against the edge, and leaving the edge first cancels it. After a peer lets go of this Mac, motion from the hand-back is not a push: a push on the edge the pointer rests on counts once the pointer has been still for 200 ms or left the edge, and the Mac does not cross to that peer for 500 ms while it finishes its own crossing. A peer that answers that it is sending its own input cancels the crossing, and sharing stays armed. With clipboard sharing on, the Mac reads the general pasteboard on the main thread, only at the two clipboard triggers and only when macOS allows it without asking. It writes received clips beside an `io.nid.clip` marker and remembers the change count of its own write, so its own write is never read back as a new copy, and it never sends copies that password managers mark concealed or transient.
 - Held input is released when an activation closes, its session or lease ends, the peer is revoked or replaced, the app quits, or the app receives SIGTERM, SIGINT, or SIGHUP. Nothing can release it after SIGKILL of the app.
 - A desktop handoff places the cursor at the requested entry point, reports which exit the pointer leaves through and where, and wakes the display. Taking control also wakes it, since the chord sends no Prepare. With AWDL suppression enabled, the Mac holds an AWDL lease while a peer controls it. The app holds one lease at a time, since the helper grants one: receiving and sending share it, and it goes back a second after the last of them lets go, so control changing hands keeps AWDL down. An AWDL lease that cannot be had, renewed or given back is logged and never fails a crossing; three failures in a row show a "Reduce Wi-Fi lag" warning. Only the escape chord and the person's own switches pause sharing: a failed crossing says why and stays armed.
 
@@ -672,11 +672,11 @@ The real-device experiment has two backends:
 1. CoreHID HIDVirtualDevice on macOS 15+ with Apple's managed com.apple.developer.hid.virtual.device entitlement. The similarly named DriverKit entitlement is defunct for this path. See [CoreHID virtual-device guidance](https://developer.apple.com/documentation/corehid/creatingvirtualdevices), Apple's [current entitlement clarification](https://developer.apple.com/forums/thread/843327), and the [capability request process](https://developer.apple.com/help/account/capabilities/capability-requests).
 2. The version-pinned upstream client for [Karabiner's virtual-HID driver](https://github.com/pqrs-org/Karabiner-DriverKit-VirtualHIDDevice) as an optional installed dependency.
 
-zflow does not claim that either backend works at LoginWindow until the signed secure-field experiment passes. CoreHID may require a small signed Swift helper because its public API uses Swift concurrency.
+Nidus does not claim that either backend works at LoginWindow until the signed secure-field experiment passes. CoreHID may require a small signed Swift helper because its public API uses Swift concurrency.
 
 ### Gestures
 
-macOS exposes no public high-level constructor for systemwide swipe, pinch, or rotate events. A standards-based CoreHID virtual touchpad may trigger native recognition, so zflow treats injection into macOS as an experiment rather than declaring the path impossible.
+macOS exposes no public high-level constructor for systemwide swipe, pinch, or rotate events. A standards-based CoreHID virtual touchpad may trigger native recognition, so Nidus treats injection into macOS as an experiment rather than declaring the path impossible.
 
 Raw contact capture uses the private, reverse-engineered MultitouchSupport.framework. Karabiner demonstrates the access in its [private header](https://github.com/pqrs-org/Karabiner-Elements/blob/main/src/apps/MultitouchExtension/src/MultitouchPrivate.h) and [implementation](https://github.com/pqrs-org/Karabiner-Elements/blob/main/src/apps/MultitouchExtension/src/MultitouchDeviceManager.swift).
 
@@ -686,19 +686,19 @@ Raw contact capture uses the private, reverse-engineered MultitouchSupport.frame
 
 Network.framework can enable Apple-to-Apple peer-to-peer Wi-Fi through includePeerToPeer. Apple does not document the wire protocol for cross-platform use. See [TN3151](https://developer.apple.com/documentation/technotes/tn3151-choosing-the-right-networking-api) and [NWParameters.includePeerToPeer](https://developer.apple.com/documentation/network/nwparameters/includepeertopeer).
 
-This path cannot carry the general Quinn-based Mac-to-Linux transport and cannot request Apple's private realtime mode. zflow does not include it in the baseline.
+This path cannot carry the general Quinn-based Mac-to-Linux transport and cannot request Apple's private realtime mode. Nidus does not include it in the baseline.
 
 ### Distribution and preboot
 
 The macOS package uses Developer ID signing, hardened runtime, and notarization. The team preserves Team ID, bundle identifiers, executable roles, installation paths, entitlements, and designated requirements across upgrades. TCC continuity depends on code identity and designated requirements, not one leaf certificate forever. See Apple's [code-signing identity guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/AboutCS/AboutCS.html) and [code requirement documentation](https://developer.apple.com/documentation/security/applying-code-requirements).
 
-zflow code on the encrypted Data volume cannot run before FileVault unlock. The product describes FileVault preboot as outside its software-input scope.
+Nidus code on the encrypted Data volume cannot run before FileVault unlock. The product describes FileVault preboot as outside its software-input scope.
 
 ## Security
 
 ### Threat model
 
-zflow defends against:
+Nidus defends against:
 
 - an active attacker on the local network during discovery, hellos, placing, and normal use;
 - replayed or reordered application messages;
@@ -708,17 +708,17 @@ zflow defends against:
 - malformed messages, event floods, and state exhaustion;
 - process death while input remains held.
 
-zflow does not defend a machine after its operating system, daemon account, or paired peer identity key has been compromised.
+Nidus does not defend a machine after its operating system, daemon account, or paired peer identity key has been compromised.
 
-The pairing window (below) is trust on first use, which cannot tell the computer a person meant from an attacker that answers first ([RFC 7469](https://www.rfc-editor.org/rfc/rfc7469.html) documents that limitation). An attacker on the local network while a fresh install's window is open, with the computer the person meant switched off or not yet installed, joins in its place. zflow bounds that risk rather than removing it: the window opens once per fresh install, only with a person at the computer, for 10 minutes; it takes one computer, only one it found through mDNS or an address a person added, and only while that computer is the only one it does not know; the computer then says who joined, with its mark and a Forget button; and the computer that joined gets no pre-login permission. An attacker that answers while the real computer is also around makes two strangers, and nothing joins. Outside the window nothing is trusted unless a person places it. Anyone on the local network can say hello and learn a computer's name and key, which TLS already showed, but not its other addresses.
+The pairing window (below) is trust on first use, which cannot tell the computer a person meant from an attacker that answers first ([RFC 7469](https://www.rfc-editor.org/rfc/rfc7469.html) documents that limitation). An attacker on the local network while a fresh install's window is open, with the computer the person meant switched off or not yet installed, joins in its place. Nidus bounds that risk rather than removing it: the window opens once per fresh install, only with a person at the computer, for 10 minutes; it takes one computer, only one it found through mDNS or an address a person added, and only while that computer is the only one it does not know; the computer then says who joined, with its mark and a Forget button; and the computer that joined gets no pre-login permission. An attacker that answers while the real computer is also around makes two strangers, and nothing joins. Outside the window nothing is trusted unless a person places it. Anyone on the local network can say hello and learn a computer's name and key, which TLS already showed, but not its other addresses.
 
 ### Arrange to pair
 
 Each computer creates a long-term identity key and presents it as a raw public key in TLS 1.3 ([RFC 7250](https://www.rfc-editor.org/rfc/rfc7250.html)). A computer trusts another by keeping a record of that key, pinned by SPKI, in its configuration. A record is written when a person places a computer, when a fresh install's pairing window takes one, or through an introduction. Nothing else grants trust, and a record means trust however it got there.
 
-**Finding.** Computers find each other through mDNS (see Discovery) and through addresses a person adds, such as one across Tailscale. Each compatible record whose key is not known yet gets a hello on the input port, at every one of its addresses at once and at most four records at a time, and the computer that answers goes on a shelf under the arrangement with its name, system, version and mark. A record nothing answers at is asked again after 2, 5 and 15 seconds, then every 30 seconds while it is around, since a computer whose Wi-Fi was asleep drops the first packets. A hello is one `Hello` message each way over a `zflow-hello/N` connection: TLS proves the key that sent it, and every field is only the sender's word. A hello names the sender's other addresses, such as Tailscale, VPN or container ones, only to a key it trusts; a stranger learns only the address it reached. A hello connection has no input, clipboard or desktop surface and closes after the exchange. A hello that comes in from loopback or from one of the computer's own addresses is hung up, since a process on this computer sent it. So a computer never says hello to its own record, and leaves its own addresses out of every record it finds, since two computers can share one, such as a container bridge's. Names keep only plain ASCII, and one that reads as "This Mac" or "This computer", what a computer calls its own tile, becomes "Computer", so no tile passes for the computer showing it. A computer answers at most five hellos per IP address in 30 seconds and tracks at most 64 addresses; it keeps at most 64 records and 32 found computers, and a found computer leaves the shelf 60 seconds after its record went away and its last hello. A computer on another zflow version is shown as such and cannot be placed.
+**Finding.** Computers find each other through mDNS (see Discovery) and through addresses a person adds, such as one across Tailscale. Each compatible record whose key is not known yet gets a hello on the input port, at every one of its addresses at once and at most four records at a time, and the computer that answers goes on a shelf under the arrangement with its name, system, version and mark. A record nothing answers at is asked again after 2, 5 and 15 seconds, then every 30 seconds while it is around, since a computer whose Wi-Fi was asleep drops the first packets. A hello is one `Hello` message each way over a `nid-hello/N` connection: TLS proves the key that sent it, and every field is only the sender's word. A hello names the sender's other addresses, such as Tailscale, VPN or container ones, only to a key it trusts; a stranger learns only the address it reached. A hello connection has no input, clipboard or desktop surface and closes after the exchange. A hello that comes in from loopback or from one of the computer's own addresses is hung up, since a process on this computer sent it. So a computer never says hello to its own record, and leaves its own addresses out of every record it finds, since two computers can share one, such as a container bridge's. Names keep only plain ASCII, and one that reads as "This Mac" or "This computer", what a computer calls its own tile, becomes "Computer", so no tile passes for the computer showing it. A computer answers at most five hellos per IP address in 30 seconds and tracks at most 64 addresses; it keeps at most 64 records and 32 found computers, and a found computer leaves the shelf 60 seconds after its record went away and its last hello. A computer on another Nidus version is shown as such and cannot be placed.
 
-**Placing.** A person trusts a found computer by dragging its tile into the arrangement. That writes the record, puts its tile where it was dropped, and lets either computer control the other; pre-login permission stays off. Until the other computer places this one too, it refuses this one's input, and this computer shows it as "Hasn't added this computer yet". On Linux without a desktop, `zflow nearby` lists the found computers and `zflow trust NAME|MARK` places one, through the root-only control socket.
+**Placing.** A person trusts a found computer by dragging its tile into the arrangement. That writes the record, puts its tile where it was dropped, and lets either computer control the other; pre-login permission stays off. Until the other computer places this one too, it refuses this one's input, and this computer shows it as "Hasn't added this computer yet". On Linux without a desktop, `nid nearby` lists the found computers and `nid trust NAME|MARK` places one, through the root-only control socket.
 
 **Marks.** A computer's mark is the first 24 bits of SHA-256(`zflow mark v1` followed by its SPKI), drawn as four colored squares on its tile, on the shelf and on its own screen. It tells two computers with one name apart and lets a person compare two screens. Twenty-four bits do not authenticate a key against an attacker who grinds keys.
 
@@ -729,7 +729,7 @@ Each computer creates a long-term identity key and presents it as a raw public k
 - every compatible record around maps to a known key, so no computer that has not answered could be a second one;
 - its name is its own: one that shares its name with a trusted computer or another stranger is never taken by itself.
 
-The candidate joins once it stayed the candidate for 5 seconds; any change starts that wait again. A second stranger closes the window for good (`rival`), even after it leaves. So does anything turned away because a table was full, before or during the window: a new record past the 64 kept, a hello from a 65th address, a 33rd found computer, or a connection refused while too many handshakes are under way. A flood could otherwise push the computer the person meant out of view and leave an attacker as the only stranger. The window also closes on the first computer that joins or is placed (`accepted`), only once that computer is saved as trusted, and after 10 minutes (`expired`). If the computer it settled on cannot be saved, it closes as `failed`, and a person places it. A window still open when zflow stopped comes back closed (`restarted`), since nobody can tell how long it was open. The file says `open` before the window opens; if that cannot be written, the window stays shut, so a full or read-only disk cannot reopen it on every start. A computer that joined is announced as "NAME joined" with its mark, in a notification and in the settings window, with Forget beside it; `zflow trust` prints the mark of the computer it placed, and `zflow nearby` lists each found computer's mark.
+The candidate joins once it stayed the candidate for 5 seconds; any change starts that wait again. A second stranger closes the window for good (`rival`), even after it leaves. So does anything turned away because a table was full, before or during the window: a new record past the 64 kept, a hello from a 65th address, a 33rd found computer, or a connection refused while too many handshakes are under way. A flood could otherwise push the computer the person meant out of view and leave an attacker as the only stranger. The window also closes on the first computer that joins or is placed (`accepted`), only once that computer is saved as trusted, and after 10 minutes (`expired`). If the computer it settled on cannot be saved, it closes as `failed`, and a person places it. A window still open when Nidus stopped comes back closed (`restarted`), since nobody can tell how long it was open. The file says `open` before the window opens; if that cannot be written, the window stays shut, so a full or read-only disk cannot reopen it on every start. A computer that joined is announced as "NAME joined" with its mark, in a notification and in the settings window, with Forget beside it; `nid trust` prints the mark of the computer it placed, and `nid nearby` lists each found computer's mark.
 
 Every unknown key counts as its own stranger. A fresh computer next to two that already trust each other sees two strangers and closes as `rival`, so the person drags one in instead. Hellos carry 16 vouch slots so that two computers could one day introduce a fresh third one as one group; until then the slots are random.
 
@@ -794,7 +794,7 @@ These pass when the sender enqueues a reliable cumulative checkpoint within 250 
 
 ## Naming, licensing, and repository state
 
-The crates.io package name zflow belongs to an existing project. The project uses the available Cargo package name `zflow-kvm`; the installed binary remains `zflow`.
+The crates.io package name Nidus belongs to an existing project. The project uses the available Cargo package name `nid-kvm`; the installed binary remains `nid`.
 
 The repository uses GPL-3.0-or-later. This keeps source reuse from GPL-3.0-or-later projects compatible.
 
@@ -824,10 +824,10 @@ Release matrices from TESTPLAN.md gate each beta along the way.
 ### Settled for the first prototype
 
 - The GNOME extension's `extension.js` is a loader that never changes. It imports Shell's code from the `build-<hash>` folder that `current` names, because GJS caches a module by its path until logout. After an update the desktop agent turns the extension off and on, so the new folder loads without a login. Checked in a headless GNOME Shell 50: a new folder ran new code, and a file changed in place did not (reloadable extension, 2026-10-19).
-- The lens rides the input connection on its own stream, below input's priority, paced by application acknowledgements rather than QUIC's congestion window alone, since QUIC buffers whatever the application writes. It captures through Mutter's private remote desktop and screencast APIs in the desktop agent and PipeWire directly, with no GStreamer; zflowd only relays (lens design, 2026-10-18).
+- The lens rides the input connection on its own stream, below input's priority, paced by application acknowledgements rather than QUIC's congestion window alone, since QUIC buffers whatever the application writes. It captures through Mutter's private remote desktop and screencast APIs in the desktop agent and PipeWire directly, with no GStreamer; nidd only relays (lens design, 2026-10-18).
 
-- The Cargo package is `zflow-kvm`, the installed binary is `zflow`, and the project license is GPL-3.0-or-later (maintainer implementation decision, 2026-08-31).
-- The Linux evdev/uinput backend remains independent after the bounded Lan Mouse reuse gate found that reuse would require a maintained fork without removing zflow's backend or protocol work. Lan Mouse remains a reference for later portal/EIS work (reuse gate, 2026-08-31).
+- The Cargo package is `nid-kvm`, the installed binary is `nid`, and the project license is GPL-3.0-or-later (maintainer implementation decision, 2026-08-31).
+- The Linux evdev/uinput backend remains independent after the bounded Lan Mouse reuse gate found that reuse would require a maintained fork without removing Nidus's backend or protocol work. Lan Mouse remains a reference for later portal/EIS work (reuse gate, 2026-08-31).
 - Linux uses evdev plus uinput as its system backbone.
 - Linux grabs on demand at Arming after a neutral frame; the bounded switch-time leak is accepted (maintainer decision, 2026-08-31).
 - Mid-session enrollment of new physical devices is baseline behavior.

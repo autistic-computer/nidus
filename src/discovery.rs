@@ -217,7 +217,7 @@ impl Discovery {
     pub fn register(&mut self, advertisement: Advertisement) -> Result<(), DiscoveryError> {
         if self.registration.is_some() {
             return Err(DiscoveryError::InvalidState(
-                "a zflow service is already registered",
+                "a Nidus service is already registered",
             ));
         }
         let service = build_service_info(self.instance_id, &advertisement)?;
@@ -233,7 +233,7 @@ impl Discovery {
     pub fn browse(&mut self) -> Result<(), DiscoveryError> {
         if self.browser.is_some() {
             return Err(DiscoveryError::InvalidState(
-                "zflow browsing is already active",
+                "Nidus browsing is already active",
             ));
         }
         self.browser = Some(self.daemon.browse(SERVICE_TYPE)?);
@@ -244,7 +244,7 @@ impl Discovery {
         let receiver = self
             .browser
             .as_ref()
-            .ok_or(DiscoveryError::InvalidState("zflow browsing is not active"))?;
+            .ok_or(DiscoveryError::InvalidState("Nidus browsing is not active"))?;
 
         loop {
             let event = receiver
@@ -610,7 +610,7 @@ pub enum DiscoveryError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CandidateParseError {
-    #[error("record is not a zflow service")]
+    #[error("record is not a Nidus service")]
     WrongServiceType,
     #[error("ephemeral instance identifier is malformed")]
     InvalidInstanceId,
@@ -622,7 +622,7 @@ pub enum CandidateParseError {
     InvalidAddress(&'static str),
     #[error("too many TXT properties")]
     TooManyTxtProperties,
-    #[error("TXT record exceeds the zflow discovery bound")]
+    #[error("TXT record exceeds the Nidus discovery bound")]
     TxtTooLarge,
     #[error("TXT property has an invalid value")]
     InvalidTxtValue,

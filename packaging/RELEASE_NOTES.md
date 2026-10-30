@@ -1,9 +1,9 @@
-Prebuilt zflow for Windows x64, Linux x86-64/ARM64, and one universal macOS app for Apple silicon and Intel.
-On a Mac, open `zflow-VERSION-macos.dmg` and drag zflow to Applications, or use the command below.
+Prebuilt Nidus for Windows x64, Linux x86-64/ARM64, and one universal macOS app for Apple silicon and Intel.
+On a Mac, open `nid-VERSION-macos.dmg` and drag Nidus to Applications, or use the command below.
 This is a prototype release; the live qualification checklist is in TESTPLAN.md.
 
 ```sh
-curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/zflow/releases/latest/download/install.sh | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/nidus/releases/latest/download/install.sh | bash
 ```
 
 ## New in 0.6.1: Windows crossings no longer get stuck

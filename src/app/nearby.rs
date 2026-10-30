@@ -107,7 +107,7 @@ impl NearbyBrowser {
         let shared = Arc::clone(&self.shared);
 
         if let Err(error) = std::thread::Builder::new()
-            .name("zflow-nearby".into())
+            .name("nid-nearby".into())
             .spawn(move || {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()

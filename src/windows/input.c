@@ -14,17 +14,17 @@ static BOOL keys[256];
 static BOOL swallowed[256];
 static HHOOK keyboard_hook, mouse_hook;
 static HWND clipboard_window;
-#define ZFLOW_TAG ((ULONG_PTR)0x5a464c4f)
-int zflow_input_clean(void);
+#define NID_TAG ((ULONG_PTR)0x5a464c4f)
+int nid_input_clean(void);
 
-typedef struct { int left, top, right, bottom, edge, start, end, returning; } zflow_boundary;
+typedef struct { int left, top, right, bottom, edge, start, end, returning; } nid_boundary;
 static SRWLOCK boundary_lock = SRWLOCK_INIT;
-static zflow_boundary boundaries[128];
+static nid_boundary boundaries[128];
 static int boundary_count;
 static volatile LONG boundaries_enabled;
 static BOOL warping;
 
-void zflow_input_boundaries(const zflow_boundary *items, int count) {
+void nid_input_boundaries(const nid_boundary *items, int count) {
     AcquireSRWLockExclusive(&boundary_lock);
     boundary_count = count >= 0 && count <= 128 ? count : 0;
     if (boundary_count) memcpy(boundaries, items, boundary_count * sizeof(*items));
@@ -32,7 +32,7 @@ void zflow_input_boundaries(const zflow_boundary *items, int count) {
     ReleaseSRWLockExclusive(&boundary_lock);
 }
 
-int zflow_boundary_hit(const zflow_boundary *b, int x, int y, int nx, int ny, int *hx, int *hy) {
+int nid_boundary_hit(const nid_boundary *b, int x, int y, int nx, int ny, int *hx, int *hy) {
     if (x < b->left || x >= b->right || y < b->top || y >= b->bottom) return 0;
     int vertical = b->edge < 2;
     int from = vertical ? x : y, to = vertical ? nx : ny;
@@ -59,15 +59,15 @@ static BOOL stop_at_boundary(const MSLLHOOKSTRUCT *m) {
     if (!GetPhysicalCursorPos(&from) || !TryAcquireSRWLockShared(&boundary_lock)) return FALSE;
     int edge = -1, returning = 0;
     for (int i = 0; i < boundary_count; ++i) {
-        const zflow_boundary *b = &boundaries[i];
-        if ((m->flags & LLMHF_INJECTED) && (!b->returning || m->dwExtraInfo != ZFLOW_TAG)) continue;
+        const nid_boundary *b = &boundaries[i];
+        if ((m->flags & LLMHF_INJECTED) && (!b->returning || m->dwExtraInfo != NID_TAG)) continue;
         int x, y;
-        if (zflow_boundary_hit(b, from.x, from.y, m->pt.x, m->pt.y, &x, &y)) {
+        if (nid_boundary_hit(b, from.x, from.y, m->pt.x, m->pt.y, &x, &y)) {
             hit.x = x; hit.y = y; edge = b->edge; returning = b->returning; break;
         }
     }
     ReleaseSRWLockShared(&boundary_lock);
-    if (edge < 0 || !zflow_input_clean()) return FALSE;
+    if (edge < 0 || !nid_input_clean()) return FALSE;
     for (int i = 0; i < 256; ++i) if (keys[i]) return FALSE;
     warping = TRUE;
     BOOL placed = SetPhysicalCursorPos(hit.x, hit.y);
@@ -159,7 +159,7 @@ static void forget_unseen_releases(void) {
 
 static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM l) {
     if (message == WM_APP + 1) {
-        if (!zflow_input_clean()) return 0;
+        if (!nid_input_clean()) return 0;
         for (int i = 0; i < 256; ++i) if (keys[i]) return 0;
         InterlockedExchange64(&heartbeat, (LONG64)GetTickCount64());
         InterlockedExchange(&remote_input, 1);
@@ -184,13 +184,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM w, LPARAM 
     return DefWindowProcW(window, message, w, l);
 }
 
-int zflow_input_run(event_fn callback) {
+int nid_input_run(event_fn callback) {
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HINSTANCE instance = GetModuleHandleW(NULL);
     WNDCLASSW cls = {0};
     cls.lpfnWndProc = window_proc;
     cls.hInstance = instance;
-    cls.lpszClassName = L"ZflowInput";
+    cls.lpszClassName = L"NidInput";
     if (!RegisterClassW(&cls) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return 0;
     HWND window = CreateWindowW(cls.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, NULL, instance, NULL);
     if (!window) return 0;
@@ -212,7 +212,7 @@ int zflow_input_run(event_fn callback) {
         if (result < 0) ok = 0;
     }
     InterlockedExchange(&remote_input, 0);
-    zflow_input_boundaries(NULL, 0);
+    nid_input_boundaries(NULL, 0);
     if (keyboard_hook) UnhookWindowsHookEx(keyboard_hook);
     if (mouse_hook) UnhookWindowsHookEx(mouse_hook);
     device.dwFlags = RIDEV_REMOVE;
@@ -225,21 +225,21 @@ int zflow_input_run(event_fn callback) {
     return ok;
 }
 
-void zflow_input_remote(int enabled) {
+void nid_input_remote(int enabled) {
     InterlockedExchange64(&heartbeat, (LONG64)GetTickCount64());
     InterlockedExchange(&remote_input, enabled);
 }
-int zflow_input_is_remote(void) { return (int)InterlockedCompareExchange(&remote_input, 0, 0); }
-int zflow_input_grab(void) {
+int nid_input_is_remote(void) { return (int)InterlockedCompareExchange(&remote_input, 0, 0); }
+int nid_input_grab(void) {
     DWORD_PTR result = 0;
     return clipboard_window && SendMessageTimeoutW(clipboard_window, WM_APP + 1, 0, 0,
         SMTO_ABORTIFHUNG | SMTO_BLOCK, 100, &result) && result == 1;
 }
-void zflow_input_pulse(void) { InterlockedExchange64(&heartbeat, (LONG64)GetTickCount64()); }
-void zflow_input_stop(unsigned long thread) { PostThreadMessageW(thread, WM_QUIT, 0, 0); }
-void *zflow_clipboard_window(void) { return clipboard_window; }
+void nid_input_pulse(void) { InterlockedExchange64(&heartbeat, (LONG64)GetTickCount64()); }
+void nid_input_stop(unsigned long thread) { PostThreadMessageW(thread, WM_QUIT, 0, 0); }
+void *nid_clipboard_window(void) { return clipboard_window; }
 
-int zflow_desktop_available(void) {
+int nid_desktop_available(void) {
     DWORD session;
     if (!ProcessIdToSessionId(GetCurrentProcessId(), &session)) return 0;
     WTSINFOEXW *info = NULL;
@@ -252,12 +252,12 @@ int zflow_desktop_available(void) {
     return unlocked && input_desktop_is_default();
 }
 
-int zflow_input_clean(void) {
+int nid_input_clean(void) {
     for (int i = 1; i < 256; ++i) if (GetAsyncKeyState(i) & 0x8000) return 0;
     return 1;
 }
 
-int zflow_input_elevated(void) {
+int nid_input_elevated(void) {
     HANDLE token;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return 0;
     TOKEN_ELEVATION elevation = {0}; DWORD size = 0;
@@ -266,18 +266,18 @@ int zflow_input_elevated(void) {
     return ok && elevation.TokenIsElevated;
 }
 
-int zflow_input_post(int kind, int code, int value, int extra) {
+int nid_input_post(int kind, int code, int value, int extra) {
     INPUT input = {0};
     if (kind <= 2) {
         input.type = INPUT_KEYBOARD;
-        input.ki.dwExtraInfo = ZFLOW_TAG;
+        input.ki.dwExtraInfo = NID_TAG;
         input.ki.wScan = kind == 1 ? (WORD)code : 0;
         input.ki.wVk = kind == 2 ? (WORD)code : 0;
         input.ki.dwFlags = (kind == 1 ? KEYEVENTF_SCANCODE : 0) |
             (extra ? KEYEVENTF_EXTENDEDKEY : 0) | (value ? 0 : KEYEVENTF_KEYUP);
     } else {
         input.type = INPUT_MOUSE;
-        input.mi.dwExtraInfo = ZFLOW_TAG;
+        input.mi.dwExtraInfo = NID_TAG;
         if (kind == 3) {
             switch (code) {
                 case 1: input.mi.dwFlags = value ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP; break;
@@ -362,14 +362,14 @@ static BOOL CALLBACK monitor(HMONITOR m, HDC dc, LPRECT r, LPARAM p) {
     ctx->callback(r->left, r->top, r->right-r->left, r->bottom-r->top, utf8_id, utf8_name, width_mm, height_mm, ctx->context);
     return TRUE;
 }
-int zflow_monitors(monitor_fn callback, void *context) {
+int nid_monitors(monitor_fn callback, void *context) {
     DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     monitor_context ctx = {callback, context};
     int result = EnumDisplayMonitors(NULL, NULL, monitor, (LPARAM)&ctx);
     SetThreadDpiAwarenessContext(previous);
     return result;
 }
-int zflow_cursor(int *x, int *y, int move) {
+int nid_cursor(int *x, int *y, int move) {
     DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     POINT point;
     int result = move ? SetCursorPos(*x, *y) : GetCursorPos(&point);

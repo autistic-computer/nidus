@@ -18,7 +18,7 @@ confirmation; cancel it to stop without changing anything.
 USAGE
 }
 
-die() { printf 'zflow install: %s\n' "$*" >&2; exit 1; }
+die() { printf 'nid install: %s\n' "$*" >&2; exit 1; }
 say() { printf '\n%s\n' "$*"; }
 require() { command -v "$1" >/dev/null 2>&1 || die "Required command is missing: $1"; }
 
@@ -94,13 +94,13 @@ root_install() {
     update_lock=false
     if [[ -n "$previous" ]]; then
         umask 077
-        exec 9>/run/zflow-update.lock
+        exec 9>/run/nid-update.lock
         flock --exclusive 9
         update_lock=true
-        [[ "$("$installed_cli" --version)" == "zflow $previous" ]] \
-            || die 'zflow changed while this update was downloading. Check for updates again.'
+        [[ "$("$installed_cli" --version)" == "nid $previous" ]] \
+            || die 'Nidus changed while this update was downloading. Check for updates again.'
     fi
-    root_stage=$(mktemp -d /tmp/zflow-install.XXXXXXXX)
+    root_stage=$(mktemp -d /tmp/nid-install.XXXXXXXX)
     trap 'rm -rf -- "$root_stage"; if [[ "$update_lock" == true ]]; then flock --unlock 9; fi' EXIT
     cp -- "$source" "$root_stage/$asset"
     [[ "$(sha256_of "$root_stage/$asset")" == "$checksum" ]] || die "Checksum mismatch for $asset; nothing was installed."
@@ -140,9 +140,9 @@ latest_version() {
     url=$(curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --silent --show-error \
         --head --location --retry 3 --connect-timeout 20 --max-time 60 \
         --output /dev/null --write-out '%{url_effective}' \
-        https://github.com/autistic-computer/zflow/releases/latest </dev/null) \
-        || die 'No release could be found. Check https://github.com/autistic-computer/zflow/releases.'
-    [[ "$url" == https://github.com/autistic-computer/zflow/releases/tag/* ]] || die 'Unexpected release redirect.'
+        https://github.com/autistic-computer/nidus/releases/latest </dev/null) \
+        || die 'No release could be found. Check https://github.com/autistic-computer/nidus/releases.'
+    [[ "$url" == https://github.com/autistic-computer/nidus/releases/tag/* ]] || die 'Unexpected release redirect.'
     printf '%s\n' "${url##*/}"
 }
 
@@ -154,7 +154,7 @@ verify_download() {
 }
 
 archive_install_present() {
-    [[ -e /usr/local/bin/zflow || -e /usr/local/bin/zflowd || -e /etc/systemd/system/zflowd.service ]]
+    [[ -e /usr/local/bin/nid || -e /usr/local/bin/nidd || -e /etc/systemd/system/nidd.service || -e /usr/local/lib/zflow/uninstall.sh ]]
 }
 
 select_artifact() {
@@ -174,43 +174,43 @@ select_artifact() {
         version_at_least "${libc_version#glibc }" 2.39 || die 'Linux release binaries require glibc 2.39 or newer.'
         if command -v apt-get >/dev/null 2>&1 && ! archive_install_present; then
             use_deb=true
-        elif command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' zflow 2>/dev/null || true)" == 'install ok installed' ]]; then
+        elif command -v dpkg-query >/dev/null 2>&1 && { dpkg-query -W -f='${Status}\n' nid zflow 2>/dev/null || true; } | grep -qx 'install ok installed'; then
             use_deb=true
         fi
         if [[ "$use_deb" == true ]]; then
             deb_arch=$(dpkg --print-architecture)
             case "$deb_arch" in
-                amd64|arm64) asset="zflow_${version#v}_${deb_arch}.deb" ;;
+                amd64|arm64) asset="nid_${version#v}_${deb_arch}.deb" ;;
                 *) die "No release package is available for $deb_arch." ;;
             esac
         else
-            asset="zflow-${version}-${architecture}-unknown-linux-gnu.tar.gz"
+            asset="nid-${version}-${architecture}-unknown-linux-gnu.tar.gz"
         fi
     else
-        asset="zflow-${version}-universal-apple-darwin.tar.gz"
-        legacy_asset="zflow-${version}-${architecture}-apple-darwin.tar.gz"
+        asset="nid-${version}-universal-apple-darwin.tar.gz"
+        legacy_asset="nid-${version}-${architecture}-apple-darwin.tar.gz"
     fi
 }
 
 describe_linux() {
     if [[ "$use_deb" == true ]]; then
-        printf '  - the zflow command and the zflowd service, from %s and apt\n' "$asset"
+        printf '  - the nid command and the nidd service, from %s and apt\n' "$asset"
     else
         linux_dependencies
-        printf '  - the zflow command and the zflowd service, under /usr/local\n'
+        printf '  - the nid command and the nidd service, under /usr/local\n'
         printf '  - runtime packages from %s: %s\n' "$manager" "${packages[*]}"
     fi
-    printf '  - a locked zflow system account that types remote input through /dev/uinput\n'
+    printf '  - a locked nid system account that types remote input through /dev/uinput\n'
     printf '  - an allow rule for UDP port 43119 when ufw or firewalld is on\n'
     if [[ "$desktop" == true ]]; then
-        printf '  - for every GNOME user: the zflow launcher, and the desktop agent at login\n'
-        printf '  - for you: the zflow GNOME extension (GNOME asks before it downloads it)\n'
+        printf '  - for every GNOME user: the Nidus launcher, and the desktop agent at login\n'
+        printf '  - for you: the Nidus GNOME extension (GNOME asks before it downloads it)\n'
     fi
 }
 
 install_linux() {
-    say 'Installing the service. An existing zflow connection will disconnect during its restart.'
-    if [[ "$use_deb" == true ]]; then installed_cli=/usr/bin/zflow; else installed_cli=/usr/local/bin/zflow; fi
+    say 'Installing the service. An existing Nidus connection will disconnect during its restart.'
+    if [[ "$use_deb" == true ]]; then installed_cli=/usr/bin/nid; else installed_cli=/usr/local/bin/nid; fi
     local root_args=("$work_dir/$asset" "$checksum" "${update_from:-}" "$installed_cli")
     if [[ "$use_deb" == true ]]; then
         if [[ "$desktop" == true ]]; then root_args+=(--install-recommends); else root_args+=(--no-install-recommends); fi
@@ -219,48 +219,58 @@ install_linux() {
         root_args+=("$manager" "${packages[@]}")
     fi
     as_root bash -c "set -euo pipefail; $(declare -f die sha256_of root_install); root_install \"\$@\"" \
-        zflow-install "${root_args[@]}"
+        nid-install "${root_args[@]}"
     if [[ "${update:-false}" == true ]]; then return; fi
     if [[ "$desktop" == false ]]; then
-        say 'The Linux service is installed. Run zflow desktop-agent --install from a GNOME session to add the desktop app.'
+        say 'The Linux service is installed. Run nid desktop-agent --install from a GNOME session to add the desktop app.'
         return
     fi
     say 'Setting up GNOME for your account…'
     "$installed_cli" desktop-agent --install </dev/null \
-        || die 'The service is installed, but desktop setup failed. Run zflow desktop-agent --install after correcting the error above.'
+        || die 'The service is installed, but desktop setup failed. Run nid desktop-agent --install after correcting the error above.'
     if [[ "$launch" == true ]]; then
         "$installed_cli" settings </dev/null >/dev/null 2>&1 &
     fi
 }
 
+quit_mac_app() {
+    local id=$1 process=$2 attempt
+    pgrep -x "$process" >/dev/null || return 0
+    say 'Closing Nidus before updating the app…'
+    osascript -e "tell application id \"$id\" to quit" </dev/null
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        if ! pgrep -x "$process" >/dev/null; then return 0; fi
+        sleep 0.5
+    done
+    die 'Nidus is still running. Quit it and rerun the installer.'
+}
+
 install_macos() {
-    local bundle="$payload_dir/zflow.app"
-    [[ -d "$bundle" && ! -L "$bundle" ]] || die 'The release archive does not contain zflow.app.'
+    local bundle="$payload_dir/Nidus.app"
+    [[ -d "$bundle" && ! -L "$bundle" ]] || die 'The release archive does not contain Nidus.app.'
     codesign --verify --strict --deep "$bundle"
     [[ ! -L "$mac_destination" ]] || die "Refusing to replace a symlink at $mac_destination."
     if [[ -e "$mac_destination" ]]; then
-        [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$mac_destination/Contents/Info.plist")" == io.zflow.zflow ]] \
-            || die "$mac_destination is not a zflow app bundle."
+        [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$mac_destination/Contents/Info.plist")" == io.nid.nid ]] \
+            || die "$mac_destination is not a Nidus app bundle."
     fi
-    if pgrep -x zflow-app >/dev/null; then
-        say 'Closing zflow before updating the app…'
-        osascript -e 'tell application id "io.zflow.zflow" to quit' </dev/null
-        local attempt
-        for ((attempt = 0; attempt < 20; attempt++)); do
-            if ! pgrep -x zflow-app >/dev/null; then break; fi
-            sleep 0.5
-        done
-        if pgrep -x zflow-app >/dev/null; then die 'zflow is still running. Quit it and rerun the installer.'; fi
+    local zflow_app=''
+    if [[ -d /Applications/zflow.app && ! -L /Applications/zflow.app ]] \
+        && [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /Applications/zflow.app/Contents/Info.plist 2>/dev/null)" == io.zflow.zflow ]]; then
+        zflow_app=/Applications/zflow.app
+        quit_mac_app io.zflow.zflow zflow-app
     fi
+    quit_mac_app io.nid.nid nid-app
     say "Installing ${mac_destination}…"
-    mac_stage=$(as_root mktemp -d "${mac_destination%/*}/.zflow-install.XXXXXXXX")
-    as_root ditto "$bundle" "$mac_stage/zflow.app"
-    as_root codesign --verify --strict --deep "$mac_stage/zflow.app"
+    mac_stage=$(as_root mktemp -d "${mac_destination%/*}/.nid-install.XXXXXXXX")
+    as_root ditto "$bundle" "$mac_stage/Nidus.app"
+    as_root codesign --verify --strict --deep "$mac_stage/Nidus.app"
     if [[ -e "$mac_destination" ]]; then as_root mv "$mac_destination" "$mac_stage/previous.app"; fi
-    as_root mv "$mac_stage/zflow.app" "$mac_destination"
+    as_root mv "$mac_stage/Nidus.app" "$mac_destination"
     as_root rm -rf -- "$mac_stage"
     mac_stage=''
-    say 'Installed zflow. Allow Accessibility and Local Network access when the app requests them.'
+    if [[ -n "$zflow_app" ]]; then as_root rm -rf -- "$zflow_app"; fi
+    say 'Installed Nidus. Allow Accessibility and Local Network access when the app requests them.'
     if codesign --display --verbose=2 "$mac_destination" 2>&1 | grep 'Signature=adhoc' >/dev/null; then
         printf 'This build uses an ad-hoc signature. Input sharing works; AWDL helper installation requires an Apple signing identity.\n'
     fi
@@ -278,7 +288,7 @@ main() {
     gui=false
     work_dir=''
     mac_stage=''
-    mac_destination=/Applications/zflow.app
+    mac_destination=/Applications/Nidus.app
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --yes) ;;
@@ -323,7 +333,7 @@ main() {
         check_macos
     fi
     select_artifact
-    say "zflow binary installer ($version, $platform $architecture)"
+    say "Nidus binary installer ($version, $platform $architecture)"
     printf 'Download: %s\n' "$asset"
     if [[ "$platform" == Linux ]]; then
         printf 'This installs:\n'
@@ -331,11 +341,11 @@ main() {
     fi
     printf 'Existing service/app configuration and paired identities are preserved.\n'
     printf 'The administrator password prompt confirms the installation.\n'
-    work_dir=$(mktemp -d "${TMPDIR:-/tmp}/zflow-install.XXXXXXXX")
+    work_dir=$(mktemp -d "${TMPDIR:-/tmp}/nid-install.XXXXXXXX")
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    base_url="https://github.com/autistic-computer/zflow/releases/download/$version"
+    base_url="https://github.com/autistic-computer/nidus/releases/download/$version"
     fetch "$base_url/SHA256SUMS" "$work_dir/SHA256SUMS" || die "Checksums are unavailable for $version."
     if [[ "$platform" == Darwin ]] && ! awk -v name="$asset" '$2 == name {found = 1} END {exit !found}' "$work_dir/SHA256SUMS"; then
         asset=$legacy_asset
@@ -348,12 +358,12 @@ main() {
         mkdir "$payload_dir"
         tar -xzf "$work_dir/$asset" --strip-components=1 -C "$payload_dir"
         if [[ "$platform" == Linux ]]; then
-            [[ -x "$payload_dir/bin/zflow" && -x "$payload_dir/bin/zflowd" && -f "$payload_dir/scripts/install.sh" ]] \
+            [[ -x "$payload_dir/bin/nid" && -x "$payload_dir/bin/nidd" && -f "$payload_dir/scripts/install.sh" ]] \
                 || die 'The release archive is missing the Linux binaries or installer.'
         fi
     fi
     if [[ "$platform" == Linux ]]; then install_linux; else install_macos; fi
-    say 'zflow installation finished.'
+    say 'Nidus installation finished.'
 }
 
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "$0" ]]; then main "$@"; fi

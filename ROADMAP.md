@@ -9,7 +9,7 @@ Tags: **exists**, **partial**, **missing**. "Guess" marks anything not proven by
 ## How to use this plan
 
 - Phases ship one at a time, in the order in [Order](#order). Each phase lists its acceptance checks.
-- **(Mac)** marks steps that need macOS to build or test: `src/macos/`, the Mac parts of `crates/zflow-app`, the Swift AWDL helper, the C harnesses. On the Ubuntu box, those files can be edited but not built. Leave them for the Mac, or note what is left.
+- **(Mac)** marks steps that need macOS to build or test: `src/macos/`, the Mac parts of `crates/nid-app`, the Swift AWDL helper, the C harnesses. On the Ubuntu box, those files can be edited but not built. Leave them for the Mac, or note what is left.
 - Run the checks from README's Develop section: `just check` and `just test bus` on Linux; `just check` and the C harnesses on the Mac. Windows parts of the app type-check from Linux (see [crates/README.md](crates/README.md)).
 - When a phase changes a rule written in SPEC.md, update SPEC.md in the same commit. Known ones:
   - `SPEC.md:161`: the capture set is watched while idle.
@@ -24,21 +24,21 @@ Tags: **exists**, **partial**, **missing**. "Guess" marks anything not proven by
 |---|---|---|
 | 1 | Roles or symmetric peers? | **Symmetric peers.** Ownership is per crossing; one sharing switch per machine; a per-peer "Can control this computer" toggle. |
 | 2 | How does Linux send on GNOME Wayland? | **GNOME extension barriers plus the existing evdev grab.** No consent dialog on GNOME 50. The InputCapture portal comes later, for KDE and GNOME 51+. |
-| 3 | Which devices does Linux grab when sending? | **All keyboards, mice and touchpads, through one static udev rule.** Skip devices that return `EBUSY`. The cost is that the `zflow` account can read every keyboard. |
+| 3 | Which devices does Linux grab when sending? | **All keyboards, mice and touchpads, through one static udev rule.** Skip devices that return `EBUSY`. The cost is that the `nid` account can read every keyboard. |
 | 4 | Monitor layout: shared or per machine? | **Shared.** Tiles keyed by key fingerprint, newest version wins. Needs `zflow/3`. |
 | 5 | Order? | **Phase 0, then Phase 1**, with a Mac injection spike alongside Phase 1. |
 | 6 | Clipboard? | **Text and images, synced when the pointer crosses, in Phase 4. Never files.** |
-| 7 | Mac pointer acceleration? | **None by default: one count moves one point.** Spike I showed posted motion is not accelerated. A libinput-style curve in Rust felt accelerated in the first sitting, so it is opt-in through `ZFLOW_MAC_POINTER`. A virtual HID device needs Karabiner's driver or Apple's CoreHID entitlement (`SPEC.md:581-590`). |
+| 7 | Mac pointer acceleration? | **None by default: one count moves one point.** Spike I showed posted motion is not accelerated. A libinput-style curve in Rust felt accelerated in the first sitting, so it is opt-in through `NID_MAC_POINTER`. A virtual HID device needs Karabiner's driver or Apple's CoreHID entitlement (`SPEC.md:581-590`). |
 | 8 | Protocol bumps? | **One batched `zflow/3` bump, no `zflow/2` fallback.** New desktop commands are strict JSON anyway. |
 | 9 | How do computers pair? | **Arrange to pair (0.3.0, `zflow/4`).** Computers find each other and a person drags one into place; a fresh install takes one lone computer by itself within 10 minutes. Code pairing and UDP 43120 are gone. See SPEC.md, "Arrange to pair". |
-| 10 | Lens: how does one computer show another's screen? | **A lossless tile stream on its own QUIC stream, the lens first, paced by acknowledgements, built to lossless from previews (0.7.0, `zflow/8`).** GNOME captures through Mutter and PipeWire in the desktop agent; zflowd relays. See SPEC.md, "Lens". |
+| 10 | Lens: how does one computer show another's screen? | **A lossless tile stream on its own QUIC stream, the lens first, paced by acknowledgements, built to lossless from previews (0.7.0, `zflow/8`).** GNOME captures through Mutter and PipeWire in the desktop agent; nidd relays. See SPEC.md, "Lens". |
 
 ---
 
 ## 1. Parity matrix
 
 Verdicts:
-- **have**: zflow already matches or beats Deskflow.
+- **have**: Nidus already matches or beats Deskflow.
 - **build**: missing, and worth it.
 - **improve**: exists but needs work.
 - **skip**: not worth its complexity.
@@ -47,7 +47,7 @@ Deskflow issue numbers refer to [github.com/deskflow/deskflow](https://github.co
 
 ### Roles and topology
 
-| Feature | Deskflow | zflow Mac | zflow Linux | Verdict | Why |
+| Feature | Deskflow | Nidus Mac | Nidus Linux | Verdict | Why |
 |---|---|---|---|---|---|
 | Which machine controls | One server, N clients. Radio button, core restart. | Sends only (`src/macos/mod.rs:657-671`) | Receives; sends only by chord or CLI (`src/daemon.rs:758-777`) | improve | Drop roles. The session is already two-way. |
 | Any machine controls any other | Not supported ([#5160](https://github.com/deskflow/deskflow/issues/5160)) | missing | partial | build | The main goal, and Deskflow's biggest gap. |
@@ -209,8 +209,8 @@ Fallback if decision 4 changes: each machine keeps its own layout, and the user 
 | RemoteDesktop portal | version 2 |
 | GlobalShortcuts portal | version 1 |
 | Cursor hiding API for shell code | `inhibit_cursor_visibility` (used in the shell's `magnifier.js:187,203`) |
-| zflowd | runs as `User=zflow` (`packaging/systemd/zflowd.service:10`); it can only read event nodes that udev grants to group `zflow` |
-| udev | one Logitech rule, plus a hand-written `/etc/udev/rules.d/71-zflow-openlogi-capture.rules` for an "OpenLogi virtual mouse" |
+| nidd | runs as `User=nid` (`packaging/systemd/nidd.service:10`); it can only read event nodes that udev grants to group `nid` |
+| udev | one Logitech rule, plus a hand-written `/etc/udev/rules.d/71-nid-openlogi-capture.rules` for an "OpenLogi virtual mouse" |
 
 InputCapture version 1 has no restore token, so its permission dialog appears every session. An LTS usually does not move to a new GNOME major, so this box likely stays on GNOME 50 (guess). The OpenLogi rule shows that picking devices by hand already needs manual work.
 
@@ -248,9 +248,9 @@ Rejected: mutter's private InputCapture D-Bus API, and capturing inside the shel
 
 ### Capture set
 
-1. Ship one static udev rule: every keyboard, mouse and touchpad on seat0 without `ZFLOW_CAPTURE_EXCLUDE` gets group `zflow`, mode 0640.
+1. Ship one static udev rule: every keyboard, mouse and touchpad on seat0 without `NID_CAPTURE_EXCLUDE` gets group `nid`, mode 0640.
 2. Grab all of them at Arming, found by the scan in `src/linux/devices.rs:80-132`.
-3. Skip a device that returns `EBUSY`, instead of failing the whole grab. A remapper such as OpenLogi already holds its source device, and zflow grabs its virtual output instead. This changes the all-or-none rule in `SPEC.md:166` for that one case.
+3. Skip a device that returns `EBUSY`, instead of failing the whole grab. A remapper such as OpenLogi already holds its source device, and Nidus grabs its virtual output instead. This changes the all-or-none rule in `SPEC.md:166` for that one case.
 
 Cost: the network-facing account can read every keyboard. To reduce that, open devices only at Arming and make the idle chord optional. Today the daemon watches the capture set while idle (`SPEC.md:161`). Whether the runtime can open devices only at Arming is a guess; nobody traced it yet.
 
@@ -419,7 +419,7 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
 - **Acceptance** (Mac16,5 on macOS 27, controlled by chord from the Ubuntu box):
   - ISO typing, modifier clicks, drag, double-click, wheel, media keys and system-rate repeat all work.
   - The Mac's own trackpad still works while it is being controlled.
-  - Killing zflowd releases held keys within 1 s (`SPEC.md:45`).
+  - Killing nidd releases held keys within 1 s (`SPEC.md:45`).
   - Mac-to-Linux crossing still works.
   - A two-session unit test with a fake sender covers the desktop handoff.
 - **Size:** about 10 files, 1600 to 2200 LOC.
@@ -434,16 +434,16 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
     - The shared layout on the Mac, the mDNS advertisement, the AWDL lease while controlled, and waking the display on Prepare and on taking control.
     - The Mac settings rows: "Can control this computer", "Keys from NAME" and "Reverse scrolling".
     - This also covers the Mac items left under Phases 3 and 4: merging layouts, the shared handoff functions, and reverse scroll.
-  - The sitting still has to prove (TESTPLAN.md, "Two-way input sitting, Mac side"): pointer feel, click and drag behavior, typing with repeat at the system rate, Caps Lock, media keys, scroll distance per detent, the Mac's own devices while controlled, release within 1 s after killing zflowd, every exit path, wake, AWDL, duplicate connections, the firewall and Local Network behavior on the listener, and that Mac-to-Linux crossings still work.
+  - The sitting still has to prove (TESTPLAN.md, "Two-way input sitting, Mac side"): pointer feel, click and drag behavior, typing with repeat at the system rate, Caps Lock, media keys, scroll distance per detent, the Mac's own devices while controlled, release within 1 s after killing nidd, every exit path, wake, AWDL, duplicate connections, the firewall and Local Network behavior on the listener, and that Mac-to-Linux crossings still work.
   - Known limits:
     - Held input stays down after SIGKILL of the Mac app, until the local key is pressed.
-    - Motion is one point per count by default (`flat:0`, chosen in the first sitting), whatever the sender's mouse DPI. `ZFLOW_MAC_POINTER=adaptive:<speed>` opts into the untuned curve; it is a sitting-only knob.
+    - Motion is one point per count by default (`flat:0`, chosen in the first sitting), whatever the sender's mouse DPI. `NID_MAC_POINTER=adaptive:<speed>` opts into the untuned curve; it is a sitting-only knob.
     - Scroll is 30 px per detent at any speed, with no wheel acceleration. The number is untuned.
     - The Mac reads every sender's scroll as 120 units per detent, so a Mac trackpad sender scrolls a Mac receiver slowly.
     - A connection that arrives during a crossing waits until the crossing ends.
     - Fixed in 0.6.0: with `experimental_touchpad` on both computers, a Linux sender sent contacts the Mac cannot post, and they were dropped. A Linux sender now sends raw contacts only to a Linux peer, and the Mac gets the touchpad as pointer input.
     - Secure fields, full-screen apps and games are untested.
-    - Clipboard sharing and pause at edges are on the Mac too (Phase 4 items). The Mac reads the clipboard only when macOS allows it without asking; otherwise Checks says to allow zflow under Paste from Other Apps. Whether macOS 27 still shows an alert at crossings is for the sitting.
+    - Clipboard sharing and pause at edges are on the Mac too (Phase 4 items). The Mac reads the clipboard only when macOS allows it without asking; otherwise Checks says to allow nid under Paste from Other Apps. Whether macOS 27 still shows an alert at crossings is for the sitting.
 
 ### Phase 3: Linux sends by edge, plus the shared layout
 
@@ -507,7 +507,7 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
 ### Arrange to pair (0.3.0)
 
 - **Scope:** replace code pairing. Computers on the network show up on a shelf, a person drags one into place, and a fresh install's one-shot window takes one lone computer by itself. One port, UDP 43119, for hellos and input.
-- **Status (2026-10-02):** built on both, on `arrange-to-pair`. The input ALPN is `zflow/4` and the version 0.3.0, so 0.2.0 computers show "Different zflow version".
+- **Status (2026-10-02):** built on both, on `arrange-to-pair`. The input ALPN is `zflow/4` and the version 0.3.0, so 0.2.0 computers show "Different Nidus version".
 - **Left:**
   - The live sitting in TESTPLAN.md, "Arrange to pair sitting".
   - Introductions through the layout are built (0.6.0): a computer trusts a found computer a peer placed, unless a person here forgot it. See SPEC.md, "Introductions".
@@ -518,7 +518,7 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
 - **Scope:** look at another computer's screen in a circle around the pointer, click and type there, and copy from it, without crossing. Moved here from the screenportal prototype, without GStreamer.
 - **Status (2026-10-18):** built on the `lens` branch, not yet run live. The input ALPN is `zflow/8` and the version 0.7.0.
   - Core (`src/lens/`): tile encoder and decoder with damage, previews and the ring, the acknowledgement pacer, wire messages, the viewing client and the viewed host.
-  - GNOME is viewed: the desktop agent runs a Mutter remote desktop session and reads PipeWire; zflowd checks `share_screen` and relays.
+  - GNOME is viewed: the desktop agent runs a Mutter remote desktop session and reads PipeWire; nidd checks `share_screen` and relays.
   - The Mac views: an overlay panel draws the chunks under the lens with Core Animation, and forwards pointer, buttons, scroll and keys. Cmd+C copies, Escape closes. "Look at <computer>" in the menu bar or Ctrl+Option+L opens it, and AWDL stays down while it is open.
   - The GNOME settings window has a "Can see this screen" switch per computer.
 - **Left:**
@@ -533,7 +533,7 @@ Rust produces one `Snapshot` and accepts one `Request` set on both platforms. Th
 ### Phase 5 (later)
 
 - Portal sender for KDE and GNOME 51+.
-- Linux laptop touchpad as the sender, beyond 0.6.0's pointer, clicks and scrolling: read GNOME's touchpad settings (tap to click, natural scrolling, speed) through the desktop agent, since zflowd has no session bus; tap-and-drag; three- and four-finger gestures.
+- Linux laptop touchpad as the sender, beyond 0.6.0's pointer, clicks and scrolling: read GNOME's touchpad settings (tap to click, natural scrolling, speed) through the desktop agent, since nidd has no session bus; tap-and-drag; three- and four-finger gestures.
 - Mac login window.
 
 ### Order

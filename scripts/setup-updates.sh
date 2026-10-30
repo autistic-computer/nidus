@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-repository=autistic-computer/zflow
+repository=autistic-computer/nidus
 account=io.zflow.zflow
 die() { printf 'setup-updates: %s\n' "$*" >&2; exit 1; }
 if [[ "${1:-}" == -h || "${1:-}" == --help ]]; then
@@ -31,7 +31,7 @@ if [[ "$platform" == Darwin ]]; then
         "$keytool" --account "$account" >/dev/null
         public=$("$keytool" --account "$account" -p)
     fi
-    work=$(mktemp -d "${TMPDIR:-/tmp}/zflow-update-key.XXXXXXXX")
+    work=$(mktemp -d "${TMPDIR:-/tmp}/nid-update-key.XXXXXXXX")
     trap 'rm -rf -- "$work"' EXIT
     private_file="$work/private-key"
     "$keytool" --account "$account" -x "$private_file"

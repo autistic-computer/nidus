@@ -32,13 +32,13 @@ as_root() {
     if [[ "$1 $2" == "bash -c" ]]; then
         record "root bash -c ${*:4}"
         # Keep the transaction lock and version probe inside the fixture too.
-        local code=${3//\/run\/zflow-update.lock/$TEST_ROOT\/root\/update.lock}
-        code="$(declare -f /usr/local/bin/zflow /usr/bin/zflow)"$'\n'"$code"
+        local code=${3//\/run\/nid-update.lock/$TEST_ROOT\/root\/update.lock}
+        code="$(declare -f /usr/local/bin/nid /usr/bin/nid)"$'\n'"$code"
         bash -c "$code" "${@:4}"
     else record "root $*"; fi
 }
 fetch() { record "fetch $1"; cp "$RELEASE/${1##*/}" "$2"; }
-curl() { record latest; echo "${LATEST_URL:-https://github.com/autistic-computer/zflow/releases/tag/v0.1.0}"; }
+curl() { record latest; echo "${LATEST_URL:-https://github.com/autistic-computer/nidus/releases/tag/v0.1.0}"; }
 archive_install_present() { [[ "$LEGACY" == true ]]; }
 dpkg-query() { echo "${DPKG_STATUS:-unknown}"; }
 dpkg() { echo "${DPKG_ARCH:-amd64}"; }
@@ -50,15 +50,15 @@ pkexec() { record "unexpected pkexec"; return 99; }
 for tool in cargo rustup rustc swift xcrun xcode-select cc make; do
     eval "$tool() { record forbidden-toolchain; return 99; }"
 done
-function /usr/local/bin/zflow() {
-    if [[ "$1" == --version ]]; then echo "zflow ${INSTALLED_VERSION:-0.0.9}"; return; fi
-    record "user installed-zflow $*"
+function /usr/local/bin/nid() {
+    if [[ "$1" == --version ]]; then echo "nid ${INSTALLED_VERSION:-0.0.9}"; return; fi
+    record "user installed-nid $*"
     echo "${DESKTOP_OUTPUT:-Desktop installed}"
     return "${DESKTOP_STATUS:-0}"
 }
-function /usr/bin/zflow() {
-    if [[ "$1" == --version ]]; then echo "zflow ${INSTALLED_VERSION:-0.0.9}"; return; fi
-    record "user deb-zflow $*"
+function /usr/bin/nid() {
+    if [[ "$1" == --version ]]; then echo "nid ${INSTALLED_VERSION:-0.0.9}"; return; fi
+    record "user deb-nid $*"
 }
 sw_vers() { echo "${MACOS_VERSION:-26.0}"; }
 sysctl() { echo "${ROSETTA:-0}"; }
@@ -66,34 +66,34 @@ codesign() { record "codesign $*"; return "${SIGNATURE_STATUS:-0}"; }
 ditto() { cp -R "$1" "$2"; }
 pgrep() { return 1; }
 open() { record "open $*"; }
-function /usr/libexec/PlistBuddy() { echo io.zflow.zflow; }
+function /usr/libexec/PlistBuddy() { echo io.nid.nid; }
 '''
 
 
 class InstallerTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="zflow-installer-test-")
+        self.temp = tempfile.TemporaryDirectory(prefix="nid-installer-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = self.root / "payload with spaces"
         (self.source / "scripts").mkdir(parents=True)
         (self.source / "bin").mkdir()
         (self.source / "scripts/install.sh").write_text('printf \'setup %s %s\\n\' "$0" "$*" >> "$LOG"\n')
-        for name in ("zflow", "zflowd", "zflow-app"):
+        for name in ("nid", "nidd", "nid-app"):
             binary = self.source / "bin" / name
             binary.write_text('#!/bin/sh\necho executed-download >> "$LOG"\n')
             binary.chmod(0o755)
-        (self.source / "zflow.app/Contents").mkdir(parents=True)
-        (self.source / "zflow.app/Contents/version").write_text("new")
+        (self.source / "Nidus.app/Contents").mkdir(parents=True)
+        (self.source / "Nidus.app/Contents/version").write_text("new")
         self.release = self.root / "release"
         self.release.mkdir()
         for architecture in ("x86_64", "aarch64"):
             for platform in ("unknown-linux-gnu", "apple-darwin"):
-                path = self.release / f"zflow-v0.1.0-{architecture}-{platform}.tar.gz"
+                path = self.release / f"nid-v0.1.0-{architecture}-{platform}.tar.gz"
                 with tarfile.open(path, "w:gz") as archive:
-                    archive.add(self.source, arcname="zflow-release")
+                    archive.add(self.source, arcname="nid-release")
         for architecture in ("amd64", "arm64"):
-            (self.release / f"zflow_0.1.0_{architecture}.deb").write_bytes(b"package fixture")
+            (self.release / f"nid_0.1.0_{architecture}.deb").write_bytes(b"package fixture")
         self.write_checksums()
         self.log = self.root / "calls"
         (self.root / "home").mkdir()
@@ -104,7 +104,7 @@ class InstallerTest(unittest.TestCase):
         for name in ("apt-get", "dnf", "pacman", "flock"):
             (tools / name).write_text(f'#!/bin/sh\necho "{name} $*" >> "$LOG"\n')
         (tools / "mktemp").write_text(
-            '#!/bin/sh\ncase "$2" in /tmp/zflow-install.*) set -- "$1" "$TEST_ROOT/root/${2#/tmp/}";; esac\n'
+            '#!/bin/sh\ncase "$2" in /tmp/nid-install.*) set -- "$1" "$TEST_ROOT/root/${2#/tmp/}";; esac\n'
             'exec /usr/bin/mktemp "$@"\n')
         for tool in tools.iterdir():
             tool.chmod(0o755)
@@ -154,9 +154,9 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(len(self.elevations()), 1)
         self.assertIn("\napt-get install -y kmod", calls)
         self.assertIn("mesa-vulkan-drivers", calls)
-        self.assertIn(f"setup {self.root}/root/zflow-install.", calls)
+        self.assertIn(f"setup {self.root}/root/nid-install.", calls)
         self.assertIn("/payload/scripts/install.sh --install-built", calls)
-        self.assertIn("user installed-zflow desktop-agent --install", calls)
+        self.assertIn("user installed-nid desktop-agent --install", calls)
         self.assertNotIn("executed-download", calls)
         self.assert_temporary_files_removed()
         for package in ("build-essential", "gcc", "base-devel", "pkg-config"):
@@ -171,15 +171,15 @@ class InstallerTest(unittest.TestCase):
                 self.assertIn(f"\n{manager} ", self.calls())
                 self.assertIn("--install-built", self.calls())
                 self.assertNotIn("libxkbcommon-x11", self.calls())
-                self.assertNotIn("installed-zflow", self.calls())
+                self.assertNotIn("installed-nid", self.calls())
                 self.assertNotIn("pacman -Sy", self.calls())
 
     def test_debian_uses_package_manager_then_sets_up_the_desktop_user(self):
         self.run_shell("main --no-launch", env={"LEGACY": "false"})
         self.assertEqual(len(self.elevations()), 1)
-        self.assertIn(f"apt-get install -y --install-recommends {self.root}/root/zflow-install.", self.calls())
-        self.assertIn("/zflow_0.1.0_amd64.deb", self.calls())
-        self.assertTrue(self.calls().endswith("user deb-zflow desktop-agent --install\n"), self.calls())
+        self.assertIn(f"apt-get install -y --install-recommends {self.root}/root/nid-install.", self.calls())
+        self.assertIn("/nid_0.1.0_amd64.deb", self.calls())
+        self.assertTrue(self.calls().endswith("user deb-nid desktop-agent --install\n"), self.calls())
         self.assertNotIn("extension ", self.calls())
         self.assertNotIn("setup ", self.calls())
         self.assert_temporary_files_removed()
@@ -242,7 +242,7 @@ command() {
 
     def test_debian_package_follows_dpkg_architecture(self):
         self.run_shell("main --yes --headless", env={"LEGACY": "false", "ARCH": "x86_64", "DPKG_ARCH": "arm64"})
-        self.assertIn("zflow_0.1.0_arm64.deb", self.calls())
+        self.assertIn("nid_0.1.0_arm64.deb", self.calls())
         self.log.write_text("")
         output = self.run_shell("main --yes --headless", env={"LEGACY": "false", "ARCH": "aarch64", "DPKG_ARCH": "armhf"}, ok=False)
         self.assertIn("armhf", output)
@@ -274,28 +274,28 @@ command() {
             with self.subTest(target=target):
                 self.log.write_text("")
                 self.run_shell("main --yes --no-launch --version 0.1.0",
-                               before='install_macos() { test -d "$payload_dir/zflow.app"; }',
+                               before='install_macos() { test -d "$payload_dir/Nidus.app"; }',
                                env={"PLATFORM": platform, "ARCH": architecture})
-                self.assertIn(f"/releases/download/v0.1.0/zflow-v0.1.0-{target}.tar.gz", self.calls())
+                self.assertIn(f"/releases/download/v0.1.0/nid-v0.1.0-{target}.tar.gz", self.calls())
                 self.assertNotIn("latest", self.calls())
         output = self.run_shell('platform=Darwin; version=v0.1.0; select_artifact; echo "$legacy_asset"',
                                 env={"ARCH": "x86_64", "ROSETTA": "1"})
-        self.assertIn("zflow-v0.1.0-aarch64-apple-darwin.tar.gz", output)
+        self.assertIn("nid-v0.1.0-aarch64-apple-darwin.tar.gz", output)
 
     def test_macos_prefers_universal_archive(self):
-        universal = self.release / "zflow-v0.1.0-universal-apple-darwin.tar.gz"
+        universal = self.release / "nid-v0.1.0-universal-apple-darwin.tar.gz"
         with tarfile.open(universal, "w:gz") as archive:
-            archive.add(self.source, arcname="zflow-release")
+            archive.add(self.source, arcname="nid-release")
         self.write_checksums()
         for architecture in ("arm64", "x86_64"):
             with self.subTest(architecture=architecture):
                 self.log.write_text("")
                 self.run_shell("main --yes --no-launch --version 0.1.0",
-                               before='install_macos() { test -d "$payload_dir/zflow.app"; }',
+                               before='install_macos() { test -d "$payload_dir/Nidus.app"; }',
                                env={"PLATFORM": "Darwin", "ARCH": architecture})
                 downloads = [line for line in self.calls().splitlines() if line.startswith("fetch ")]
                 self.assertEqual(len(downloads), 2)
-                self.assertTrue(downloads[1].endswith("/v0.1.0/zflow-v0.1.0-universal-apple-darwin.tar.gz"))
+                self.assertTrue(downloads[1].endswith("/v0.1.0/nid-v0.1.0-universal-apple-darwin.tar.gz"))
 
     def test_latest_resolution_is_pinned_for_all_downloads(self):
         self.run_shell("main --yes --headless")
@@ -316,7 +316,7 @@ command() {
 
     def test_download_and_archive_errors_never_elevate(self):
         self.run_shell("main --yes", before="fetch() { return 22; }", ok=False)
-        archive = self.release / "zflow-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
+        archive = self.release / "nid-v0.1.0-x86_64-unknown-linux-gnu.tar.gz"
         archive.write_bytes(b"not an archive")
         self.write_checksums()
         self.run_shell("main --yes", ok=False)
@@ -332,7 +332,7 @@ command() {
 
     def test_desktop_step_reports_the_next_step_and_fails_on_errors(self):
         args = "main --no-launch"
-        output = self.run_shell(args, env={"DESKTOP_OUTPUT": "Log out and back in to finish setting up zflow in GNOME."})
+        output = self.run_shell(args, env={"DESKTOP_OUTPUT": "Log out and back in to finish setting up Nidus in GNOME."})
         self.assertIn("Log out and back in", output)
         self.assertIn("installation finished", output)
         output = self.run_shell(args, env={"DESKTOP_STATUS": "1", "DESKTOP_OUTPUT": "Permission denied"}, ok=False)
@@ -393,7 +393,7 @@ as_root install example
         ])
 
     def mac_install(self, *, failure="", existing=True):
-        destination = self.root / "Applications/zflow.app"
+        destination = self.root / "Applications/Nidus.app"
         destination.parent.mkdir(exist_ok=True)
         if existing:
             (destination / "Contents").mkdir(parents=True)
@@ -407,13 +407,13 @@ as_root() {
         mv|rm|ditto|codesign) [[ "$*" == *"$TEST_ROOT/"* ]] ;;
         *) return 99 ;;
     esac
-    if [[ "$1" == mv && "$2" == "$mac_stage/zflow.app" && "$FAILURE" == replace ]]; then return 42; fi
+    if [[ "$1" == mv && "$2" == "$mac_stage/Nidus.app" && "$FAILURE" == replace ]]; then return 42; fi
     if [[ "$1" == mv && "$2" == "$mac_stage/previous.app" && "$FAILURE" == restore ]]; then return 43; fi
-    if [[ "$1" == mv && "$2" == "$mac_stage/zflow.app" && "$FAILURE" == restore ]]; then return 42; fi
+    if [[ "$1" == mv && "$2" == "$mac_stage/Nidus.app" && "$FAILURE" == restore ]]; then return 42; fi
     "$@"
 }
 payload_dir="$FIXTURE"
-mac_destination="$TEST_ROOT/Applications/zflow.app"
+mac_destination="$TEST_ROOT/Applications/Nidus.app"
 mac_stage=''
 work_dir=''
 launch=false
@@ -426,22 +426,22 @@ install_macos
     def test_macos_fresh_install(self):
         destination = self.mac_install(existing=False)
         self.assertEqual((destination / "Contents/version").read_text(), "new")
-        self.assertEqual(list(destination.parent.glob(".zflow-install.*")), [])
+        self.assertEqual(list(destination.parent.glob(".nid-install.*")), [])
         self.run_shell('check_macos', before='')
 
     def test_macos_update_replaces_existing_app(self):
         destination = self.mac_install()
         self.assertEqual((destination / "Contents/version").read_text(), "new")
-        self.assertEqual(list(destination.parent.glob(".zflow-install.*")), [])
+        self.assertEqual(list(destination.parent.glob(".nid-install.*")), [])
 
     def test_macos_failed_replacement_restores_previous_app(self):
         destination = self.mac_install(failure="replace")
         self.assertEqual((destination / "Contents/version").read_text(), "old")
-        self.assertEqual(list(destination.parent.glob(".zflow-install.*")), [])
+        self.assertEqual(list(destination.parent.glob(".nid-install.*")), [])
 
     def test_macos_failed_restore_keeps_recoverable_copy(self):
         destination = self.mac_install(failure="restore")
-        previous = list(destination.parent.glob(".zflow-install.*/previous.app/Contents/version"))
+        previous = list(destination.parent.glob(".nid-install.*/previous.app/Contents/version"))
         self.assertEqual(len(previous), 1)
         self.assertEqual(previous[0].read_text(), "old")
 
@@ -454,12 +454,12 @@ class PackagingTest(unittest.TestCase):
 
     @unittest.skipIf(os.geteuid() == 0, "tests the normal user's archive entry point")
     def test_archive_installer_defaults_to_prebuilt_binaries(self):
-        with tempfile.TemporaryDirectory(prefix="zflow-archive-test-") as temp:
+        with tempfile.TemporaryDirectory(prefix="nid-archive-test-") as temp:
             root = Path(temp).resolve()
             for path in ("scripts", "packaging", "assets/linux"):
                 shutil.copytree(self.ROOT / path, root / path)
             (root / "bin").mkdir()
-            for name in ("zflow", "zflowd", "zflow-app"):
+            for name in ("nid", "nidd", "nid-app"):
                 binary = root / "bin" / name
                 binary.write_text("#!/bin/sh\nexit 0\n")
                 binary.chmod(0o755)
@@ -483,7 +483,7 @@ class PackagingTest(unittest.TestCase):
 
     @unittest.skipUnless(os.uname().sysname == "Linux", "the Debian packaging script runs on Linux")
     def test_debian_build_stamps_only_the_staged_extension_metadata(self):
-        with tempfile.TemporaryDirectory(prefix="zflow-deb-test-") as temp:
+        with tempfile.TemporaryDirectory(prefix="nid-deb-test-") as temp:
             root = Path(temp)
             for path in ("debian", "packaging", "assets/linux"):
                 shutil.copytree(self.ROOT / path, root / path)
@@ -496,7 +496,7 @@ class PackagingTest(unittest.TestCase):
             metadata = root / "packaged-metadata.json"
             for name, body in (
                 ("dpkg", "echo amd64"),
-                ("dpkg-buildpackage", 'cp packaging/gnome-extension/metadata.json "$TEST_METADATA"; touch ../zflow_0.7.3_amd64.deb'),
+                ("dpkg-buildpackage", 'cp packaging/gnome-extension/metadata.json "$TEST_METADATA"; touch ../nid_0.7.3_amd64.deb'),
             ):
                 tool = tools / name
                 tool.write_text(f"#!/bin/sh\n{body}\n")
@@ -508,7 +508,7 @@ class PackagingTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(json.loads(metadata.read_text())["version-name"], "0.7.3")
             self.assertEqual((root / "packaging/gnome-extension/metadata.json").read_text(), original)
-            self.assertTrue((root / "target/dist/zflow_0.7.3_amd64.deb").exists())
+            self.assertTrue((root / "target/dist/nid_0.7.3_amd64.deb").exists())
 
     def test_every_install_path_ships_the_extension_files_desktop_rs_writes(self):
         rust = self.read("src/app/desktop.rs")
@@ -521,25 +521,25 @@ class PackagingTest(unittest.TestCase):
 
     def test_archive_install_and_uninstall_cover_the_same_session_files(self):
         install, uninstall = self.read("scripts/install.sh"), self.read("scripts/uninstall.sh")
-        for path in ("/usr/local/bin/zflow-app",
-                     "/usr/local/share/applications/io.zflow.zflow.desktop",
-                     "/usr/local/share/dbus-1/services/io.zflow.Desktop.service",
-                     "/etc/xdg/autostart/io.zflow.desktop-agent.desktop",
-                     "/usr/local/share/icons/hicolor/scalable/apps/io.zflow.zflow.svg",
-                     "/usr/local/share/icons/hicolor/symbolic/apps/io.zflow.zflow-symbolic.svg",
+        for path in ("/usr/local/bin/nid-app",
+                     "/usr/local/share/applications/io.nid.nid.desktop",
+                     "/usr/local/share/dbus-1/services/io.nid.Desktop.service",
+                     "/etc/xdg/autostart/io.nid.desktop-agent.desktop",
+                     "/usr/local/share/icons/hicolor/scalable/apps/io.nid.nid.svg",
+                     "/usr/local/share/icons/hicolor/symbolic/apps/io.nid.nid-symbolic.svg",
                      "firewall.sh"):
             with self.subTest(path=path):
                 self.assertIn(path.rsplit("/", 1)[-1], install)
                 self.assertIn(path.rsplit("/", 1)[-1], uninstall)
-        self.assertIn("Icon=io.zflow.zflow\n", self.read("packaging/linux/io.zflow.zflow.desktop"))
-        entry = self.read("packaging/linux/io.zflow.desktop-agent.desktop")
+        self.assertIn("Icon=io.nid.nid\n", self.read("packaging/linux/io.nid.nid.desktop"))
+        entry = self.read("packaging/linux/io.nid.desktop-agent.desktop")
         self.assertIn("OnlyShowIn=GNOME;", entry)
-        self.assertIn("TryExec=/usr/bin/zflow", entry)
+        self.assertIn("TryExec=/usr/bin/nid", entry)
 
 
 class UninstallTest(unittest.TestCase):
     def test_refuses_debian_package_host(self):
-        with tempfile.TemporaryDirectory(prefix="zflow-uninstall-test-") as temp:
+        with tempfile.TemporaryDirectory(prefix="nid-uninstall-test-") as temp:
             tools = Path(temp)
             log = tools / "calls"
             for name, body in (("uname", "echo Linux"), ("dpkg-query", "echo 'install ok installed'"),

@@ -1,0 +1,11 @@
+ACTION=="add|change", SUBSYSTEM=="misc", KERNEL=="uinput", GROUP="nid", MODE="0660", OPTIONS+="static_node=uinput"
+
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0006", ATTRS{id/vendor}=="1209", ATTRS{id/product}=="5a01", ATTRS{name}=="nid remote keyboard", ATTRS{phys}=="nid/remote/keyboard", ENV{NID_VIRTUAL_DEVICE}="1", ENV{NID_DEVICE_ROLE}="remote-keyboard", ENV{NID_CAPTURE_EXCLUDE}="1", ENV{ID_SEAT}="seat0", ENV{ID_INPUT}="1", ENV{ID_INPUT_KEY}="1", ENV{ID_INPUT_KEYBOARD}="1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0006", ATTRS{id/vendor}=="1209", ATTRS{id/product}=="5a02", ATTRS{name}=="nid remote pointer", ATTRS{phys}=="nid/remote/pointer", ENV{NID_VIRTUAL_DEVICE}="1", ENV{NID_DEVICE_ROLE}="remote-pointer", ENV{NID_CAPTURE_EXCLUDE}="1", ENV{ID_SEAT}="seat0", ENV{ID_INPUT}="1", ENV{ID_INPUT_MOUSE}="1"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{id/bustype}=="0006", ATTRS{id/vendor}=="1209", ATTRS{id/product}=="5a03", ATTRS{name}=="nid remote touchpad", ATTRS{phys}=="nid/remote/touchpad", ENV{NID_VIRTUAL_DEVICE}="1", ENV{NID_DEVICE_ROLE}="remote-touchpad", ENV{NID_CAPTURE_EXCLUDE}="1", ENV{ID_SEAT}="seat0", ENV{ID_INPUT}="1", ENV{ID_INPUT_TOUCHPAD}="1", ENV{ID_INPUT_TOUCHPAD_INTEGRATION}="external"
+
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{NID_CAPTURE_EXCLUDE}!="1", ENV{ID_INPUT_KEYBOARD}=="1", ENV{NID_CAPTURE}="1", GROUP="nid", MODE="0640"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{NID_CAPTURE_EXCLUDE}!="1", ENV{ID_INPUT_MOUSE}=="1", ENV{NID_CAPTURE}="1", GROUP="nid", MODE="0640"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{NID_CAPTURE_EXCLUDE}!="1", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{NID_CAPTURE}="1", GROUP="nid", MODE="0640"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{NID_CAPTURE_EXCLUDE}!="1", ENV{ID_INPUT_POINTINGSTICK}=="1", ENV{NID_CAPTURE}="1", GROUP="nid", MODE="0640"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{NID_CAPTURE_EXCLUDE}!="1", ENV{ID_INPUT_TRACKBALL}=="1", ENV{NID_CAPTURE}="1", GROUP="nid", MODE="0640"

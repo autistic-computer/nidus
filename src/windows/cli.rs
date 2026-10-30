@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "zflow", version, about = "zflow Windows input sharing")]
+#[command(name = "nid", version, about = "Nidus Windows input sharing")]
 pub struct Cli {
     #[arg(long,global=true,default_value_os_t=windows::config_path())]
     config: PathBuf,
@@ -39,7 +39,7 @@ pub fn run(cli: Cli) -> Result<()> {
         .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "zflow=info".into()),
+                .unwrap_or_else(|_| "nid=info".into()),
         )
         .try_init();
     let runtime = tokio::runtime::Builder::new_multi_thread()

@@ -19,11 +19,11 @@ linux *args:
 daemon: (_platform "linux")
     #!/usr/bin/env bash
     set -euo pipefail
-    sudo install -d -m 0755 /run/systemd/system/zflowd.service.d
-    printf '[Service]\nEnvironment="RUST_LOG=warn,zflow=debug"\n' | sudo tee /run/systemd/system/zflowd.service.d/debug.conf >/dev/null
+    sudo install -d -m 0755 /run/systemd/system/nidd.service.d
+    printf '[Service]\nEnvironment="RUST_LOG=warn,nid=debug"\n' | sudo tee /run/systemd/system/nidd.service.d/debug.conf >/dev/null
     sudo systemctl daemon-reload
-    sudo systemctl restart zflowd.service
-    printf 'Daemon debug logging enabled until reboot. Read with: journalctl -u zflowd -f -o short-iso-precise\n'
+    sudo systemctl restart nidd.service
+    printf 'Daemon debug logging enabled until reboot. Read with: journalctl -u nidd -f -o short-iso-precise\n'
 
 [private]
 _app platform *args: (_platform platform)
@@ -33,11 +33,11 @@ _app platform *args: (_platform platform)
     platform="$1"
     shift
     mkdir -p target/logs
-    logfile="target/logs/zflow-$platform-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
+    logfile="target/logs/nid-$platform-$(date -u +%Y%m%dT%H%M%SZ)-$$.log"
     printf 'Saving diagnostics to %s/%s\n' "$PWD" "$logfile"
     if [[ "$platform" == mac ]]; then
         ./scripts/build-macos-app.sh --debug
-        RUST_LOG=warn,zflow=debug target/debug/zflow.app/Contents/MacOS/zflow-app "$@" 2>&1 | tee "$logfile"
+        RUST_LOG=warn,nid=debug target/debug/Nidus.app/Contents/MacOS/nid-app "$@" 2>&1 | tee "$logfile"
     else
-        RUST_LOG=warn,zflow=debug cargo run --locked --bin zflow -- desktop-agent "$@" 2>&1 | tee "$logfile"
+        RUST_LOG=warn,nid=debug cargo run --locked --bin nid -- desktop-agent "$@" 2>&1 | tee "$logfile"
     fi

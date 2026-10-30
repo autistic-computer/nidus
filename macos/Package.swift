@@ -3,10 +3,10 @@
 import PackageDescription
 
 let package = Package(
-  name: "Zflow",
+  name: "Nid",
   platforms: [.macOS(.v26)],
   products: [
-    .executable(name: "zflow-awdl-daemon", targets: ["AWDLDaemon"])
+    .executable(name: "nid-awdl-daemon", targets: ["AWDLDaemon"])
   ],
   targets: [
     .target(name: "AWDLGuardian", publicHeadersPath: "include"),

@@ -31,9 +31,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             printf 'usage: ./scripts/build-macos-app.sh [--debug] [--universal] [--dmg] [--updates] [--sign IDENTITY]\n'
-            printf 'Build target/release/zflow.app (target/debug with --debug).\n'
+            printf 'Build target/release/Nidus.app (target/debug with --debug).\n'
             printf 'Sign with the first Apple Development identity, else ad-hoc (--sign - forces ad-hoc).\n'
-            printf '%s\n' '--universal builds for Apple silicon and Intel; --dmg also packs zflow.dmg beside the app.'
+            printf '%s\n' '--universal builds for Apple silicon and Intel; --dmg also packs nid.dmg beside the app.'
             printf '%s\n' '--updates requires SPARKLE_PUBLIC_ED_KEY and enables signed updates in release builds.'
             exit 0
             ;;
@@ -72,7 +72,7 @@ fi
 readonly output_dir="$REPO_ROOT/target/$profile"
 bin_dir="$output_dir"
 cargo_args=(build --locked --manifest-path "$REPO_ROOT/Cargo.toml"
-    --target-dir "$REPO_ROOT/target" -p zflow-app)
+    --target-dir "$REPO_ROOT/target" -p nid-app)
 swift_args=(--package-path "$REPO_ROOT/macos" --configuration "$profile")
 if [[ "$profile" == release ]]; then
     cargo_args+=(--release)
@@ -85,26 +85,26 @@ fi
 MACOSX_DEPLOYMENT_TARGET=26.0 cargo "${cargo_args[@]}"
 if [[ "$universal" == true ]]; then
     mkdir -p -- "$bin_dir"
-    lipo -create -output "$bin_dir/zflow-app" \
-        "$REPO_ROOT/target/aarch64-apple-darwin/$profile/zflow-app" \
-        "$REPO_ROOT/target/x86_64-apple-darwin/$profile/zflow-app"
+    lipo -create -output "$bin_dir/nid-app" \
+        "$REPO_ROOT/target/aarch64-apple-darwin/$profile/nid-app" \
+        "$REPO_ROOT/target/x86_64-apple-darwin/$profile/nid-app"
 fi
-readonly binary="$bin_dir/zflow-app"
+readonly binary="$bin_dir/nid-app"
 swift build "${swift_args[@]}"
 swift_output="$(swift build "${swift_args[@]}" --show-bin-path)"
 sparkle_dir="$("$SCRIPT_DIR/fetch-sparkle.sh")"
-readonly bundle="$output_dir/zflow.app"
+readonly bundle="$output_dir/Nidus.app"
 [[ -f "$binary" && -x "$binary" && ! -L "$binary" ]] || die "missing app executable: $binary"
 [[ ! -L "$bundle" ]] || die "refusing to replace a symlink: $bundle"
 [[ ! -e "$bundle" || -d "$bundle" ]] || die "app output is not a directory: $bundle"
 
-temporary_dir="$(mktemp -d "$output_dir/.zflow-app.XXXXXXXX")"
+temporary_dir="$(mktemp -d "$output_dir/.nid-app.XXXXXXXX")"
 trap 'rm -rf -- "$temporary_dir"' EXIT
-app="$temporary_dir/zflow.app"
+app="$temporary_dir/Nidus.app"
 install -d -m 0755 "$app/Contents/MacOS" "$app/Contents/Library/LaunchDaemons" \
     "$app/Contents/Resources" "$app/Contents/Frameworks"
-install -m 0755 "$binary" "$app/Contents/MacOS/zflow-app"
-install -m 0755 "$swift_output/zflow-awdl-daemon" "$app/Contents/MacOS/zflow-awdl-daemon"
+install -m 0755 "$binary" "$app/Contents/MacOS/nid-app"
+install -m 0755 "$swift_output/nid-awdl-daemon" "$app/Contents/MacOS/nid-awdl-daemon"
 sparkle="$sparkle_dir/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 [[ -d "$sparkle" ]] || die "missing Sparkle framework: $sparkle"
 ditto "$sparkle" "$app/Contents/Frameworks/Sparkle.framework"
@@ -116,13 +116,13 @@ if [[ "$universal" == true ]]; then
         done
     done
 fi
-install -m 0644 "$REPO_ROOT/packaging/macOS/io.zflow.awdl.plist" "$app/Contents/Library/LaunchDaemons/io.zflow.awdl.plist"
+install -m 0644 "$REPO_ROOT/packaging/macOS/io.nid.awdl.plist" "$app/Contents/Library/LaunchDaemons/io.nid.awdl.plist"
 install -m 0644 "$REPO_ROOT/packaging/macOS/Info.plist" "$app/Contents/Info.plist"
-xcrun actool "$REPO_ROOT/assets/zflow.icon" \
+xcrun actool "$REPO_ROOT/assets/nid.icon" \
     --compile "$app/Contents/Resources" \
     --output-format human-readable-text --notices --warnings \
     --output-partial-info-plist "$temporary_dir/icon-info.plist" \
-    --app-icon zflow --target-device mac \
+    --app-icon nid --target-device mac \
     --minimum-deployment-target 26.0 --platform macosx
 /usr/libexec/PlistBuddy -c "Merge '$temporary_dir/icon-info.plist'" "$app/Contents/Info.plist"
 version="$(cargo metadata --no-deps --format-version 1 --manifest-path "$REPO_ROOT/Cargo.toml" | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
@@ -143,7 +143,7 @@ mv -- "$app" "$bundle"
 printf 'Built %s\n' "$bundle"
 printf 'Open it in Finder, or run: open "%s"\n' "$bundle"
 if [[ "$dmg" == true ]]; then
-    dmg_args=("$bundle" "$output_dir/zflow.dmg")
+    dmg_args=("$bundle" "$output_dir/nid.dmg")
     if [[ "$sign_identity" != - ]]; then dmg_args+=(--sign "$sign_identity"); fi
     "$SCRIPT_DIR/build-macos-dmg.sh" "${dmg_args[@]}"
 fi

@@ -7,7 +7,7 @@
    //          {{{{     &gt;&gt;        <br>
                                   <br>
 ---                               <br>
-name: zflow                       <br>
+name: nidus                       <br>
 description: input sharing        <br>
 author: autistic.computer         <br>
 license: gpl-3.0-or-later         <br>

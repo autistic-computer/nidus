@@ -8,9 +8,9 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-const BUS = 'org.gnome.Shell.Extensions.Zflow';
-const PATH = '/org/gnome/Shell/Extensions/Zflow';
-const AGENT = 'io.zflow.Desktop';
+const BUS = 'org.gnome.Shell.Extensions.Nid';
+const PATH = '/org/gnome/Shell/Extensions/Nid';
+const AGENT = 'io.nid.Desktop';
 const MAX = 1000000;
 const LEASE_US = 2000000;
 const WARP_US = 100000;
@@ -53,7 +53,7 @@ function validRange(start, end) {
     return [start, end].every(Number.isSafeInteger) && start >= 0 && start < end && end <= MAX;
 }
 
-export class Zflow {
+export class Nid {
     enable() {
         this._displayInfo = null;
         this._displayGeneration = 0;
@@ -112,7 +112,7 @@ export class Zflow {
         this._setHidden(false);
         for (const id of this._idles) GLib.Source.remove(id);
         this._idles.clear();
-        for (const read of [...this._reads]) read.finish(null, new Error('The zflow extension turned off'));
+        for (const read of [...this._reads]) read.finish(null, new Error('The Nidus extension turned off'));
         if (this._timer) GLib.Source.remove(this._timer);
         if (this._monitorsId) Main.layoutManager.disconnect(this._monitorsId);
         if (this._focusId) global.display.disconnect(this._focusId);
@@ -282,7 +282,7 @@ export class Zflow {
 
     _fromAgent(invocation) {
         if (invocation.get_sender() === this._agent) return true;
-        invocation.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only the zflow desktop agent may call this');
+        invocation.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only the Nidus desktop agent may call this');
         return false;
     }
 
@@ -356,8 +356,8 @@ export class Zflow {
             if (json.length > 32768) throw new Error('Desktop request exceeds limit');
             const request = JSON.parse(json);
             const api = request.api ?? 1;
-            if (api > API) throw new Error('Update zflow: its GNOME extension is older than the app');
-            if (api < API) throw new Error('Update zflow: the app is older than its GNOME extension');
+            if (api > API) throw new Error('Update Nidus: its GNOME extension is older than the app');
+            if (api < API) throw new Error('Update Nidus: the app is older than its GNOME extension');
             response = await this._request(request);
         } catch (error) {
             response = {status: 'unavailable', reason: String(error.message).slice(0, 256)};
@@ -389,7 +389,7 @@ export class Zflow {
         }
         if (r.command === 'notify') {
             if (typeof r.message !== 'string' || !r.message) throw new Error('Invalid notice');
-            Main.notify('zflow', r.message.slice(0, 256));
+            Main.notify('Nidus', r.message.slice(0, 256));
             return {status: 'finished'};
         }
         const snapshot = this._snapshot();

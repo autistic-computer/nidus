@@ -26,7 +26,7 @@ impl Engine {
         let (ready, started) = mpsc::channel();
         let (commands, requests) = mpsc::channel::<(Request, Reply)>();
         let thread = std::thread::Builder::new()
-            .name("zflow-engine".into())
+            .name("nid-engine".into())
             .spawn(move || {
                 let mut app = match std::panic::catch_unwind(|| NativeApp::open(path)) {
                     Ok(Ok(app)) => app,

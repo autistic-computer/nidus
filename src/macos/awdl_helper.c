@@ -92,7 +92,7 @@ failed:
   return FAILED_REPLY;
 }
 
-#ifndef ZFLOW_AWDL_HELPER_TEST
+#ifndef NID_AWDL_HELPER_TEST
 #include <dirent.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -136,10 +136,10 @@ static int reply(int output_fd, const char *message) {
   return write(output_fd, message, length) == (ssize_t)length ? 0 : -1;
 }
 
-#ifndef ZFLOW_AWDL_HELPER_TEST
-void zflow_awdl_stop(void) { atomic_store(&stopped, true); }
+#ifndef NID_AWDL_HELPER_TEST
+void nid_awdl_stop(void) { atomic_store(&stopped, true); }
 
-int zflow_awdl_check(void) {
+int nid_awdl_check(void) {
   if (geteuid() != 0 || atomic_load(&stopped)) return -1;
   Native native = {.control_fd = socket(AF_INET, SOCK_DGRAM, 0)};
   if (native.control_fd < 0) return -1;
@@ -149,7 +149,7 @@ int zflow_awdl_check(void) {
   return result;
 }
 
-int zflow_awdl_run(int input_fd, int output_fd) {
+int nid_awdl_run(int input_fd, int output_fd) {
   if (geteuid() != 0 || atomic_load(&stopped)) return 1;
   if (fcntl(input_fd, F_SETFL, O_NONBLOCK) != 0 ||
       fcntl(output_fd, F_SETFL, O_NONBLOCK) != 0) return 1;
@@ -194,10 +194,10 @@ static int run_guardian_fds(Backend backend, int input_fd, int output_fd) {
     (void)nanosleep(&delay, NULL);
   }
   if (guardian.restore_needed) {
-    diagnostic("zflow AWDL helper: could not restore awdl0; restore it manually\n");
+    diagnostic("Nidus AWDL helper: could not restore awdl0; restore it manually\n");
     status = 1;
   } else if (status != 0) {
-    diagnostic("zflow AWDL helper: lease ended or command/setup failed; AWDL state restored if acquired\n");
+    diagnostic("Nidus AWDL helper: lease ended or command/setup failed; AWDL state restored if acquired\n");
   }
   return status;
 }

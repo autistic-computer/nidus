@@ -397,7 +397,7 @@ mod tests {
             shortcuts: Vec::new(),
             share_clipboard: None,
             autostart: None,
-            config_path: "/etc/zflow/zflow.toml".into(),
+            config_path: "/etc/nid/nid.toml".into(),
             notices: Vec::new(),
             platform: (),
         };

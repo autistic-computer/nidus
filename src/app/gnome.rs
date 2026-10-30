@@ -9,11 +9,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-pub const BUS: &str = "io.zflow.Desktop";
-pub(crate) const PATH: &str = "/io/zflow/Desktop";
+pub const BUS: &str = "io.nid.Desktop";
+pub(crate) const PATH: &str = "/io/nid/Desktop";
 pub(crate) const API: u32 = 6;
-const AUTOSTART: &str = "autostart/io.zflow.desktop-agent.desktop";
-const CONFIG_PATH: &str = "/etc/zflow/zflow.toml";
+const AUTOSTART: &str = "autostart/io.nid.desktop-agent.desktop";
+const CONFIG_PATH: &str = "/etc/nid/nid.toml";
 
 #[derive(Default)]
 pub(super) struct State {
@@ -22,7 +22,7 @@ pub(super) struct State {
 
 pub(super) struct Service(pub Arc<Mutex<State>>);
 
-#[zbus::interface(name = "io.zflow.Desktop")]
+#[zbus::interface(name = "io.nid.Desktop")]
 impl Service {
     async fn call(&self, json: &str) -> zbus::fdo::Result<String> {
         self.dispatch(json)
@@ -101,7 +101,7 @@ impl Service {
                     crate::peer_view::DesktopReply::Preview { preview } => {
                         Ok(serde_json::to_value(preview)?)
                     }
-                    _ => bail!("Unexpected response; update the zflow service"),
+                    _ => bail!("Unexpected response; update the Nidus service"),
                 };
             }
             Request::SetAutostart { enabled } => set_autostart(enabled)?,
@@ -128,7 +128,7 @@ impl Service {
                             .spawn()
                             .ok()
                     })
-                    .context("Install a terminal or GNOME Logs to read zflow's log")?;
+                    .context("Install a terminal or GNOME Logs to read Nidus's log")?;
                 tokio::spawn(async move {
                     let _ = child.wait().await;
                 });
@@ -253,12 +253,12 @@ fn snapshot(
 }
 
 fn log_viewers() -> [(&'static str, &'static [&'static str]); 3] {
-    const FOLLOW: &[&str] = &["journalctl", "--unit=zflowd.service", "--follow"];
+    const FOLLOW: &[&str] = &["journalctl", "--unit=nidd.service", "--follow"];
     [
         ("xdg-terminal-exec", FOLLOW),
         (
             "x-terminal-emulator",
-            &["-e", "journalctl", "--unit=zflowd.service", "--follow"],
+            &["-e", "journalctl", "--unit=nidd.service", "--follow"],
         ),
         ("gnome-logs", &[]),
     ]
@@ -388,7 +388,7 @@ pub(super) async fn connect(state: Arc<Mutex<State>>) -> Result<zbus::Connection
     connection
         .request_name_with_flags(BUS, zbus::fdo::RequestNameFlags::DoNotQueue.into())
         .await
-        .context("The zflow desktop agent is already running")?;
+        .context("The Nidus desktop agent is already running")?;
     Ok(connection)
 }
 
@@ -462,7 +462,7 @@ impl Autostart {
         std::fs::write(
             &self.user,
             format!(
-                "[Desktop Entry]\nType=Application\nName=zflow\nExec=\"{}\" desktop-agent\nOnlyShowIn=GNOME;\nTerminal=false\n{}",
+                "[Desktop Entry]\nType=Application\nName=Nidus\nExec=\"{}\" desktop-agent\nOnlyShowIn=GNOME;\nTerminal=false\n{}",
                 executable()?,
                 if enabled { "" } else { "Hidden=true\n" }
             ),
@@ -498,12 +498,28 @@ pub(super) fn install() -> Result<()> {
     let data = xdg("XDG_DATA_HOME", ".local/share")?;
     let system = xdg_dirs("XDG_DATA_DIRS", "/usr/local/share:/usr/share");
     for name in [
-        "applications/io.zflow.zflow.desktop",
-        "dbus-1/services/io.zflow.Desktop.service",
+        "applications/io.nid.nid.desktop",
+        "dbus-1/services/io.nid.Desktop.service",
     ] {
         if system.iter().any(|dir| dir.join(name).is_file()) {
             remove_if_present(&data.join(name))?;
         }
+    }
+    for name in [
+        "applications/io.zflow.zflow.desktop",
+        "dbus-1/services/io.zflow.Desktop.service",
+    ] {
+        remove_if_present(&data.join(name))?;
+    }
+    remove_if_present(
+        &xdg("XDG_CONFIG_HOME", ".config")?.join("autostart/io.zflow.desktop-agent.desktop"),
+    )?;
+    let zflow_extension = data.join("gnome-shell/extensions/zflow@demfabris");
+    if zflow_extension
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
+        std::fs::remove_dir_all(zflow_extension)?;
     }
     let autostart = Autostart::find()?;
     if autostart.user.symlink_metadata().is_err() || autostart.enabled()? {
@@ -523,7 +539,7 @@ pub(super) async fn start_agent(connection: &zbus::Connection, replace: bool) ->
             .get_connection_unix_process_id(owner.into_inner().into())
             .await?;
         let name = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
-        if name.trim() != "zflow" {
+        if name.trim() != "nid" {
             return Ok(());
         }
         std::process::Command::new("kill")
@@ -557,22 +573,22 @@ pub fn settings() -> Result<()> {
     );
     super::desktop::refresh_extension()?;
     if let Ok(cache) = xdg("XDG_CACHE_HOME", ".cache") {
-        let _ = std::fs::remove_dir_all(cache.join("zflow/desktop"));
+        let _ = std::fs::remove_dir_all(cache.join("nid/desktop"));
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     runtime.block_on(async { start_agent(&zbus::Connection::session().await?, false).await })?;
     drop(runtime);
-    let zflow = std::env::current_exe()?;
-    let mut app = zflow.with_file_name("zflow-app");
+    let nid = std::env::current_exe()?;
+    let mut app = nid.with_file_name("nid-app");
     if !app.is_file() {
-        app = "zflow-app".into();
+        app = "nid-app".into();
     }
     Err(std::process::Command::new(&app)
-        .env("ZFLOW_EXECUTABLE", &zflow)
+        .env("NID_EXECUTABLE", &nid)
         .exec())
-    .with_context(|| format!("Could not open {}. Reinstall zflow", app.display()))
+    .with_context(|| format!("Could not open {}. Reinstall Nidus", app.display()))
 }
 
 #[cfg(test)]
@@ -739,14 +755,14 @@ mod tests {
         );
 
         let down = snapshot(
-            Err(anyhow::anyhow!("Start the zflow system service")),
+            Err(anyhow::anyhow!("Start the Nidus system service")),
             &State::default(),
         )
         .unwrap();
         assert_eq!(down.sharing, None);
         assert_eq!(down.status.state, api::State::Attention);
         assert_eq!(down.health[0].level, Level::Error);
-        assert_eq!(down.health[0].detail, "Start the zflow system service");
+        assert_eq!(down.health[0].detail, "Start the Nidus system service");
         assert!(down.peers.is_empty() && down.shortcuts.is_empty() && down.layout.is_none());
         assert_eq!(down.share_clipboard, None);
     }
@@ -774,11 +790,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let system = temp.path().join("etc/autostart.desktop");
         std::fs::create_dir_all(system.parent().unwrap()).unwrap();
-        std::fs::write(&system, "[Desktop Entry]\nExec=zflow desktop-agent\n").unwrap();
+        std::fs::write(&system, "[Desktop Entry]\nExec=nid desktop-agent\n").unwrap();
         let autostart = Autostart {
             user: temp
                 .path()
-                .join("home/autostart/io.zflow.desktop-agent.desktop"),
+                .join("home/autostart/io.nid.desktop-agent.desktop"),
             system: Some(system),
         };
         assert!(autostart.enabled().unwrap(), "the package turns it on");

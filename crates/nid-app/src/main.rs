@@ -1,0 +1,236 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
+mod board;
+mod copy;
+mod lens;
+mod model;
+mod pages;
+mod platform;
+mod theme;
+#[cfg(not(target_os = "linux"))]
+mod tray;
+mod widgets;
+mod window;
+
+use std::path::PathBuf;
+
+use ala::{
+    App, AppContext as _, Bounds, Entity, QuitMode, SystemNotification, SystemNotificationAction,
+    WindowBounds, WindowDecorations, WindowHandle, WindowOptions, px, size,
+};
+use penna::{Root, TitleBar};
+
+use crate::{
+    model::{Model, Page, Shared},
+    window::NidWindow,
+};
+
+pub const APP_ID: &str = "io.nid.nid";
+const FORGET: &str = "forget";
+
+#[derive(Clone, Debug, Default)]
+pub struct Arguments {
+    pub config: Option<PathBuf>,
+    pub show_settings: bool,
+    pub background: bool,
+    pub quit: bool,
+    pub replace_process: Option<u32>,
+    pub replace_user: Option<String>,
+    pub restart_ready: Option<String>,
+}
+
+impl Arguments {
+    fn parse(mut arguments: impl Iterator<Item = String>) -> Result<Self, String> {
+        let mut parsed = Self::default();
+        while let Some(argument) = arguments.next() {
+            match argument.as_str() {
+                "--config" => {
+                    parsed.config = Some(arguments.next().ok_or("--config takes a path")?.into());
+                }
+                "--show-settings" => parsed.show_settings = true,
+                "--background" => parsed.background = true,
+                "--quit" => parsed.quit = true,
+                "--replace-process" => {
+                    let pid = arguments
+                        .next()
+                        .ok_or("--replace-process takes a process id")?;
+                    parsed.replace_process = Some(
+                        pid.parse()
+                            .map_err(|_| "--replace-process takes a process id")?,
+                    );
+                }
+                "--replace-user" => {
+                    parsed.replace_user =
+                        Some(arguments.next().ok_or("--replace-user takes an id")?);
+                }
+                "--restart-ready" => {
+                    parsed.restart_ready =
+                        Some(arguments.next().ok_or("--restart-ready takes a name")?);
+                }
+                argument if argument.starts_with("-psn_") => {}
+                argument => return Err(format!("unknown argument: {argument}")),
+            }
+        }
+        Ok(parsed)
+    }
+}
+
+fn main() {
+    #[cfg(target_os = "windows")]
+    platform::velopack_hooks();
+    let arguments = match Arguments::parse(std::env::args().skip(1)) {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            eprintln!("nid-app: {error}");
+            std::process::exit(2);
+        }
+    };
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "warn,nid=info".into()),
+        )
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .try_init();
+    if !platform::before_start(&arguments) {
+        return;
+    }
+    let config = arguments
+        .config
+        .clone()
+        .unwrap_or_else(platform::default_config);
+    let application = ala_platform::application();
+    #[cfg(target_os = "macos")]
+    application.on_reopen(open);
+    application
+        .with_assets(penna::Assets)
+        .with_quit_mode(if platform::LIVES_IN_TRAY {
+            QuitMode::Explicit
+        } else {
+            QuitMode::LastWindowClosed
+        })
+        .run(move |cx: &mut App| {
+            cx.set_app_identity(APP_ID, "Nidus");
+            theme::init(cx);
+            let model = cx.new(|cx| Model::new(config, cx));
+            cx.set_global(Shared(model.clone()));
+            if arguments.show_settings {
+                model.update(cx, |model, cx| model.show(Page::Settings, cx));
+            }
+            let services = platform::init(cx);
+            notify_notices(&model, cx);
+            platform::start(&model, &services, &arguments, cx);
+        });
+}
+
+pub fn open(cx: &mut App) {
+    if let Some(window) = cx.try_global::<MainWindow>().and_then(|window| window.0)
+        && window
+            .update(cx, |_, window, _| window.activate_window())
+            .is_ok()
+    {
+        platform::window_shown(cx);
+        cx.activate(true);
+        return;
+    }
+    let model = model::model(cx);
+    let Some(services) = cx
+        .try_global::<platform::SharedServices>()
+        .map(|services| services.0.clone())
+    else {
+        return;
+    };
+    let bounds = Bounds::centered(None, size(px(960.0), px(680.0)), cx);
+    let opened = cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            titlebar: Some(TitleBar::title_bar_options(
+                penna::Theme::global(cx).title_bar_height(),
+            )),
+            window_min_size: Some(size(px(700.0), px(480.0))),
+            window_decorations: Some(if cx.compositor_name() == "X11" {
+                WindowDecorations::Server
+            } else {
+                WindowDecorations::Client
+            }),
+            app_id: Some(APP_ID.into()),
+            ..Default::default()
+        },
+        |window, cx| {
+            theme::apply(Some(window), cx);
+            window.set_window_title("Nidus");
+            window.on_window_should_close(cx, |_, cx| platform::may_close(cx));
+            let view = cx.new(|cx| NidWindow::new(model, services, window, cx));
+            cx.new(|cx| Root::new(view, window, cx).bordered(cfg!(target_os = "linux")))
+        },
+    );
+    match opened {
+        Ok(handle) => {
+            cx.set_global(MainWindow(Some(handle)));
+            platform::window_shown(cx);
+            cx.activate(true);
+        }
+        Err(error) => log::error!("Nidus could not open its window: {error:#}"),
+    }
+}
+
+pub struct MainWindow(pub Option<WindowHandle<Root>>);
+
+impl ala::Global for MainWindow {}
+
+fn notify_notices(model: &Entity<Model>, cx: &mut App) {
+    cx.observe(model, |model, cx| {
+        let notices = model.update(cx, |model, _| model.take_notices());
+        for notice in notices {
+            cx.show_system_notification(SystemNotification {
+                tag: format!("joined:{}", notice.name).into(),
+                title: format!("{} joined", notice.name).into(),
+                body: format!(
+                    "Its mark is {}. It can share {}’s keyboard and mouse. Not yours?",
+                    notice.mark,
+                    copy::THIS_COMPUTER_LOWER
+                )
+                .into(),
+                actions: vec![SystemNotificationAction {
+                    id: FORGET.into(),
+                    label: "Forget".into(),
+                }],
+            });
+        }
+    })
+    .detach();
+    cx.on_system_notification_response(|response, cx| {
+        if let Some(name) = response.tag.strip_prefix("joined:") {
+            let model = model::model(cx);
+            if response.action_id.as_deref() == Some(FORGET) {
+                model.read(cx).send(nid::app::api::Request::Forget {
+                    name: name.to_owned(),
+                });
+            } else {
+                model.update(cx, |model, cx| {
+                    model.show(Page::Computer(name.to_owned()), cx);
+                });
+                open(cx);
+            }
+        } else {
+            platform::notification_response(&response, cx);
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arguments_read_as_the_native_apps_took_them() {
+        let parse = |words: &[&str]| Arguments::parse(words.iter().map(|word| (*word).to_owned()));
+        let parsed = parse(&["--config", "/tmp/z.toml", "--show-settings"]).unwrap();
+        assert_eq!(parsed.config, Some(PathBuf::from("/tmp/z.toml")));
+        assert!(parsed.show_settings && !parsed.background && !parsed.quit);
+        assert!(parse(&["--background", "-psn_0_1234"]).unwrap().background);
+        assert!(parse(&["--config"]).is_err());
+        assert!(parse(&["--sparkle"]).is_err());
+    }
+}

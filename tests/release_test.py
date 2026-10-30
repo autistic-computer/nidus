@@ -20,15 +20,15 @@ name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 if name == 'git':
     if args == ['remote', 'get-url', '--push', 'origin']:
-        print(os.environ.get('PUSH_URL', 'git@github.com:autistic-computer/zflow.git'))
+        print(os.environ.get('PUSH_URL', 'git@github.com:autistic-computer/nidus.git'))
         sys.exit(0)
     os.execv(os.environ['REAL_GIT'], ['git', *args])
 with open(os.environ['CALLS'], 'a') as log:
     log.write(json.dumps(args) + '\n')
 if args[:2] == ['repo', 'view']:
-    print(os.environ.get('RELEASE_REPO', 'autistic-computer/zflow'))
+    print(os.environ.get('RELEASE_REPO', 'autistic-computer/nidus'))
 elif args[:2] == ['release', 'view']:
-    print('https://github.com/autistic-computer/zflow/releases/tag/v0.5.0' if args[2].startswith('v') else os.environ.get('LATEST', 'v0.4.0'))
+    print('https://github.com/autistic-computer/nidus/releases/tag/v0.5.0' if args[2].startswith('v') else os.environ.get('LATEST', 'v0.4.0'))
 elif args[:2] == ['variable', 'list']:
     print('public-key-fixture')
 elif args[:2] == ['secret', 'list']:
@@ -50,7 +50,7 @@ else:
 
 class ReleaseTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="zflow release test ")
+        self.temp = tempfile.TemporaryDirectory(prefix="Nidus release test ")
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
         self.root = self.base / "checkout"
@@ -62,13 +62,13 @@ class ReleaseTest(unittest.TestCase):
         subprocess.run([GIT, "init", "--bare", str(self.remote)], check=True, capture_output=True)
         (self.root / "scripts").mkdir()
         shutil.copyfile(SCRIPT, self.root / "scripts/release.sh")
-        (self.root / "Cargo.toml").write_text('[package]\nname = "zflow-kvm"\nversion = "0.4.0"\n')
+        (self.root / "Cargo.toml").write_text('[package]\nname = "nid-kvm"\nversion = "0.4.0"\n')
         self.git("add", ".")
         self.git("commit", "-m", "Previous release")
         self.git("remote", "add", "origin", str(self.remote))
         self.git("push", "origin", "main")
         self.old_head = self.git("rev-parse", "HEAD").stdout.strip()
-        (self.root / "Cargo.toml").write_text('[package]\nname = "zflow-kvm"\nversion = "0.5.0"\n')
+        (self.root / "Cargo.toml").write_text('[package]\nname = "nid-kvm"\nversion = "0.5.0"\n')
         self.git("commit", "-am", "Prepare release")
         self.head = self.git("rev-parse", "HEAD").stdout.strip()
         tools = self.base / "tools"

@@ -110,7 +110,7 @@ impl LogindBusQuery {
         Ok(Self {
             runtime: tokio::runtime::Builder::new_multi_thread()
                 .worker_threads(1)
-                .thread_name("zflow-logind")
+                .thread_name("nid-logind")
                 .enable_all()
                 .build()?,
             connection: Mutex::new(None),

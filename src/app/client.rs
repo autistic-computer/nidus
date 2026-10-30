@@ -32,7 +32,7 @@ impl Client {
         #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             let _ = config;
-            anyhow::bail!("zflow does not run on this system")
+            anyhow::bail!("Nidus does not run on this system")
         }
     }
 
@@ -60,7 +60,7 @@ impl Client {
         #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
         {
             let _ = request;
-            anyhow::bail!("zflow does not run on this system")
+            anyhow::bail!("Nidus does not run on this system")
         }
     }
 
@@ -75,7 +75,7 @@ static BUS_RUNTIME: std::sync::LazyLock<Option<tokio::runtime::Runtime>> =
     std::sync::LazyLock::new(|| {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
-            .thread_name("zflow-bus")
+            .thread_name("nid-bus")
             .enable_all()
             .build()
             .ok()
@@ -107,7 +107,7 @@ fn agent_error(error: zbus::Error) -> anyhow::Error {
     match error {
         zbus::Error::MethodError(_, Some(message), _) => anyhow::anyhow!(message),
         zbus::Error::MethodError(name, None, _) if name.as_str().ends_with("ServiceUnknown") => {
-            anyhow::anyhow!("zflow's desktop service is not running")
+            anyhow::anyhow!("Nidus's desktop service is not running")
         }
         error => error.into(),
     }

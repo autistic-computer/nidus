@@ -35,7 +35,7 @@ const KIND_EMPTY: u32 = 0;
 const KIND_UNCHANGED: u32 = 3;
 const KIND_NOT_ALLOWED: u32 = 4;
 
-const NOT_ALLOWED: &str = "Clipboard not shared: allow zflow in System Settings > \
+const NOT_ALLOWED: &str = "Clipboard not shared: allow nid in System Settings > \
     Privacy & Security > Paste from Other Apps";
 
 impl Pasteboard for MacPasteboard {
@@ -43,7 +43,7 @@ impl Pasteboard for MacPasteboard {
         let (mut kind, mut data, mut length, mut count) = (0, std::ptr::null_mut(), 0, 0);
         let unchanged_at = ours.as_ref().map_or(std::ptr::null(), |count| count);
         let status = unsafe {
-            zflow_mac_pasteboard_read(
+            nid_mac_pasteboard_read(
                 std::ptr::null(),
                 unchanged_at,
                 MAX_CLIP_BYTES,
@@ -58,7 +58,7 @@ impl Pasteboard for MacPasteboard {
         }
         let bytes = (!data.is_null()).then(|| {
             let bytes = unsafe { std::slice::from_raw_parts(data, length) }.to_vec();
-            unsafe { zflow_mac_pasteboard_free(data) };
+            unsafe { nid_mac_pasteboard_free(data) };
             bytes
         });
         Ok(match (kind, bytes) {
@@ -78,7 +78,7 @@ impl Pasteboard for MacPasteboard {
         let mut count = 0;
         let data = clip.data();
         let status = unsafe {
-            zflow_mac_pasteboard_write(
+            nid_mac_pasteboard_write(
                 std::ptr::null(),
                 u32::from(clip.kind().code()),
                 data.as_ptr(),
@@ -96,7 +96,7 @@ impl Pasteboard for MacPasteboard {
         if cfg!(test) {
             return;
         }
-        unsafe { zflow_mac_pasteboard_ask(std::ptr::null()) }
+        unsafe { nid_mac_pasteboard_ask(std::ptr::null()) }
     }
 }
 
@@ -203,7 +203,7 @@ impl Clipboard {
                 self.state().notice = Some(crate::clipboard::too_large(bytes));
             }
             Ok(Outgoing::NotAllowed) => {
-                tracing::info!(%peer, "clipboard not shared: macOS does not let zflow read it");
+                tracing::info!(%peer, "clipboard not shared: macOS does not let Nidus read it");
                 self.state().notice = Some(NOT_ALLOWED.into());
             }
             Ok(Outgoing::Nothing) => self.state().notice = None,
@@ -238,7 +238,7 @@ impl Clipboard {
 }
 
 unsafe extern "C" {
-    fn zflow_mac_pasteboard_read(
+    fn nid_mac_pasteboard_read(
         name: *const c_char,
         unchanged_at: *const i64,
         limit: usize,
@@ -247,9 +247,9 @@ unsafe extern "C" {
         length: *mut usize,
         change_count: *mut i64,
     ) -> i32;
-    fn zflow_mac_pasteboard_free(data: *mut u8);
-    fn zflow_mac_pasteboard_ask(name: *const c_char);
-    fn zflow_mac_pasteboard_write(
+    fn nid_mac_pasteboard_free(data: *mut u8);
+    fn nid_mac_pasteboard_ask(name: *const c_char);
+    fn nid_mac_pasteboard_write(
         name: *const c_char,
         kind: u32,
         data: *const u8,
@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(
             clipboard.notice().as_deref(),
             Some(
-                "Clipboard not shared: allow zflow in System Settings > \
+                "Clipboard not shared: allow nid in System Settings > \
                  Privacy & Security > Paste from Other Apps"
             )
         );

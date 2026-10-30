@@ -15,8 +15,8 @@ dmg=$1
 version=$2
 output=${3:-$root/target/dist/appcast.xml}
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { printf 'Invalid release version\n' >&2; exit 1; }
-[[ -f "$dmg" && ! -L "$dmg" && "${dmg##*/}" == "zflow-v$version-macos.dmg" ]] || {
-    printf 'Expected final release disk image zflow-v%s-macos.dmg\n' "$version" >&2; exit 1;
+[[ -f "$dmg" && ! -L "$dmg" && "${dmg##*/}" == "nid-v$version-macos.dmg" ]] || {
+    printf 'Expected final release disk image nid-v%s-macos.dmg\n' "$version" >&2; exit 1;
 }
 : "${SPARKLE_PRIVATE_ED_KEY:?Missing SPARKLE_PRIVATE_ED_KEY}"
 generator="$("$root/scripts/fetch-sparkle.sh")/bin/generate_appcast"
@@ -28,10 +28,10 @@ work=$(mktemp -d "$(dirname -- "$output")/.appcast.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 mkdir "$work/archives"
 cp "$dmg" "$work/archives/"
-prefix="https://github.com/autistic-computer/zflow/releases/download/v$version/"
+prefix="https://github.com/autistic-computer/nidus/releases/download/v$version/"
 printf '%s\n' "$SPARKLE_PRIVATE_ED_KEY" | "$generator" --ed-key-file - \
     --download-url-prefix "$prefix" --maximum-deltas 0 \
-    --link "https://github.com/autistic-computer/zflow/releases/tag/v$version" \
+    --link "https://github.com/autistic-computer/nidus/releases/tag/v$version" \
     -o "$work/appcast.xml" "$work/archives"
 python3 - "$work/appcast.xml" "$dmg" "$version" "$prefix" <<'PY'
 import base64

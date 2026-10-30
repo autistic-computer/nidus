@@ -366,7 +366,7 @@ impl Links {
     fn with_receiving(receiving: Arc<Receiving>) -> Result<Self> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
-            .thread_name("zflow-sharing")
+            .thread_name("nid-sharing")
             .on_thread_start(super::user_interactive)
             .enable_all()
             .build()

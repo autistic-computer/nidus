@@ -104,7 +104,7 @@ with open(os.environ["CALLS"], "a") as log:
 
 class MacOSUpdatesTest(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="zflow mac updates ")
+        self.temp = tempfile.TemporaryDirectory(prefix="Nidus mac updates ")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / "scripts").mkdir()
@@ -119,10 +119,10 @@ class MacOSUpdatesTest(unittest.TestCase):
         for name in ("generate_appcast", "generate_keys"):
             self.tool(self.sparkle_bin / name)
         self.calls = self.root / "calls.jsonl"
-        self.dmg = self.root / "zflow-v1.2.3-macos.dmg"
+        self.dmg = self.root / "nid-v1.2.3-macos.dmg"
         self.dmg.write_bytes(b"final stapled disk image fixture")
         self.output = self.root / "appcast.xml"
-        self.app = self.root / "zflow.app"
+        self.app = self.root / "Nidus.app"
         (self.app / "Contents/Frameworks/Sparkle.framework").mkdir(parents=True)
         self.environment = {
             **os.environ,
@@ -132,7 +132,7 @@ class MacOSUpdatesTest(unittest.TestCase):
             "SPARKLE_PRIVATE_ED_KEY": PRIVATE,
             "TMPDIR": str(self.root),
         }
-        self.key_home = tempfile.TemporaryDirectory(prefix="zflow signing fixture ")
+        self.key_home = tempfile.TemporaryDirectory(prefix="Nidus signing fixture ")
         self.addCleanup(self.key_home.cleanup)
         self.key_directory = Path(self.key_home.name) / "zflow-release"
         self.private_file = self.key_directory / "sparkle-private-key"
@@ -175,7 +175,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(self.output.is_file())
         self.assertEqual([call[0] for call in calls], ["codesign", "xcrun", "generate_appcast"])
-        self.assertIn("https://github.com/autistic-computer/zflow/releases/download/v1.2.3/", calls[-1])
+        self.assertIn("https://github.com/autistic-computer/nidus/releases/download/v1.2.3/", calls[-1])
         self.assertIn("--ed-key-file", calls[-1])
         self.assertFalse(list(self.root.glob(".appcast.*")))
 
@@ -212,7 +212,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         result, calls = self.run_script("sign-macos-app.sh", "Developer ID fixture", self.app)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         targets = [Path(call[-1]).name for call in calls]
-        self.assertEqual(targets, ["Installer.xpc", "Downloader.xpc", "Autoupdate", "Updater.app", "Sparkle.framework", "zflow-awdl-daemon", "zflow.app", "zflow.app"])
+        self.assertEqual(targets, ["Installer.xpc", "Downloader.xpc", "Autoupdate", "Updater.app", "Sparkle.framework", "nid-awdl-daemon", "Nidus.app", "Nidus.app"])
         self.assertIn("--preserve-metadata=entitlements", calls[1])
         for call in calls[:-1]:
             self.assertIn("runtime", call)
@@ -233,7 +233,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(any(call[:3] == ["gh", "secret", "set"] for call in calls))
         self.assertTrue(any(call[:3] == ["gh", "variable", "set"] for call in calls))
-        self.assertFalse(list(self.root.glob("zflow-update-key.*")))
+        self.assertFalse(list(self.root.glob("nid-update-key.*")))
 
     def test_setup_cannot_replace_existing_release_identity(self):
         for mode, public in (("ok", "another-public-key"), ("missing-local-key", PUBLIC)):
@@ -247,7 +247,7 @@ class MacOSUpdatesTest(unittest.TestCase):
             with self.subTest(mode=mode):
                 result, _ = self.run_script("setup-updates.sh", mode=mode)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertFalse(list(self.root.glob("zflow-update-key.*")))
+                self.assertFalse(list(self.root.glob("nid-update-key.*")))
 
     def linux_setup(self, **kwargs):
         extra = {**self.linux_environment, **kwargs.pop("extra", {})}
@@ -262,7 +262,7 @@ class MacOSUpdatesTest(unittest.TestCase):
         self.assertIn(str(self.private_file), result.stdout)
         self.assertFalse(list(self.key_directory.glob(".sparkle-key-*")))
         self.assertFalse(any(call[0] in ("swift", "generate_keys") for call in calls))
-        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "autistic-computer/zflow", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
+        self.assertIn(["gh", "variable", "set", "SPARKLE_PUBLIC_ED_KEY", "--repo", "autistic-computer/nidus", "--body", base64.b64encode(SEED_PUBLIC).decode()], calls)
         inode = self.private_file.stat().st_ino
         result, _ = self.linux_setup(mode="generation-forbidden", extra={"EXISTING_PUBLIC": base64.b64encode(SEED_PUBLIC).decode()})
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
