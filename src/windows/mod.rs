@@ -15,5 +15,7 @@ pub fn data_dir() -> PathBuf {
         .join("nid")
 }
 pub fn config_path() -> PathBuf {
-    data_dir().join("nid.toml")
+    let path = data_dir().join("nid.toml");
+    crate::config::adopt_zflow(&path);
+    path
 }

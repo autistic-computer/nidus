@@ -141,6 +141,20 @@ run it with `sudo`, adding `--purge` to also delete the configuration, keys,
 and the service account. Both close the firewall port the installer opened. The GNOME extension stays in each account until you remove
 it in Extensions.
 
+### Moving from zflow
+
+Nidus used to be zflow. Installed zflow builds do not update to Nidus on their
+own, so run the install command above once on each computer, or the Windows
+installer script on Windows. It replaces zflow and keeps its configuration,
+keys, paired computers and device selections: on Linux the `zflow` service
+account becomes `nid` and `/etc/zflow` and `/var/lib/zflow` move to `/etc/nid`
+and `/var/lib/nid`; on macOS and Windows the app moves its zflow folder on first
+start. Afterwards:
+
+- **macOS:** `zflow.app` is replaced by `Nidus.app`, so allow Accessibility,
+  Local Network and Open at Login again when Nidus asks.
+- **GNOME:** log out and back in once to load the Nidus extension.
+
 ## Mac → Ubuntu setup
 
 Install Nidus on both computers using the command above. Open Nidus from

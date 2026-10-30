@@ -12,6 +12,9 @@ Architecture: amd64 arm64
 Depends: ${shlibs:Depends}, ${misc:Depends}, passwd, kmod, udev (>= 254), systemd (>= 254),
  libwayland-client0, libvulkan1
 Recommends: mesa-vulkan-drivers | vulkan-icd, curl, pkexec
+Replaces: zflow
+Conflicts: zflow
+Provides: zflow
 Description: Keyboard, pointer and trackpad sharing for GNOME and macOS
  Shares input with paired computers over authenticated QUIC.
  Includes a system service, GNOME panel extension and settings window.

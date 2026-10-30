@@ -24,14 +24,15 @@ try {
         if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $expected) { throw 'The Windows installer checksum does not match the release' }
     }
     $installed = Join-Path $env:LOCALAPPDATA 'Nid.App/Nid.App.exe'
-    $legacy = Join-Path $env:LOCALAPPDATA 'Programs/nid/Nid.App.exe'
-    foreach ($app in @($installed, $legacy)) {
+    $zflow = Join-Path $env:LOCALAPPDATA 'Zflow.App/Zflow.App.exe'
+    $legacy = Join-Path $env:LOCALAPPDATA 'Programs/zflow/Zflow.App.exe'
+    foreach ($app in @($installed, $zflow, $legacy)) {
         if (Test-Path -LiteralPath $app) { Start-Process -FilePath $app -ArgumentList '--quit' -Wait }
     }
-    $directories = @((Split-Path -Parent $installed), (Split-Path -Parent $legacy))
+    $directories = @((Split-Path -Parent $installed), (Split-Path -Parent $zflow), (Split-Path -Parent $legacy))
     $deadline = [DateTime]::UtcNow.AddSeconds(25)
     do {
-        $running = @(Get-CimInstance Win32_Process -Filter "Name = 'Nid.App.exe' OR Name = 'nid.exe'" | Where-Object {
+        $running = @(Get-CimInstance Win32_Process -Filter "Name = 'Nid.App.exe' OR Name = 'nid.exe' OR Name = 'Zflow.App.exe' OR Name = 'zflow.exe'" | Where-Object {
             $path = $_.ExecutablePath
             $path -and ($directories | Where-Object { $path.StartsWith($_ + '\', [StringComparison]::OrdinalIgnoreCase) })
         })
@@ -42,6 +43,8 @@ try {
     $result = Start-Process -FilePath $setup -ArgumentList '--silent' -Wait -PassThru
     if ($result.ExitCode -ne 0) { throw "The Windows installer failed (exit code $($result.ExitCode))" }
     if (-not (Test-Path -LiteralPath $installed)) { throw 'The installer did not create the Nidus launcher' }
+    $zflowUpdate = Join-Path (Split-Path -Parent $zflow) 'Update.exe'
+    if (Test-Path -LiteralPath $zflowUpdate) { Start-Process -FilePath $zflowUpdate -ArgumentList 'uninstall', '--silent' -Wait }
     Write-Host "Installed Nidus for this user at $(Split-Path -Parent $installed)"
     Write-Host 'Your configuration and paired computers remain in %LOCALAPPDATA%\nid.'
     if (-not $NoLaunch) { Start-Process -FilePath $installed }

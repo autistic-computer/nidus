@@ -505,6 +505,22 @@ pub(super) fn install() -> Result<()> {
             remove_if_present(&data.join(name))?;
         }
     }
+    for name in [
+        "applications/io.zflow.zflow.desktop",
+        "dbus-1/services/io.zflow.Desktop.service",
+    ] {
+        remove_if_present(&data.join(name))?;
+    }
+    remove_if_present(
+        &xdg("XDG_CONFIG_HOME", ".config")?.join("autostart/io.zflow.desktop-agent.desktop"),
+    )?;
+    let zflow_extension = data.join("gnome-shell/extensions/zflow@demfabris");
+    if zflow_extension
+        .symlink_metadata()
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
+        std::fs::remove_dir_all(zflow_extension)?;
+    }
     let autostart = Autostart::find()?;
     if autostart.user.symlink_metadata().is_err() || autostart.enabled()? {
         autostart.set(true)?;

@@ -426,7 +426,9 @@ pub fn default_config() -> PathBuf {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();
-    home.join("Library/Application Support/nid/nid.toml")
+    let path = home.join("Library/Application Support/nid/nid.toml");
+    nid::config::adopt_zflow(&path);
+    path
 }
 
 fn set_policy(regular: bool) {
