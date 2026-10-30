@@ -447,6 +447,54 @@ fn hex_digit(byte: u8) -> Option<u8> {
     }
 }
 
+pub fn adopt_zflow(config: &Path) {
+    if let Err(error) = try_adopt_zflow(config) {
+        tracing::warn!(%error, "could not move the zflow configuration");
+    }
+}
+
+fn try_adopt_zflow(config: &Path) -> anyhow::Result<()> {
+    let Some(new_dir) = config.parent() else {
+        return Ok(());
+    };
+    let old_dir = new_dir.with_file_name("zflow");
+    if new_dir.symlink_metadata().is_ok()
+        || !old_dir
+            .symlink_metadata()
+            .is_ok_and(|metadata| metadata.is_dir())
+    {
+        return Ok(());
+    }
+    fs::rename(&old_dir, new_dir)?;
+    for entry in fs::read_dir(new_dir)? {
+        let entry = entry?;
+        if let Some(rest) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.strip_prefix("zflow.toml"))
+        {
+            fs::rename(entry.path(), new_dir.join(format!("nid.toml{rest}")))?;
+        }
+    }
+    let Ok(text) = fs::read_to_string(config) else {
+        return Ok(());
+    };
+    let mut document: toml_edit::DocumentMut = text.parse()?;
+    for key in ["state_dir", "control_socket"] {
+        let moved = document
+            .get("daemon")
+            .and_then(|daemon| daemon.get(key))
+            .and_then(toml_edit::Item::as_str)
+            .and_then(|path| Path::new(path).strip_prefix(&old_dir).ok())
+            .map(|rest| new_dir.join(rest));
+        if let Some(path) = moved {
+            document["daemon"][key] = toml_edit::value(path.to_string_lossy().as_ref());
+        }
+    }
+    fs::write(config, document.to_string())?;
+    Ok(())
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("could not read {path}: {source}")]
@@ -664,5 +712,38 @@ mod tests {
             Config::default().save(&link),
             Err(ConfigError::UnsafeTarget(_))
         ));
+    }
+
+    #[test]
+    fn a_zflow_directory_moves_with_its_keys_and_paths() {
+        let base = tempfile::tempdir().unwrap();
+        let old = base.path().join("zflow");
+        fs::create_dir_all(old.join("state")).unwrap();
+        fs::write(old.join("state/identity.pk8"), b"key").unwrap();
+        fs::write(old.join("zflow.toml.layout.toml"), "x = 1\n").unwrap();
+        let mut config = Config::default();
+        config.daemon.state_dir = old.join("state");
+        config.daemon.control_socket = old.join("control.sock");
+        config.save(&old.join("zflow.toml")).unwrap();
+
+        let path = base.path().join("nid/nid.toml");
+        adopt_zflow(&path);
+
+        assert!(!old.exists());
+        let moved = Config::load(&path).unwrap();
+        assert_eq!(moved.daemon.state_dir, base.path().join("nid/state"));
+        assert_eq!(
+            moved.daemon.control_socket,
+            base.path().join("nid/control.sock")
+        );
+        assert_eq!(
+            fs::read(moved.daemon.state_dir.join("identity.pk8")).unwrap(),
+            b"key"
+        );
+        assert!(base.path().join("nid/nid.toml.layout.toml").is_file());
+
+        fs::create_dir_all(&old).unwrap();
+        adopt_zflow(&path);
+        assert!(old.exists(), "an existing nid directory wins");
     }
 }

@@ -114,8 +114,16 @@ for binary in nid nidd nid-app; do
     require_regular_source "$binary_dir/$binary"
     [[ -x "$binary_dir/$binary" ]] || die "binary is not executable: $binary"
 done
-if command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' nid 2>/dev/null || true)" == 'install ok installed' ]]; then
-    die 'Nidus is managed by dpkg. Install the release .deb instead of an archive/source build.'
+for package in nid zflow; do
+    if command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || true)" == 'install ok installed' ]]; then
+        die "$package is managed by dpkg. Install the release .deb instead of an archive/source build."
+    fi
+done
+if [[ -f /usr/local/lib/zflow/uninstall.sh && ! -L /usr/local/lib/zflow/uninstall.sh ]]; then
+    if [[ -f /etc/udev/rules.d/71-zflow-capture.rules && ! -L /etc/udev/rules.d/71-zflow-capture.rules && ! -e /etc/udev/71-zflow-capture.rules.disabled ]]; then
+        mv -- /etc/udev/rules.d/71-zflow-capture.rules /etc/udev/71-zflow-capture.rules.disabled
+    fi
+    bash /usr/local/lib/zflow/uninstall.sh
 fi
 
 refuse_symlink "$UNIT_FILE"

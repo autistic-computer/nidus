@@ -44,33 +44,28 @@ jobs:
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: '10.0.x'
-      - name: Update from the WinUI app
+      - name: Replace the zflow app
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $check = New-Item -ItemType Directory -Force target/app-check/updated
-          gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern nid-windows-x86_64-Setup.exe --dir $check
+          gh release download v0.7.0 --repo $env:GITHUB_REPOSITORY --pattern zflow-windows-x86_64-Setup.exe --dir $check
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $root = Join-Path $env:LOCALAPPDATA 'Nid.App'
-          $setup = Start-Process (Join-Path $check 'nid-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
-          if (-not $setup.WaitForExit(300000)) { throw 'The WinUI installer did not finish' }
-          if (-not (Test-Path (Join-Path $root 'current/Nid.App.exe'))) { throw 'The WinUI release did not install' }
+          $old = Join-Path $env:LOCALAPPDATA 'Zflow.App'
+          $setup = Start-Process (Join-Path $check 'zflow-windows-x86_64-Setup.exe') -ArgumentList '--silent' -PassThru
+          if (-not $setup.WaitForExit(300000)) { throw 'The zflow installer did not finish' }
+          if (-not (Test-Path (Join-Path $old 'current/Zflow.App.exe'))) { throw 'The zflow release did not install' }
           Start-Sleep -Seconds 10
-          & (Join-Path $root 'current/Nid.App.exe') --quit
-          Start-Sleep -Seconds 5
-          Get-Process Nid.App, nid -ErrorAction SilentlyContinue | Stop-Process -Force
           ./scripts/package-windows.ps1 -PackVersion 0.7.1
-          $package = Resolve-Path target/windows-release/Nid.App-0.7.1-win-x64-full.nupkg
-          $update = Start-Process (Join-Path $root 'Update.exe') -PassThru `
-            -ArgumentList 'apply', '--silent', '--norestart', '--package', "`"$package`""
-          $null = $update.Handle
-          if (-not $update.WaitForExit(300000)) { throw 'Update.exe apply did not finish' }
-          Get-ChildItem $root -Filter *.log | Copy-Item -Destination $check
-          if ($update.ExitCode) { throw "Update.exe apply failed with $($update.ExitCode)" }
+          ./scripts/install-windows.ps1 -SourceDirectory target/windows-release -NoLaunch
+          $root = Join-Path $env:LOCALAPPDATA 'Nid.App'
           $installed = Get-Content -Raw (Join-Path $root 'current/sq.version')
-          if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'The update did not land' }
-          if (-not (Test-Path (Join-Path $root 'current/nid.exe'))) { throw 'The update left out the engine' }
+          if ($installed -notmatch '<version>0\.7\.1</version>') { $installed; throw 'Nidus did not install' }
+          if (-not (Test-Path (Join-Path $root 'current/nid.exe'))) { throw 'The install left out the engine' }
+          if (Test-Path (Join-Path $old 'current')) { throw 'The zflow app is still installed' }
           ./scripts/check-windows-app.ps1 -App (Join-Path $root 'current/Nid.App.exe') -Out $check
+          if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'nid/nid.toml'))) { throw 'The zflow configuration did not move' }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'zflow')) { throw 'The zflow configuration stayed behind' }
       - name: Upload app check
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

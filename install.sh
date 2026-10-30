@@ -154,7 +154,7 @@ verify_download() {
 }
 
 archive_install_present() {
-    [[ -e /usr/local/bin/nid || -e /usr/local/bin/nidd || -e /etc/systemd/system/nidd.service ]]
+    [[ -e /usr/local/bin/nid || -e /usr/local/bin/nidd || -e /etc/systemd/system/nidd.service || -e /usr/local/lib/zflow/uninstall.sh ]]
 }
 
 select_artifact() {
@@ -174,7 +174,7 @@ select_artifact() {
         version_at_least "${libc_version#glibc }" 2.39 || die 'Linux release binaries require glibc 2.39 or newer.'
         if command -v apt-get >/dev/null 2>&1 && ! archive_install_present; then
             use_deb=true
-        elif command -v dpkg-query >/dev/null 2>&1 && [[ "$(dpkg-query -W -f='${Status}' nid 2>/dev/null || true)" == 'install ok installed' ]]; then
+        elif command -v dpkg-query >/dev/null 2>&1 && { dpkg-query -W -f='${Status}\n' nid zflow 2>/dev/null || true; } | grep -qx 'install ok installed'; then
             use_deb=true
         fi
         if [[ "$use_deb" == true ]]; then
@@ -233,6 +233,18 @@ install_linux() {
     fi
 }
 
+quit_mac_app() {
+    local id=$1 process=$2 attempt
+    pgrep -x "$process" >/dev/null || return 0
+    say 'Closing Nidus before updating the app…'
+    osascript -e "tell application id \"$id\" to quit" </dev/null
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        if ! pgrep -x "$process" >/dev/null; then return 0; fi
+        sleep 0.5
+    done
+    die 'Nidus is still running. Quit it and rerun the installer.'
+}
+
 install_macos() {
     local bundle="$payload_dir/Nidus.app"
     [[ -d "$bundle" && ! -L "$bundle" ]] || die 'The release archive does not contain Nidus.app.'
@@ -242,16 +254,13 @@ install_macos() {
         [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$mac_destination/Contents/Info.plist")" == io.nid.nid ]] \
             || die "$mac_destination is not a Nidus app bundle."
     fi
-    if pgrep -x nid-app >/dev/null; then
-        say 'Closing Nidus before updating the app…'
-        osascript -e 'tell application id "io.nid.nid" to quit' </dev/null
-        local attempt
-        for ((attempt = 0; attempt < 20; attempt++)); do
-            if ! pgrep -x nid-app >/dev/null; then break; fi
-            sleep 0.5
-        done
-        if pgrep -x nid-app >/dev/null; then die 'Nidus is still running. Quit it and rerun the installer.'; fi
+    local zflow_app=''
+    if [[ -d /Applications/zflow.app && ! -L /Applications/zflow.app ]] \
+        && [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /Applications/zflow.app/Contents/Info.plist 2>/dev/null)" == io.zflow.zflow ]]; then
+        zflow_app=/Applications/zflow.app
+        quit_mac_app io.zflow.zflow zflow-app
     fi
+    quit_mac_app io.nid.nid nid-app
     say "Installing ${mac_destination}…"
     mac_stage=$(as_root mktemp -d "${mac_destination%/*}/.nid-install.XXXXXXXX")
     as_root ditto "$bundle" "$mac_stage/Nidus.app"
@@ -260,6 +269,7 @@ install_macos() {
     as_root mv "$mac_stage/Nidus.app" "$mac_destination"
     as_root rm -rf -- "$mac_stage"
     mac_stage=''
+    if [[ -n "$zflow_app" ]]; then as_root rm -rf -- "$zflow_app"; fi
     say 'Installed Nidus. Allow Accessibility and Local Network access when the app requests them.'
     if codesign --display --verbose=2 "$mac_destination" 2>&1 | grep 'Signature=adhoc' >/dev/null; then
         printf 'This build uses an ad-hoc signature. Input sharing works; AWDL helper installation requires an Apple signing identity.\n'
