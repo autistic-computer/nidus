@@ -750,22 +750,32 @@ fn card(
     icon: IconName,
     title: &'static str,
     detail: &'static str,
+    allowed: bool,
     action: impl Fn(&mut NidWindow, &mut Context<NidWindow>) + 'static,
     cx: &mut Context<NidWindow>,
 ) -> AnyElement {
-    SettingsStack::new()
-        .child(
-            SettingEntry::new(title)
-                .description(detail)
-                .title_icon(Icon::new(icon))
-                .control(
-                    Button::new(id)
-                        .primary()
-                        .label("Allow…")
-                        .on_click(cx.listener(move |this, _, _, cx| action(this, cx))),
-                ),
+    let entry = SettingEntry::new(title)
+        .description(detail)
+        .title_icon(Icon::new(icon));
+    let entry = if allowed {
+        entry.control(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .text_color(penna::ActiveTheme::theme(&**cx).success)
+                .child(Icon::new(IconName::Check))
+                .child("Allowed"),
         )
-        .into_any_element()
+    } else {
+        entry.control(
+            Button::new(id)
+                .primary()
+                .label("Allow…")
+                .on_click(cx.listener(move |this, _, _, cx| action(this, cx))),
+        )
+    };
+    SettingsStack::new().child(entry).into_any_element()
 }
 
 pub fn first_run_cards(
@@ -780,23 +790,34 @@ pub fn first_run_cards(
         this.send(Request::Discover, cx);
     }
     let platform = snapshot.platform.clone().unwrap_or_default();
+    let accessibility = platform.accessibility;
+    let network = if this.services.read(cx).network_blocked() {
+        Some(false)
+    } else {
+        (platform.local_network == Some(LocalNetwork::Allowed)).then_some(true)
+    };
+    if accessibility != Some(false) && network != Some(false) {
+        return Vec::new();
+    }
     let mut cards = Vec::new();
-    if platform.accessibility == Some(false) {
+    if let Some(allowed) = accessibility {
         cards.push(card(
             "allow-accessibility",
             IconName::CircleUser,
-            "Let Nidus move the pointer here",
-            "macOS asks once, in Privacy & Security › Accessibility.",
+            "Move the pointer and type here",
+            "Privacy & Security › Accessibility",
+            allowed,
             open_accessibility,
             cx,
         ));
     }
-    if this.services.read(cx).network_blocked() {
+    if let Some(allowed) = network {
         cards.push(card(
             "allow-network",
             IconName::Globe,
-            "Let Nidus look for your computers",
-            "Turn on Nidus in Privacy & Security › Local Network.",
+            "Find your other computers",
+            "Privacy & Security › Local Network",
+            allowed,
             |this, cx| allow_local_network(this, cx),
             cx,
         ));

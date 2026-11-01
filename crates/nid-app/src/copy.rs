@@ -28,6 +28,14 @@ pub const RETURN_KEYS: &str = if cfg!(target_os = "macos") {
     "Ctrl+Super+Backspace"
 };
 
+pub const STAYS_RUNNING: &str = if cfg!(target_os = "macos") {
+    "Nidus stays in the menu bar after this."
+} else if cfg!(windows) {
+    "Nidus stays in the notification area after this."
+} else {
+    "Sharing keeps going after you close this window."
+};
+
 pub const INSTALL_COMMAND: &str = "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/autistic-computer/nidus/releases/latest/download/install.sh | bash";
 
 pub const fn peer_state(state: PeerState) -> &'static str {
@@ -49,7 +57,6 @@ pub const fn peer_state(state: PeerState) -> &'static str {
     }
 }
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
 pub const fn linked(state: PeerState) -> bool {
     matches!(
         state,

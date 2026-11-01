@@ -183,6 +183,15 @@ fn notify_notices(model: &Entity<Model>, cx: &mut App) {
     cx.observe(model, |model, cx| {
         let notices = model.update(cx, |model, _| model.take_notices());
         for notice in notices {
+            let first =
+                model.read(cx).snapshot.as_ref().is_some_and(|snapshot| {
+                    snapshot.peers.iter().all(|peer| peer.name == notice.name)
+                });
+            if first {
+                model.update(cx, |model, cx| model.welcome(notice, cx));
+                open(cx);
+                continue;
+            }
             cx.show_system_notification(SystemNotification {
                 tag: format!("joined:{}", notice.name).into(),
                 title: format!("{} joined", notice.name).into(),

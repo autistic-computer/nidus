@@ -18,7 +18,8 @@ use crate::{
     board::{self, AddByAddress, Board},
     copy,
     model::{Model, Page, Snapshot},
-    pages, platform,
+    pages::{self, first_run::Step},
+    platform,
     theme::STATUS,
     widgets,
 };
@@ -31,6 +32,7 @@ pub struct NidWindow {
     pub address_error: Option<String>,
     pub looking_up: bool,
     pub copied: bool,
+    pub first_run: Option<Step>,
     focus: FocusHandle,
     _observers: Vec<Subscription>,
 }
@@ -45,7 +47,25 @@ impl NidWindow {
         let board = cx.new(|cx| Board::new(model.clone(), cx));
         let address = cx.new(|cx| InputState::new(window, cx).placeholder("100.64.0.7"));
         let observers = vec![
-            cx.observe(&model, |_, _, cx| cx.notify()),
+            cx.observe(&model, |this, model, cx| {
+                let (state, added) = {
+                    let model = model.read(cx);
+                    (
+                        model
+                            .snapshot
+                            .as_ref()
+                            .map(|snapshot| snapshot.status.state),
+                        model.added_by.is_some(),
+                    )
+                };
+                if let Some(state) = state {
+                    pages::first_run::watch(&mut this.first_run, state);
+                }
+                if added && matches!(this.first_run, Some(Step::Place { .. } | Step::Try { .. })) {
+                    model.update(cx, Model::welcomed);
+                }
+                cx.notify();
+            }),
             cx.observe(&services, |_, _, cx| cx.notify()),
             cx.observe(&board, |_, _, cx| cx.notify()),
             cx.subscribe_in(&board, window, |this, _, _: &AddByAddress, window, cx| {
@@ -72,6 +92,7 @@ impl NidWindow {
             address_error: None,
             looking_up: false,
             copied: false,
+            first_run: None,
             focus: cx.focus_handle(),
             _observers: observers,
         }
@@ -107,6 +128,8 @@ impl NidWindow {
                     .child("Settings")
                     .into_any_element(),
             )
+        } else if let Some(steps) = pages::first_run::strip(self, cx) {
+            Some(steps)
         } else {
             snapshot.as_ref().map(|snapshot| status_pill(snapshot, cx))
         };
@@ -225,8 +248,8 @@ impl Focusable for NidWindow {
 
 impl Render for NidWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let titlebar = self.titlebar(window, cx);
         let content = pages::page(self, window, cx);
+        let titlebar = self.titlebar(window, cx);
         let dialogs = Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element);
         let notifications =
             Root::render_notification_layer(window, cx).map(IntoElement::into_any_element);

@@ -3,27 +3,30 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 use nid::app::api::Level;
-use penna::{
-    ActiveTheme as _, Sizable as _, StyledExt as _, button::Button, h_flex, rems_from_px,
-    settings::settings_scroll_column, v_flex,
-};
+use penna::v_flex;
 
-use super::{card, fix_button};
+use super::{card, first_run, fix_button};
 use crate::{copy, model::Snapshot, platform, widgets, window::NidWindow};
-
-const FIRST_RUN_BOARD: f32 = 400.0;
 
 pub fn render(
     this: &mut NidWindow,
     window: &mut Window,
     cx: &mut Context<NidWindow>,
 ) -> AnyElement {
-    let Some(snapshot) = this.model.read(cx).snapshot.clone() else {
+    let model = this.model.read(cx);
+    let (Some(snapshot), added_by) = (model.snapshot.clone(), model.added_by.clone()) else {
         return div().into_any_element();
     };
-    if snapshot.peers.is_empty() {
-        return first_run(this, &snapshot, window, cx);
+    if let Some(notice) = added_by {
+        return first_run::added_by(this, &snapshot, &notice, cx);
     }
+    if (snapshot.peers.is_empty() || this.first_run.is_some())
+        && let Some(page) = first_run::render(this, &snapshot, window, cx)
+    {
+        return page;
+    }
+    this.board
+        .update(cx, |board, cx| board.set_docked(true, cx));
     let problems = problems(&snapshot, None, cx);
     let card = card::render(this, &snapshot, window, cx);
     div()
@@ -44,7 +47,7 @@ pub fn render(
         .into_any_element()
 }
 
-fn problems(
+pub(super) fn problems(
     snapshot: &Snapshot,
     skip: Option<&str>,
     cx: &mut Context<NidWindow>,
@@ -61,66 +64,6 @@ fn problems(
                 .into_any_element()
         })
         .collect()
-}
-
-fn first_run(
-    this: &mut NidWindow,
-    snapshot: &Snapshot,
-    window: &mut Window,
-    cx: &mut Context<NidWindow>,
-) -> AnyElement {
-    let other = snapshot
-        .unplaced
-        .iter()
-        .find(|computer| copy::placeable(computer))
-        .map(|computer| computer.name.clone());
-    let note = copy::finish_note(&snapshot.pairing_window, other.as_deref(), &host_name());
-    let copied = this.copied;
-    settings_scroll_column("first-run")
-        .children(platform::first_run_cards(this, snapshot, window, cx))
-        .children(problems(snapshot, Some("sharing"), cx))
-        .child(super::heading(
-            "Add your other computers",
-            "Computers running Nidus on this network show up here by themselves.",
-            cx,
-        ))
-        .child(div().h(px(FIRST_RUN_BOARD)).child(this.board.clone()))
-        .when_some(note, |column, (title, detail)| {
-            column.child(widgets::note(title, detail, cx))
-        })
-        .child(
-            h_flex()
-                .w_full()
-                .gap(px(10.0))
-                .pl(px(12.0))
-                .pr(px(6.0))
-                .py(px(6.0))
-                .surface(penna::Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
-                .child(widgets::muted("Not listed? Run on it:", 12.0, cx).flex_none())
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_size(rems_from_px(12.0))
-                        .child(copy::INSTALL_COMMAND),
-                )
-                .child(
-                    Button::new("copy-install")
-                        .small()
-                        .on(cx.theme().ground_of(penna::roles::SETTINGS_PREVIEW))
-                        .label(if copied { "Copied" } else { "Copy" })
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            cx.write_to_clipboard(ala::ClipboardItem::new_string(
-                                copy::INSTALL_COMMAND.to_owned(),
-                            ));
-                            this.copied = true;
-                            cx.notify();
-                        })),
-                ),
-        )
-        .into_any_element()
 }
 
 pub fn host_name() -> String {
