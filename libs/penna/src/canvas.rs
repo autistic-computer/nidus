@@ -1,6 +1,7 @@
 use ala::{
-    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, Pixels,
-    RenderOnce, SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
+    AnyElement, App, Div, ElementId, InteractiveElement, Interactivity, IntoElement, ParentElement,
+    Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement, StyleRefinement,
+    Styled, Window, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -65,26 +66,22 @@ impl TileVariant {
 
 #[derive(IntoElement)]
 pub struct Tile {
-    id: ElementId,
+    base: Stateful<Div>,
     variant: TileVariant,
     tone: Tone,
     state: PaintState,
     ground: Option<Ground>,
-    refinement: StyleRefinement,
-    children: Vec<AnyElement>,
 }
 
 impl Tile {
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            id: id.into(),
+            base: div().id(id),
             variant: TileVariant::Card,
             tone: Tone::Neutral,
             state: PaintState::Rest,
             ground: None,
-            refinement: StyleRefinement::default(),
-            children: Vec::new(),
         }
     }
 
@@ -115,29 +112,30 @@ impl Tile {
 
 impl ParentElement for Tile {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements);
+        self.base.extend(elements);
     }
 }
 
 impl Styled for Tile {
     fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.refinement
+        self.base.style()
     }
 }
 
+impl InteractiveElement for Tile {
+    fn interactivity(&mut self) -> &mut Interactivity {
+        self.base.interactivity()
+    }
+}
+
+impl StatefulInteractiveElement for Tile {}
+
 impl RenderOnce for Tile {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        div()
-            .id(self.id)
-            .surface_at(
-                Surface::new(self.variant.role())
-                    .tone(self.tone)
-                    .on_maybe(self.ground),
-                self.state,
-                cx,
-            )
-            .refine_style(&self.refinement)
-            .children(self.children)
+        let surface = Surface::new(self.variant.role())
+            .tone(self.tone)
+            .on_maybe(self.ground);
+        self.base.surface_at(surface, self.state, cx)
     }
 }
 

@@ -2,7 +2,7 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: In progress (2026-11-01, slice 3)
+status: In progress (2026-11-01, nidus done, zebrilus next)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -113,7 +113,9 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | browser.address | field | no fill, no outline | D, M selected tint | Field variant | todo |
 | picker.notice | bar | - | - | Notice | todo |
 
-### nidus: 8 roles
+### nidus: 8 roles, now 0
+
+nid-app registers no roles and its clippy list carries the kit lint. Its settings previews moved to Well, the menu bar panel to `tray::TrayPanel` with `ListItem` rows.
 
 | Role | Parent | Code patch | Becomes | Status |
 |---|---|---|---|---|
