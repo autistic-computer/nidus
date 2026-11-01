@@ -3,26 +3,26 @@ pub mod geometry;
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use ala::{
-    App, BorderStyle, Bounds, Context, Corners, DispatchPhase, Edges, Entity, FocusHandle,
-    Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
+    App, BorderStyle, Bounds, Context, Corners, DispatchPhase, Edges, Entity, EventEmitter,
+    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, PathBuilder, Pixels, Point,
     Render, SharedString, StatefulInteractiveElement as _, Styled as _, Window, canvas, div, point,
     prelude::FluentBuilder as _, px, quad, size,
 };
 use nid::app::{
-    api::{PeerState, Request},
+    api::{PeerState, Request, State},
     layout_model::{Monitor, Preview, Seam},
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, Sizable as _, StyledExt as _,
-    Surface,
+    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Surface,
     button::{Button, ButtonVariants as _},
     h_flex, rems_from_px, v_flex,
 };
 
 use self::geometry::{
     BOARD_HEIGHT, DRAG_THRESHOLD, DRAG_TOLERANCE, Fit, KEY_STEP, KEY_TOLERANCE, NEW_TILE,
-    PLACE_TOLERANCE, Rect, chip_spot, chip_spots, hull, travel,
+    PLACE_TOLERANCE, Rect, Side, chip_spot, chip_spots, hull, travel,
 };
 use crate::{
     copy,
@@ -38,6 +38,10 @@ const FOUND_SIZE: (f32, f32) = (132.0, 64.0);
 const SHELF_TOP: f32 = 48.0;
 const SHELF_GAP: f32 = 8.0;
 const BADGE_ROOM: f32 = 34.0;
+const MIN_MAT: f32 = 160.0;
+pub const FOUND: &str = "found:";
+
+pub struct AddByAddress;
 
 pub fn owner_of(monitor: &Monitor) -> String {
     monitor
@@ -101,7 +105,10 @@ pub struct Board {
     bounds: Rc<Cell<Bounds<Pixels>>>,
     spots: HashMap<String, usize>,
     asking: bool,
+    dock: Cell<f32>,
 }
+
+impl EventEmitter<AddByAddress> for Board {}
 
 struct Island {
     owner: String,
@@ -131,6 +138,7 @@ impl Board {
             bounds: Rc::new(Cell::new(Bounds::default())),
             spots: HashMap::new(),
             asking: false,
+            dock: Cell::new(SHELF_TOP),
         }
     }
 
@@ -154,7 +162,16 @@ impl Board {
         let Some(snapshot) = &model.read(cx).snapshot else {
             return;
         };
-        let owners: Vec<String> = computers(snapshot).into_iter().map(|c| c.owner).collect();
+        let owners: Vec<String> = computers(snapshot)
+            .into_iter()
+            .map(|c| c.owner)
+            .chain(
+                snapshot
+                    .unplaced
+                    .iter()
+                    .map(|computer| format!("{FOUND}{}", computer.id)),
+            )
+            .collect();
         if self
             .selection
             .as_ref()
@@ -182,8 +199,16 @@ impl Board {
     }
 
     fn size(&self) -> (f32, f32) {
-        let width = f32::from(self.bounds.get().size.width);
-        (if width > 0.0 { width } else { 640.0 }, BOARD_HEIGHT)
+        let area = self.bounds.get().size;
+        let (width, height) = (f32::from(area.width), f32::from(area.height));
+        (
+            if width > 0.0 { width } else { 640.0 },
+            if height > 0.0 {
+                (height - self.dock.get()).max(MIN_MAT)
+            } else {
+                BOARD_HEIGHT
+            },
+        )
     }
 
     fn moves(drag: &Drag, owner: &str, monitor: &Monitor) -> bool {
@@ -392,7 +417,7 @@ impl Board {
         if clicks == 2
             && let Some(Hit::Found(id)) = &hit
         {
-            self.place_beside(id, cx);
+            self.place(id, Side::Right, cx);
             self.pressed = None;
             return;
         }
@@ -527,7 +552,8 @@ impl Board {
         if !pressed.dragging {
             match pressed.hit {
                 Some(Hit::Island { owner, .. }) => self.select(Some(owner), cx),
-                None if y < BOARD_HEIGHT => self.select(None, cx),
+                Some(Hit::Found(id)) => self.select(Some(format!("{FOUND}{id}")), cx),
+                None if y < self.size().1 => self.select(None, cx),
                 _ => {}
             }
             return;
@@ -563,7 +589,7 @@ impl Board {
         cx: &mut Context<Self>,
     ) {
         let _ = window;
-        if y >= BOARD_HEIGHT {
+        if y >= self.size().1 {
             return;
         }
         let Some(snapshot) = &self.model.read(cx).snapshot else {
@@ -583,17 +609,19 @@ impl Board {
         self.model.read(cx).send(request);
     }
 
-    pub fn place_beside(&self, id: &str, cx: &App) {
+    pub fn place(&self, id: &str, side: Side, cx: &App) {
         let Some(snapshot) = &self.model.read(cx).snapshot else {
             return;
         };
-        let Some(local) = monitors(snapshot).find(|monitor| monitor.peer.is_none()) else {
+        let all: Vec<&Monitor> = monitors(snapshot).collect();
+        let Some(local) = all.iter().find(|monitor| monitor.peer.is_none()) else {
             return;
         };
+        let (x, y) = geometry::beside(local, &all, side);
         self.model.read(cx).send(Request::Place {
             id: id.to_owned(),
-            x: local.x + local.width as i32,
-            y: local.y,
+            x,
+            y,
             tolerance: PLACE_TOLERANCE,
         });
     }
@@ -655,11 +683,16 @@ impl Board {
         });
     }
 
-    fn found_tiles(&self, snapshot: &Snapshot) -> Vec<(String, Rect, bool)> {
-        let (width, height) = self.size();
-        let per_row = ((width - 2.0 * SHELF_GAP - 16.0) / (FOUND_SIZE.0 + SHELF_GAP))
+    fn per_row(&self) -> usize {
+        let (width, _) = self.size();
+        ((width - 2.0 * SHELF_GAP - 16.0) / (FOUND_SIZE.0 + SHELF_GAP))
             .floor()
-            .max(1.0) as usize;
+            .max(1.0) as usize
+    }
+
+    fn found_tiles(&self, snapshot: &Snapshot) -> Vec<(String, Rect, bool)> {
+        let (_, height) = self.size();
+        let per_row = self.per_row();
         snapshot
             .unplaced
             .iter()
@@ -676,10 +709,9 @@ impl Board {
             .collect()
     }
 
-    fn shelf_height(&self, snapshot: &Snapshot) -> f32 {
-        let found = self.found_tiles(snapshot);
-        Rect::around(found.iter().map(|(_, rect, _)| *rect))
-            .map_or(0.0, |rect| rect.bottom() - BOARD_HEIGHT + SHELF_GAP)
+    fn dock_height(&self, snapshot: &Snapshot) -> f32 {
+        let rows = snapshot.unplaced.len().div_ceil(self.per_row());
+        SHELF_TOP + rows as f32 * (FOUND_SIZE.1 + SHELF_GAP)
     }
 
     fn shown_seams(&self, snapshot: &Snapshot) -> Vec<Seam> {
@@ -768,6 +800,29 @@ pub fn computers(snapshot: &Snapshot) -> Vec<Computer> {
     list
 }
 
+pub fn neighbor(snapshot: &Snapshot) -> Option<(String, &'static str)> {
+    let local: Vec<&str> = monitors(snapshot)
+        .filter(|monitor| monitor.peer.is_none())
+        .map(|monitor| monitor.id.as_str())
+        .collect();
+    snapshot
+        .seams
+        .iter()
+        .filter(|seam| !seam.same_computer)
+        .find_map(|seam| {
+            let here_is_a = local.contains(&seam.a.as_str());
+            if here_is_a == local.contains(&seam.b.as_str()) {
+                return None;
+            }
+            let there = if here_is_a { &seam.b } else { &seam.a };
+            let peer = monitors(snapshot)
+                .find(|monitor| &monitor.id == there)?
+                .peer
+                .clone()?;
+            Some((peer, geometry::crossing_side(seam, here_is_a)))
+        })
+}
+
 pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Seam> {
     let mine: Vec<&str> = computer
         .screens
@@ -808,10 +863,13 @@ impl Render for Board {
         let Some(snapshot) = self.model.read(cx).snapshot.clone() else {
             return div().into_any_element();
         };
+        self.dock.set(self.dock_height(&snapshot));
         let (fit, islands) = self.islands(&snapshot, window, cx);
         let theme = cx.theme().clone();
-        let shelf_height = self.shelf_height(&snapshot);
-        let total = BOARD_HEIGHT + shelf_height;
+        let mat = self.size().1;
+        let on = (snapshot.status.state == State::Controlling)
+            .then(|| snapshot.status.peer.clone())
+            .flatten();
         let refused = self
             .drag
             .as_ref()
@@ -865,8 +923,10 @@ impl Render for Board {
         let mat_theme = theme.clone();
         let ring_radius = theme.shape_radius(BOARD, penna::Shape::Round);
         let backdrop = canvas(
-            move |area, _, _| {
-                bounds.set(area);
+            move |area, window, _| {
+                if bounds.replace(area).size != area.size {
+                    window.request_animation_frame();
+                }
                 area
             },
             move |area, _, window, _| {
@@ -879,7 +939,7 @@ impl Render for Board {
                 let mut x = 9.0;
                 while x < f32::from(area.size.width) {
                     let mut y = 9.0;
-                    while y < BOARD_HEIGHT {
+                    while y < mat {
                         window.paint_quad(quad(
                             Bounds::new(
                                 area.origin + point(px(x - 0.8), px(y - 0.8)),
@@ -1009,9 +1069,7 @@ impl Render for Board {
                         );
                     }
                 }
-                if let Some(rect) =
-                    carried_rect.filter(|rect| rect.y + rect.height / 2.0 < BOARD_HEIGHT)
-                {
+                if let Some(rect) = carried_rect.filter(|rect| rect.y + rect.height / 2.0 < mat) {
                     window.paint_quad(quad(
                         to_bounds(area, rect),
                         Corners::all(px(6.0)),
@@ -1036,13 +1094,15 @@ impl Render for Board {
                     island.state,
                     None | Some(PeerState::Paired | PeerState::Unreachable)
                 );
+            let here = island.owner != LOCAL && on.as_deref() == Some(island.name.as_ref());
+            let left = island.owner == LOCAL && on.is_some();
             for (monitor, _, at) in &island.screens {
                 let moving = moving_ids.contains(&monitor.id);
                 let state = if moving && refused {
                     PaintState::Focused
                 } else if moving {
                     PaintState::Hover
-                } else if away {
+                } else if away || left {
                     PaintState::Disabled
                 } else {
                     PaintState::Rest
@@ -1061,6 +1121,8 @@ impl Render for Board {
                         .surface_at(
                             Surface::new(SCREEN).tone(if moving && refused {
                                 penna::Tone::Danger
+                            } else if here {
+                                penna::Tone::Primary
                             } else {
                                 penna::Tone::Neutral
                             }),
@@ -1181,62 +1243,81 @@ impl Render for Board {
         }
 
         let found = self.found_tiles(&snapshot);
-        let shelf_layer = (!snapshot.unplaced.is_empty()).then(|| {
-            let carried_id = carried.as_ref().map(|(id, _, _)| id.clone());
-            let carried_middle = carried.as_ref().map(|(_, _, middle)| *middle);
-            div()
-                .absolute()
-                .left(px(SHELF_GAP))
-                .right(px(SHELF_GAP))
-                .top(px(BOARD_HEIGHT))
-                .h(px(shelf_height - SHELF_GAP))
-                .surface(Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
-                .child(
-                    v_flex()
-                        .px(px(12.0))
-                        .pt(px(8.0))
-                        .gap(px(2.0))
-                        .child(
-                            div()
-                                .text_size(rems_from_px(13.0))
-                                .font_medium()
-                                .child("Found on this network"),
-                        )
-                        .child(widgets::muted(
-                            "Drag one next to a screen to add it.",
-                            12.0,
-                            cx,
-                        )),
-                )
-                .children(snapshot.unplaced.iter().zip(&found).map(
-                    |(computer, (id, rect, placeable))| {
-                        let carried = carried_id.as_deref() == Some(id.as_str());
-                        let (x, y) = match carried_middle.filter(|_| carried) {
-                            Some((mx, my)) => (mx - FOUND_SIZE.0 / 2.0, my - FOUND_SIZE.1 / 2.0),
-                            None => (rect.x, rect.y),
-                        };
-                        found_tile(computer, *placeable, carried, cx)
-                            .left(px(x - SHELF_GAP))
-                            .top(px(y - BOARD_HEIGHT))
-                            .into_any_element()
-                    },
-                ))
-        });
+        let carried_id = carried.as_ref().map(|(id, _, _)| id.clone());
+        let carried_middle = carried.as_ref().map(|(_, _, middle)| *middle);
+        let picked = selection
+            .as_deref()
+            .and_then(|owner| owner.strip_prefix(FOUND))
+            .map(str::to_owned);
+        let dock_layer = div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .top(px(mat))
+            .bottom_0()
+            .rule_on(penna::roles::BAR_RULE, Edge::Top, cx)
+            .child(
+                h_flex()
+                    .h(px(SHELF_TOP))
+                    .px(px(2.0 * SHELF_GAP))
+                    .gap(px(12.0))
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(rems_from_px(13.0))
+                                    .font_medium()
+                                    .child("Nearby"),
+                            )
+                            .child(widgets::muted(
+                                if snapshot.unplaced.is_empty() {
+                                    "Computers running Nidus on this network show up here."
+                                } else {
+                                    "Drag one onto the desk, or click it to pick a side."
+                                },
+                                12.0,
+                                cx,
+                            )),
+                    )
+                    .child(
+                        Button::new("by-address")
+                            .small()
+                            .icon(IconName::Plus)
+                            .label("By address…")
+                            .tooltip("For a computer Nidus can’t find on this network")
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(AddByAddress))),
+                    ),
+            )
+            .children(snapshot.unplaced.iter().zip(&found).map(
+                |(computer, (id, rect, placeable))| {
+                    let carried = carried_id.as_deref() == Some(id.as_str());
+                    let (x, y) = match carried_middle.filter(|_| carried) {
+                        Some((mx, my)) => (mx - FOUND_SIZE.0 / 2.0, my - FOUND_SIZE.1 / 2.0),
+                        None => (rect.x, rect.y),
+                    };
+                    let picked = picked.as_deref() == Some(id.as_str());
+                    found_tile(computer, *placeable, carried, picked, cx)
+                        .left(px(x))
+                        .top(px(y - mat))
+                        .into_any_element()
+                },
+            ));
 
         div()
             .id("board")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|board, event: &KeyDownEvent, _, cx| board.key(event, cx)))
             .relative()
-            .w_full()
-            .h(px(total))
+            .size_full()
             .child(
                 div()
                     .absolute()
                     .left_0()
                     .right_0()
                     .top_0()
-                    .h(px(BOARD_HEIGHT))
+                    .h(px(mat))
                     .surface(Surface::new(crate::theme::BOARD), cx),
             )
             .child(backdrop)
@@ -1247,7 +1328,7 @@ impl Render for Board {
                         .left_0()
                         .right_0()
                         .top_0()
-                        .h(px(BOARD_HEIGHT))
+                        .h(px(mat))
                         .flex()
                         .items_center()
                         .justify_center()
@@ -1261,7 +1342,7 @@ impl Render for Board {
             .children(screens)
             .child(seam_layer)
             .children(chips)
-            .children(shelf_layer)
+            .child(dock_layer)
             .into_any_element()
     }
 }
@@ -1270,6 +1351,7 @@ fn found_tile(
     computer: &nid::neighbors::Unplaced,
     placeable: bool,
     carried: bool,
+    picked: bool,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     v_flex()
@@ -1285,6 +1367,8 @@ fn found_tile(
             Surface::new(SHELF_TILE),
             if carried {
                 PaintState::Hover
+            } else if picked {
+                PaintState::Selected
             } else if placeable {
                 PaintState::Rest
             } else {

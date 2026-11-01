@@ -1,5 +1,5 @@
 use nid::{
-    app::api::{PeerState, State},
+    app::api::{PeerState, State, Status},
     core::KeyboardMode,
     neighbors::{Unplaced, UnplacedState},
     pairing_window::{Reason, State as WindowState, View as PairingWindow},
@@ -57,20 +57,35 @@ pub const fn linked(state: PeerState) -> bool {
     )
 }
 
-pub fn status_hint(state: State, peer: Option<&str>) -> String {
-    let peer = peer.unwrap_or("the other computer");
-    match state {
-        State::Ready => "Push the pointer past an edge to move onto another computer.".into(),
-        State::Controlling => format!(
-            "Move back across the edge to return. {RETURN_KEYS} brings input back and pauses sharing."
+pub fn status_line(status: &Status, beside: Option<(&str, &str)>) -> (String, Option<String>) {
+    let peer = status.peer.as_deref().unwrap_or("the other computer");
+    match status.state {
+        State::Controlling => (
+            format!("On {peer}"),
+            Some(format!("{RETURN_KEYS} brings you back")),
         ),
-        State::Controlled => format!(
-            "{peer} is using {THIS_COMPUTER_LOWER}. Its own keyboard and pointer still work."
+        State::Controlled => (format!("{peer} is using {THIS_COMPUTER_LOWER}"), None),
+        State::Ready => (
+            status.title.clone(),
+            Some(beside.map_or_else(
+                || "Put a computer next to your screens".to_owned(),
+                |(peer, side)| format!("{peer} is {}", side_phrase(side)),
+            )),
         ),
-        State::Paused => "Turn on Sharing to move between your computers.".into(),
-        State::Checking => "Reaching your other computers…".into(),
-        State::Setup => "Add a computer to share this keyboard and pointer.".into(),
-        State::Attention => "Fix what is below to keep sharing.".into(),
+        State::Paused => (
+            status.title.clone(),
+            Some("Turn on Sharing to switch computers".into()),
+        ),
+        State::Checking | State::Setup | State::Attention => (status.title.clone(), None),
+    }
+}
+
+const fn side_phrase(side: &str) -> &str {
+    match side.as_bytes() {
+        b"Right" => "to the right",
+        b"Left" => "to the left",
+        b"Top" => "above",
+        _ => "below",
     }
 }
 
@@ -222,6 +237,31 @@ mod tests {
             "Adding desk…"
         );
         assert_eq!(finish_note(&PairingWindow::default(), None, "laptop"), None);
+    }
+
+    #[test]
+    fn the_status_line_says_where_the_other_computer_is() {
+        let status = |state, peer: Option<&str>, title: &str| Status {
+            state,
+            peer: peer.map(str::to_owned),
+            title: title.into(),
+        };
+        let ready = status(State::Ready, None, "Ready");
+        assert_eq!(
+            status_line(&ready, Some(("desk", "Right"))),
+            ("Ready".into(), Some("desk is to the right".into()))
+        );
+        assert_eq!(
+            status_line(&ready, None).1.as_deref(),
+            Some("Put a computer next to your screens")
+        );
+        let away = status(State::Controlling, Some("desk"), "Controlling desk");
+        assert_eq!(status_line(&away, None).0, "On desk");
+        let here = status(State::Controlled, Some("desk"), "Controlled by desk");
+        assert_eq!(
+            status_line(&here, None),
+            (format!("desk is using {THIS_COMPUTER_LOWER}"), None)
+        );
     }
 
     #[test]

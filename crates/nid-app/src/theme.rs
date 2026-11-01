@@ -31,7 +31,7 @@ pub const SHELF_TILE: SurfaceRole = SurfaceRole::new(
     "board.found",
     Kind::Card,
     "Found computers",
-    "Computers found on the network, under the arrangement",
+    "Computers found nearby, in the dock under the arrangement",
 );
 pub const BANNER: SurfaceRole = SurfaceRole::new(
     "banner",
@@ -41,7 +41,21 @@ pub const BANNER: SurfaceRole = SurfaceRole::new(
 )
 .with(P.shadow(Shadow::None));
 
-const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP, SHELF_TILE, BANNER];
+pub const STATUS: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::BADGE,
+    "status",
+    "Status",
+    "What Nidus is doing, in the middle of the title bar",
+)
+.with(P.selected(Highlight::Tint));
+pub const CARD: SurfaceRole = SurfaceRole::under(
+    &penna::roles::SIDEBAR,
+    "computer-card",
+    "Computer card",
+    "The selected computer's settings, beside the arrangement",
+);
+
+const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP, SHELF_TILE, BANNER, STATUS, CARD];
 
 pub fn init(cx: &mut App) {
     penna::roles::register(ROLES);
