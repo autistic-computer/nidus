@@ -73,7 +73,6 @@ disallowed-methods = [
     { path = "penna::InteractiveSurfaceExt::surface_hover", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
     { path = "penna::StatefulSurfaceExt::surface_interactive", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
     { path = "penna::row_surface", reason = "paint chrome with a kit component (Chip, Notice, Tile, Well, Inspector...), not a role by hand; see penna's knowledge/designs/kit.md" },
-    { path = "penna::rems_from_px", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::font_weight", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::text_size", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
     { path = "ala::Styled::text_xs", reason = "set text with Label or .type_style(TextStyle, cx); see penna's knowledge/designs/kit.md" },
