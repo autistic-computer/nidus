@@ -54,6 +54,7 @@ pub struct Model {
     pub error: Option<String>,
     pub failure: Option<String>,
     pub page: Page,
+    pub added_by: Option<nid::hello::Notice>,
     #[cfg_attr(target_os = "linux", allow(dead_code))]
     pub config: PathBuf,
     #[cfg(target_os = "macos")]
@@ -87,6 +88,7 @@ impl Model {
             error: None,
             failure: None,
             page: Page::Computers,
+            added_by: None,
             config,
             #[cfg(target_os = "macos")]
             lens: None,
@@ -105,6 +107,7 @@ impl Model {
                 error: None,
                 failure: None,
                 page: Page::Computers,
+                added_by: None,
                 config: PathBuf::from("/tmp/nid.toml"),
                 #[cfg(target_os = "macos")]
                 lens: None,
@@ -172,6 +175,17 @@ impl Model {
             let _ = done.try_send(());
         }
         finished
+    }
+
+    pub fn welcome(&mut self, notice: nid::hello::Notice, cx: &mut Context<Self>) {
+        self.added_by = Some(notice);
+        cx.notify();
+    }
+
+    pub fn welcomed(&mut self, cx: &mut Context<Self>) {
+        if self.added_by.take().is_some() {
+            cx.notify();
+        }
     }
 
     pub fn take_failure(&mut self) -> Option<String> {

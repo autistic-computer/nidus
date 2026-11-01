@@ -105,6 +105,7 @@ pub struct Board {
     bounds: Rc<Cell<Bounds<Pixels>>>,
     spots: HashMap<String, usize>,
     asking: bool,
+    docked: bool,
     dock: Cell<f32>,
 }
 
@@ -138,6 +139,7 @@ impl Board {
             bounds: Rc::new(Cell::new(Bounds::default())),
             spots: HashMap::new(),
             asking: false,
+            docked: true,
             dock: Cell::new(SHELF_TOP),
         }
     }
@@ -148,6 +150,13 @@ impl Board {
                 self.adjusting = None;
             }
             self.selection = owner;
+            cx.notify();
+        }
+    }
+
+    pub fn set_docked(&mut self, docked: bool, cx: &mut Context<Self>) {
+        if self.docked != docked {
+            self.docked = docked;
             cx.notify();
         }
     }
@@ -617,12 +626,46 @@ impl Board {
         let Some(local) = all.iter().find(|monitor| monitor.peer.is_none()) else {
             return;
         };
-        let (x, y) = geometry::beside(local, &all, side);
+        let (x, y) = geometry::beside(local, &all, side, NEW_TILE);
         self.model.read(cx).send(Request::Place {
             id: id.to_owned(),
             x,
             y,
             tolerance: PLACE_TOLERANCE,
+        });
+    }
+
+    pub fn put(&self, owner: &str, side: Side, cx: &App) {
+        let Some(snapshot) = &self.model.read(cx).snapshot else {
+            return;
+        };
+        let (theirs, rest): (Vec<&Monitor>, Vec<&Monitor>) =
+            monitors(snapshot).partition(|monitor| owner_of(monitor) == owner);
+        let (Some(anchor), Some(local)) = (
+            theirs.first(),
+            rest.iter().find(|monitor| monitor.peer.is_none()),
+        ) else {
+            return;
+        };
+        let left = theirs.iter().map(|m| m.x).min().unwrap_or(anchor.x);
+        let top = theirs.iter().map(|m| m.y).min().unwrap_or(anchor.y);
+        let right = theirs
+            .iter()
+            .map(|m| m.x + m.width as i32)
+            .max()
+            .unwrap_or(left);
+        let bottom = theirs
+            .iter()
+            .map(|m| m.y + m.height as i32)
+            .max()
+            .unwrap_or(top);
+        let (x, y) = geometry::beside(local, &rest, side, (right - left, bottom - top));
+        self.model.read(cx).send(Request::MoveTile {
+            id: anchor.id.clone(),
+            x: x + anchor.x - left,
+            y: y + anchor.y - top,
+            tolerance: PLACE_TOLERANCE,
+            computer: true,
         });
     }
 
@@ -691,6 +734,9 @@ impl Board {
     }
 
     fn found_tiles(&self, snapshot: &Snapshot) -> Vec<(String, Rect, bool)> {
+        if !self.docked {
+            return Vec::new();
+        }
         let (_, height) = self.size();
         let per_row = self.per_row();
         snapshot
@@ -710,6 +756,9 @@ impl Board {
     }
 
     fn dock_height(&self, snapshot: &Snapshot) -> f32 {
+        if !self.docked {
+            return 0.0;
+        }
         let rows = snapshot.unplaced.len().div_ceil(self.per_row());
         SHELF_TOP + rows as f32 * (FOUND_SIZE.1 + SHELF_GAP)
     }
@@ -1342,7 +1391,7 @@ impl Render for Board {
             .children(screens)
             .child(seam_layer)
             .children(chips)
-            .child(dock_layer)
+            .when(self.docked, |this| this.child(dock_layer))
             .into_any_element()
     }
 }

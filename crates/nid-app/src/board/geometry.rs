@@ -221,17 +221,31 @@ impl Side {
             Self::Below => "Below",
         }
     }
+
+    pub fn of_crossing(side: &str) -> Self {
+        match side {
+            "Left" => Self::Left,
+            "Right" => Self::Right,
+            "Top" => Self::Above,
+            _ => Self::Below,
+        }
+    }
 }
 
-pub fn beside(anchor: &Monitor, all: &[&Monitor], side: Side) -> (i32, i32) {
+pub fn beside(
+    anchor: &Monitor,
+    all: &[&Monitor],
+    side: Side,
+    (width, height): (i32, i32),
+) -> (i32, i32) {
     let edge = |pick: fn(&Monitor) -> i32, last: bool| {
         let edges = all.iter().map(|monitor| pick(monitor));
         if last { edges.max() } else { edges.min() }.unwrap_or(pick(anchor))
     };
     match side {
-        Side::Left => (edge(|m| m.x, false) - NEW_TILE.0, anchor.y),
+        Side::Left => (edge(|m| m.x, false) - width, anchor.y),
         Side::Right => (edge(|m| m.x + m.width as i32, true), anchor.y),
-        Side::Above => (anchor.x, edge(|m| m.y, false) - NEW_TILE.1),
+        Side::Above => (anchor.x, edge(|m| m.y, false) - height),
         Side::Below => (anchor.x, edge(|m| m.y + m.height as i32, true)),
     }
 }
@@ -268,10 +282,11 @@ mod tests {
         let built_in = monitor("built-in", 300, 1440, 1512, 982);
         let desk = monitor("desk", 2560, 0, 1920, 1080);
         let all = [&mac, &built_in, &desk];
-        assert_eq!(beside(&mac, &all, Side::Right), (4480, 0));
-        assert_eq!(beside(&mac, &all, Side::Left), (-1920, 0));
-        assert_eq!(beside(&mac, &all, Side::Above), (0, -1080));
-        assert_eq!(beside(&mac, &all, Side::Below), (0, 2422));
+        assert_eq!(beside(&mac, &all, Side::Right, NEW_TILE), (4480, 0));
+        assert_eq!(beside(&mac, &all, Side::Left, NEW_TILE), (-1920, 0));
+        assert_eq!(beside(&mac, &all, Side::Above, NEW_TILE), (0, -1080));
+        assert_eq!(beside(&mac, &all, Side::Below, NEW_TILE), (0, 2422));
+        assert_eq!(beside(&mac, &all, Side::Left, (3840, 1080)), (-3840, 0));
     }
 
     #[test]

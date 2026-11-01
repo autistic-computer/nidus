@@ -1,5 +1,6 @@
 mod card;
 mod computers;
+pub mod first_run;
 mod settings;
 
 use ala::{
@@ -135,7 +136,7 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
                             .child(error.clone()),
                     ),
                     None => this.child(widgets::muted(
-                        "It shows up in Nearby. Drag it onto the desk to add it.",
+                        "Once Nidus reaches it, it shows up with the computers found nearby.",
                         12.0,
                         cx,
                     )),
@@ -188,19 +189,4 @@ fn look_up(this: &Entity<NidWindow>, address: String, window: &mut Window, cx: &
             });
         })
         .detach();
-}
-
-pub fn heading(
-    title: impl Into<ala::SharedString>,
-    description: impl Into<ala::SharedString>,
-    cx: &App,
-) -> ala::Div {
-    penna::settings::settings_page_heading(title, cx)
-        .gap(px(4.0))
-        .child(
-            div()
-                .text_size(rems_from_px(11.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(description.into()),
-        )
 }

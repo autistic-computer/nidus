@@ -55,7 +55,15 @@ pub const CARD: SurfaceRole = SurfaceRole::under(
     "The selected computer's settings, beside the arrangement",
 );
 
-const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP, SHELF_TILE, BANNER, STATUS, CARD];
+pub const STEP: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::BADGE,
+    "first-run.step",
+    "First-run steps",
+    "The numbered steps in the title bar while setting up",
+)
+.with(P.selected(Highlight::Accent));
+
+const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP, SHELF_TILE, BANNER, STATUS, CARD, STEP];
 
 pub fn init(cx: &mut App) {
     penna::roles::register(ROLES);

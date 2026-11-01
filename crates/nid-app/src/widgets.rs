@@ -115,15 +115,19 @@ pub fn mark_indices(mark: &str) -> Vec<usize> {
     clippy::disallowed_methods,
     reason = "a key's mark is an identity, drawn in the same colors on every computer and in every theme"
 )]
-pub fn key_mark(mark: &str) -> ala::Div {
+pub fn key_mark_sized(mark: &str, size: f32) -> ala::Div {
     h_flex()
-        .gap(px(2.0))
+        .gap(px(size / 3.5))
         .children(mark_indices(mark).into_iter().map(|index| {
             div()
-                .size(px(7.0))
-                .rounded(px(2.0))
+                .size(px(size))
+                .rounded(px(size / 3.5))
                 .bg(ala::rgb(MARK_COLORS[index]))
         }))
+}
+
+pub fn key_mark(mark: &str) -> ala::Div {
+    key_mark_sized(mark, 7.0)
 }
 
 pub fn state_dot(state: Option<PeerState>, cx: &App) -> ala::Div {
