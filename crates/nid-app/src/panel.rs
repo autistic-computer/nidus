@@ -1,0 +1,542 @@
+#![cfg_attr(
+    target_os = "linux",
+    allow(
+        dead_code,
+        reason = "Linux keeps the tray menu; the panel is for the menu bar and the notification area"
+    )
+)]
+
+use std::time::{Duration, Instant};
+
+use ala::{
+    AnyElement, App, AppContext as _, Bounds, Context, Entity, InteractiveElement as _,
+    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Subscription, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
+    point, prelude::FluentBuilder as _, px, size,
+};
+use nid::app::api::{Level, PeerState, Request, State};
+use penna::{
+    ActiveTheme as _, Colorize as _, Root, Sizable as _, StyledExt as _, Surface, SurfaceRole,
+    Tone,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    kbd::Keycap,
+    rems_from_px,
+    switch::Switch,
+    tray::TrayAnchor,
+    v_flex,
+};
+
+use crate::{
+    board, copy,
+    model::{Model, Page, Snapshot},
+    platform,
+    theme::BANNER,
+    widgets,
+};
+
+const WIDTH: f32 = 380.0;
+const ROW: f32 = 40.0;
+const GAP: f32 = 6.0;
+const EDGE: f32 = 8.0;
+const REOPEN: Duration = Duration::from_millis(300);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Look {
+    Ready,
+    Away,
+    Visited,
+    Paused,
+    Attention,
+    Update,
+}
+
+pub fn look(snapshot: Option<&Snapshot>, update: bool) -> Look {
+    match snapshot.map(|snapshot| snapshot.status.state) {
+        Some(State::Controlling) => Look::Away,
+        Some(State::Controlled) => Look::Visited,
+        _ if update => Look::Update,
+        Some(State::Ready) => Look::Ready,
+        Some(State::Paused | State::Checking) => Look::Paused,
+        Some(State::Setup | State::Attention) | None => Look::Attention,
+    }
+}
+
+pub fn place(icon: Bounds<Pixels>, area: Bounds<Pixels>, height: f32) -> Bounds<Pixels> {
+    let (left, right) = (f32::from(area.left()), f32::from(area.right()));
+    let x = (f32::from(icon.center().x) - WIDTH / 2.0)
+        .clamp(left + EDGE, (right - WIDTH - EDGE).max(left + EDGE));
+    let y = if icon.center().y < area.center().y {
+        f32::from(icon.bottom()) + GAP
+    } else {
+        f32::from(icon.top()) - height - GAP
+    };
+    Bounds::new(point(px(x), px(y)), size(px(WIDTH), px(height)))
+}
+
+fn height(snapshot: Option<&Snapshot>) -> f32 {
+    let rows = snapshot.map_or(0, |snapshot| {
+        snapshot.peers.len()
+            + snapshot
+                .unplaced
+                .iter()
+                .filter(|computer| copy::placeable(computer))
+                .count()
+    });
+    (300.0 + ROW * rows.max(1) as f32).clamp(340.0, 560.0)
+}
+
+#[derive(Default)]
+struct Shown {
+    window: Option<WindowHandle<Root>>,
+    closed: Option<Instant>,
+}
+
+impl ala::Global for Shown {}
+
+pub fn toggle(anchor: Option<TrayAnchor>, cx: &mut App) {
+    let shown = cx.default_global::<Shown>();
+    let open = shown.window.take();
+    let just_closed = shown.closed.take().is_some_and(|at| at.elapsed() < REOPEN);
+    if let Some(window) = open
+        && window
+            .update(cx, |_, window, _| window.remove_window())
+            .is_ok()
+    {
+        return;
+    }
+    if just_closed {
+        return;
+    }
+    let Some(anchor) = anchor else {
+        crate::open(cx);
+        return;
+    };
+    let model = crate::model::model(cx);
+    let area = cx
+        .displays()
+        .into_iter()
+        .find(|display| display.id() == anchor.display)
+        .map_or(anchor.bounds, |display| display.visible_bounds());
+    let bounds = place(
+        anchor.bounds,
+        area,
+        height(model.read(cx).snapshot.as_ref()),
+    );
+    let opened = cx.open_window(
+        WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            display_id: Some(anchor.display),
+            titlebar: None,
+            kind: WindowKind::PopUp,
+            is_movable: false,
+            is_resizable: false,
+            is_minimizable: false,
+            focus: true,
+            show: true,
+            app_id: Some(crate::APP_ID.into()),
+            ..Default::default()
+        },
+        |window, cx| {
+            crate::theme::apply(Some(window), cx);
+            let view = cx.new(|cx| Panel::new(model, window, cx));
+            cx.new(|cx| Root::new(view, window, cx))
+        },
+    );
+    match opened {
+        Ok(handle) => cx.default_global::<Shown>().window = Some(handle),
+        Err(error) => {
+            log::error!("Nidus could not open its panel: {error:#}");
+            crate::open(cx);
+        }
+    }
+}
+
+fn close(window: &mut Window, cx: &mut App) {
+    window.remove_window();
+    let shown = cx.default_global::<Shown>();
+    shown.window = None;
+    shown.closed = Some(Instant::now());
+}
+
+fn go(page: Page, window: &mut Window, cx: &mut App) {
+    crate::model::model(cx).update(cx, |model, cx| model.show(page, cx));
+    close(window, cx);
+    crate::open(cx);
+}
+
+pub struct Panel {
+    model: Entity<Model>,
+    was_active: bool,
+    _observers: Vec<Subscription>,
+}
+
+impl Panel {
+    fn new(model: Entity<Model>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let observers = vec![
+            cx.observe(&model, |_, _, cx| cx.notify()),
+            cx.observe_window_activation(window, |this, window, cx| {
+                if window.is_window_active() {
+                    this.was_active = true;
+                } else if this.was_active {
+                    close(window, cx);
+                }
+            }),
+        ];
+        Self {
+            model,
+            was_active: false,
+            _observers: observers,
+        }
+    }
+
+    fn send(&self, request: Request, cx: &App) {
+        self.model.read(cx).send(request);
+    }
+}
+
+impl Render for Panel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let snapshot = self.model.read(cx).snapshot.clone();
+        v_flex()
+            .size_full()
+            .px(px(16.0))
+            .pt(px(14.0))
+            .pb(px(8.0))
+            .gap(px(12.0))
+            .surface(Surface::new(SurfaceRole::POPOVER), cx)
+            .child(header(snapshot.as_ref(), cx))
+            .map(|panel| match &snapshot {
+                Some(snapshot) => panel.child(status(snapshot, cx)).child(
+                    div()
+                        .id("panel-computers")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .child(computers(snapshot, cx)),
+                ),
+                None => panel
+                    .child(widgets::muted("Starting…", 13.0, cx))
+                    .child(div().flex_1()),
+            })
+            .child(footer(cx))
+    }
+}
+
+fn header(snapshot: Option<&Snapshot>, cx: &mut Context<Panel>) -> AnyElement {
+    let sharing = snapshot
+        .filter(|snapshot| !snapshot.peers.is_empty())
+        .and_then(|snapshot| snapshot.sharing);
+    h_flex()
+        .gap(px(8.0))
+        .child(
+            div()
+                .flex_1()
+                .text_size(rems_from_px(15.0))
+                .font_medium()
+                .child("Nidus"),
+        )
+        .when_some(sharing, |this, sharing| {
+            this.child(widgets::muted("Sharing", 13.0, cx)).child(
+                Switch::new("panel-sharing")
+                    .checked(sharing)
+                    .on_click(cx.listener(|this, enabled: &bool, _, cx| {
+                        this.send(Request::SetSharing { enabled: *enabled }, cx);
+                    })),
+            )
+        })
+        .into_any_element()
+}
+
+fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
+    let state = snapshot.status.state;
+    let peer = snapshot
+        .status
+        .peer
+        .clone()
+        .unwrap_or_else(|| "the other computer".to_owned());
+    let problem = snapshot.health.iter().find(|row| row.level != Level::Ok);
+    let (tone, title, detail, action): (Tone, String, String, Option<AnyElement>) = match state {
+        State::Controlling => (
+            Tone::Primary,
+            format!("On {peer}"),
+            format!("Your keyboard and pointer are working on {peer}."),
+            Some(
+                h_flex()
+                    .gap(px(8.0))
+                    .child(Keycap::new(copy::RETURN_KEYS))
+                    .child(widgets::muted("brings them back", 12.0, cx))
+                    .into_any_element(),
+            ),
+        ),
+        State::Controlled => (
+            Tone::Primary,
+            format!("{peer} is using {}", copy::THIS_COMPUTER_LOWER),
+            format!("Someone at {peer} is typing and moving the pointer here."),
+            platform::CAN_REFUSE_CONTROL.then(|| {
+                let name = peer.clone();
+                Button::new("refuse-control")
+                    .small()
+                    .label(format!("Don’t let {peer} in"))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.send(
+                            Request::SetPeer {
+                                name: name.clone(),
+                                allow_control: Some(false),
+                                keyboard: None,
+                                reverse_scroll: None,
+                                share_screen: None,
+                            },
+                            cx,
+                        );
+                    }))
+                    .into_any_element()
+            }),
+        ),
+        _ if let Some(row) = problem => (
+            if row.level == Level::Error {
+                Tone::Danger
+            } else {
+                Tone::Warning
+            },
+            row.title.clone(),
+            row.detail.clone(),
+            Some(
+                Button::new("panel-fix")
+                    .small()
+                    .primary()
+                    .label("Open Nidus")
+                    .on_click(|_, window, cx| go(Page::Computers, window, cx))
+                    .into_any_element(),
+            ),
+        ),
+        State::Ready => (
+            Tone::Success,
+            snapshot.status.title.clone(),
+            board::neighbor(snapshot).map_or_else(
+                || "Put a computer next to your screens.".to_owned(),
+                |(peer, side)| {
+                    format!(
+                        "Push past the {} edge to reach {peer}.",
+                        side.to_lowercase()
+                    )
+                },
+            ),
+            None,
+        ),
+        _ => (
+            Tone::Neutral,
+            snapshot.status.title.clone(),
+            copy::status_line(&snapshot.status, None)
+                .1
+                .unwrap_or_default(),
+            None,
+        ),
+    };
+    v_flex()
+        .gap(px(4.0))
+        .px(px(12.0))
+        .py(px(10.0))
+        .surface(Surface::new(BANNER).tone(tone), cx)
+        .child(
+            h_flex()
+                .gap(px(8.0))
+                .child(penna::sidebar::status_dot(widgets::status_color(state, cx)))
+                .child(
+                    div()
+                        .text_size(rems_from_px(14.0))
+                        .font_medium()
+                        .child(title),
+                ),
+        )
+        .when(!detail.is_empty(), |card| {
+            card.child(widgets::muted(detail, 12.0, cx))
+        })
+        .when_some(action, |card, action| {
+            card.child(h_flex().pt(px(6.0)).child(action))
+        })
+        .into_any_element()
+}
+
+fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
+    let found: Vec<_> = snapshot
+        .unplaced
+        .iter()
+        .filter(|computer| copy::placeable(computer))
+        .collect();
+    v_flex()
+        .child(
+            div()
+                .pb(px(4.0))
+                .text_size(rems_from_px(11.0))
+                .font_medium()
+                .text_color(cx.theme().foreground.muted())
+                .child("Computers"),
+        )
+        .children(snapshot.peers.iter().map(|peer| {
+            let name = peer.name.clone();
+            row(
+                SharedString::from(format!("peer-{}", peer.name)),
+                widgets::state_dot(Some(peer.state), cx),
+                peer.name.clone(),
+                peer_action(&peer.name, peer.state, cx),
+                cx,
+            )
+            .on_click(move |_, window, cx| go(Page::Computer(name.clone()), window, cx))
+            .into_any_element()
+        }))
+        .children(found.into_iter().map(|computer| {
+            row(
+                SharedString::from(format!("found-{}", computer.id)),
+                widgets::state_dot(Some(PeerState::Paired), cx),
+                format!("{} · nearby", computer.name),
+                Button::new(SharedString::from(format!("add-{}", computer.id)))
+                    .small()
+                    .label("Add…")
+                    .on_click(|_, window, cx| go(Page::Computers, window, cx))
+                    .into_any_element(),
+                cx,
+            )
+            .into_any_element()
+        }))
+        .when(snapshot.peers.is_empty(), |list| {
+            list.child(
+                h_flex()
+                    .h(px(ROW))
+                    .gap(px(10.0))
+                    .child(widgets::muted("No other computers yet.", 13.0, cx).flex_1())
+                    .child(
+                        Button::new("set-up")
+                            .small()
+                            .label("Set up…")
+                            .on_click(|_, window, cx| go(Page::Computers, window, cx)),
+                    ),
+            )
+        })
+        .into_any_element()
+}
+
+fn row(
+    id: SharedString,
+    dot: ala::Div,
+    label: String,
+    action: AnyElement,
+    cx: &App,
+) -> ala::Stateful<ala::Div> {
+    h_flex()
+        .id(id)
+        .h(px(ROW))
+        .px(px(8.0))
+        .mx(px(-8.0))
+        .gap(px(10.0))
+        .rounded(cx.theme().radius)
+        .cursor_pointer()
+        .hover(|row| {
+            row.surface_at(
+                Surface::new(SurfaceRole::POPOVER),
+                penna::PaintState::Hover,
+                cx,
+            )
+        })
+        .child(dot)
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(rems_from_px(14.0))
+                .child(label),
+        )
+        .child(action)
+}
+
+fn peer_action(name: &str, state: PeerState, cx: &App) -> AnyElement {
+    #[cfg(target_os = "macos")]
+    if copy::linked(state) && state != PeerState::ControlledFromHere {
+        let name = name.to_owned();
+        return Button::new(SharedString::from(format!("look-{name}")))
+            .small()
+            .icon(penna::IconName::Eye)
+            .label("Look")
+            .on_click(move |_, _, cx| crate::lens::look(&name, cx))
+            .into_any_element();
+    }
+    let _ = name;
+    widgets::muted(copy::peer_state(state), 12.0, cx).into_any_element()
+}
+
+fn footer(cx: &mut Context<Panel>) -> AnyElement {
+    h_flex()
+        .gap(px(4.0))
+        .pt(px(6.0))
+        .rule_on(penna::Kind::Rule.role(), penna::Edge::Top, cx)
+        .child(
+            Button::new("panel-arrange")
+                .ghost()
+                .label("Arrange…")
+                .on_click(|_, window, cx| go(Page::Computers, window, cx)),
+        )
+        .child(
+            Button::new("panel-settings")
+                .ghost()
+                .label("Settings…")
+                .on_click(|_, window, cx| go(Page::Settings, window, cx)),
+        )
+        .child(div().flex_1())
+        .child(
+            Button::new("panel-quit")
+                .ghost()
+                .label("Quit")
+                .on_click(|_, _, cx| {
+                    #[cfg(not(target_os = "linux"))]
+                    platform::quit(cx);
+                    #[cfg(target_os = "linux")]
+                    cx.quit();
+                }),
+        )
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::{Bounds, point, px, size};
+    use nid::app::api::State;
+
+    use super::{Look, WIDTH, look, place};
+    use crate::board::tests::snapshot;
+
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<ala::Pixels> {
+        Bounds::new(point(px(x), px(y)), size(px(width), px(height)))
+    }
+
+    #[test]
+    fn the_panel_hangs_under_a_menu_bar_icon_and_stays_on_screen() {
+        let screen = rect(0.0, 25.0, 1512.0, 920.0);
+        let middle = place(rect(700.0, 0.0, 24.0, 24.0), screen, 400.0);
+        assert_eq!(middle.origin, point(px(712.0 - WIDTH / 2.0), px(30.0)));
+        let corner = place(rect(1480.0, 0.0, 24.0, 24.0), screen, 400.0);
+        assert_eq!(f32::from(corner.right()), 1504.0);
+    }
+
+    #[test]
+    fn the_panel_stands_above_a_taskbar_icon() {
+        let screen = rect(1920.0, 0.0, 1920.0, 1040.0);
+        let panel = place(rect(3700.0, 1048.0, 24.0, 24.0), screen, 400.0);
+        assert_eq!(f32::from(panel.bottom()), 1042.0);
+        assert!(f32::from(panel.left()) >= 1928.0);
+    }
+
+    #[test]
+    fn the_icon_says_where_the_keyboard_is() {
+        let mut shown = snapshot();
+        assert_eq!(look(Some(&shown), false), Look::Ready);
+        assert_eq!(look(Some(&shown), true), Look::Update);
+        shown.status.state = State::Controlling;
+        assert_eq!(look(Some(&shown), true), Look::Away);
+        shown.status.state = State::Controlled;
+        assert_eq!(look(Some(&shown), false), Look::Visited);
+        shown.status.state = State::Paused;
+        assert_eq!(look(Some(&shown), false), Look::Paused);
+        assert_eq!(look(None, false), Look::Attention);
+    }
+}

@@ -5,13 +5,14 @@ use penna::tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
 use crate::{
     copy,
     model::{Model, Page, Snapshot},
+    panel::{self, Look},
     platform::{self, SharedServices},
 };
 
 struct AppTray {
     tray: Option<Tray>,
     menu: Menu,
-    look: Option<(String, bool, bool)>,
+    look: Option<(String, Look)>,
 }
 
 impl ala::Global for AppTray {}
@@ -96,9 +97,9 @@ pub fn init(model: &Entity<Model>, cx: &mut App) {
         TrayOptions {
             id: crate::APP_ID.into(),
             tooltip: "Nidus".into(),
-            icon: platform::tray_look(true, false),
+            icon: platform::tray_look(Look::Ready),
             icon_name: None,
-            menu_on_click: cfg!(target_os = "macos"),
+            menu_on_click: false,
         },
         menu.clone(),
         events,
@@ -139,14 +140,7 @@ fn refresh(model: &Entity<Model>, cx: &mut App) {
     #[cfg(not(target_os = "macos"))]
     let lens: Option<String> = None;
     let next = entries(snapshot.as_ref(), update.as_deref(), lens.as_deref());
-    let healthy = snapshot.as_ref().is_some_and(|snapshot| {
-        matches!(
-            snapshot.status.state,
-            nid::app::api::State::Ready
-                | nid::app::api::State::Controlling
-                | nid::app::api::State::Controlled
-        )
-    });
+    let shown = panel::look(snapshot.as_ref(), update.is_some());
     let title = snapshot.as_ref().map_or_else(
         || "Needs attention".to_owned(),
         |snapshot| snapshot.status.title.clone(),
@@ -161,10 +155,10 @@ fn refresh(model: &Entity<Model>, cx: &mut App) {
     {
         icon.menu_changed();
     }
-    let look = (tooltip.clone(), healthy, update.is_some());
+    let look = (tooltip.clone(), shown);
     if tray.look.as_ref() != Some(&look) {
         if let Some(icon) = &tray.tray {
-            icon.set_look(&tooltip, &platform::tray_look(healthy, update.is_some()));
+            icon.set_look(&tooltip, &platform::tray_look(shown));
         }
         tray.look = Some(look);
     }
@@ -172,7 +166,10 @@ fn refresh(model: &Entity<Model>, cx: &mut App) {
 
 fn handle(event: &TrayEvent, model: &Entity<Model>, cx: &mut App) {
     let action = match event {
-        TrayEvent::Activate => "open",
+        TrayEvent::Activate(anchor) => {
+            panel::toggle(*anchor, cx);
+            return;
+        }
         TrayEvent::Action(action) => action.as_str(),
         TrayEvent::Available(_) => return,
     };
@@ -241,5 +238,21 @@ mod tests {
             36,
         );
         assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn every_look_draws() {
+        for look in [
+            Look::Ready,
+            Look::Away,
+            Look::Visited,
+            Look::Paused,
+            Look::Attention,
+            Look::Update,
+        ] {
+            let icon = platform::tray_look(look);
+            assert!(icon.png.starts_with(&[0x89, b'P', b'N', b'G']), "{look:?}");
+        }
     }
 }
