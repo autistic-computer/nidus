@@ -23,13 +23,16 @@ try {
         $expected = $checksumLines[0].Substring(0, 64)
         if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $expected) { throw 'The Windows installer checksum does not match the release' }
     }
-    $installed = Join-Path $env:LOCALAPPDATA 'Nid.App/Nid.App.exe'
-    $zflow = Join-Path $env:LOCALAPPDATA 'Zflow.App/Zflow.App.exe'
-    $legacy = Join-Path $env:LOCALAPPDATA 'Programs/zflow/Zflow.App.exe'
+    $root = Join-Path $env:LOCALAPPDATA 'Nid.App'
+    $zflowRoot = Join-Path $env:LOCALAPPDATA 'Zflow.App'
+    $legacyRoot = Join-Path $env:LOCALAPPDATA 'Programs/zflow'
+    $installed = Join-Path $root 'current/Nid.App.exe'
+    $zflow = Join-Path $zflowRoot 'current/Zflow.App.exe'
+    $legacy = Join-Path $legacyRoot 'Zflow.App.exe'
     foreach ($app in @($installed, $zflow, $legacy)) {
         if (Test-Path -LiteralPath $app) { Start-Process -FilePath $app -ArgumentList '--quit' -Wait }
     }
-    $directories = @((Split-Path -Parent $installed), (Split-Path -Parent $zflow), (Split-Path -Parent $legacy))
+    $directories = @($root, $zflowRoot, $legacyRoot)
     $deadline = [DateTime]::UtcNow.AddSeconds(25)
     do {
         $running = @(Get-CimInstance Win32_Process -Filter "Name = 'Nid.App.exe' OR Name = 'nid.exe' OR Name = 'Zflow.App.exe' OR Name = 'zflow.exe'" | Where-Object {
@@ -43,9 +46,9 @@ try {
     $result = Start-Process -FilePath $setup -ArgumentList '--silent' -Wait -PassThru
     if ($result.ExitCode -ne 0) { throw "The Windows installer failed (exit code $($result.ExitCode))" }
     if (-not (Test-Path -LiteralPath $installed)) { throw 'The installer did not create the Nidus launcher' }
-    $zflowUpdate = Join-Path (Split-Path -Parent $zflow) 'Update.exe'
+    $zflowUpdate = Join-Path $zflowRoot 'Update.exe'
     if (Test-Path -LiteralPath $zflowUpdate) { Start-Process -FilePath $zflowUpdate -ArgumentList 'uninstall', '--silent' -Wait }
-    Write-Host "Installed Nidus for this user at $(Split-Path -Parent $installed)"
+    Write-Host "Installed Nidus for this user at $root"
     Write-Host 'Your configuration and paired computers remain in %LOCALAPPDATA%\nid.'
     if (-not $NoLaunch) { Start-Process -FilePath $installed }
 } finally {
