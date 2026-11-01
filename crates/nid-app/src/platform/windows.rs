@@ -67,6 +67,7 @@ pub const LIVES_IN_TRAY: bool = true;
 const WM_QUIT_APP: u32 = 0x8002;
 const WM_SHOW_APP: u32 = 0x8003;
 const HANDSHAKE_CLASS: PCWSTR = w!("Nid.App");
+const LAUNCHER: &str = "Nidus.exe";
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const PREFERENCES_KEY: &str = r"Software\nid";
 const UPDATE_INTERVAL: Duration = Duration::from_hours(6);
@@ -88,7 +89,7 @@ fn startup_executable() -> PathBuf {
         .parent()
         .filter(|dir| dir.file_name().is_some_and(|name| name == "current"))
         .and_then(Path::parent)
-        .map(|root| root.join("Nid.App.exe"))
+        .map(|root| root.join(LAUNCHER))
         .filter(|path| path.exists())
         .unwrap_or(current)
 }
@@ -128,11 +129,15 @@ fn remove_startup_path() {
     let Ok(key) = windows_registry::CURRENT_USER.create(RUN_KEY) else {
         return;
     };
-    let ours = format!("\"{}\"", startup_executable().display());
-    if key
-        .get_string("nid")
-        .is_ok_and(|command| command.to_lowercase().starts_with(&ours.to_lowercase()))
-    {
+    let ours = [
+        startup_executable(),
+        std::env::current_exe().unwrap_or_default(),
+    ]
+    .map(|path| format!("\"{}\"", path.display()).to_lowercase());
+    if key.get_string("nid").is_ok_and(|command| {
+        let command = command.to_lowercase();
+        ours.iter().any(|ours| command.starts_with(ours))
+    }) {
         let _ = key.remove_value("nid");
     }
 }
@@ -1079,4 +1084,18 @@ pub fn this_computer_entries(
                     .on_click(|_, _, cx| quit(cx)),
             ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn launcher_is_named_after_the_pack_title() {
+        let title = LAUNCHER.strip_suffix(".exe").unwrap();
+        assert!(
+            include_str!("../../../../scripts/package-windows.ps1")
+                .contains(&format!("'--packTitle', '{title}'"))
+        );
+    }
 }
