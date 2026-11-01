@@ -1,26 +1,27 @@
 use ala::{
     AnyElement, App, AppContext as _, Context, Entity, FocusHandle, Focusable,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _,
-    Subscription, Window, WindowControlArea, div, prelude::FluentBuilder as _, px,
+    Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
-use nid::app::api::Request;
+use nid::app::api::{Request, State};
 use penna::{
-    ActiveTheme as _, Disableable as _, IconName, Root, WindowControls, WindowExt as _, h_flex,
+    ActiveTheme as _, Colorize as _, Disableable as _, IconName, PaintState, Root, StyledExt as _,
+    Surface, Tone, WindowControls, WindowExt as _, h_flex,
     input::InputState,
-    settings::{settings_navigation_button, settings_navigation_row},
+    rems_from_px,
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
-    sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
+    sidebar::{chrome_button, status_dot},
     switch::Switch,
-    v_flex,
 };
 
 use crate::{
-    board::Board,
-    model::{Model, Page},
-    pages, platform, widgets,
+    board::{self, AddByAddress, Board},
+    copy,
+    model::{Model, Page, Snapshot},
+    pages, platform,
+    theme::STATUS,
+    widgets,
 };
-
-const SIDEBAR_WIDTH: f32 = 220.0;
 
 pub struct NidWindow {
     pub model: Entity<Model>,
@@ -47,6 +48,9 @@ impl NidWindow {
             cx.observe(&model, |_, _, cx| cx.notify()),
             cx.observe(&services, |_, _, cx| cx.notify()),
             cx.observe(&board, |_, _, cx| cx.notify()),
+            cx.subscribe_in(&board, window, |this, _, _: &AddByAddress, window, cx| {
+                this.open_add_address(window, cx);
+            }),
             cx.observe_window_appearance(window, |_, window, cx| {
                 crate::theme::apply(Some(window), cx);
             }),
@@ -87,78 +91,40 @@ impl NidWindow {
         });
     }
 
-    fn sidebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let page = self.model.read(cx).page.clone();
-        let row = |id: &'static str,
-                   title: &'static str,
-                   icon: IconName,
-                   target: Page,
-                   cx: &mut Context<Self>| {
-            let selected = page == target;
-            settings_navigation_row(
-                settings_navigation_button(id, title, icon, selected, cx).on_click(cx.listener(
-                    move |this, _, _, cx| {
-                        let target = target.clone();
-                        this.model.update(cx, |model, cx| model.show(target, cx));
-                    },
-                )),
-            )
-        };
-        let navigation = v_flex()
-            .px(cx.theme().row_inset)
-            .child(row(
-                "nav-computers",
-                "Computers",
-                IconName::LayoutDashboard,
-                Page::Computers,
-                cx,
-            ))
-            .child(row(
-                "nav-settings",
-                "Settings",
-                IconName::Settings,
-                Page::Settings,
-                cx,
-            ))
-            .child(div().flex_1())
-            .child(sidebar_footer(
-                "sidebar-footer",
-                widgets::muted(format!("Nidus {}", env!("CARGO_PKG_VERSION")), 11.0, cx),
-                None,
-                cx,
-            ));
-        let titlebar = window_drag_handle(
-            "sidebar-drag",
-            sidebar_titlebar("sidebar-title", div(), cx)
-                .window_control_area(WindowControlArea::Drag),
-            window,
-            cx,
-        );
-        sidebar_panel(
-            "sidebar",
-            SIDEBAR_WIDTH,
-            titlebar,
-            navigation.size_full(),
-            cx.theme().ground(),
-            true,
-            cx,
-        )
-        .into_any_element()
-    }
-
     fn titlebar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
         let model = self.model.read(cx);
-        let tools = (model.page == Page::Computers)
-            .then_some(model.snapshot.as_ref())
-            .flatten()
+        let settings = model.page == Page::Settings;
+        let snapshot = model.snapshot.clone();
+        let sharing = snapshot
+            .as_ref()
             .filter(|snapshot| !snapshot.peers.is_empty())
             .map(|snapshot| snapshot.sharing);
+        let middle = if settings {
+            Some(
+                div()
+                    .text_size(rems_from_px(13.0))
+                    .font_medium()
+                    .child("Settings")
+                    .into_any_element(),
+            )
+        } else {
+            snapshot.as_ref().map(|snapshot| status_pill(snapshot, cx))
+        };
         let leading = h_flex()
             .flex_1()
-            .justify_end()
-            .gap(px(8.0))
+            .h_full()
+            .min_w_0()
+            .gap(px(10.0))
+            .pl(if cfg!(target_os = "macos") {
+                penna::title_bar::macos_traffic_light_clearance(cx)
+            } else {
+                px(12.0)
+            })
             .pr(px(8.0))
-            .when_some(tools, |this, sharing| {
+            .child(div().flex_1())
+            .children(middle)
+            .child(div().flex_1())
+            .when_some(sharing, |this, sharing| {
                 this.child(widgets::muted("Sharing", 12.0, cx)).child(
                     Switch::new("titlebar-sharing")
                         .checked(sharing == Some(true))
@@ -168,14 +134,29 @@ impl NidWindow {
                         })),
                 )
             })
-            .when(model.page == Page::Computers, |this| {
-                this.child(
-                    chrome_button("add-address", IconName::Plus, "Add a computer by address")
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_add_address(window, cx)),
-                        ),
+            .child(
+                chrome_button(
+                    "settings",
+                    if settings {
+                        IconName::Xmark
+                    } else {
+                        IconName::Settings
+                    },
+                    if settings {
+                        "Back to your computers"
+                    } else {
+                        "Settings"
+                    },
                 )
-            });
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    let page = if settings {
+                        Page::Computers
+                    } else {
+                        Page::Settings
+                    };
+                    this.model.update(cx, |model, cx| model.show(page, cx));
+                })),
+            );
         let controls = WindowControls::new().on_close_window(|_, window, cx| {
             if platform::may_close(cx) {
                 window.remove_window();
@@ -191,6 +172,51 @@ impl NidWindow {
     }
 }
 
+fn status_pill(snapshot: &Snapshot, cx: &App) -> AnyElement {
+    let status = &snapshot.status;
+    let neighbor = board::neighbor(snapshot);
+    let (title, hint) = copy::status_line(
+        status,
+        neighbor.as_ref().map(|(peer, side)| (peer.as_str(), *side)),
+    );
+    let away = status.state == State::Controlling;
+    h_flex()
+        .min_w_0()
+        .h(px(26.0))
+        .px(px(12.0))
+        .gap(px(6.0))
+        .rounded_full()
+        .surface_at(
+            Surface::new(STATUS).tone(if away { Tone::Primary } else { Tone::Neutral }),
+            if away {
+                PaintState::Selected
+            } else {
+                PaintState::Rest
+            },
+            cx,
+        )
+        .child(status_dot(widgets::status_color(status.state, cx)))
+        .child(
+            div()
+                .flex_none()
+                .text_size(rems_from_px(12.0))
+                .font_medium()
+                .whitespace_nowrap()
+                .child(title),
+        )
+        .when_some(hint, |this, hint| {
+            this.child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(rems_from_px(12.0))
+                    .text_color(cx.theme().foreground.muted())
+                    .child(format!("· {hint}")),
+            )
+        })
+        .into_any_element()
+}
+
 impl Focusable for NidWindow {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -199,7 +225,6 @@ impl Focusable for NidWindow {
 
 impl Render for NidWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sidebar = self.sidebar(window, cx);
         let titlebar = self.titlebar(window, cx);
         let content = pages::page(self, window, cx);
         let dialogs = Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element);
@@ -208,7 +233,7 @@ impl Render for NidWindow {
         app_shell_surface(
             SharedString::from("Nidus"),
             cx.theme().background,
-            sidebar,
+            div(),
             Some(titlebar),
             content,
             dialogs.into_iter().chain(notifications),

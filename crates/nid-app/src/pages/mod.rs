@@ -1,5 +1,5 @@
+mod card;
 mod computers;
-mod inspector;
 mod settings;
 
 use ala::{
@@ -135,7 +135,7 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
                             .child(error.clone()),
                     ),
                     None => this.child(widgets::muted(
-                        "It shows up in Found on this network. Drag it into place to add it.",
+                        "It shows up in Nearby. Drag it onto the desk to add it.",
                         12.0,
                         cx,
                     )),
@@ -188,17 +188,6 @@ fn look_up(this: &Entity<NidWindow>, address: String, window: &mut Window, cx: &
             });
         })
         .detach();
-}
-
-pub fn card_danger(
-    id: impl Into<ala::ElementId>,
-    label: impl Into<ala::SharedString>,
-    cx: &App,
-) -> Button {
-    Button::new(id)
-        .danger()
-        .label(label)
-        .on(penna::settings::settings_card_ground(cx))
 }
 
 pub fn heading(

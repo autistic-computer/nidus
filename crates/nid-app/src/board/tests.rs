@@ -6,7 +6,11 @@ use nid::app::{
     layout_model::{Layout, Monitor, Seam},
 };
 
-use super::{Board, geometry::Fit, monitors};
+use super::{
+    Board,
+    geometry::{Fit, Side},
+    monitors,
+};
 use crate::model::{Model, Requests, Snapshot};
 
 fn screen(id: &str, peer: Option<&str>, x: i32) -> Monitor {
@@ -67,11 +71,20 @@ pub(crate) fn snapshot() -> Snapshot {
 }
 
 fn board(cx: &mut TestAppContext) -> (Requests, &mut VisualTestContext, Fit) {
+    let (requests, cx, fit, _) = board_with(cx, &snapshot());
+    (requests, cx, fit)
+}
+
+fn board_with<'a>(
+    cx: &'a mut TestAppContext,
+    snapshot: &Snapshot,
+) -> (Requests, &'a mut VisualTestContext, Fit, ala::Entity<Board>) {
     cx.update(crate::theme::init);
     let (model, requests) = {
         let mut requests = None;
+        let shown = snapshot.clone();
         let model = cx.new(|cx| {
-            let (model, queue) = Model::fake(snapshot(), cx);
+            let (model, queue) = Model::fake(shown, cx);
             requests = Some(queue);
             model
         });
@@ -86,13 +99,10 @@ fn board(cx: &mut TestAppContext) -> (Requests, &mut VisualTestContext, Fit) {
         let _ = window.draw(cx);
     });
     let fit = cx.update(|_, cx| {
-        let board = board.read(cx);
-        let width = f32::from(board.bounds.get().size.width);
-        let snapshot = snapshot();
-        Fit::new(monitors(&snapshot), width, super::geometry::BOARD_HEIGHT)
-            .expect("two screens fit")
+        let (width, height) = board.read(cx).size();
+        Fit::new(monitors(snapshot), width, height).expect("two screens fit")
     });
-    (requests, cx, fit)
+    (requests, cx, fit, board)
 }
 
 fn middle(fit: &Fit, x: i32) -> Point<ala::Pixels> {
@@ -170,6 +180,40 @@ fn a_click_selects_and_arrow_keys_move_the_selected_computer(cx: &mut TestAppCon
             Request::MoveTile { id, x: 100, tolerance: 99, computer: true, .. } if id == "local"
         )),
         "{moved:?}"
+    );
+}
+
+#[ala::test]
+fn a_click_picks_a_nearby_computer_and_a_side_places_it(cx: &mut TestAppContext) {
+    let mut found = snapshot();
+    found.unplaced.push(nid::neighbors::Unplaced {
+        id: "key:desk".into(),
+        name: "desk".into(),
+        os: Some(nid::wire::Os::Linux),
+        mark: Some("abcdef".into()),
+        version: None,
+        state: nid::neighbors::UnplacedState::Ready,
+        via: nid::neighbors::Via::Mdns,
+    });
+    let (requests, cx, _, board) = board_with(cx, &found);
+    let tile = cx.update(|_, cx| board.read(cx).found_tiles(&found)[0].1);
+    let at = point(px(tile.x + 10.0), px(tile.y + 10.0));
+    cx.simulate_mouse_down(at, MouseButton::Left, Modifiers::default());
+    cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::default());
+    cx.run_until_parked();
+    assert_eq!(
+        cx.update(|_, cx| board.read(cx).selection.clone())
+            .as_deref(),
+        Some("found:key:desk")
+    );
+    cx.update(|_, cx| board.read(cx).place("key:desk", Side::Left, cx));
+    let placed = requests.drain();
+    assert!(
+        placed.iter().any(|(request, _)| matches!(
+            request,
+            Request::Place { id, x: -1920, y: 0, .. } if id == "key:desk"
+        )),
+        "{placed:?}"
     );
 }
 

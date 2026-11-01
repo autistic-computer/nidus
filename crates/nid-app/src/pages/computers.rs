@@ -4,12 +4,14 @@ use ala::{
 };
 use nid::app::api::Level;
 use penna::{
-    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _, button::Button, h_flex,
-    rems_from_px, settings::settings_scroll_column, sidebar::status_dot, v_flex,
+    ActiveTheme as _, Sizable as _, StyledExt as _, button::Button, h_flex, rems_from_px,
+    settings::settings_scroll_column, v_flex,
 };
 
-use super::{fix_button, inspector};
+use super::{card, fix_button};
 use crate::{copy, model::Snapshot, platform, widgets, window::NidWindow};
+
+const FIRST_RUN_BOARD: f32 = 400.0;
 
 pub fn render(
     this: &mut NidWindow,
@@ -22,39 +24,24 @@ pub fn render(
     if snapshot.peers.is_empty() {
         return first_run(this, &snapshot, window, cx);
     }
-    settings_scroll_column("computers")
-        .child(status(&snapshot, cx))
-        .children(problems(&snapshot, None, cx))
-        .child(this.board.clone())
-        .child(widgets::muted(hint(), 11.0, cx))
-        .child(inspector::render(this, &snapshot, window, cx))
-        .into_any_element()
-}
-
-fn hint() -> &'static str {
-    "Drag a computer by any of its screens or its name; double-click it to move its screens one by one. The pointer crosses to another computer at the lit seams."
-}
-
-fn status(snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> impl IntoElement {
-    let status = &snapshot.status;
-    v_flex()
-        .gap(px(4.0))
+    let problems = problems(&snapshot, None, cx);
+    let card = card::render(this, &snapshot, window, cx);
+    div()
+        .flex()
+        .size_full()
+        .min_h_0()
         .child(
-            h_flex()
-                .gap(px(10.0))
-                .child(status_dot(widgets::status_color(status.state, cx)))
-                .child(
-                    div()
-                        .text_size(rems_from_px(20.0))
-                        .font_medium()
-                        .child(status.title.clone()),
-                ),
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .when(!problems.is_empty(), |column| {
+                    column.child(v_flex().p(px(12.0)).gap(px(8.0)).children(problems))
+                })
+                .child(div().flex_1().min_h_0().child(this.board.clone())),
         )
-        .child(widgets::muted(
-            copy::status_hint(status.state, status.peer.as_deref()),
-            12.0,
-            cx,
-        ))
+        .children(card)
+        .into_any_element()
 }
 
 fn problems(
@@ -97,7 +84,7 @@ fn first_run(
             "Computers running Nidus on this network show up here by themselves.",
             cx,
         ))
-        .child(this.board.clone())
+        .child(div().h(px(FIRST_RUN_BOARD)).child(this.board.clone()))
         .when_some(note, |column, (title, detail)| {
             column.child(widgets::note(title, detail, cx))
         })
@@ -143,9 +130,4 @@ pub fn host_name() -> String {
     } else {
         name
     }
-}
-
-#[allow(dead_code)]
-fn muted_ink(cx: &ala::App) -> ala::Hsla {
-    cx.theme().foreground.muted()
 }

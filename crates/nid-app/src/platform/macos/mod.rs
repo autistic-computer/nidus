@@ -825,26 +825,21 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     )
 }
 
-pub fn peer_entries(
-    _: &mut NidWindow,
-    peer: &Peer,
-    cx: &mut Context<NidWindow>,
-) -> Vec<SettingEntry> {
+pub fn peer_actions(_: &mut NidWindow, peer: &Peer, _: &mut Context<NidWindow>) -> Vec<AnyElement> {
     if !copy::linked(peer.state) {
         return Vec::new();
     }
     let name = peer.name.clone();
     vec![
-        SettingEntry::new(format!("Look at {name}")).description(format!(
-                "See its screen around the pointer, and work there from this Mac. {} opens and closes it.",
+        Button::new("look")
+            .icon(IconName::Eye)
+            .label(format!("Look at {name}"))
+            .tooltip(format!(
+                "See its screen around the pointer and work there from this Mac. {} opens and closes it.",
                 crate::lens::HOTKEY_LABEL
             ))
-        .control(
-            Button::new("look")
-                .label("Look")
-                .on(settings_card_ground(cx))
-                .on_click(move |_, _, cx| crate::lens::look(&name, cx)),
-        ),
+            .on_click(move |_, _, cx| crate::lens::look(&name, cx))
+            .into_any_element(),
     ]
 }
 
