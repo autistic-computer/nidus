@@ -31,7 +31,7 @@ function Start-Process {
     param($FilePath, $ArgumentList, [switch]$Wait, [switch]$PassThru)
     $global:NidInstallerTestState.processCalls += @{ file = $FilePath; args = $ArgumentList }
     if ([IO.Path]::GetFileName($FilePath) -eq $global:NidInstallerTestState.assetName) {
-        $destination = Join-Path $env:LOCALAPPDATA 'Nid.App'
+        $destination = Join-Path $env:LOCALAPPDATA 'Nid.App/current'
         New-Item -ItemType Directory -Path $destination -Force | Out-Null
         [IO.File]::WriteAllText((Join-Path $destination 'Nid.App.exe'), 'test launcher')
         return @{ ExitCode = 0 }
