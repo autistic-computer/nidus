@@ -797,7 +797,7 @@ pub fn quit(cx: &mut App) {
     cx.quit();
 }
 
-pub fn tray_look(_: bool, _: bool) -> penna::tray::TrayIcon {
+pub fn tray_look(_: crate::panel::Look) -> penna::tray::TrayIcon {
     penna::tray::TrayIcon {
         png: include_bytes!("../../../../assets/windows/nid.png").to_vec(),
         template: false,

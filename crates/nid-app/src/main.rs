@@ -5,6 +5,7 @@ mod copy;
 mod lens;
 mod model;
 mod pages;
+mod panel;
 mod platform;
 mod theme;
 #[cfg(not(target_os = "linux"))]

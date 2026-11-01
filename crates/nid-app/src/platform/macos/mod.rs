@@ -1070,11 +1070,32 @@ pub fn this_computer_entries(
     ]
 }
 
-pub fn tray_look(healthy: bool, update: bool) -> penna::tray::TrayIcon {
-    let svg = if update {
+pub fn tray_look(look: crate::panel::Look) -> penna::tray::TrayIcon {
+    use crate::panel::Look;
+    let mark = match look {
+        Look::Ready => format!(r#"<path d="{ARROW}"/><path d="{DASHES}"/>"#),
+        Look::Away => format!(
+            r#"<path d="{ARROW}" fill="none" stroke="black" stroke-width="48" stroke-linejoin="round"/><path d="{DASHES}"/>"#
+        ),
+        Look::Visited => cut(
+            r#"<rect x="590" y="580" width="230" height="200" rx="40" fill="black"/>"#,
+            r#"<rect x="626" y="616" width="170" height="128" rx="24"/>"#,
+        ),
+        Look::Paused => {
+            format!(r#"<g fill-opacity="0.45"><path d="{ARROW}"/><path d="{DASHES}"/></g>"#)
+        }
+        Look::Attention => cut(
+            r#"<circle cx="716" cy="239" r="124" fill="black"/>"#,
+            r#"<circle cx="716" cy="239" r="84"/>"#,
+        ),
+        Look::Update => String::new(),
+    };
+    let svg = if look == Look::Update {
         UPDATE_SVG.to_owned()
     } else {
-        MARK_SVG.replace("OPACITY", if healthy { "1" } else { "0.45" })
+        format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="166 149 640 640">{mark}</svg>"#
+        )
     };
     penna::tray::TrayIcon {
         png: crate::tray::rasterize(&svg, 36),
@@ -1082,7 +1103,14 @@ pub fn tray_look(healthy: bool, update: bool) -> penna::tray::TrayIcon {
     }
 }
 
-const MARK_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="166 149 640 640" fill-opacity="OPACITY"><path d="M766 212C780 208 792 220 788 234L680 640C676 655 655 657 648 643L590 530L414 706C402 718 382 718 370 706L318 654C306 642 306 622 318 610L494 434L381 376C367 369 369 348 384 344Z"/><path d="M188 474L274 388C283 379 297 379 306 388L324 406C333 415 333 429 324 438L238 524C229 533 215 533 206 524L188 506C179 497 179 483 188 474ZM204 670L234 640C243 631 257 631 266 640L284 658C293 667 293 681 284 690L254 720C245 729 231 729 222 720L204 702C195 693 195 679 204 670Z"/></svg>"#;
+fn cut(hole: &str, badge: &str) -> String {
+    format!(
+        r#"<defs><mask id="cut"><rect x="166" y="149" width="640" height="640" fill="white"/>{hole}</mask></defs><g mask="url(#cut)"><path d="{ARROW}"/><path d="{DASHES}"/></g>{badge}"#
+    )
+}
+
+const ARROW: &str = "M766 212C780 208 792 220 788 234L680 640C676 655 655 657 648 643L590 530L414 706C402 718 382 718 370 706L318 654C306 642 306 622 318 610L494 434L381 376C367 369 369 348 384 344Z";
+const DASHES: &str = "M188 474L274 388C283 379 297 379 306 388L324 406C333 415 333 429 324 438L238 524C229 533 215 533 206 524L188 506C179 497 179 483 188 474ZM204 670L234 640C243 631 257 631 266 640L284 658C293 667 293 681 284 690L254 720C245 729 231 729 222 720L204 702C195 693 195 679 204 670Z";
 const UPDATE_SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v9M8 12.5l4 4 4-4"/></svg>"#;
 
 #[cfg(test)]
