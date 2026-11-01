@@ -14,7 +14,7 @@ const ICON_DROP: f32 = 1.0;
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Lead {
     Icon(IconName),
-    Dot,
+    Dot(Tone),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -63,8 +63,8 @@ impl Notice {
     }
 
     #[must_use]
-    pub fn dot(mut self) -> Self {
-        self.lead = Lead::Dot;
+    pub fn dot(mut self, tone: Tone) -> Self {
+        self.lead = Lead::Dot(tone);
         self
     }
 
@@ -118,7 +118,7 @@ impl RenderOnce for Notice {
                         .text_color(cx.theme().tone(self.tone)),
                 )
                 .into_any_element(),
-            Lead::Dot => chip::dot(self.tone, ground, cx).into_any_element(),
+            Lead::Dot(tone) => chip::dot(tone, ground, cx).into_any_element(),
         };
         let detail = self
             .detail

@@ -1,6 +1,6 @@
 use ala::{
-    App, Div, Hsla, IntoElement, ParentElement as _, RenderOnce, SharedString, StyleRefinement,
-    Styled, Window, div, prelude::FluentBuilder as _, px,
+    App, Div, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
+    StyleRefinement, Styled, TextRun, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -70,6 +70,35 @@ impl Chip {
         self
     }
 
+    pub fn width(&self, window: &mut Window, cx: &App) -> Pixels {
+        let (_, padding, text) = metrics(self.size);
+        let rem = window.rem_size();
+        let gap = Space::S3.rems().to_pixels(rem);
+        let mut font = ala::font(cx.theme().font_family.clone());
+        font.weight = text.strong_weight();
+        let line = window.text_system().shape_line(
+            self.label.clone(),
+            text.size().to_pixels(rem),
+            &[TextRun {
+                len: self.label.len(),
+                font,
+                color: cx.theme().foreground,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            }],
+            None,
+        );
+        let lead = if self.dot.is_some() {
+            rems_from_px(DOT).to_pixels(rem) + gap
+        } else if self.icon.is_some() {
+            px(text.design_px() + 1.0) + gap
+        } else {
+            px(0.0)
+        };
+        line.width + padding.rems().to_pixels(rem) * 2.0 + lead
+    }
+
     fn paint_layer(&self, theme: &Theme) -> Layer {
         let role = SurfaceRole::CHIP;
         let role = match self.emphasis {
@@ -117,10 +146,7 @@ impl RenderOnce for Chip {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let layer = self.paint_layer(cx.theme());
         let ground = layer.ground;
-        let (height, padding, text) = match self.size {
-            Size::Small => (20.0, Space::S4, TextStyle::Caption),
-            Size::Medium | Size::Size(_) => (24.0, Space::S5, TextStyle::Small),
-        };
+        let (height, padding, text) = metrics(self.size);
         h_flex()
             .min_w_0()
             .h(rems_from_px(height))
@@ -147,6 +173,39 @@ impl RenderOnce for Chip {
                         .truncate(),
                 )
             })
+    }
+}
+
+const fn metrics(size: Size) -> (f32, Space, TextStyle) {
+    match size {
+        Size::Small => (20.0, Space::S4, TextStyle::Caption),
+        Size::Medium | Size::Size(_) => (24.0, Space::S5, TextStyle::Small),
+    }
+}
+
+#[derive(IntoElement)]
+pub struct Dot {
+    tone: Tone,
+    ground: Option<Ground>,
+}
+
+impl Dot {
+    #[must_use]
+    pub fn new(tone: Tone) -> Self {
+        Self { tone, ground: None }
+    }
+
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.ground = Some(ground);
+        self
+    }
+}
+
+impl RenderOnce for Dot {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let ground = self.ground.unwrap_or_else(|| cx.theme().ground());
+        dot(self.tone, ground, cx)
     }
 }
 

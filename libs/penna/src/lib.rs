@@ -57,7 +57,7 @@ pub mod notification {
     pub use super::overlay::Notification;
 }
 
-pub use chip::Chip;
+pub use chip::{Chip, Dot};
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,

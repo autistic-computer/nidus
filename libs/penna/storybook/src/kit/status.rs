@@ -28,7 +28,7 @@ pub const STORY: Story = Story {
         Section {
             id: "notices",
             name: "Notices",
-            summary: "Notice::new(tone, title) with a detail and an action. The icon follows the tone unless .icon or .dot replaces it. Buttons on it pass Notice::ground(tone, cx).",
+            summary: "Notice::new(tone, title) with a detail and an action. The icon follows the tone unless .icon or .dot(tone) replaces it. Buttons on it pass Notice::ground(tone, cx).",
             build: |_, cx| stateless(notices, cx),
         },
         Section {
@@ -161,7 +161,7 @@ fn stacked(_: &mut Window, cx: &mut App) -> AnyElement {
             "with a dot and an action",
             v_flex().w(Space::S16.rems() * 11.0).child(
                 Notice::new(Tone::Warning, "Needs one thing")
-                    .dot()
+                    .dot(Tone::Warning)
                     .stacked()
                     .detail("Nidus can't move the pointer on this Mac, so nobody can come here.")
                     .action(
@@ -177,7 +177,7 @@ fn stacked(_: &mut Window, cx: &mut App) -> AnyElement {
             "ready",
             v_flex().w(Space::S16.rems() * 11.0).child(
                 Notice::new(Tone::Success, "Ready")
-                    .dot()
+                    .dot(Tone::Success)
                     .stacked()
                     .detail("Push past the right edge to reach ubuntu."),
             ),
