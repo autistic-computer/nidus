@@ -709,7 +709,6 @@ pub fn banner(
                         .on_click(|_, _, cx| cx.open_with_system(std::path::Path::new("/Applications")))
                         .into_any_element(),
                 ),
-                cx,
             ))
             .into_any_element(),
     )

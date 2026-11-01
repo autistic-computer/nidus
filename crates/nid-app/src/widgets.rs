@@ -1,29 +1,18 @@
-use ala::{
-    AnyElement, App, Hsla, ParentElement as _, SharedString, Styled as _, div,
-    prelude::FluentBuilder as _, px,
-};
+use ala::{AnyElement, App, ParentElement as _, SharedString, Styled as _, div, px};
 use nid::app::api::{Level, PeerState, State};
-use penna::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, Sizable as _, StyledExt as _, Surface,
-    Tone, h_flex, rems_from_px, sidebar::status_dot, v_flex,
-};
-
-use crate::theme::BANNER;
+use penna::{ActiveTheme as _, Colorize as _, Dot, Ground, Notice, Tone, h_flex, rems_from_px};
 
 pub fn banner(
     level: Level,
     title: impl Into<SharedString>,
     detail: impl Into<SharedString>,
     action: Option<AnyElement>,
-    cx: &App,
-) -> ala::Div {
-    let tone = tone_of(level);
-    let icon = match level {
-        Level::Error => IconName::CircleX,
-        Level::Warning => IconName::TriangleAlert,
-        Level::Ok => IconName::CircleCheck,
-    };
-    callout(tone, icon, title, detail, action, cx)
+) -> Notice {
+    let notice = Notice::new(tone_of(level), title).detail(detail);
+    match action {
+        Some(action) => notice.action(action),
+        None => notice,
+    }
 }
 
 const fn tone_of(level: Level) -> Tone {
@@ -35,58 +24,11 @@ const fn tone_of(level: Level) -> Tone {
 }
 
 pub fn banner_ground(level: Level, cx: &App) -> Ground {
-    cx.theme()
-        .ground_of(Surface::new(BANNER).tone(tone_of(level)))
+    Notice::ground(tone_of(level), cx)
 }
 
-pub fn note(title: impl Into<SharedString>, detail: impl Into<SharedString>, cx: &App) -> ala::Div {
-    callout(Tone::Primary, IconName::Info, title, detail, None, cx)
-}
-
-fn callout(
-    tone: Tone,
-    icon: IconName,
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    action: Option<AnyElement>,
-    cx: &App,
-) -> ala::Div {
-    let detail = detail.into();
-    h_flex()
-        .w_full()
-        .items_start()
-        .gap(px(10.0))
-        .px(px(12.0))
-        .py(px(10.0))
-        .surface(Surface::new(BANNER).tone(tone), cx)
-        .child(
-            div().pt(px(1.0)).child(
-                Icon::new(icon)
-                    .with_size(px(16.0))
-                    .text_color(cx.theme().tone(tone)),
-            ),
-        )
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(2.0))
-                .child(
-                    div()
-                        .text_size(rems_from_px(13.0))
-                        .font_medium()
-                        .child(title.into()),
-                )
-                .when(!detail.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .text_size(rems_from_px(12.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child(detail),
-                    )
-                }),
-        )
-        .children(action)
+pub fn note(title: impl Into<SharedString>, detail: impl Into<SharedString>) -> Notice {
+    Notice::new(Tone::Primary, title).detail(detail)
 }
 
 const MARK_COLORS: [u32; 8] = [
@@ -130,24 +72,26 @@ pub fn key_mark(mark: &str) -> ala::Div {
     key_mark_sized(mark, 7.0)
 }
 
-pub fn state_dot(state: Option<PeerState>, cx: &App) -> ala::Div {
-    let theme = cx.theme();
-    status_dot(match state {
-        None | Some(PeerState::Connected) => theme.success,
-        Some(PeerState::ControllingThis | PeerState::ControlledFromHere) => theme.accent,
-        Some(PeerState::Connecting) => theme.warning,
-        Some(PeerState::Paired | PeerState::Unreachable) => theme.foreground.faint(),
-    })
+pub const fn peer_tone(state: Option<PeerState>) -> Tone {
+    match state {
+        None | Some(PeerState::Connected) => Tone::Success,
+        Some(PeerState::ControllingThis | PeerState::ControlledFromHere) => Tone::Accent,
+        Some(PeerState::Connecting) => Tone::Warning,
+        Some(PeerState::Paired | PeerState::Unreachable) => Tone::Neutral,
+    }
 }
 
-pub fn status_color(state: State, cx: &App) -> Hsla {
-    let theme = cx.theme();
+pub fn state_dot(state: Option<PeerState>) -> Dot {
+    Dot::new(peer_tone(state))
+}
+
+pub const fn state_tone(state: State) -> Tone {
     match state {
-        State::Ready => theme.success,
-        State::Controlling | State::Controlled => theme.accent,
-        State::Checking => theme.warning,
-        State::Attention => theme.danger,
-        State::Paused | State::Setup => theme.foreground.muted(),
+        State::Ready => Tone::Success,
+        State::Controlling | State::Controlled => Tone::Accent,
+        State::Checking => Tone::Warning,
+        State::Attention => Tone::Danger,
+        State::Paused | State::Setup => Tone::Neutral,
     }
 }
 

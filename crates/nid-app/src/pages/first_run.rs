@@ -8,8 +8,8 @@ use nid::{
     neighbors::Unplaced,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Sizable as _, StyledExt, Surface, Tone,
+    ActiveTheme as _, Disableable as _, Emphasis, Icon, IconName, PaintState, Sizable as _, Steps,
+    StyledExt, Surface, Tone,
     button::{Button, ButtonVariant, ButtonVariants},
     check::Check,
     h_flex,
@@ -26,7 +26,7 @@ use crate::{
     copy,
     model::{Model, Snapshot},
     platform,
-    theme::{SHELF_TILE, STEP},
+    theme::SHELF_TILE,
     widgets,
     window::NidWindow,
 };
@@ -107,53 +107,8 @@ pub fn strip(this: &NidWindow, cx: &App) -> Option<AnyElement> {
         }
     };
     Some(
-        h_flex()
-            .gap(px(10.0))
-            .children(STEPS.iter().enumerate().map(|(index, label)| {
-                let (tone, state) = match index.cmp(&now) {
-                    std::cmp::Ordering::Less => (Tone::Primary, PaintState::Rest),
-                    std::cmp::Ordering::Equal => (Tone::Primary, PaintState::Selected),
-                    std::cmp::Ordering::Greater => (Tone::Neutral, PaintState::Rest),
-                };
-                h_flex()
-                    .gap(px(10.0))
-                    .when(index > 0, |this| {
-                        this.child(
-                            div()
-                                .w(px(28.0))
-                                .h(px(2.0))
-                                .surface(Surface::new(STEP).tone(tone), cx),
-                        )
-                    })
-                    .child(
-                        div()
-                            .flex()
-                            .flex_none()
-                            .items_center()
-                            .justify_center()
-                            .size(px(20.0))
-                            .rounded_full()
-                            .text_size(rems_from_px(11.0))
-                            .font_medium()
-                            .surface_at(Surface::new(STEP).tone(tone), state, cx)
-                            .map(|dot| {
-                                if index < now {
-                                    dot.child(Icon::new(IconName::Check).with_size(px(12.0)))
-                                } else {
-                                    dot.child((index + 1).to_string())
-                                }
-                            }),
-                    )
-                    .child(
-                        div()
-                            .text_size(rems_from_px(13.0))
-                            .when(index == now, StyledExt::font_medium)
-                            .when(index > now, |this| {
-                                this.text_color(cx.theme().foreground.muted())
-                            })
-                            .child(*label),
-                    )
-            }))
+        Steps::new(STEPS.iter().copied())
+            .current(now)
             .into_any_element(),
     )
 }
@@ -280,7 +235,7 @@ fn find(this: &NidWindow, snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> A
                 ))
             })
             .when_some(note, |column, (title, detail)| {
-                column.child(widgets::note(title, detail, cx))
+                column.child(widgets::note(title, detail))
             })
             .child(div().flex_1())
             .child(

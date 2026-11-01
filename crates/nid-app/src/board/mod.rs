@@ -14,8 +14,8 @@ use nid::app::{
     layout_model::{Monitor, Preview, Seam},
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, PaintState, Sizable as _,
-    StyledExt as _, Surface,
+    ActiveTheme as _, Chip, Colorize as _, Edge, Icon, IconName, PaintState, Selectable as _,
+    Sizable as _, StyledExt as _, Surface, Tone,
     button::{Button, ButtonVariants as _},
     h_flex, rems_from_px, v_flex,
 };
@@ -27,13 +27,12 @@ use self::geometry::{
 use crate::{
     copy,
     model::{Model, Snapshot},
-    theme::{BOARD, CHIP, SCREEN, SHELF_TILE},
+    theme::{BOARD, SCREEN, SHELF_TILE},
     widgets,
 };
 
 pub const LOCAL: &str = "local";
 const CHIP_HEIGHT: f32 = 24.0;
-const CHIP_TEXT: f32 = 12.0;
 const FOUND_SIZE: (f32, f32) = (132.0, 64.0);
 const SHELF_TOP: f32 = 48.0;
 const SHELF_GAP: f32 = 8.0;
@@ -322,8 +321,16 @@ impl Board {
         let hulls: Vec<Option<Rect>> = islands.iter().map(|island| island.hull).collect();
         for (index, island) in islands.iter_mut().enumerate() {
             let Some(hull) = island.hull else { continue };
-            let chip_width =
-                chip_width(&island.name, island.state.is_some(), window, cx).min(width - 8.0);
+            let chip_width = {
+                let chip = Chip::new(island.name.clone());
+                let chip = if island.state.is_some() {
+                    chip.dot(Tone::Neutral)
+                } else {
+                    chip
+                };
+                f32::from(chip.width(window, cx))
+            }
+            .min(width - 8.0);
             let done = if self.adjusting.as_deref() == Some(island.owner.as_str()) {
                 geometry::CHIP_GAP + 58.0
             } else {
@@ -888,25 +895,6 @@ pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Sea
         .collect()
 }
 
-fn chip_width(name: &str, dot: bool, window: &mut Window, cx: &App) -> f32 {
-    let mut font = ala::font(cx.theme().font_family.clone());
-    font.weight = ala::FontWeight::MEDIUM;
-    let line = window.text_system().shape_line(
-        SharedString::from(name.to_owned()),
-        px(CHIP_TEXT),
-        &[ala::TextRun {
-            len: name.len(),
-            font,
-            color: cx.theme().foreground,
-            background_color: None,
-            underline: None,
-            strikethrough: None,
-        }],
-        None,
-    );
-    f32::from(line.width) + 18.0 + if dot { 12.0 } else { 0.0 }
-}
-
 impl Render for Board {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(snapshot) = self.model.read(cx).snapshot.clone() else {
@@ -1225,37 +1213,20 @@ impl Render for Board {
                 continue;
             }
             let selected = selection.as_deref() == Some(island.owner.as_str());
+            let chip = Chip::new(island.name.clone()).selected(selected);
+            let chip = if island.owner == LOCAL {
+                chip
+            } else {
+                chip.dot(widgets::peer_tone(island.state))
+            };
             chips.push(
-                h_flex()
+                div()
                     .id(SharedString::from(format!("chip-{}", island.owner)))
                     .absolute()
                     .left(px(island.chip.x))
                     .top(px(island.chip.y))
                     .max_w(px(self.size().0 - 8.0))
-                    .h(px(CHIP_HEIGHT))
-                    .px(px(9.0))
-                    .gap(px(6.0))
-                    .justify_center()
-                    .rounded_full()
-                    .surface_at(
-                        Surface::new(CHIP),
-                        if selected {
-                            PaintState::Selected
-                        } else {
-                            PaintState::Rest
-                        },
-                        cx,
-                    )
-                    .child(
-                        div()
-                            .text_size(rems_from_px(CHIP_TEXT))
-                            .font_medium()
-                            .whitespace_nowrap()
-                            .child(island.name.clone()),
-                    )
-                    .when(island.owner != LOCAL, |this| {
-                        this.child(widgets::state_dot(island.state, cx))
-                    })
+                    .child(chip)
                     .tooltip({
                         let text: SharedString = match island.state {
                             Some(state) => {

@@ -16,8 +16,8 @@ use ala::{
 };
 use nid::app::api::{Level, PeerState, Request, State};
 use penna::{
-    ActiveTheme as _, Colorize as _, Root, Sizable as _, StyledExt as _, Surface, SurfaceRole,
-    Tone,
+    ActiveTheme as _, Colorize as _, Notice, Root, Sizable as _, StyledExt as _, Surface,
+    SurfaceRole, Tone,
     button::{Button, ButtonVariants as _},
     h_flex,
     kbd::Keycap,
@@ -30,9 +30,7 @@ use penna::{
 use crate::{
     board, copy,
     model::{Model, Page, Snapshot},
-    platform,
-    theme::BANNER,
-    widgets,
+    platform, widgets,
 };
 
 const WIDTH: f32 = 380.0;
@@ -333,29 +331,15 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
             None,
         ),
     };
-    v_flex()
-        .gap(px(4.0))
-        .px(px(12.0))
-        .py(px(10.0))
-        .surface(Surface::new(BANNER).tone(tone), cx)
-        .child(
-            h_flex()
-                .gap(px(8.0))
-                .child(penna::sidebar::status_dot(widgets::status_color(state, cx)))
-                .child(
-                    div()
-                        .text_size(rems_from_px(14.0))
-                        .font_medium()
-                        .child(title),
-                ),
-        )
-        .when(!detail.is_empty(), |card| {
-            card.child(widgets::muted(detail, 12.0, cx))
-        })
-        .when_some(action, |card, action| {
-            card.child(h_flex().pt(px(6.0)).child(action))
-        })
-        .into_any_element()
+    let notice = Notice::new(tone, title)
+        .dot(widgets::state_tone(state))
+        .stacked()
+        .detail(detail);
+    match action {
+        Some(action) => notice.action(action),
+        None => notice,
+    }
+    .into_any_element()
 }
 
 fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
@@ -377,7 +361,7 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
             let name = peer.name.clone();
             row(
                 SharedString::from(format!("peer-{}", peer.name)),
-                widgets::state_dot(Some(peer.state), cx),
+                widgets::state_dot(Some(peer.state)),
                 peer.name.clone(),
                 peer_action(&peer.name, peer.state, cx),
                 cx,
@@ -388,7 +372,7 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
         .children(found.into_iter().map(|computer| {
             row(
                 SharedString::from(format!("found-{}", computer.id)),
-                widgets::state_dot(Some(PeerState::Paired), cx),
+                widgets::state_dot(Some(PeerState::Paired)),
                 format!("{} · nearby", computer.name),
                 Button::new(SharedString::from(format!("add-{}", computer.id)))
                     .small()
@@ -418,7 +402,7 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
 
 fn row(
     id: SharedString,
-    dot: ala::Div,
+    dot: penna::Dot,
     label: String,
     action: AnyElement,
     cx: &App,

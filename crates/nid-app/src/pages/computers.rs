@@ -60,7 +60,7 @@ pub(super) fn problems(
             let action = platform::health_action(row, cx).map(|action| {
                 fix_button(&row.id, &action, widgets::banner_ground(row.level, cx), cx)
             });
-            widgets::banner(row.level, row.title.clone(), row.detail.clone(), action, cx)
+            widgets::banner(row.level, row.title.clone(), row.detail.clone(), action)
                 .into_any_element()
         })
         .collect()

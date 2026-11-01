@@ -5,12 +5,12 @@ use ala::{
 };
 use nid::app::api::{Request, State};
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName, PaintState, Root, StyledExt as _,
-    Surface, Tone, WindowControls, WindowExt as _, h_flex,
+    ActiveTheme as _, Chip, Disableable as _, IconName, Root, Selectable as _, StyledExt as _,
+    Tone, WindowControls, WindowExt as _, h_flex,
     input::InputState,
     rems_from_px,
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
-    sidebar::{chrome_button, status_dot},
+    sidebar::chrome_button,
     switch::Switch,
 };
 
@@ -19,9 +19,7 @@ use crate::{
     copy,
     model::{Model, Page, Snapshot},
     pages::{self, first_run::Step},
-    platform,
-    theme::STATUS,
-    widgets,
+    platform, widgets,
 };
 
 pub struct NidWindow {
@@ -131,7 +129,7 @@ impl NidWindow {
         } else if let Some(steps) = pages::first_run::strip(self, cx) {
             Some(steps)
         } else {
-            snapshot.as_ref().map(|snapshot| status_pill(snapshot, cx))
+            snapshot.as_ref().map(status_pill)
         };
         let leading = h_flex()
             .flex_1()
@@ -195,7 +193,7 @@ impl NidWindow {
     }
 }
 
-fn status_pill(snapshot: &Snapshot, cx: &App) -> AnyElement {
+fn status_pill(snapshot: &Snapshot) -> AnyElement {
     let status = &snapshot.status;
     let neighbor = board::neighbor(snapshot);
     let (title, hint) = copy::status_line(
@@ -203,41 +201,15 @@ fn status_pill(snapshot: &Snapshot, cx: &App) -> AnyElement {
         neighbor.as_ref().map(|(peer, side)| (peer.as_str(), *side)),
     );
     let away = status.state == State::Controlling;
-    h_flex()
-        .min_w_0()
-        .h(px(26.0))
-        .px(px(12.0))
-        .gap(px(6.0))
-        .rounded_full()
-        .surface_at(
-            Surface::new(STATUS).tone(if away { Tone::Primary } else { Tone::Neutral }),
-            if away {
-                PaintState::Selected
-            } else {
-                PaintState::Rest
-            },
-            cx,
-        )
-        .child(status_dot(widgets::status_color(status.state, cx)))
-        .child(
-            div()
-                .flex_none()
-                .text_size(rems_from_px(12.0))
-                .font_medium()
-                .whitespace_nowrap()
-                .child(title),
-        )
-        .when_some(hint, |this, hint| {
-            this.child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(rems_from_px(12.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(format!("· {hint}")),
-            )
-        })
-        .into_any_element()
+    let chip = Chip::new(title)
+        .dot(widgets::state_tone(status.state))
+        .tone(if away { Tone::Primary } else { Tone::Neutral })
+        .selected(away);
+    match hint {
+        Some(hint) => chip.detail(hint),
+        None => chip,
+    }
+    .into_any_element()
 }
 
 impl Focusable for NidWindow {

@@ -829,7 +829,6 @@ pub fn banner(
                         .on_click(|_, _, cx| start_engine(false, cx))
                         .into_any_element(),
                 ),
-                cx,
             ))
             .into_any_element(),
     )

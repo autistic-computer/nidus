@@ -751,7 +751,6 @@ pub fn banner(
                 title,
                 "",
                 action,
-                cx,
             ))
             .into_any_element(),
     )
