@@ -14,10 +14,10 @@ use nid::app::{
     layout_model::{Monitor, Preview, Seam},
 };
 use penna::{
-    ActiveTheme as _, Chip, Colorize as _, Edge, Icon, IconName, PaintState, Selectable as _,
-    Sizable as _, StyledExt as _, Surface, Tone,
+    ActiveTheme as _, Chip, Colorize as _, Dock, Icon, IconName, Label, PaintState,
+    Selectable as _, Sizable as _, Space, SurfaceRole, TextStyle, Tile, TileVariant, Tone, Well,
     button::{Button, ButtonVariants as _},
-    h_flex, rems_from_px, v_flex,
+    h_flex,
 };
 
 use self::geometry::{
@@ -27,7 +27,6 @@ use self::geometry::{
 use crate::{
     copy,
     model::{Model, Snapshot},
-    theme::{BOARD, SCREEN, SHELF_TILE},
     widgets,
 };
 
@@ -903,6 +902,7 @@ impl Render for Board {
         self.dock.set(self.dock_height(&snapshot));
         let (fit, islands) = self.islands(&snapshot, window, cx);
         let theme = cx.theme().clone();
+        let well = Well::ground(cx);
         let mat = self.size().1;
         let on = (snapshot.status.state == State::Controlling)
             .then(|| snapshot.status.peer.clone())
@@ -958,7 +958,7 @@ impl Render for Board {
             .unwrap_or_default();
 
         let mat_theme = theme.clone();
-        let ring_radius = theme.shape_radius(BOARD, penna::Shape::Round);
+        let ring_radius = theme.shape_radius(SurfaceRole::WELL, penna::Shape::Round);
         let backdrop = canvas(
             move |area, window, _| {
                 if bounds.replace(area).size != area.size {
@@ -1145,8 +1145,17 @@ impl Render for Board {
                     PaintState::Rest
                 };
                 screens.push(
-                    div()
-                        .id(SharedString::from(format!("screen-{}", monitor.id)))
+                    Tile::new(SharedString::from(format!("screen-{}", monitor.id)))
+                        .variant(TileVariant::Screen)
+                        .on(well)
+                        .tone(if moving && refused {
+                            penna::Tone::Danger
+                        } else if here {
+                            penna::Tone::Primary
+                        } else {
+                            penna::Tone::Neutral
+                        })
+                        .state(state)
                         .absolute()
                         .left(px(at.x))
                         .top(px(at.y))
@@ -1155,17 +1164,6 @@ impl Render for Board {
                         .flex()
                         .items_end()
                         .overflow_hidden()
-                        .surface_at(
-                            Surface::new(SCREEN).tone(if moving && refused {
-                                penna::Tone::Danger
-                            } else if here {
-                                penna::Tone::Primary
-                            } else {
-                                penna::Tone::Neutral
-                            }),
-                            state,
-                            cx,
-                        )
                         .when(
                             monitor.display.is_none() && at.width.min(at.height) >= 24.0,
                             |this| {
@@ -1269,47 +1267,26 @@ impl Render for Board {
             .as_deref()
             .and_then(|owner| owner.strip_prefix(FOUND))
             .map(str::to_owned);
-        let dock_layer = div()
+        let dock_layer = Dock::new("Nearby")
+            .subtitle(if snapshot.unplaced.is_empty() {
+                "Computers running Nidus on this network show up here."
+            } else {
+                "Drag one onto the desk, or click it to pick a side."
+            })
+            .header_height(px(SHELF_TOP))
+            .action(
+                Button::new("by-address")
+                    .small()
+                    .icon(IconName::Plus)
+                    .label("By address…")
+                    .tooltip("For a computer Nidus can’t find on this network")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(AddByAddress))),
+            )
             .absolute()
             .left_0()
             .right_0()
             .top(px(mat))
             .bottom_0()
-            .rule_on(penna::roles::BAR_RULE, Edge::Top, cx)
-            .child(
-                h_flex()
-                    .h(px(SHELF_TOP))
-                    .px(px(2.0 * SHELF_GAP))
-                    .gap(px(12.0))
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .text_size(rems_from_px(13.0))
-                                    .font_medium()
-                                    .child("Nearby"),
-                            )
-                            .child(widgets::muted(
-                                if snapshot.unplaced.is_empty() {
-                                    "Computers running Nidus on this network show up here."
-                                } else {
-                                    "Drag one onto the desk, or click it to pick a side."
-                                },
-                                12.0,
-                                cx,
-                            )),
-                    )
-                    .child(
-                        Button::new("by-address")
-                            .small()
-                            .icon(IconName::Plus)
-                            .label("By address…")
-                            .tooltip("For a computer Nidus can’t find on this network")
-                            .on_click(cx.listener(|_, _, _, cx| cx.emit(AddByAddress))),
-                    ),
-            )
             .children(snapshot.unplaced.iter().zip(&found).map(
                 |(computer, (id, rect, placeable))| {
                     let carried = carried_id.as_deref() == Some(id.as_str());
@@ -1318,7 +1295,7 @@ impl Render for Board {
                         None => (rect.x, rect.y),
                     };
                     let picked = picked.as_deref() == Some(id.as_str());
-                    found_tile(computer, *placeable, carried, picked, cx)
+                    found_tile(computer, *placeable, carried, picked)
                         .left(px(x))
                         .top(px(y - mat))
                         .into_any_element()
@@ -1331,15 +1308,7 @@ impl Render for Board {
             .on_key_down(cx.listener(|board, event: &KeyDownEvent, _, cx| board.key(event, cx)))
             .relative()
             .size_full()
-            .child(
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .top_0()
-                    .h(px(mat))
-                    .surface(Surface::new(crate::theme::BOARD), cx),
-            )
+            .child(Well::new().absolute().left_0().right_0().top_0().h(px(mat)))
             .child(backdrop)
             .when(islands.is_empty(), |this| {
                 this.child(
@@ -1352,11 +1321,13 @@ impl Render for Board {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(widgets::muted(
-                            format!("Detecting {}’s displays…", copy::THIS_COMPUTER_LOWER),
-                            13.0,
-                            cx,
-                        )),
+                        .child(
+                            Label::new(
+                                TextStyle::Body,
+                                format!("Detecting {}’s displays…", copy::THIS_COMPUTER_LOWER),
+                            )
+                            .muted(),
+                        ),
                 )
             })
             .children(screens)
@@ -1372,30 +1343,26 @@ fn found_tile(
     placeable: bool,
     carried: bool,
     picked: bool,
-    cx: &App,
-) -> ala::Stateful<ala::Div> {
-    v_flex()
-        .id(SharedString::from(format!("found-{}", computer.id)))
+) -> Tile {
+    Tile::new(SharedString::from(format!("found-{}", computer.id)))
+        .state(if carried {
+            PaintState::Hover
+        } else if picked {
+            PaintState::Selected
+        } else if placeable {
+            PaintState::Rest
+        } else {
+            PaintState::Disabled
+        })
         .absolute()
+        .flex()
+        .flex_col()
         .w(px(FOUND_SIZE.0))
         .h(px(FOUND_SIZE.1))
-        .px(px(10.0))
-        .py(px(8.0))
+        .px(Space::S5)
+        .py(Space::S4)
         .gap(px(1.0))
         .cursor_pointer()
-        .surface_at(
-            Surface::new(SHELF_TILE),
-            if carried {
-                PaintState::Hover
-            } else if picked {
-                PaintState::Selected
-            } else if placeable {
-                PaintState::Rest
-            } else {
-                PaintState::Disabled
-            },
-            cx,
-        )
         .child(
             h_flex()
                 .justify_between()
@@ -1411,18 +1378,11 @@ fn found_tile(
         )
         .child(div().flex_1())
         .child(
-            div()
-                .text_size(rems_from_px(13.0))
-                .font_medium()
-                .truncate()
-                .child(computer.name.clone()),
+            Label::new(TextStyle::Body, computer.name.clone())
+                .strong()
+                .truncate(),
         )
-        .child(
-            div()
-                .text_size(rems_from_px(11.0))
-                .truncate()
-                .child(copy::unplaced_detail(computer)),
-        )
+        .child(Label::new(TextStyle::Caption, copy::unplaced_detail(computer)).truncate())
 }
 
 fn to_bounds(area: Bounds<Pixels>, rect: Rect) -> Bounds<Pixels> {

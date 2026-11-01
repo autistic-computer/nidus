@@ -1,7 +1,6 @@
 use ala::{
-    AnyElement, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
-    prelude::FluentBuilder as _, px,
+    AnyElement, Context, Entity, IntoElement, ParentElement as _, SharedString, Styled as _,
+    Window, div, prelude::FluentBuilder as _, px,
 };
 use nid::{
     app::{
@@ -12,28 +11,22 @@ use nid::{
     neighbors::Unplaced,
 };
 use penna::{
-    Disableable as _, Edge, Icon, IconName, Sizable as _, StyledExt as _, Surface, WindowExt as _,
+    Disableable as _, Icon, IconName, Inspector, Label, Sizable as _, TextStyle, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::DialogButtonProps,
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
-    rems_from_px,
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
-    v_flex,
 };
 
 use crate::{
     board::{self, Board, Computer, FOUND, LOCAL, geometry::Side},
     copy,
     model::{Model, Snapshot},
-    platform,
-    theme::CARD,
-    widgets,
+    platform, widgets,
     window::NidWindow,
 };
-
-const WIDTH: f32 = 340.0;
 
 pub fn render(
     this: &mut NidWindow,
@@ -42,12 +35,12 @@ pub fn render(
     cx: &mut Context<NidWindow>,
 ) -> Option<AnyElement> {
     let selection = this.board.read(cx).selection.clone()?;
-    let body = if let Some(id) = selection.strip_prefix(FOUND) {
+    let card = if let Some(id) = selection.strip_prefix(FOUND) {
         let computer = snapshot
             .unplaced
             .iter()
             .find(|computer| computer.id == id)?;
-        found_card(&this.board, computer, cx)
+        found_card(&this.board, computer)
     } else {
         let computers = board::computers(snapshot);
         let computer = computers
@@ -55,57 +48,25 @@ pub fn render(
             .find(|computer| computer.owner == selection)?;
         computer_card(this, snapshot, computer, window, cx)
     };
-    Some(
-        v_flex()
-            .id("card")
-            .flex_none()
-            .w(px(WIDTH))
-            .h_full()
-            .overflow_y_scroll()
-            .p(px(16.0))
-            .gap(px(16.0))
-            .surface(Surface::new(CARD), cx)
-            .rule_on(penna::roles::SIDEBAR_RULE, Edge::Left, cx)
-            .child(body)
-            .into_any_element(),
-    )
+    Some(card.into_any_element())
 }
 
-fn header(
+fn inspector(
     board: &Entity<Board>,
     name: impl Into<SharedString>,
     detail: impl Into<SharedString>,
     mark: Option<&str>,
-    cx: &mut Context<NidWindow>,
-) -> AnyElement {
+) -> Inspector {
     let board = board.clone();
-    h_flex()
-        .w_full()
-        .items_start()
-        .gap(px(8.0))
-        .child(
-            v_flex()
-                .flex_1()
-                .min_w_0()
-                .gap(px(2.0))
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(rems_from_px(18.0))
-                        .font_medium()
-                        .child(name.into()),
-                )
-                .child(widgets::muted(detail, 12.0, cx)),
-        )
-        .children(mark.map(|mark| div().pt(px(8.0)).child(widgets::key_mark(mark))))
-        .child(
-            Button::compact_icon("close-card", IconName::Xmark)
-                .tooltip("Close")
-                .on_click(move |_, _, cx| {
-                    board.update(cx, |board, cx| board.select(None, cx));
-                }),
-        )
-        .into_any_element()
+    let inspector = Inspector::new("card", name)
+        .subtitle(detail)
+        .on_close(move |_, _, cx| {
+            board.update(cx, |board, cx| board.select(None, cx));
+        });
+    match mark {
+        Some(mark) => inspector.trailing(div().pt(px(8.0)).child(widgets::key_mark(mark))),
+        None => inspector,
+    }
 }
 
 fn summary(computer: &Computer) -> String {
@@ -120,11 +81,7 @@ fn summary(computer: &Computer) -> String {
     }
 }
 
-fn found_card(
-    board: &Entity<Board>,
-    computer: &Unplaced,
-    cx: &mut Context<NidWindow>,
-) -> AnyElement {
+fn found_card(board: &Entity<Board>, computer: &Unplaced) -> Inspector {
     let placeable = copy::placeable(computer);
     let sides = Side::ALL.map(|side| {
         let (board, id) = (board.clone(), computer.id.clone());
@@ -133,37 +90,27 @@ fn found_card(
             .disabled(!placeable)
             .on_click(move |_, _, cx| board.read(cx).place(&id, side, cx))
     });
-    v_flex()
-        .gap(px(14.0))
-        .child(header(
-            board,
-            computer.name.clone(),
-            copy::unplaced_detail(computer),
-            computer.mark.as_deref(),
-            cx,
-        ))
-        .child(widgets::muted(
-            "Put it on this side of your screens:",
-            13.0,
-            cx,
-        ))
-        .child(h_flex().flex_wrap().gap(px(8.0)).children(sides))
-        .child(widgets::muted(
-            "Or drag it onto the desk where it sits.",
-            12.0,
-            cx,
-        ))
-        .when(computer.mark.is_some(), |this| {
-            this.child(widgets::muted(
+    inspector(
+        board,
+        computer.name.clone(),
+        copy::unplaced_detail(computer),
+        computer.mark.as_deref(),
+    )
+    .child(Label::new(TextStyle::Body, "Put it on this side of your screens:").muted())
+    .child(h_flex().flex_wrap().gap(px(8.0)).children(sides))
+    .child(Label::new(TextStyle::Small, "Or drag it onto the desk where it sits.").muted())
+    .when(computer.mark.is_some(), |this| {
+        this.child(
+            Label::new(
+                TextStyle::Small,
                 format!(
                     "{} shows the same mark, so you can tell two with the same name apart.",
                     computer.name
                 ),
-                12.0,
-                cx,
-            ))
-        })
-        .into_any_element()
+            )
+            .muted(),
+        )
+    })
 }
 
 fn computer_card(
@@ -172,7 +119,7 @@ fn computer_card(
     computer: &Computer,
     window: &mut Window,
     cx: &mut Context<NidWindow>,
-) -> AnyElement {
+) -> Inspector {
     let board = this.board.clone();
     let adjusting = board.read(cx).adjusting.as_deref() == Some(computer.owner.as_str());
     let local = computer.owner == LOCAL;
@@ -238,34 +185,29 @@ fn computer_card(
             .description(detail)
         }));
 
-    v_flex()
-        .w_full()
-        .gap(px(18.0))
-        .child(header(
-            &board,
-            computer.name.clone(),
-            summary(computer),
-            computer.mark.as_deref(),
-            cx,
-        ))
-        .when_some(computer.peer.as_ref(), |column, peer| {
-            let actions = platform::peer_actions(this, peer, cx);
-            column
-                .when(!actions.is_empty(), |column| {
-                    column.child(h_flex().flex_wrap().gap(px(8.0)).children(actions))
-                })
-                .children(peer_settings(this, peer, window, cx))
-        })
-        .when(!arrange.is_empty(), |this| {
-            this.child(SettingsStack::new().children(arrange))
-        })
-        .when(!computer.screens.is_empty(), |this| {
-            this.child(crossings_stack).child(screens)
-        })
-        .when_some(computer.peer.as_ref(), |column, peer| {
-            column.child(forget_button(&this.model, peer))
-        })
-        .into_any_element()
+    inspector(
+        &board,
+        computer.name.clone(),
+        summary(computer),
+        computer.mark.as_deref(),
+    )
+    .when_some(computer.peer.as_ref(), |column, peer| {
+        let actions = platform::peer_actions(this, peer, cx);
+        column
+            .when(!actions.is_empty(), |column| {
+                column.child(h_flex().flex_wrap().gap(px(8.0)).children(actions))
+            })
+            .children(peer_settings(this, peer, window, cx))
+    })
+    .when(!arrange.is_empty(), |this| {
+        this.child(SettingsStack::new().children(arrange))
+    })
+    .when(!computer.screens.is_empty(), |this| {
+        this.child(crossings_stack).child(screens)
+    })
+    .when_some(computer.peer.as_ref(), |column, peer| {
+        column.child(forget_button(&this.model, peer))
+    })
 }
 
 fn crossing_entry(snapshot: &Snapshot, seam: &Seam, mine: &[&str]) -> SettingEntry {

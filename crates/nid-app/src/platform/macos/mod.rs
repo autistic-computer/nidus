@@ -24,7 +24,7 @@ use objc2_app_kit::{
 use objc2_foundation::{NSActivityOptions, NSBundle, NSObjectProtocol, NSProcessInfo, NSString};
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
 use penna::{
-    Disableable as _, Icon, IconName,
+    Disableable as _, Icon, IconName, Label, TextStyle,
     button::{Button, ButtonVariants as _},
     settings::{SettingEntry, SettingsStack, settings_card_ground},
     switch::Switch,
@@ -943,7 +943,7 @@ pub fn settings_stacks(
                         Icon::new(IconName::CircleCheck)
                             .text_color(penna::ActiveTheme::theme(&**cx).success),
                     )
-                    .child(widgets::muted("Allowed", 12.0, cx))
+                    .child(Label::new(TextStyle::Small, "Allowed").muted())
                     .into_any_element()
             } else {
                 Button::new(id)

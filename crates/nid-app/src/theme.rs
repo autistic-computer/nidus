@@ -1,43 +1,7 @@
 use ala::{App, Window};
-use penna::{
-    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Kind, Shadow, StylePatch, SurfaceRole, Theme,
-    interface_theme,
-};
-
-const P: StylePatch = StylePatch::EMPTY;
-
-pub const BOARD: SurfaceRole = SurfaceRole::new(
-    "board",
-    Kind::Card,
-    "Arrangement",
-    "The well the computers' screens are arranged on",
-)
-.with(P.shadow(Shadow::None));
-pub const SCREEN: SurfaceRole = SurfaceRole::new(
-    "board.screen",
-    Kind::Card,
-    "Screens",
-    "A screen on the arrangement",
-)
-.with(P.shadow(Shadow::Contact));
-pub const SHELF_TILE: SurfaceRole = SurfaceRole::new(
-    "board.found",
-    Kind::Card,
-    "Found computers",
-    "Computers found nearby, in the dock under the arrangement",
-);
-
-pub const CARD: SurfaceRole = SurfaceRole::under(
-    &penna::roles::SIDEBAR,
-    "computer-card",
-    "Computer card",
-    "The selected computer's settings, beside the arrangement",
-);
-
-const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, SHELF_TILE, CARD];
+use penna::{ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Theme, interface_theme};
 
 pub fn init(cx: &mut App) {
-    penna::roles::register(ROLES);
     penna::init(cx);
     apply(None, cx);
 }

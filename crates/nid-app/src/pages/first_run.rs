@@ -8,13 +8,12 @@ use nid::{
     neighbors::Unplaced,
 };
 use penna::{
-    ActiveTheme as _, Disableable as _, Emphasis, Icon, IconName, PaintState, Sizable as _, Steps,
-    StyledExt, Surface, Tone,
+    Disableable as _, Emphasis, Icon, IconName, Label, PaintState, Sizable as _, Steps, StyledExt,
+    TextStyle, Tile, Tone, Well,
     button::{Button, ButtonVariant, ButtonVariants},
     check::Check,
     h_flex,
     kbd::Keycap,
-    rems_from_px,
     segmented::SegmentedControl,
     spinner::Spinner,
     v_flex,
@@ -25,9 +24,7 @@ use crate::{
     board::{self, geometry::Side},
     copy,
     model::{Model, Snapshot},
-    platform,
-    theme::SHELF_TILE,
-    widgets,
+    platform, widgets,
     window::NidWindow,
 };
 
@@ -130,24 +127,25 @@ fn frame(width: f32, body: ala::Div) -> AnyElement {
         .into_any_element()
 }
 
-fn title(text: impl Into<SharedString>) -> ala::Div {
-    div()
-        .text_size(rems_from_px(26.0))
-        .font_medium()
-        .child(text.into())
+fn title(text: impl Into<SharedString>) -> Label {
+    Label::new(TextStyle::Display, text)
 }
 
 fn footer(
     left: impl IntoElement,
     hint: impl Into<SharedString>,
     right: impl IntoElement,
-    cx: &App,
 ) -> ala::Div {
     h_flex()
         .w_full()
         .gap(px(10.0))
         .child(left)
-        .child(widgets::muted(hint, 13.0, cx).flex_1().text_center())
+        .child(
+            Label::new(TextStyle::Body, hint)
+                .muted()
+                .flex_1()
+                .text_center(),
+        )
         .child(right)
 }
 
@@ -159,11 +157,13 @@ fn allow(cards: Vec<AnyElement>, cx: &mut Context<NidWindow>) -> AnyElement {
                 "Let Nidus work on {}",
                 copy::THIS_COMPUTER_LOWER
             )))
-            .child(widgets::muted(
-                "macOS asks once for each. You can change them later in System Settings.",
-                14.0,
-                cx,
-            ))
+            .child(
+                Label::new(
+                    TextStyle::Lead,
+                    "macOS asks once for each. You can change them later in System Settings.",
+                )
+                .muted(),
+            )
             .child(v_flex().pt(px(14.0)).gap(px(10.0)).children(cards))
             .child(div().flex_1())
             .child(
@@ -197,11 +197,7 @@ fn find(this: &NidWindow, snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> A
         v_flex()
             .children(problems(snapshot, Some("sharing"), cx))
             .child(title("Pick your other computer"))
-            .child(widgets::muted(
-                "Open Nidus on it too. Computers on this network show up here by themselves.",
-                14.0,
-                cx,
-            ))
+            .child(Label::new(TextStyle::Lead, "Open Nidus on it too. Computers on this network show up here by themselves.").muted())
             .child(
                 v_flex()
                     .pt(px(14.0))
@@ -214,11 +210,7 @@ fn find(this: &NidWindow, snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> A
                                     .gap(px(10.0))
                                     .py(px(24.0))
                                     .child(Spinner::new())
-                                    .child(widgets::muted(
-                                        "Looking for computers on this network…",
-                                        13.0,
-                                        cx,
-                                    )),
+                                    .child(Label::new(TextStyle::Body, "Looking for computers on this network…").muted()),
                             )
                         } else {
                             list.children(snapshot.unplaced.iter().enumerate().map(
@@ -228,38 +220,31 @@ fn find(this: &NidWindow, snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> A
                     }),
             )
             .when(marks, |column| {
-                column.child(widgets::muted(
-                    "The colored mark also shows on the other computer, so you can tell two with the same name apart.",
-                    12.0,
-                    cx,
-                ))
+                column.child(Label::new(TextStyle::Small, "The colored mark also shows on the other computer, so you can tell two with the same name apart.").muted())
             })
             .when_some(note, |column, (title, detail)| {
                 column.child(widgets::note(title, detail))
             })
             .child(div().flex_1())
             .child(
-                h_flex()
+                Well::new()
+                    .h_flex()
                     .w_full()
                     .gap(px(10.0))
                     .pl(px(12.0))
                     .pr(px(6.0))
                     .py(px(6.0))
-                    .surface(Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
-                    .child(widgets::muted("Not listed? Run on it:", 12.0, cx).flex_none())
+                    .child(Label::new(TextStyle::Small, "Not listed? Run on it:").muted().flex_none())
                     .child(
-                        div()
+                        Label::new(TextStyle::Mono, copy::INSTALL_COMMAND)
                             .flex_1()
                             .min_w_0()
-                            .truncate()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_size(rems_from_px(12.0))
-                            .child(copy::INSTALL_COMMAND),
+                            .truncate(),
                     )
                     .child(
                         Button::new("copy-install")
                             .small()
-                            .on(cx.theme().ground_of(penna::roles::SETTINGS_PREVIEW))
+                            .on(Well::ground(cx))
                             .label(if copied { "Copied" } else { "Copy" })
                             .on_click(cx.listener(|this, _, _, cx| {
                                 cx.write_to_clipboard(ala::ClipboardItem::new_string(
@@ -272,7 +257,7 @@ fn find(this: &NidWindow, snapshot: &Snapshot, cx: &mut Context<NidWindow>) -> A
                     .child(
                         Button::new("find-by-address")
                             .small()
-                            .on(cx.theme().ground_of(penna::roles::SETTINGS_PREVIEW))
+                            .on(Well::ground(cx))
                             .label("By address…")
                             .tooltip("For a computer Nidus can’t find on this network")
                             .on_click(cx.listener(|this, _, window, cx| {
@@ -290,20 +275,17 @@ fn found(computer: &Unplaced, first: bool, cx: &mut Context<NidWindow>) -> AnyEl
         computer.name.clone(),
         computer.mark.clone(),
     );
-    h_flex()
+    Tile::new(SharedString::from(format!("found-row-{}", computer.id)))
+        .state(if placeable {
+            PaintState::Rest
+        } else {
+            PaintState::Disabled
+        })
+        .h_flex()
         .w_full()
         .gap(px(12.0))
         .px(px(14.0))
         .py(px(10.0))
-        .surface_at(
-            Surface::new(SHELF_TILE),
-            if placeable {
-                PaintState::Rest
-            } else {
-                PaintState::Disabled
-            },
-            cx,
-        )
         .child(
             Icon::new(if computer.os == Some(nid::wire::Os::Macos) {
                 IconName::Laptop
@@ -318,16 +300,16 @@ fn found(computer: &Unplaced, first: bool, cx: &mut Context<NidWindow>) -> AnyEl
                 .min_w_0()
                 .gap(px(2.0))
                 .child(
-                    div()
-                        .truncate()
-                        .text_size(rems_from_px(14.0))
-                        .font_medium()
-                        .child(computer.name.clone()),
+                    Label::new(TextStyle::Lead, computer.name.clone())
+                        .strong()
+                        .truncate(),
                 )
                 .child(
                     h_flex()
                         .gap(px(8.0))
-                        .child(widgets::muted(copy::unplaced_detail(computer), 12.0, cx))
+                        .child(
+                            Label::new(TextStyle::Small, copy::unplaced_detail(computer)).muted(),
+                        )
                         .children(computer.mark.as_deref().map(widgets::key_mark)),
                 ),
         )
@@ -404,11 +386,13 @@ fn place(
                             .min_w_0()
                             .gap(px(6.0))
                             .child(title(format!("Where is {name}?")))
-                            .child(widgets::muted(
-                                "Drag it next to your screens, the way it sits on your desk.",
-                                14.0,
-                                cx,
-                            )),
+                            .child(
+                                Label::new(
+                                    TextStyle::Lead,
+                                    "Drag it next to your screens, the way it sits on your desk.",
+                                )
+                                .muted(),
+                            ),
                     )
                     .child(picker),
             )
@@ -444,7 +428,6 @@ fn place(
                             cx.notify();
                         }
                     })),
-                cx,
             )),
     )
 }
@@ -488,7 +471,7 @@ fn try_it(
         800.0,
         v_flex()
             .child(title("Try it"))
-            .child(widgets::muted(line, 14.0, cx))
+            .child(Label::new(TextStyle::Lead, line).muted())
             .child(
                 h_flex()
                     .flex_1()
@@ -505,35 +488,32 @@ fn try_it(
                             .pt(px(8.0))
                             .children(checks.into_iter().enumerate().map(
                                 |(index, (label, done))| {
-                                    h_flex()
-                                        .gap(px(10.0))
-                                        .text_size(rems_from_px(14.0))
-                                        .child(Check::checkbox(done))
-                                        .child(
-                                            div()
-                                                .when(current == Some(index), |this| {
-                                                    this.font_medium()
-                                                })
-                                                .child(label),
-                                        )
+                                    let label = Label::new(TextStyle::Lead, label);
+                                    h_flex().gap(px(10.0)).child(Check::checkbox(done)).child(
+                                        if current == Some(index) {
+                                            label.strong()
+                                        } else {
+                                            label
+                                        },
+                                    )
                                 },
                             ))
                             .child(
-                                v_flex()
+                                Well::new()
+                                    .v_flex()
                                     .mt(px(8.0))
                                     .gap(px(8.0))
                                     .px(px(12.0))
                                     .py(px(10.0))
-                                    .surface(Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
-                                    .child(widgets::muted(
-                                        "Stuck over there? This always brings you home:",
-                                        12.0,
-                                        cx,
-                                    ))
+                                    .child(
+                                        Label::new(
+                                            TextStyle::Small,
+                                            "Stuck over there? This always brings you home:",
+                                        )
+                                        .muted(),
+                                    )
                                     .child(h_flex().child(
-                                        Keycap::new(copy::RETURN_KEYS).on(
-                                            cx.theme().ground_of(penna::roles::SETTINGS_PREVIEW),
-                                        ),
+                                        Keycap::new(copy::RETURN_KEYS).on(Well::ground(cx)),
                                     )),
                             ),
                     ),
@@ -549,7 +529,6 @@ fn try_it(
                         this.board.update(cx, |board, cx| board.select(None, cx));
                         cx.notify();
                     })),
-                cx,
             )),
     )
 }
@@ -577,30 +556,22 @@ pub fn added_by(
                             .min_w_0()
                             .gap(px(6.0))
                             .child(title(format!("{name} added {}", copy::THIS_COMPUTER_LOWER)))
-                            .child(widgets::muted(
-                                "Its keyboard and pointer can come over now. Nothing to do here.",
-                                14.0,
-                                cx,
-                            )),
+                            .child(Label::new(TextStyle::Lead, "Its keyboard and pointer can come over now. Nothing to do here.").muted()),
                     )
                     .children(snapshot.own_mark.as_deref().map(|mark| {
-                        v_flex()
+                        Well::new()
+                            .v_flex()
                             .flex_none()
                             .items_center()
                             .gap(px(6.0))
                             .px(px(16.0))
                             .py(px(10.0))
-                            .surface(Surface::new(penna::roles::SETTINGS_PREVIEW), cx)
-                            .child(widgets::muted("Mark", 12.0, cx))
+                            .child(Label::new(TextStyle::Small, "Mark").muted())
                             .child(widgets::key_mark_sized(mark, 14.0))
                     })),
             )
             .when(snapshot.own_mark.is_some(), |column| {
-                column.child(widgets::muted(
-                    format!("Same mark as on {name}’s screen? Then it’s the right one."),
-                    13.0,
-                    cx,
-                ))
+                column.child(Label::new(TextStyle::Body, format!("Same mark as on {name}’s screen? Then it’s the right one.")).muted())
             })
             .child(
                 div()
@@ -628,9 +599,7 @@ pub fn added_by(
                     .label("Looks right")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.model.update(cx, Model::welcomed);
-                    })),
-                cx,
-            )),
+                    })))),
     )
 }
 

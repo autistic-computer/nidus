@@ -1,6 +1,6 @@
 use ala::{AnyElement, App, ParentElement as _, SharedString, Styled as _, div, px};
 use nid::app::api::{Level, PeerState, State};
-use penna::{ActiveTheme as _, Colorize as _, Dot, Ground, Notice, Tone, h_flex, rems_from_px};
+use penna::{Dot, Ground, Notice, Tone, h_flex};
 
 pub fn banner(
     level: Level,
@@ -93,13 +93,6 @@ pub const fn state_tone(state: State) -> Tone {
         State::Attention => Tone::Danger,
         State::Paused | State::Setup => Tone::Neutral,
     }
-}
-
-pub fn muted(text: impl Into<SharedString>, size: f32, cx: &App) -> ala::Div {
-    div()
-        .text_size(rems_from_px(size))
-        .text_color(cx.theme().foreground.muted())
-        .child(text.into())
 }
 
 #[cfg(test)]

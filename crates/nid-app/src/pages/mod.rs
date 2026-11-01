@@ -9,16 +9,16 @@ use ala::{
 };
 use nid::app::api::{Action, Request};
 use penna::{
-    ActiveTheme as _, Colorize as _, StyledExt as _,
+    Label, TextStyle, Tone,
     button::{Button, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},
     input::Input,
-    rems_from_px, v_flex,
+    v_flex,
 };
 
 use crate::{
     model::{Model, Page},
-    platform, widgets,
+    platform,
     window::NidWindow,
 };
 
@@ -61,19 +61,12 @@ fn unreachable_state(error: String, cx: &mut Context<NidWindow>) -> AnyElement {
         .justify_center()
         .gap(px(10.0))
         .p(px(32.0))
+        .child(Label::new(TextStyle::Title, "Nidus could not start"))
         .child(
-            div()
-                .text_size(rems_from_px(20.0))
-                .font_medium()
-                .child("Nidus could not start"),
-        )
-        .child(
-            div()
+            Label::new(TextStyle::Body, error)
+                .muted()
                 .max_w(px(420.0))
-                .text_center()
-                .text_size(rems_from_px(13.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(error),
+                .text_center(),
         )
         .child(
             Button::new("try-again")
@@ -122,24 +115,25 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
         .child(
             v_flex()
                 .gap(px(10.0))
-                .child(widgets::muted(
-                    "For a computer Nidus can’t find on this network, like one on Tailscale.",
-                    12.0,
-                    cx,
-                ))
+                .child(
+                    Label::new(
+                        TextStyle::Small,
+                        "For a computer Nidus can’t find on this network, like one on Tailscale.",
+                    )
+                    .muted(),
+                )
                 .child(Input::new(&input))
                 .map(|this| match &error {
-                    Some(error) => this.child(
-                        div()
-                            .text_size(rems_from_px(12.0))
-                            .text_color(cx.theme().danger)
-                            .child(error.clone()),
+                    Some(error) => {
+                        this.child(Label::new(TextStyle::Small, error.clone()).tone(Tone::Danger))
+                    }
+                    None => this.child(
+                        Label::new(
+                            TextStyle::Small,
+                            "Once Nidus reaches it, it shows up with the computers found nearby.",
+                        )
+                        .muted(),
                     ),
-                    None => this.child(widgets::muted(
-                        "Once Nidus reaches it, it shows up with the computers found nearby.",
-                        12.0,
-                        cx,
-                    )),
                 }),
         )
         .button_props(

@@ -5,10 +5,9 @@ use ala::{
 };
 use nid::app::api::{Request, State};
 use penna::{
-    ActiveTheme as _, Chip, Disableable as _, IconName, Root, Selectable as _, StyledExt as _,
+    ActiveTheme as _, Chip, Disableable as _, IconName, Label, Root, Selectable as _, TextStyle,
     Tone, WindowControls, WindowExt as _, h_flex,
     input::InputState,
-    rems_from_px,
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
     sidebar::chrome_button,
     switch::Switch,
@@ -120,10 +119,8 @@ impl NidWindow {
             .map(|snapshot| snapshot.sharing);
         let middle = if settings {
             Some(
-                div()
-                    .text_size(rems_from_px(13.0))
-                    .font_medium()
-                    .child("Settings")
+                Label::new(TextStyle::Body, "Settings")
+                    .strong()
                     .into_any_element(),
             )
         } else if let Some(steps) = pages::first_run::strip(self, cx) {
@@ -146,14 +143,15 @@ impl NidWindow {
             .children(middle)
             .child(div().flex_1())
             .when_some(sharing, |this, sharing| {
-                this.child(widgets::muted("Sharing", 12.0, cx)).child(
-                    Switch::new("titlebar-sharing")
-                        .checked(sharing == Some(true))
-                        .disabled(sharing.is_none())
-                        .on_click(cx.listener(|this, enabled: &bool, _, cx| {
-                            this.send(Request::SetSharing { enabled: *enabled }, cx);
-                        })),
-                )
+                this.child(Label::new(TextStyle::Small, "Sharing").muted())
+                    .child(
+                        Switch::new("titlebar-sharing")
+                            .checked(sharing == Some(true))
+                            .disabled(sharing.is_none())
+                            .on_click(cx.listener(|this, enabled: &bool, _, cx| {
+                                this.send(Request::SetSharing { enabled: *enabled }, cx);
+                            })),
+                    )
             })
             .child(
                 chrome_button(

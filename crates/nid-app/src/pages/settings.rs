@@ -1,11 +1,10 @@
 use ala::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
 use nid::app::api::{Level, Request};
 use penna::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
+    ActiveTheme as _, Icon, IconName, Label, TextStyle,
     button::Button,
     h_flex,
     kbd::Keycap,
-    rems_from_px,
     settings::{SettingEntry, SettingsStack, settings_card_ground, settings_scroll_column},
     switch::Switch,
 };
@@ -104,13 +103,14 @@ pub fn render(
         )
         .child(SettingsStack::titled("About").children(about(cx)))
         .child(
-            div()
-                .text_size(rems_from_px(11.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(format!(
+            Label::new(
+                TextStyle::Caption,
+                format!(
                     "Changes save automatically. Advanced settings are in {}.",
                     snapshot.config_path.display()
-                )),
+                ),
+            )
+            .muted(),
         )
         .into_any_element()
 }

@@ -16,14 +16,15 @@ use ala::{
 };
 use nid::app::api::{Level, PeerState, Request, State};
 use penna::{
-    ActiveTheme as _, Colorize as _, Notice, Root, Sizable as _, StyledExt as _, Surface,
-    SurfaceRole, Tone,
+    Label, Notice, Root, Sizable as _, Space, TextStyle, Tone,
     button::{Button, ButtonVariants as _},
     h_flex,
     kbd::Keycap,
-    rems_from_px,
+    list::ListItem,
+    separator::Separator,
     switch::Switch,
     tray::TrayAnchor,
+    tray::TrayPanel,
     v_flex,
 };
 
@@ -196,13 +197,7 @@ impl Panel {
 impl Render for Panel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.model.read(cx).snapshot.clone();
-        v_flex()
-            .size_full()
-            .px(px(16.0))
-            .pt(px(14.0))
-            .pb(px(8.0))
-            .gap(px(12.0))
-            .surface(Surface::new(SurfaceRole::POPOVER), cx)
+        TrayPanel::new()
             .child(header(snapshot.as_ref(), cx))
             .map(|panel| match &snapshot {
                 Some(snapshot) => panel.child(status(snapshot, cx)).child(
@@ -211,13 +206,13 @@ impl Render for Panel {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(computers(snapshot, cx)),
+                        .child(computers(snapshot)),
                 ),
                 None => panel
-                    .child(widgets::muted("Starting…", 13.0, cx))
+                    .child(Label::new(TextStyle::Body, "Starting…").muted())
                     .child(div().flex_1()),
             })
-            .child(footer(cx))
+            .child(footer())
     }
 }
 
@@ -227,21 +222,16 @@ fn header(snapshot: Option<&Snapshot>, cx: &mut Context<Panel>) -> AnyElement {
         .and_then(|snapshot| snapshot.sharing);
     h_flex()
         .gap(px(8.0))
-        .child(
-            div()
-                .flex_1()
-                .text_size(rems_from_px(15.0))
-                .font_medium()
-                .child("Nidus"),
-        )
+        .child(Label::new(TextStyle::Heading, "Nidus").flex_1())
         .when_some(sharing, |this, sharing| {
-            this.child(widgets::muted("Sharing", 13.0, cx)).child(
-                Switch::new("panel-sharing")
-                    .checked(sharing)
-                    .on_click(cx.listener(|this, enabled: &bool, _, cx| {
-                        this.send(Request::SetSharing { enabled: *enabled }, cx);
-                    })),
-            )
+            this.child(Label::new(TextStyle::Body, "Sharing").muted())
+                .child(
+                    Switch::new("panel-sharing")
+                        .checked(sharing)
+                        .on_click(cx.listener(|this, enabled: &bool, _, cx| {
+                            this.send(Request::SetSharing { enabled: *enabled }, cx);
+                        })),
+                )
         })
         .into_any_element()
 }
@@ -263,7 +253,7 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
                 h_flex()
                     .gap(px(8.0))
                     .child(Keycap::new(copy::RETURN_KEYS))
-                    .child(widgets::muted("brings them back", 12.0, cx))
+                    .child(Label::new(TextStyle::Small, "brings them back").muted())
                     .into_any_element(),
             ),
         ),
@@ -342,7 +332,7 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
     .into_any_element()
 }
 
-fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
+fn computers(snapshot: &Snapshot) -> AnyElement {
     let found: Vec<_> = snapshot
         .unplaced
         .iter()
@@ -350,12 +340,10 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
         .collect();
     v_flex()
         .child(
-            div()
-                .pb(px(4.0))
-                .text_size(rems_from_px(11.0))
-                .font_medium()
-                .text_color(cx.theme().foreground.muted())
-                .child("Computers"),
+            Label::new(TextStyle::Caption, "Computers")
+                .strong()
+                .muted()
+                .pb(Space::S2),
         )
         .children(snapshot.peers.iter().map(|peer| {
             let name = peer.name.clone();
@@ -363,8 +351,7 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
                 SharedString::from(format!("peer-{}", peer.name)),
                 widgets::state_dot(Some(peer.state)),
                 peer.name.clone(),
-                peer_action(&peer.name, peer.state, cx),
-                cx,
+                peer_action(&peer.name, peer.state),
             )
             .on_click(move |_, window, cx| go(Page::Computer(name.clone()), window, cx))
             .into_any_element()
@@ -379,7 +366,6 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
                     .label("Add…")
                     .on_click(|_, window, cx| go(Page::Computers, window, cx))
                     .into_any_element(),
-                cx,
             )
             .into_any_element()
         }))
@@ -388,7 +374,11 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
                 h_flex()
                     .h(px(ROW))
                     .gap(px(10.0))
-                    .child(widgets::muted("No other computers yet.", 13.0, cx).flex_1())
+                    .child(
+                        Label::new(TextStyle::Body, "No other computers yet.")
+                            .muted()
+                            .flex_1(),
+                    )
                     .child(
                         Button::new("set-up")
                             .small()
@@ -400,41 +390,23 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
         .into_any_element()
 }
 
-fn row(
-    id: SharedString,
-    dot: penna::Dot,
-    label: String,
-    action: AnyElement,
-    cx: &App,
-) -> ala::Stateful<ala::Div> {
-    h_flex()
-        .id(id)
+fn row(id: SharedString, dot: penna::Dot, label: String, action: AnyElement) -> ListItem {
+    ListItem::new(id)
         .h(px(ROW))
-        .px(px(8.0))
+        .px(Space::S4)
         .mx(px(-8.0))
-        .gap(px(10.0))
-        .rounded(cx.theme().radius)
-        .cursor_pointer()
-        .hover(|row| {
-            row.surface_at(
-                Surface::new(SurfaceRole::POPOVER),
-                penna::PaintState::Hover,
-                cx,
-            )
-        })
+        .gap(Space::S5)
         .child(dot)
         .child(
-            div()
+            Label::new(TextStyle::Lead, label)
                 .flex_1()
                 .min_w_0()
-                .truncate()
-                .text_size(rems_from_px(14.0))
-                .child(label),
+                .truncate(),
         )
         .child(action)
 }
 
-fn peer_action(name: &str, state: PeerState, cx: &App) -> AnyElement {
+fn peer_action(name: &str, state: PeerState) -> AnyElement {
     #[cfg(target_os = "macos")]
     if copy::linked(state) && state != PeerState::ControlledFromHere {
         let name = name.to_owned();
@@ -446,14 +418,14 @@ fn peer_action(name: &str, state: PeerState, cx: &App) -> AnyElement {
             .into_any_element();
     }
     let _ = name;
-    widgets::muted(copy::peer_state(state), 12.0, cx).into_any_element()
+    Label::new(TextStyle::Small, copy::peer_state(state))
+        .muted()
+        .into_any_element()
 }
 
-fn footer(cx: &mut Context<Panel>) -> AnyElement {
-    h_flex()
+fn footer() -> AnyElement {
+    let buttons = h_flex()
         .gap(px(4.0))
-        .pt(px(6.0))
-        .rule_on(penna::Kind::Rule.role(), penna::Edge::Top, cx)
         .child(
             Button::new("panel-arrange")
                 .ghost()
@@ -477,7 +449,11 @@ fn footer(cx: &mut Context<Panel>) -> AnyElement {
                     #[cfg(target_os = "linux")]
                     cx.quit();
                 }),
-        )
+        );
+    v_flex()
+        .gap(Space::S3)
+        .child(Separator::horizontal())
+        .child(buttons)
         .into_any_element()
 }
 
