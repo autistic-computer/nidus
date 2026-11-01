@@ -395,15 +395,18 @@ fn row(id: SharedString, dot: penna::Dot, label: String, action: AnyElement) -> 
         .h(px(ROW))
         .px(Space::S4)
         .mx(px(-8.0))
-        .gap(Space::S5)
-        .child(dot)
         .child(
-            Label::new(TextStyle::Lead, label)
-                .flex_1()
-                .min_w_0()
-                .truncate(),
+            h_flex()
+                .gap(Space::S5)
+                .child(dot)
+                .child(
+                    Label::new(TextStyle::Lead, label)
+                        .flex_1()
+                        .min_w_0()
+                        .truncate(),
+                )
+                .child(action),
         )
-        .child(action)
 }
 
 fn peer_action(name: &str, state: PeerState) -> AnyElement {
