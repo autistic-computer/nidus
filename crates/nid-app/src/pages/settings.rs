@@ -63,11 +63,6 @@ pub fn render(
     });
 
     let mut column = settings_scroll_column("settings")
-        .child(super::heading(
-            "Settings",
-            "What applies to this computer as a whole.",
-            cx,
-        ))
         .child(SettingsStack::titled("General").children(general));
     for stack in platform::settings_stacks(this, &snapshot, window, cx) {
         column = column.child(stack);

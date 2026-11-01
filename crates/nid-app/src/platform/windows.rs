@@ -869,26 +869,23 @@ pub fn display_settings_entry(cx: &App) -> Option<SettingEntry> {
     )
 }
 
-pub fn peer_entries(
+pub fn peer_actions(
     _: &mut NidWindow,
     peer: &Peer,
     cx: &mut Context<NidWindow>,
-) -> Vec<SettingEntry> {
+) -> Vec<AnyElement> {
     if !crate::copy::linked(peer.state) {
         return Vec::new();
     }
     let name = peer.name.clone();
     vec![
-        SettingEntry::new("Take control")
-            .description(format!("Send this PC’s keyboard and mouse to {name} now."))
-            .control(
-                Button::new("take-control")
-                    .label("Control")
-                    .on(settings_card_ground(cx))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.send(Request::TakeControl { name: name.clone() }, cx);
-                    })),
-            ),
+        Button::new("take-control")
+            .label(format!("Control {name}"))
+            .tooltip(format!("Send this PC’s keyboard and mouse to {name} now."))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.send(Request::TakeControl { name: name.clone() }, cx);
+            }))
+            .into_any_element(),
     ]
 }
 

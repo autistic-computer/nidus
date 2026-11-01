@@ -248,9 +248,13 @@ fn computer_card(
             computer.mark.as_deref(),
             cx,
         ))
-        .children(computer.peer.as_ref().and_then(look_button))
         .when_some(computer.peer.as_ref(), |column, peer| {
-            column.children(peer_settings(this, peer, window, cx))
+            let actions = platform::peer_actions(this, peer, cx);
+            column
+                .when(!actions.is_empty(), |column| {
+                    column.child(h_flex().flex_wrap().gap(px(8.0)).children(actions))
+                })
+                .children(peer_settings(this, peer, window, cx))
         })
         .when(!arrange.is_empty(), |this| {
             this.child(SettingsStack::new().children(arrange))
@@ -262,33 +266,6 @@ fn computer_card(
             column.child(forget_button(&this.model, peer))
         })
         .into_any_element()
-}
-
-#[cfg(target_os = "macos")]
-fn look_button(peer: &Peer) -> Option<AnyElement> {
-    if !copy::linked(peer.state) {
-        return None;
-    }
-    let name = peer.name.clone();
-    Some(
-        h_flex()
-            .child(
-                Button::new("look")
-                    .icon(IconName::Eye)
-                    .label(format!("Look at {name}"))
-                    .tooltip(format!(
-                        "A lens around {name}’s pointer, {}",
-                        crate::lens::HOTKEY_LABEL
-                    ))
-                    .on_click(move |_, _, cx| crate::lens::look(&name, cx)),
-            )
-            .into_any_element(),
-    )
-}
-
-#[cfg(not(target_os = "macos"))]
-const fn look_button(_: &Peer) -> Option<AnyElement> {
-    None
 }
 
 fn crossing_entry(snapshot: &Snapshot, seam: &Seam, mine: &[&str]) -> SettingEntry {
@@ -429,8 +406,7 @@ fn peer_settings(
                     }),
             )
     };
-    let mut typing = vec![keyboard, scroll];
-    typing.extend(platform::peer_entries(this, peer, cx));
+    let typing = [keyboard, scroll];
 
     let mut stacks = Vec::new();
     if !allowed.is_empty() {

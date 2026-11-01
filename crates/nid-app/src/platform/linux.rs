@@ -802,7 +802,7 @@ fn which(program: &str) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-pub fn peer_entries(_: &mut NidWindow, _: &Peer, _: &mut Context<NidWindow>) -> Vec<SettingEntry> {
+pub fn peer_actions(_: &mut NidWindow, _: &Peer, _: &mut Context<NidWindow>) -> Vec<AnyElement> {
     Vec::new()
 }
 
