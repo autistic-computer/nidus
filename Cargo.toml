@@ -55,6 +55,9 @@ semver = "1.0"
 [patch.crates-io]
 evdev = { git = "https://github.com/cmr/evdev", rev = "7fee138a341f73b81b9c4f8c59e3527c6a169ea3" }
 
+[patch."https://github.com/autistic-computer/ala"]
+ala = { path = "libs/ala/crates/ala" }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_SystemInformation", "Win32_System_WindowsProgramming", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_DataExchange", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
@@ -71,7 +74,8 @@ strip = "symbols"
 strip = "none"
 
 [workspace]
-members = [".", "crates/*"]
+members = ["crates/*"]
+exclude = ["libs"]
 default-members = [".", "crates/nid-app"]
 resolver = "3"
 
@@ -82,8 +86,8 @@ rust-version = "1.99"
 version = "0.7.0"
 
 [workspace.dependencies]
-ala = { git = "https://github.com/autistic-computer/ala", branch = "main" }
-ala-platform = { git = "https://github.com/autistic-computer/ala", branch = "main" }
+ala = { path = "libs/ala/crates/ala" }
+ala-platform = { path = "libs/ala/crates/ala-platform" }
 anyhow = "1.0.86"
 async-channel = "2.5.0"
 block2 = "0.6.2"
@@ -93,7 +97,7 @@ log = "0.4.34"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3.2", default-features = false }
-penna = { git = "https://github.com/autistic-computer/penna", branch = "main", features = ["tray"] }
+penna = { path = "libs/penna", features = ["tray"] }
 resvg = { version = "0.46.0", default-features = false, features = [
     "text",
     "system-fonts",

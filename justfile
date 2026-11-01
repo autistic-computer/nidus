@@ -6,6 +6,8 @@ mod debug 'just/debug.just'
 mod fmt 'just/fmt.just'
 [doc("Install a native service.")]
 mod install 'just/install.just'
+[doc("Push or pull ala and penna under libs/.")]
+mod libs 'just/libs.just'
 [doc("Package distributable artifacts.")]
 mod package 'just/package.just'
 [doc("Check or publish a GitHub release.")]
