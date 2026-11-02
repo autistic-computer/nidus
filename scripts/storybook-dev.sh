@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PORT="${PORT:-${STORYBOOK_PORT:-8099}}"
+SERVER_PID=""
+
+cleanup() {
+    if [[ -n "$SERVER_PID" ]]; then
+        kill "$SERVER_PID" 2>/dev/null || true
+        wait "$SERVER_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+if ! command -v cargo-watch >/dev/null 2>&1; then
+    echo "missing cargo-watch; run: cargo install cargo-watch --locked" >&2
+    exit 2
+fi
+
+cd "$ROOT"
+"$ROOT/scripts/build-storybook.sh"
+"$ROOT/libs/penna/storybook/serve.py" "$ROOT/crates/nid-app/storybook/dist" "$PORT" >/dev/null 2>&1 &
+SERVER_PID=$!
+echo "storybook at http://127.0.0.1:$PORT/ (rebuilds on save; reload the page)"
+
+cargo watch \
+    --postpone \
+    --delay 0.3 \
+    --watch crates/nid-app/storybook/Cargo.toml \
+    --watch crates/nid-app/storybook/src \
+    --watch crates/nid-app/src \
+    --watch src \
+    --watch libs/penna/storybook/Cargo.toml \
+    --watch libs/penna/storybook/src \
+    --watch libs/penna/storybook/web \
+    --watch libs/penna/src \
+    --watch libs/penna/themes \
+    --watch libs/ala/crates/ala/src \
+    --watch libs/ala/crates/ala-platform/src/web \
+    --watch libs/ala/crates/ala-platform/src/wgpu \
+    --watch scripts/build-storybook.sh \
+    --watch libs/penna/storybook/build.sh \
+    --shell "$ROOT/scripts/build-storybook.sh"

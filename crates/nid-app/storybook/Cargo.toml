@@ -1,0 +1,75 @@
+[workspace]
+resolver = "3"
+
+[package]
+name = "nid-storybook"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.99"
+description = "Nidus's settings app in every state, on one web page, for people and agents"
+publish = false
+
+[dependencies]
+ala = { path = "../../../libs/ala/crates/ala" }
+penna = { path = "../../../libs/penna" }
+penna-storybook = { path = "../../../libs/penna/storybook", default-features = false }
+nid-app = { path = ".." }
+nid-kvm = { path = "../../..", default-features = false }
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen = "=0.2.128"
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+enum_glob_use = "allow"
+struct_field_names = "allow"
+items_after_statements = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+result_large_err = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+float_cmp = "allow"
+struct_excessive_bools = "allow"
+type_complexity = "allow"
+used_underscore_binding = "allow"
+unused_self = "allow"
+assert_is_empty = "allow"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package]
+"*" = { opt-level = 2 }
+taffy = { opt-level = 3 }
+ala = { opt-level = 3 }
+ala-macros = { opt-level = 2 }
+ala-platform = { opt-level = 2 }
+penna = { opt-level = 0 }
+penna-storybook = { opt-level = 0 }
+nid-app = { opt-level = 0 }
+nid-kvm = { opt-level = 0 }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[patch.crates-io]
+evdev = { git = "https://github.com/cmr/evdev", rev = "7fee138a341f73b81b9c4f8c59e3527c6a169ea3" }
+
+[patch."https://github.com/autistic-computer/ala"]
+ala = { path = "../../../libs/ala/crates/ala" }
+ala-platform = { path = "../../../libs/ala/crates/ala-platform" }

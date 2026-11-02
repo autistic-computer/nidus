@@ -1,4 +1,6 @@
 /target
+/crates/nid-app/storybook/dist/
+/crates/nid-app/storybook/target/
 spikes/**/target/
 spikes/a-radio/results.csv
 

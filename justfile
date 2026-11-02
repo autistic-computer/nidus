@@ -12,6 +12,8 @@ mod libs 'just/libs.just'
 mod package 'just/package.just'
 [doc("Check or publish a GitHub release.")]
 mod release 'just/release.just'
+[doc("Build, serve or check the storybook.")]
+mod storybook 'just/storybook.just'
 [doc("Run a test suite.")]
 mod test 'just/test.just'
 
