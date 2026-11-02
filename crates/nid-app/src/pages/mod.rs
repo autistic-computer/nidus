@@ -3,6 +3,8 @@ mod computers;
 pub mod first_run;
 mod settings;
 
+pub use card::forget_alert;
+
 use ala::{
     AnyElement, App, Context, Entity, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,

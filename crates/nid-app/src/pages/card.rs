@@ -13,7 +13,7 @@ use nid::{
 use penna::{
     Disableable as _, Icon, IconName, Inspector, Label, Sizable as _, TextStyle, WindowExt as _,
     button::{Button, ButtonVariants as _},
-    dialog::DialogButtonProps,
+    dialog::{AlertDialog, DialogButtonProps},
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     settings::{SettingEntry, SettingsStack, settings_card_ground},
@@ -377,25 +377,29 @@ fn forget_button(model: &Entity<Model>, peer: &Peer) -> AnyElement {
                 .on_click(move |_, window, cx| {
                     let (name, model) = (name.clone(), model.clone());
                     window.open_alert_dialog(cx, move |alert, _, _| {
-                        let (name, model) = (name.clone(), model.clone());
-                        alert
-                            .title(format!("Forget {name}?"))
-                            .description("This stops input between the two computers and removes its trusted identity. It goes back to Nearby.")
-                            .button_props(
-                                DialogButtonProps::default()
-                                    .ok_text("Forget")
-                                    .ok_variant(penna::button::ButtonVariant::Paint(
-                                        penna::Tone::Danger,
-                                        penna::Emphasis::Solid,
-                                    ))
-                                    .show_cancel(true),
-                            )
-                            .on_ok(move |_, _, cx| {
-                                model.read(cx).send(Request::Forget { name: name.clone() });
-                                true
-                            })
+                        forget_alert(alert, &name, &model)
                     });
                 }),
         )
         .into_any_element()
+}
+
+pub fn forget_alert(alert: AlertDialog, name: &str, model: &Entity<Model>) -> AlertDialog {
+    let (name, model) = (name.to_owned(), model.clone());
+    alert
+        .title(format!("Forget {name}?"))
+        .description("This stops input between the two computers and removes its trusted identity. It goes back to Nearby.")
+        .button_props(
+            DialogButtonProps::default()
+                .ok_text("Forget")
+                .ok_variant(penna::button::ButtonVariant::Paint(
+                    penna::Tone::Danger,
+                    penna::Emphasis::Solid,
+                ))
+                .show_cancel(true),
+        )
+        .on_ok(move |_, _, cx| {
+            model.read(cx).send(Request::Forget { name: name.clone() });
+            true
+        })
 }
