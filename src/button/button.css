@@ -74,6 +74,7 @@
 }
 
 .penna-button:is([data-variant="link"], [data-variant="text"]) {
+  --penna-ring: var(--penna-focus-neutral);
   height: auto;
   padding: 0;
   border: 0;

@@ -33,13 +33,14 @@ const TONES: [(Tone, &str); 4] = [
     (Tone::Success, "success"),
 ];
 
-const PAINT: [(&str, &str); 12] = [
+const PAINT: [(&str, &str); 13] = [
     ("fill", "transparent"),
     ("edge", "transparent"),
     ("bw", "0px"),
     ("shadow", "0 0 #0000"),
     ("r", "0px"),
     ("k", "1"),
+    ("style-k", "1"),
     ("row", "0"),
     ("mark", "transparent"),
     ("backdrop", "none"),
@@ -195,12 +196,13 @@ fn grounded(role: SurfaceRole) -> String {
     format!("{}[data-ground]", selector(role))
 }
 
-fn state_selector(state: PaintState) -> &'static str {
+fn state_selector(state: PaintState, kind: Kind) -> &'static str {
     match state {
+        PaintState::Focused if kind == Kind::Field => "&:focus-within, &[data-state~=\"focused\"]",
         PaintState::Rest => "&",
         PaintState::Hover => "&:hover, &[data-state~=\"hover\"]",
         PaintState::Active => "&:active, &[data-state~=\"active\"]",
-        PaintState::Focused => "&:focus-visible, &[data-state~=\"focused\"]",
+        PaintState::Focused => "&[data-state~=\"focused\"]",
         PaintState::Current => {
             "&[data-state~=\"current\"], &[aria-current]:not([aria-current=\"false\"])"
         }
@@ -234,7 +236,7 @@ fn write_role(css: &mut String, theme: &Theme, base: &str, surface: Surface, ind
             let _ = writeln!(
                 css,
                 "{indent}  {} {{ {} }}",
-                state_selector(state),
+                state_selector(state, surface.role.kind),
                 declarations(&changed)
             );
         }
@@ -257,6 +259,10 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
         ("shadow", shadows(&layer.shadow)),
         ("r", length(f32::from(layer.radius))),
         ("k", number(layer.smoothing.log2())),
+        (
+            "style-k",
+            number(theme.style(role).smoothing.exponent().log2()),
+        ),
         ("row", if role.row { "1" } else { "0" }.to_owned()),
         (
             "mark",
@@ -335,8 +341,8 @@ fn write_root(css: &mut String, theme: &Theme) {
         ),
         ("--penna-radius".to_owned(), length(f32::from(theme.radius))),
         (
-            "--penna-smoothing".to_owned(),
-            number(theme.smoothing.exponent().log2()),
+            "--penna-focus-neutral".to_owned(),
+            color(theme.paint(Tone::Neutral, Emphasis::Ghost).focus),
         ),
         (
             "--penna-pane-radius".to_owned(),

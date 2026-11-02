@@ -1,7 +1,6 @@
-use crate::AuthoredElement as _;
-use crate::Colorize as _;
 use crate::foundation::restyle;
 use crate::{ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, h_flex};
+use crate::{AuthoredElement as _, Colorize as _};
 use ala::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,

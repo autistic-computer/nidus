@@ -1,4 +1,3 @@
-use crate::AuthoredElement as _;
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, RuleLook,
     Sizable as _, StyledExt as _, Surface, h_flex,
@@ -23,7 +22,7 @@ pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
 
 pub fn picker_overlay(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
     div()
-        .author_id(id)
+        .id(id)
         .absolute()
         .inset_0()
         .flex()
@@ -45,7 +44,7 @@ pub fn picker_modal_sized(
 ) -> AnimationElement<Stateful<Div>> {
     let id = id.into();
     let surface = v_flex()
-        .author_id(id.clone())
+        .id(id.clone())
         .relative()
         .w(relative(0.92))
         .max_w(px(width))

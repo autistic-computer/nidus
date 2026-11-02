@@ -1,4 +1,3 @@
-use crate::AuthoredElement as _;
 use ala::{
     AnyElement, App, Div, ElementId, ParentElement as _, Pixels, SharedString, Stateful,
     Styled as _, div, prelude::*, px,
@@ -100,7 +99,7 @@ pub fn bento_tile(
         .layer(Surface::new(roles::PHONE_CARD), PaintState::Rest);
     let radius = frame.radius;
     div()
-        .author_id(id)
+        .id(id)
         .relative()
         .size_full()
         .overflow_hidden()
@@ -121,7 +120,7 @@ pub fn bento_add_tile(
     let frame = theme.layer(Surface::new(roles::PHONE_ADD), PaintState::Rest);
     let radius = frame.radius;
     div()
-        .author_id(id)
+        .id(id)
         .relative()
         .size_full()
         .flex()

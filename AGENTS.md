@@ -47,11 +47,12 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
 - `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
   theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
   hardcode a `corner-shape`. A radius set on one button drops the full-radius round and draws the role's own
-  smoothing, which for a plain button is the theme's: set `--penna-k: var(--penna-smoothing)` next to it.
+  smoothing, which every role exports as `--penna-style-k`: set `--penna-k: var(--penna-style-k)` next to it.
 - Focus is the tokens' `data-state="focused"`: on a button it leaves the fill alone and sets `--penna-focus`.
   ala draws the ring 1.5px outside the border box with its own adaptive radius, which a CSS outline can't
-  follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Fields draw focus
-  with their edge.
+  follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Link and text
+  buttons have no role, so their ring takes the root `--penna-focus-neutral`. Only fields change their
+  fill or edge on focus, and only their rule also follows `:focus-within`.
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.

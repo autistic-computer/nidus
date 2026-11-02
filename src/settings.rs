@@ -1,7 +1,6 @@
 pub mod about;
 pub mod appearance;
 
-use crate::AuthoredElement as _;
 use std::{cell::Cell, rc::Rc};
 
 use web_time::Duration;
@@ -163,7 +162,7 @@ impl RenderOnce for SettingsNavigation {
             );
         }
         div()
-            .author_id(self.id)
+            .id(self.id)
             .flex()
             .flex_col()
             .w_full()
@@ -343,7 +342,7 @@ impl RenderOnce for SettingsScrollColumn {
                             }
                         }
                     })
-                    .author_id(self.id)
+                    .id(self.id)
                     .flex()
                     .flex_col()
                     .size_full()
@@ -490,7 +489,7 @@ impl RenderOnce for SettingsVirtualColumn {
         .pb(px(SETTINGS_PAGE_PADDING) + SettingsBottomInset::get(cx));
 
         div()
-            .author_id(self.id)
+            .id(self.id)
             .flex_1()
             .min_w_0()
             .h_full()
@@ -576,7 +575,7 @@ impl RenderOnce for SettingsDisclosure {
             .radius;
         let inset = px(DISCLOSURE_PRESS_INSET);
         div()
-            .author_id(self.id)
+            .id(self.id)
             .relative()
             .mt(px(10.0) - inset)
             .mb(-inset)
@@ -1013,7 +1012,7 @@ impl RenderOnce for SettingEntry {
             .child(surface);
         match self.on_click.filter(|_| !disabled) {
             Some((id, handler)) => entry
-                .author_id(id)
+                .id(id)
                 .cursor_pointer()
                 .on_click(move |event, window, cx| handler(event, window, cx))
                 .into_any_element(),

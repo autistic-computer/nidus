@@ -1,4 +1,3 @@
-use crate::AuthoredElement as _;
 use ala::{
     App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, Hsla, IntoElement, MouseButton,
     ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, div, prelude::*, px,
@@ -237,7 +236,7 @@ pub fn compact_floating_pill(
         .fill;
     let radius = pill.radius;
     div()
-        .author_id(id)
+        .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
         .relative()
         .flex()

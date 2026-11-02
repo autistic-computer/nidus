@@ -1,4 +1,3 @@
-use crate::AuthoredElement as _;
 use std::rc::Rc;
 
 use ala::{
@@ -9,9 +8,9 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH, Ground, Icon,
-    IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing, StyledExt as _,
-    Surface, SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH,
+    Ground, Icon, IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing,
+    StyledExt as _, Surface, SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -119,12 +118,15 @@ impl ButtonLook {
 }
 
 pub(crate) fn rings_focus(role: SurfaceRole) -> bool {
-    role.kind == Kind::Button
-        && (role.id == Kind::Button.role().id
-            || role.id == SurfaceRole::OUTLINE_BUTTON.id
-            || ButtonLook::ALL
-                .into_iter()
-                .any(|look| look.role().id == role.id))
+    [
+        Kind::Button.role(),
+        SurfaceRole::OUTLINE_BUTTON,
+        roles::PHONE_BUTTON,
+        roles::SIDEBAR_ROW,
+    ]
+    .into_iter()
+    .chain(ButtonLook::ALL.into_iter().map(ButtonLook::role))
+    .any(|drawn| drawn.id == role.id)
 }
 
 impl From<ButtonLook> for Surface {

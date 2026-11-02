@@ -1,4 +1,3 @@
-use crate::AuthoredElement as _;
 use std::{rc::Rc, time::Duration};
 
 use ala::{
@@ -217,7 +216,7 @@ impl RenderOnce for Switch {
 
         div().refine_style(&self.style).child(
             h_flex()
-                .author_id(self.id.clone())
+                .id(self.id.clone())
                 .gap_2()
                 .items_start()
                 .child(

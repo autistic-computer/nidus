@@ -1,9 +1,9 @@
-use crate::AuthoredElement as _;
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
+    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement, ParentElement,
+    RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -114,7 +114,7 @@ impl RenderOnce for Inspector {
                     )
                 });
         v_flex()
-            .author_id(self.id)
+            .id(self.id)
             .flex_none()
             .w(rems_from_px(WIDTH))
             .h_full()
