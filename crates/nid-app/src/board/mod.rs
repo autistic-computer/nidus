@@ -15,7 +15,7 @@ use nid::app::{
 };
 use penna::{
     ActiveTheme as _, Chip, Colorize as _, Dock, Icon, IconName, Label, PaintState,
-    Selectable as _, Sizable as _, Space, SurfaceRole, TextStyle, Tile, TileVariant, Tone, Well,
+    Selectable as _, Sizable as _, Space, TextStyle, Tile, TileVariant, Tone, Well,
     button::{Button, ButtonVariants as _},
     h_flex,
 };
@@ -958,7 +958,7 @@ impl Render for Board {
             .unwrap_or_default();
 
         let mat_theme = theme.clone();
-        let ring_radius = theme.shape_radius(SurfaceRole::WELL, penna::Shape::Round);
+        let ring_radius = theme.radius;
         let backdrop = canvas(
             move |area, window, _| {
                 if bounds.replace(area).size != area.size {
