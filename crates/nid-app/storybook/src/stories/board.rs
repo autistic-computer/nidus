@@ -111,7 +111,7 @@ fn desk(
 ) -> AnyView {
     let (board, requests) = fixtures::board(snapshot, docked, cx, setup);
     let height = if docked { DOCKED } else { BOARD };
-    frame(board.into(), None, height, vec![requests], cx)
+    frame(board.into(), None, Some(height), vec![requests], cx)
 }
 
 fn no_layout() -> Snapshot {

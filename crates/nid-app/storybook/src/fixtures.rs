@@ -309,7 +309,7 @@ pub fn after_first_frame(window: &Window, f: impl FnOnce(&mut Window, &mut App) 
 pub struct Frame {
     view: AnyView,
     width: Option<f32>,
-    height: f32,
+    height: Option<f32>,
     _requests: Vec<Requests>,
 }
 
@@ -320,7 +320,7 @@ impl Render for Frame {
                 Some(width) => this.w(px(width)),
                 None => this.w_full(),
             })
-            .h(px(self.height))
+            .when_some(self.height, |this, height| this.h(px(height)))
             .child(self.view.clone())
     }
 }
@@ -328,7 +328,7 @@ impl Render for Frame {
 pub fn frame(
     view: AnyView,
     width: Option<f32>,
-    height: f32,
+    height: Option<f32>,
     requests: Vec<Requests>,
     cx: &mut App,
 ) -> AnyView {
@@ -363,24 +363,15 @@ pub fn app_window(
     setup: impl FnOnce(&mut NidWindow, &mut Window, &mut Context<NidWindow>),
 ) -> AnyView {
     let (view, requests) = nid_window(snapshot, window, cx, setup);
-    frame(view.into(), None, height, vec![requests], cx)
+    frame(view.into(), None, Some(height), vec![requests], cx)
 }
 
 pub fn panel(snapshot: Option<Snapshot>, cx: &mut App) -> AnyView {
-    let rows = snapshot.as_ref().map_or(0, |snapshot| {
-        snapshot.peers.len()
-            + snapshot
-                .unplaced
-                .iter()
-                .filter(|computer| copy::placeable(computer))
-                .count()
-    });
-    let height = (300.0 + 40.0 * rows.max(1) as f32).clamp(340.0, 560.0);
     let (mut model, requests) = Model::fixture(snapshot.clone().unwrap_or_else(alone));
     model.snapshot = snapshot;
     let model = cx.new(|_| model);
     let view = cx.new(|cx| Panel::new(model, cx));
-    frame(view.into(), Some(PANEL_WIDTH), height, vec![requests], cx)
+    frame(view.into(), Some(PANEL_WIDTH), None, vec![requests], cx)
 }
 
 pub fn board(

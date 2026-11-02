@@ -38,6 +38,7 @@ const WIDTH: f32 = 380.0;
 const ROW: f32 = 40.0;
 const GAP: f32 = 6.0;
 const EDGE: f32 = 8.0;
+const MAX_HEIGHT: f32 = 560.0;
 const REOPEN: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,7 +83,7 @@ fn height(snapshot: Option<&Snapshot>) -> f32 {
                 .filter(|computer| copy::placeable(computer))
                 .count()
     });
-    (300.0 + ROW * rows.max(1) as f32).clamp(340.0, 560.0)
+    (300.0 + ROW * rows.max(1) as f32).min(MAX_HEIGHT)
 }
 
 #[derive(Default)]
@@ -138,7 +139,7 @@ pub fn toggle(anchor: Option<TrayAnchor>, cx: &mut App) {
         },
         |window, cx| {
             crate::theme::apply(Some(window), cx);
-            let view = cx.new(|cx| Panel::popup(model, window, cx));
+            let view = cx.new(|cx| Panel::popup(model, (anchor.bounds, area), window, cx));
             cx.new(|cx| Root::new(view, window, cx))
         },
     );
@@ -163,7 +164,7 @@ fn go(page: Page) -> impl Fn(&mut Panel, &ala::ClickEvent, &mut Window, &mut Con
         panel
             .model
             .update(cx, |model, cx| model.show(page.clone(), cx));
-        if panel.popup {
+        if panel.popup.is_some() {
             close(window, cx);
             crate::open(cx);
         }
@@ -174,7 +175,7 @@ pub struct Panel {
     model: Entity<Model>,
     focus: FocusHandle,
     was_active: bool,
-    popup: bool,
+    popup: Option<(Bounds<Pixels>, Bounds<Pixels>)>,
     _observers: Vec<Subscription>,
 }
 
@@ -185,13 +186,18 @@ impl Panel {
             model,
             focus: cx.focus_handle(),
             was_active: false,
-            popup: false,
+            popup: None,
         }
     }
 
-    fn popup(model: Entity<Model>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn popup(
+        model: Entity<Model>,
+        anchor: (Bounds<Pixels>, Bounds<Pixels>),
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let mut panel = Self::new(model, cx);
-        panel.popup = true;
+        panel.popup = Some(anchor);
         window.focus(&panel.focus, cx);
         panel
             ._observers
@@ -214,29 +220,39 @@ impl Render for Panel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.model.read(cx).snapshot.clone();
         let panel = TrayPanel::new()
+            .h_auto()
+            .max_h(px(MAX_HEIGHT))
             .child(header(snapshot.as_ref(), cx))
             .map(|panel| match &snapshot {
                 Some(snapshot) => panel.child(status(snapshot, cx)).child(
                     div()
                         .id("panel-computers")
-                        .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
                         .child(computers(snapshot, cx)),
                 ),
-                None => panel
-                    .child(Label::new(TextStyle::Body, "Starting…").muted())
-                    .child(div().flex_1()),
+                None => panel.child(Label::new(TextStyle::Body, "Starting…").muted()),
             })
             .child(footer(cx));
         div()
             .size_full()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if this.popup && event.keystroke.key == "escape" {
+                if this.popup.is_some() && event.keystroke.key == "escape" {
                     close(window, cx);
                 }
             }))
+            .when_some(self.popup, |this, (icon, area)| {
+                this.on_children_prepainted(move |children, window, _| {
+                    let Some(panel) = children.first() else {
+                        return;
+                    };
+                    let fitted = place(icon, area, f32::from(panel.size.height));
+                    if (window.bounds().size.height - fitted.size.height).abs() > px(0.5) {
+                        window.set_bounds(fitted);
+                    }
+                })
+            })
             .child(panel)
     }
 }
