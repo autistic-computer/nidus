@@ -8,12 +8,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::time::Instant;
 
+#[cfg(feature = "runtime")]
 use crate::{
     config::Config,
     hello::{hello_addresses, peer_name},
-    identity::encode_hex,
-    wire::{Hello, Os},
+    wire::Hello,
 };
+use crate::{identity::encode_hex, wire::Os};
 
 pub const MAX_INSTANCES: usize = 64;
 pub const MAX_NEIGHBORS: usize = 32;
@@ -90,6 +91,7 @@ pub struct Stranger {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "runtime")]
 pub struct Neighbor {
     pub spki: Vec<u8>,
     pub name: String,
@@ -103,6 +105,7 @@ pub struct Neighbor {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(feature = "runtime")]
 struct Instance {
     addresses: Vec<SocketAddr>,
     compatible: bool,
@@ -112,6 +115,7 @@ struct Instance {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg(feature = "runtime")]
 enum Asking {
     Due,
     Waiting { again: Instant, unanswered: u32 },
@@ -119,6 +123,7 @@ enum Asking {
 }
 
 #[derive(Debug)]
+#[cfg(feature = "runtime")]
 pub struct Neighbors {
     own: String,
     own_record: Option<String>,
@@ -129,6 +134,7 @@ pub struct Neighbors {
     turned_away: bool,
 }
 
+#[cfg(feature = "runtime")]
 impl Neighbors {
     pub fn new(own_spki: &[u8]) -> Self {
         Self {
@@ -467,6 +473,7 @@ impl Neighbors {
     }
 }
 
+#[cfg(feature = "runtime")]
 impl Neighbors {
     pub fn introduced(
         &self,
@@ -487,6 +494,7 @@ impl Neighbors {
     }
 }
 
+#[cfg(feature = "runtime")]
 fn trusted_keys(config: &Config) -> BTreeSet<String> {
     config
         .peers

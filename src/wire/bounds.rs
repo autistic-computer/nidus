@@ -2,7 +2,7 @@ use crate::core::{ReliableControl, TouchState};
 
 use super::{MAX_NAME_BYTES, MAX_VERSION_BYTES, WireError, WireMessage};
 
-pub use crate::discovery::MAX_DISCOVERY_CANDIDATES;
+pub use super::MAX_DISCOVERY_CANDIDATES;
 
 pub const MAX_CONTACTS: usize = 32;
 pub const MAX_HELD_KEYS: usize = 32;

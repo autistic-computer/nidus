@@ -15,10 +15,10 @@ use crate::{
     hello::peer_name,
     identity::encode_hex,
     transport::INPUT_ALPN_PROTOCOL,
+    wire::MAX_DISCOVERY_CANDIDATES,
 };
 
 pub const SERVICE_TYPE: &str = "_zflow._udp.local.";
-pub const MAX_DISCOVERY_CANDIDATES: usize = 16;
 pub const MAX_TXT_PROPERTIES: usize = 8;
 pub const MAX_TXT_BYTES: usize = 384;
 

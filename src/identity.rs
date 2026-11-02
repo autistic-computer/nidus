@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(feature = "runtime")]
 use rcgen::{KeyPair, PublicKeyData};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -11,12 +12,14 @@ use thiserror::Error;
 const IDENTITY_FILE: &str = "identity.pk8";
 
 #[derive(Debug)]
+#[cfg(feature = "runtime")]
 pub struct Identity {
     key_pair: KeyPair,
     spki: Vec<u8>,
     fingerprint: [u8; 32],
 }
 
+#[cfg(feature = "runtime")]
 impl Identity {
     pub fn load_or_create(state_dir: &Path) -> Result<Self, IdentityError> {
         ensure_private_directory(state_dir)?;
@@ -149,8 +152,10 @@ pub fn encode_hex(bytes: &[u8]) -> String {
 #[derive(Debug, Error)]
 pub enum IdentityError {
     #[error("could not generate identity: {0}")]
+    #[cfg(feature = "runtime")]
     Generate(rcgen::Error),
     #[error("identity key is invalid: {0}")]
+    #[cfg(feature = "runtime")]
     InvalidKey(rcgen::Error),
     #[error("could not read {path}: {source}")]
     Read {

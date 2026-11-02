@@ -26,6 +26,7 @@ pub const MAX_PROBE_PAYLOAD_BYTES: usize = 128;
 pub const MAX_HELLO_PAYLOAD_BYTES: usize = 1_024;
 pub const MAX_LENS_PAYLOAD_BYTES: usize = crate::lens::wire::MAX_TEXT_BYTES + 64;
 pub const MAX_NAME_BYTES: usize = 63;
+pub const MAX_DISCOVERY_CANDIDATES: usize = 16;
 pub const MAX_VERSION_BYTES: usize = 32;
 pub const HELLO_VOUCHES: usize = 16;
 

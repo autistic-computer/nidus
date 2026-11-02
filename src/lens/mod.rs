@@ -1,9 +1,10 @@
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod capture;
+#[cfg(feature = "runtime")]
 pub mod client;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod host;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod mutter;
 pub mod pace;
 pub mod tiles;

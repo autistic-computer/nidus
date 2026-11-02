@@ -6,6 +6,7 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "runtime")]
 use super::model::{Contents, Document};
 use crate::desktop::{Display, Edge, MAX_SHARED_TILES, SharedLayout, Tile};
 
@@ -448,8 +449,10 @@ impl Layout {
     }
 }
 
+#[cfg(feature = "runtime")]
 pub type LayoutDocument = Document<Layout>;
 
+#[cfg(feature = "runtime")]
 impl Contents for Layout {
     const NAME: &'static str = "layout";
 
@@ -462,6 +465,7 @@ impl Contents for Layout {
     }
 }
 
+#[cfg(feature = "runtime")]
 impl LayoutDocument {
     pub fn beside(config_path: &Path) -> Result<Self> {
         let mut file_name = config_path

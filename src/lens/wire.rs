@@ -65,7 +65,7 @@ impl LensMessage {
             ),
             Self::Button { button, .. } => check((1..=5).contains(button), "unknown button"),
             Self::Ready { width, height } => check(
-                tiles::Decoder::new(*width as usize, *height as usize).is_ok(),
+                tiles::dimensions(*width as usize, *height as usize).is_ok(),
                 "unsupported desktop size",
             ),
             Self::Copied { text } => check(text.len() <= MAX_TEXT_BYTES, "copied text too long"),

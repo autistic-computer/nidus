@@ -74,6 +74,7 @@ enum Need {
     Current,
 }
 
+#[cfg(feature = "runtime")]
 pub struct Encoder {
     width: usize,
     height: usize,
@@ -90,6 +91,7 @@ pub struct Encoder {
     compressor: zstd::bulk::Compressor<'static>,
 }
 
+#[cfg(feature = "runtime")]
 pub struct Decoder {
     width: usize,
     height: usize,
@@ -99,7 +101,7 @@ pub struct Decoder {
     decompressor: zstd::bulk::Decompressor<'static>,
 }
 
-fn dimensions(width: usize, height: usize) -> Result<usize> {
+pub(crate) fn dimensions(width: usize, height: usize) -> Result<usize> {
     ensure!(
         width > 0 && height > 0 && width <= 4096 && height <= 2160,
         "unsupported desktop dimensions {width}x{height}"
@@ -117,6 +119,7 @@ fn record_size(width: usize, height: usize, level: usize) -> usize {
     width.div_ceil(level) * height.div_ceil(level) * 4
 }
 
+#[cfg(feature = "runtime")]
 impl Encoder {
     pub fn sequence(&self) -> u64 {
         self.sequence
@@ -404,6 +407,7 @@ impl Encoder {
     }
 }
 
+#[cfg(feature = "runtime")]
 impl Decoder {
     pub fn sequence(&self) -> u64 {
         self.sequence

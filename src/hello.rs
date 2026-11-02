@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     config::{Config, PeerConfig, PeerPermissions},
-    discovery::{MAX_DISCOVERY_CANDIDATES, UntrustedCandidate},
-    wire::{HELLO_VOUCHES, Hello, MAX_NAME_BYTES, MAX_VERSION_BYTES, Os},
+    wire::{HELLO_VOUCHES, Hello, MAX_DISCOVERY_CANDIDATES, MAX_NAME_BYTES, MAX_VERSION_BYTES, Os},
 };
+
+#[cfg(feature = "runtime")]
+use crate::discovery::UntrustedCandidate;
 
 const MAX_LABEL_BYTES: usize = 255;
 const OWN_TILE_LABELS: [&str; 2] = ["This Mac", "This computer"];
@@ -26,6 +28,7 @@ pub enum NoticeKind {
     Joined,
 }
 
+#[cfg(feature = "runtime")]
 pub fn local_hello(input_port: u16, trusts_you: bool) -> Hello {
     let candidates = if trusts_you {
         this_host_candidates(input_port)
@@ -35,6 +38,7 @@ pub fn local_hello(input_port: u16, trusts_you: bool) -> Hello {
     make_hello(&local_name(), input_port, candidates, trusts_you)
 }
 
+#[cfg(feature = "runtime")]
 pub fn make_hello(
     name: &str,
     input_port: u16,
@@ -75,6 +79,7 @@ pub fn this_os() -> Os {
     }
 }
 
+#[cfg(feature = "runtime")]
 pub fn hello_addresses(remote: SocketAddr, hello: &Hello) -> Vec<SocketAddr> {
     let observed = SocketAddr::new(remote.ip().to_canonical(), hello.input_port);
     let mut addresses = vec![observed];
@@ -86,6 +91,7 @@ pub fn hello_addresses(remote: SocketAddr, hello: &Hello) -> Vec<SocketAddr> {
     addresses
 }
 
+#[cfg(feature = "runtime")]
 pub fn trust_peer(
     config: &mut Config,
     spki: &[u8],
@@ -113,6 +119,7 @@ pub fn trust_peer(
     Ok(name)
 }
 
+#[cfg(feature = "runtime")]
 pub fn replace_key(
     config: &mut Config,
     name: &str,
@@ -139,6 +146,7 @@ pub fn replace_key(
     Ok(())
 }
 
+#[cfg(feature = "runtime")]
 fn default_permissions() -> PeerPermissions {
     PeerPermissions {
         connect: true,
@@ -216,6 +224,12 @@ pub(crate) fn local_device_label() -> Option<String> {
     Some(name)
 }
 
+#[cfg(not(any(unix, windows)))]
+pub(crate) fn local_device_label() -> Option<String> {
+    None
+}
+
+#[cfg(feature = "runtime")]
 pub fn this_host_candidates(input_port: u16) -> Vec<SocketAddr> {
     let addresses = crate::discovery::local_unicast_addresses().unwrap_or_else(|error| {
         tracing::debug!("could not list this computer's addresses: {error}");
@@ -224,6 +238,7 @@ pub fn this_host_candidates(input_port: u16) -> Vec<SocketAddr> {
     candidates_on_port(addresses, input_port)
 }
 
+#[cfg(feature = "runtime")]
 fn candidates_on_port(addresses: Vec<IpAddr>, input_port: u16) -> Vec<SocketAddr> {
     addresses
         .into_iter()

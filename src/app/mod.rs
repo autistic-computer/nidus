@@ -1,24 +1,28 @@
 pub mod api;
+#[cfg(feature = "runtime")]
 pub mod client;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub(crate) mod desktop;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod desktop_agent;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod gnome;
+#[cfg(feature = "runtime")]
 pub(crate) mod handoff;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 mod host;
 pub mod layout_model;
+#[cfg(feature = "runtime")]
 pub mod model;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 mod native;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 mod nearby;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 mod sharing;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod updates;
+#[cfg(feature = "runtime")]
 pub mod windows_view;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 pub(crate) use native::NativeApp;

@@ -1,35 +1,45 @@
+#![cfg_attr(not(feature = "runtime"), allow(dead_code, unused_imports))]
+
 pub mod app;
+#[cfg(feature = "runtime")]
 pub mod capture;
-#[cfg(not(windows))]
+#[cfg(all(feature = "runtime", not(windows)))]
 pub mod cli;
-#[cfg(windows)]
+#[cfg(all(feature = "runtime", windows))]
 #[path = "windows/cli.rs"]
 pub mod cli;
 pub mod clipboard;
 pub mod config;
+#[cfg(feature = "runtime")]
 pub mod control;
 pub mod core;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod daemon;
 pub mod desktop;
+#[cfg(feature = "runtime")]
 pub mod discovery;
 pub mod forgotten;
 pub mod hello;
 pub mod identity;
 pub mod lens;
+#[cfg(feature = "runtime")]
 pub mod link;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod linux;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "runtime", target_os = "macos"))]
 pub mod macos;
+#[cfg(feature = "runtime")]
 pub mod metrics;
 pub mod neighbors;
 pub mod pairing_window;
+#[cfg(feature = "runtime")]
 pub mod peer_view;
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "runtime", target_os = "linux"))]
 pub mod runtime;
+#[cfg(feature = "runtime")]
 pub mod session;
+#[cfg(feature = "runtime")]
 pub mod transport;
-#[cfg(windows)]
+#[cfg(all(feature = "runtime", windows))]
 pub mod windows;
 pub mod wire;
