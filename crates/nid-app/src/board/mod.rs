@@ -1372,8 +1372,7 @@ fn found_tile(
         .w(px(FOUND_SIZE.0))
         .h(px(FOUND_SIZE.1))
         .px(Space::S5)
-        .py(Space::S4)
-        .gap(px(1.0))
+        .py(Space::S3)
         .cursor_pointer()
         .child(
             h_flex()
@@ -1392,9 +1391,14 @@ fn found_tile(
         .child(
             Label::new(TextStyle::Body, computer.name.clone())
                 .strong()
-                .truncate(),
+                .truncate()
+                .flex_none(),
         )
-        .child(Label::new(TextStyle::Caption, copy::unplaced_detail(computer)).truncate())
+        .child(
+            Label::new(TextStyle::Caption, copy::unplaced_detail(computer))
+                .truncate()
+                .flex_none(),
+        )
 }
 
 fn to_bounds(area: Bounds<Pixels>, rect: Rect) -> Bounds<Pixels> {
