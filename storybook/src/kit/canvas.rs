@@ -181,18 +181,24 @@ fn mini(id: &'static str, state: PaintState, cx: &App) -> Tile {
 
 fn minis(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let window = |id: &'static str, state: PaintState| {
+    let window = |id: &'static str, other: &'static str, state: PaintState| {
         h_flex()
             .w(px(140.0))
             .h(px(90.0))
             .gap(Space::S2)
             .child(mini(id, state, cx))
-            .child(mini("other", PaintState::Rest, cx))
+            .child(mini(other, PaintState::Rest, cx))
     };
     states()
         .columns(2)
-        .state("rest", window("mini-rest", PaintState::Rest))
-        .state("selected", window("mini-selected", PaintState::Selected))
+        .state(
+            "rest",
+            window("mini-rest", "mini-rest-other", PaintState::Rest),
+        )
+        .state(
+            "selected",
+            window("mini-selected", "mini-selected-other", PaintState::Selected),
+        )
         .into_any_element()
 }
 
