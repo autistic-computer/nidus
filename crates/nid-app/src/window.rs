@@ -199,7 +199,7 @@ fn status_pill(snapshot: &Snapshot) -> AnyElement {
         neighbor.as_ref().map(|(peer, side)| (peer.as_str(), *side)),
     );
     let away = status.state == State::Controlling;
-    let chip = Chip::new(title)
+    let chip = Chip::new("status", title)
         .dot(widgets::state_tone(status.state))
         .tone(if away { Tone::Primary } else { Tone::Neutral })
         .selected(away);

@@ -321,7 +321,7 @@ impl Board {
         for (index, island) in islands.iter_mut().enumerate() {
             let Some(hull) = island.hull else { continue };
             let chip_width = {
-                let chip = Chip::new(island.name.clone());
+                let chip = Chip::new("island", island.name.clone());
                 let chip = if island.state.is_some() {
                     chip.dot(Tone::Neutral)
                 } else {
@@ -1211,7 +1211,7 @@ impl Render for Board {
                 continue;
             }
             let selected = selection.as_deref() == Some(island.owner.as_str());
-            let chip = Chip::new(island.name.clone()).selected(selected);
+            let chip = Chip::new("island", island.name.clone()).selected(selected);
             let chip = if island.owner == LOCAL {
                 chip
             } else {
