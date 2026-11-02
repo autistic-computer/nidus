@@ -264,12 +264,15 @@ fn inspector(_: &mut Window, _: &mut App) -> AnyElement {
                 .on_close(|_, _, _| {})
                 .child(
                     SettingsStack::titled("What ubuntu can do here")
+                        .id("inspector-permissions")
                         .child(
                             SettingEntry::new("Control this computer")
+                                .id("setting-control")
                                 .control(Switch::new("control").checked(true)),
                         )
                         .child(
                             SettingEntry::new("Share the clipboard")
+                                .id("setting-clipboard")
                                 .control(Switch::new("clipboard").checked(true)),
                         ),
                 )
