@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::{collections::HashMap, rc::Rc};
 
 use ala::{
@@ -297,7 +298,7 @@ impl RenderOnce for SwipeBack {
         .absolute()
         .inset_0();
         div()
-            .id(self.id)
+            .author_id(self.id)
             .relative()
             .size_full()
             .overflow_hidden()

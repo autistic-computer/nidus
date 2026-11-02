@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use crate::Colorize as _;
 use crate::foundation::restyle;
 use crate::{ActiveTheme, Disableable, PaintState, StyledExt, Surface, SurfaceRole, h_flex};
@@ -110,7 +111,7 @@ impl RenderOnce for MenuItemElement {
         };
         let hover = (state == PaintState::Rest).then(|| theme.layer(surface, PaintState::Hover));
         h_flex()
-            .id(self.id)
+            .author_id(self.id)
             .role(Role::MenuItem)
             .when_some(self.aria_label, |this, label| this.aria_label(label))
             .aria_selected(self.selected)

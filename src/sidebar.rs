@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use crate::{
     ActiveTheme as _, Edge, Ground, IconName, PaintState, Sizable as _, StyledExt as _, Surface,
     button::Button, foundation::RoleRuleExt as _, roles,
@@ -60,7 +61,7 @@ pub fn sidebar_titlebar(
     cx: &App,
 ) -> Stateful<ala::Div> {
     div()
-        .id(id)
+        .author_id(id)
         .flex()
         .flex_none()
         .w_full()
@@ -80,7 +81,7 @@ pub fn sidebar_footer(
 ) -> Stateful<ala::Div> {
     let window_inset = cx.theme().pane_margin + chrome_inset(cx);
     div()
-        .id(id)
+        .author_id(id)
         .flex()
         .flex_none()
         .w_full()
@@ -113,7 +114,7 @@ pub fn sidebar_panel(
     cx: &App,
 ) -> Stateful<ala::Div> {
     div()
-        .id(id)
+        .author_id(id)
         .flex()
         .flex_col()
         .w(px(width))
@@ -146,7 +147,7 @@ pub fn sidebar_resize_handle(
     cx: &App,
 ) -> Stateful<ala::Div> {
     div()
-        .id(id)
+        .author_id(id)
         .absolute()
         .top(px(0.0))
         .right(px(0.0))

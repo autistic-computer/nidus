@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use ala::{
     AnyElement, App, Div, ElementId, InteractiveElement as _, ParentElement as _, Pixels,
     Refineable as _, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, div,
@@ -28,7 +29,7 @@ impl Plate {
     pub(crate) fn new(id: impl Into<ElementId>, role: SurfaceRole) -> Self {
         let id = id.into();
         Self {
-            base: div().id(id.clone()),
+            base: div().author_id(id.clone()),
             style: StyleRefinement::default(),
             surface: Surface::new(role),
             state: PaintState::Rest,

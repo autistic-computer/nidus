@@ -2,10 +2,11 @@ use super::{
     ActiveTheme, Edge, Emphasis, Ground, Kind, Layer, PaintState, StatefulSurfaceExt, Surface,
     SurfaceRole, TextStyle, Tone,
 };
+use crate::AuthoredElement as _;
 use ala::{
     AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
-    Hsla, InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
-    StyleRefinement, Styled, div, px,
+    Hsla, Pixels, Refineable, Stateful, StatefulInteractiveElement, StyleRefinement, Styled, div,
+    px,
 };
 
 use super::rems_from_px;
@@ -264,7 +265,7 @@ pub fn list_row(
     cx: &App,
 ) -> Stateful<Div> {
     row_surface(
-        h_flex().id(id).flex_none().h(height),
+        h_flex().author_id(id).flex_none().h(height),
         Surface::new(SurfaceRole::MENU_ITEM),
         row_state(selected, enabled),
         height,

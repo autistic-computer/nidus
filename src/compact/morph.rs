@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use ala::{
     App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, FontWeight, InteractiveElement as _,
     MouseButton, ParentElement as _, Pixels, SharedString, SpringConfig, SpringState, Stateful,
@@ -247,7 +248,7 @@ pub fn compact_pill_collapse(
         at * at * (3.0 - 2.0 * at)
     };
     div()
-        .id(id)
+        .author_id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
         .absolute()
         .left(bounds.origin.x)

@@ -3,6 +3,7 @@ pub mod tree;
 
 pub use row::{Row, RowLook};
 
+use crate::AuthoredElement as _;
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Stateful,
@@ -40,7 +41,7 @@ impl ListItem {
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            base: h_flex().id(id),
+            base: h_flex().author_id(id),
             style: StyleRefinement::default(),
             disabled: false,
             selected: false,

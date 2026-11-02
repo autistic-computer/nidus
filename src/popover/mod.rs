@@ -1,5 +1,6 @@
 mod actions;
 
+use crate::AuthoredElement as _;
 use ala::{
     Anchor, AnyElement, App, Bounds, Context, DismissEvent, ElementId, EventEmitter, FocusHandle,
     Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement as _,
@@ -186,7 +187,7 @@ impl RenderOnce for Popover {
         let parent_view_id = window.current_view();
 
         let el = div()
-            .id(self.id)
+            .author_id(self.id)
             .child(trigger(open))
             .on_mouse_down(MouseButton::Left, {
                 let state = state.clone();

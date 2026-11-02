@@ -1,10 +1,11 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
+use crate::AuthoredElement as _;
 use ala::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
-    InteractiveElement as _, IntoElement, IsZero as _, LayoutId, ParentElement as _, Pixels, Point,
-    Position, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement as _, Style,
-    StyleRefinement, Styled as _, Window, div, px, relative,
+    IntoElement, IsZero as _, LayoutId, ParentElement as _, Pixels, Point, Position, ScrollHandle,
+    ScrollWheelEvent, StatefulInteractiveElement as _, Style, StyleRefinement, Styled as _, Window,
+    div, px, relative,
 };
 
 use crate::StyledExt as _;
@@ -16,7 +17,7 @@ pub(super) fn horizontal_scroll_area(
     child: impl IntoElement,
 ) -> impl IntoElement {
     div()
-        .id(id)
+        .author_id(id)
         .w_full()
         .relative()
         .refine_style(style)
