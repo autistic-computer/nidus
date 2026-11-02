@@ -3,7 +3,7 @@ use nid::app::layout_model::{Monitor, Seam};
 pub const BOARD_HEIGHT: f32 = 240.0;
 pub const ROOM_SIDES: f32 = 28.0;
 pub const ROOM_ABOVE: f32 = 48.0;
-pub const ROOM_BELOW: f32 = 24.0;
+pub const ROOM_BELOW: f32 = 48.0;
 pub const MAX_SCALE: f32 = 0.12;
 pub const HULL: f32 = 8.0;
 pub const CHIP_GAP: f32 = 6.0;
@@ -347,6 +347,20 @@ mod tests {
         assert_eq!(chip_spot(roomy, 60.0, 24.0, (400.0, 240.0), &[]), 0);
         let neighbor = Rect::new(80.0, 20.0, 80.0, 30.0);
         assert_eq!(chip_spot(roomy, 60.0, 24.0, (400.0, 240.0), &[neighbor]), 2);
+    }
+
+    #[test]
+    fn a_computer_below_is_named_under_its_screens() {
+        let here = monitor("here", 0, 0, 1920, 1080);
+        let below = monitor("below", 0, 1080, 1920, 1080);
+        let board = (640.0, 240.0);
+        let fit = Fit::new([&here, &below], board.0, board.1).unwrap();
+        let above = hull([fit.rect(&here, (0.0, 0.0))]).unwrap();
+        let under = hull([fit.rect(&below, (0.0, 0.0))]).unwrap();
+        let spot = chip_spot(under, 60.0, 24.0, board, &[above]);
+        assert_eq!(spot, 2, "below its own hull, clear of the computer above");
+        assert_eq!(under, Rect::new(248.0, 112.0, 144.0, 88.0));
+        assert_eq!(chip_spots(under, 60.0, 24.0, board.0)[spot], (248.0, 206.0));
     }
 
     #[test]
