@@ -15,7 +15,7 @@ use nid_app::{
 };
 use penna_storybook::{Section, Story};
 
-use crate::fixtures::{self, BOARD, frame, many_screens, nearby, one_peer, settled};
+use crate::fixtures::{self, BOARD, frame, many_screens, nearby, one_peer, settled, two_peers};
 
 const DOCKED: f32 = 580.0;
 
@@ -75,6 +75,12 @@ pub const STORY: Story = Story {
                     |_, _| {},
                 )
             },
+        },
+        Section {
+            id: "offline",
+            name: "Offline",
+            summary: "A computer that cannot be reached: its screen is dimmed and the crossing to it is muted.",
+            build: |_, cx| desk(two_peers(), false, cx, |_, _| {}),
         },
         Section {
             id: "sharing-off",

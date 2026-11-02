@@ -17,7 +17,7 @@ use penna::{
     ActiveTheme as _, Chip, Colorize as _, Dock, Icon, IconName, Label, PaintState,
     Selectable as _, Sizable as _, Space, TextStyle, Tile, TileVariant, Tone, Well,
     button::{Button, ButtonVariants as _},
-    h_flex,
+    h_flex, muted_on,
 };
 
 use self::geometry::{
@@ -116,6 +116,16 @@ struct Island {
     screens: Vec<(Monitor, Rect, Rect)>,
     hull: Option<Rect>,
     chip: Rect,
+}
+
+impl Island {
+    fn away(&self) -> bool {
+        self.owner != LOCAL
+            && matches!(
+                self.state,
+                None | Some(PeerState::Paired | PeerState::Unreachable)
+            )
+    }
 }
 
 impl Board {
@@ -1083,6 +1093,17 @@ impl Render for Board {
         .inset_0();
 
         let seam_theme = theme.clone();
+        let offline: Vec<String> = islands
+            .iter()
+            .filter(|island| island.away())
+            .flat_map(|island| {
+                island
+                    .screens
+                    .iter()
+                    .map(|(monitor, _, _)| monitor.id.clone())
+            })
+            .collect();
+        let quiet = muted_on(well, cx);
         let carried_rect = carried.as_ref().map(|(_, rect, _)| *rect);
         let seam_layer = canvas(
             |_, _, _| {},
@@ -1106,14 +1127,18 @@ impl Render for Board {
                         stroke(window, from, to, 2.0, joint, Some(&[px(0.1), px(5.0)]));
                         continue;
                     }
-                    stroke(window, from, to, 11.0, glow, None);
-                    stroke(window, from, to, 4.0, core, None);
+                    let reachable = !offline.iter().any(|id| *id == seam.a || *id == seam.b);
+                    if reachable {
+                        stroke(window, from, to, 11.0, glow, None);
+                    }
+                    let fill = if reachable { core } else { quiet };
+                    stroke(window, from, to, 4.0, fill, None);
                     if (seam.end - seam.start) as f32 * fit.scale > BADGE_ROOM {
                         badge(
                             window,
                             (from + to) / 2.0,
                             seam.vertical,
-                            core,
+                            fill,
                             seam_theme.background,
                         );
                     }
@@ -1138,11 +1163,7 @@ impl Render for Board {
         for island in &islands {
             let named = selection.as_deref() == Some(island.owner.as_str())
                 || hovered.as_deref() == Some(island.owner.as_str());
-            let away = island.owner != LOCAL
-                && matches!(
-                    island.state,
-                    None | Some(PeerState::Paired | PeerState::Unreachable)
-                );
+            let away = island.away();
             let here = island.owner != LOCAL && on.as_deref() == Some(island.name.as_ref());
             let left = island.owner == LOCAL && on.is_some();
             for (monitor, _, at) in &island.screens {
