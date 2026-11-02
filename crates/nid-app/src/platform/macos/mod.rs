@@ -934,24 +934,27 @@ pub fn settings_stacks(
                    id: &'static str,
                    cx: &mut Context<NidWindow>,
                    allow: fn(&mut NidWindow, &mut Context<NidWindow>)| {
-        SettingEntry::new(title)
-            .description(if allowed { "" } else { detail })
-            .control(if allowed {
-                penna::h_flex()
-                    .gap(px(6.0))
-                    .child(
-                        Icon::new(IconName::CircleCheck)
-                            .text_color(penna::ActiveTheme::theme(&**cx).success),
-                    )
-                    .child(Label::new(TextStyle::Small, "Allowed").muted())
-                    .into_any_element()
-            } else {
-                Button::new(id)
-                    .label("Allow…")
-                    .on(settings_card_ground(cx))
-                    .on_click(cx.listener(move |this, _, _, cx| allow(this, cx)))
-                    .into_any_element()
-            })
+        let entry = if allowed {
+            SettingEntry::new(title)
+        } else {
+            SettingEntry::new(title).description(detail)
+        };
+        entry.control(if allowed {
+            penna::h_flex()
+                .gap(px(6.0))
+                .child(
+                    Icon::new(IconName::CircleCheck)
+                        .text_color(penna::ActiveTheme::theme(&**cx).success),
+                )
+                .child(Label::new(TextStyle::Small, "Allowed").muted())
+                .into_any_element()
+        } else {
+            Button::new(id)
+                .label("Allow…")
+                .on(settings_card_ground(cx))
+                .on_click(cx.listener(move |this, _, _, cx| allow(this, cx)))
+                .into_any_element()
+        })
     };
     let paste = services.paste;
     stacks.push(
