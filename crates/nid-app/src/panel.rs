@@ -9,10 +9,10 @@
 use std::time::{Duration, Instant};
 
 use ala::{
-    AnyElement, App, AppContext as _, Bounds, Context, Entity, InteractiveElement as _,
-    IntoElement, ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled as _, Subscription, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, div,
-    point, prelude::FluentBuilder as _, px, size,
+    AnyElement, App, AppContext as _, Bounds, Context, Entity, FocusHandle,
+    InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement as _, Pixels, Render,
+    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, WindowBounds,
+    WindowHandle, WindowKind, WindowOptions, div, point, prelude::FluentBuilder as _, px, size,
 };
 use nid::app::api::{Level, PeerState, Request, State};
 use penna::{
@@ -172,6 +172,7 @@ fn go(page: Page) -> impl Fn(&mut Panel, &ala::ClickEvent, &mut Window, &mut Con
 
 pub struct Panel {
     model: Entity<Model>,
+    focus: FocusHandle,
     was_active: bool,
     popup: bool,
     _observers: Vec<Subscription>,
@@ -182,6 +183,7 @@ impl Panel {
         Self {
             _observers: vec![cx.observe(&model, |_, _, cx| cx.notify())],
             model,
+            focus: cx.focus_handle(),
             was_active: false,
             popup: false,
         }
@@ -190,6 +192,7 @@ impl Panel {
     fn popup(model: Entity<Model>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut panel = Self::new(model, cx);
         panel.popup = true;
+        window.focus(&panel.focus, cx);
         panel
             ._observers
             .push(cx.observe_window_activation(window, |this, window, cx| {
@@ -210,7 +213,7 @@ impl Panel {
 impl Render for Panel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let snapshot = self.model.read(cx).snapshot.clone();
-        TrayPanel::new()
+        let panel = TrayPanel::new()
             .child(header(snapshot.as_ref(), cx))
             .map(|panel| match &snapshot {
                 Some(snapshot) => panel.child(status(snapshot, cx)).child(
@@ -225,7 +228,16 @@ impl Render for Panel {
                     .child(Label::new(TextStyle::Body, "Starting…").muted())
                     .child(div().flex_1()),
             })
-            .child(footer(cx))
+            .child(footer(cx));
+        div()
+            .size_full()
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if this.popup && event.keystroke.key == "escape" {
+                    close(window, cx);
+                }
+            }))
+            .child(panel)
     }
 }
 
@@ -443,6 +455,7 @@ fn peer_action(name: &str, state: PeerState) -> AnyElement {
 
 fn footer(cx: &mut Context<Panel>) -> AnyElement {
     let buttons = h_flex()
+        .mx(px(-12.0))
         .gap(px(4.0))
         .child(
             Button::new("panel-arrange")
