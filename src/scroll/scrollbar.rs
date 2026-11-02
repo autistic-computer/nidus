@@ -321,6 +321,14 @@ struct BarStyle {
     radius: Pixels,
 }
 
+fn from_code_location(id: &ElementId) -> bool {
+    match id {
+        ElementId::CodeLocation(_) => true,
+        ElementId::NamedChild(parent, _) => from_code_location(parent),
+        _ => false,
+    }
+}
+
 fn resting_metrics(show: ScrollbarShow) -> (Pixels, Pixels) {
     match show {
         ScrollbarShow::Scrolling => (THUMB_WIDTH, THUMB_INSET),
@@ -669,10 +677,8 @@ impl Element for Scrollbar {
         prepaint: &mut Self::PrepaintState,
         builder: &mut A11ySubtreeBuilder,
     ) {
-        let author = match &self.id {
-            ElementId::CodeLocation(_) => None,
-            id => Some(crate::foundation::author_name(id)),
-        };
+        let author =
+            (!from_code_location(&self.id)).then(|| crate::foundation::author_name(&self.id));
         let rect = |bounds: Bounds<Pixels>| {
             let scale = f64::from(prepaint.scale);
             Rect {
