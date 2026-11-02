@@ -35,6 +35,14 @@ set to the canvas node's author id, which is the id the story passed to the comp
 `tab-3`). parity matches by id and falls back to `role:name` only for nodes with no id. Results land in
 `target/parity/report.html`.
 
+Only an element with an accessibility role reaches that tree. Plates, rows, list items, which-key and
+scrollbars announce themselves from the id they already take (a scrollbar adds `<id>-vertical` and
+`<id>-vertical-thumb`). `Kbd`, `Spinner`, `Separator`, `Steps`, `SettingsStack`, `Input`, `NumberInput`,
+`ColorPicker` and a `SettingEntry` without `on_click` have no id of their own: give them `.id(..)` to make them a node
+(a number input names its parts `<id>-decrement`, `<id>-field`, `<id>-increment`; a color picker `<id>-hue`,
+`<id>-hex`, `<id>-clear`). Never give two siblings the same id: ala drops the second node and panics in a debug
+build once accessibility is on.
+
 A section scores 100 × √(geometry × pixels): pixels allow 3 levels per channel, so fills and hover tints count,
 and the canvas's own ink is the denominator. Steps score only the target's box and need the DOM to change where
 the canvas did. A section scores 0 if it holds an `img`, `canvas`, `iframe` or similar, or a `url()` image other
