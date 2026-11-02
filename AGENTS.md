@@ -42,12 +42,17 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
 
 `src/button` is the template to copy. What it learned about matching ala in the DOM:
 
-- Wrap every text run in a span: ala ceils a text box's width to a whole px, so `button.js` does the same,
-  or labels drift left along a row.
+- Wrap every text run in a span marked `data-penna-text`: ala ceils a text box's width to a whole px, and
+  `kit.js` does the same for those spans on load, after fonts load and on a theme switch, or labels drift left
+  along a row. The span must be a flex item or inline-block. Call `pennaKit.ceilText(root)` after adding or
+  changing runs, or `pennaKit.ceilText(root, selector)` for runs a page marks its own way.
 - `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
   theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
   hardcode a `corner-shape`. A radius set on one button drops the full-radius round and draws the role's own
   smoothing, which every role exports as `--penna-style-k`: set `--penna-k: var(--penna-style-k)` next to it.
+- An element with no role draws with the window's smoothing, as ala draws a quad with no smoothing of its own:
+  give a rounded box with no role `corner-shape: superellipse(var(--penna-window-k))`. A circle or pill keeps
+  the plain `round`, since ala draws a full radius round whatever the smoothing.
 - Focus is the tokens' `data-state="focused"`: on a button it leaves the fill alone and sets `--penna-focus`.
   ala draws the ring 1.5px outside the border box with its own adaptive radius, which a CSS outline can't
   follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Link and text
@@ -56,4 +61,11 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.
+- The storybook host ceils each section's height to a whole px; `web/story.js` does the same for every
+  `section[data-section]` (`pennaStory.fit()` reruns it).
+- Root tokens a page reaches for instead of mixing its own: `--penna-fg-muted` (the foreground's muted ink, which
+  `.story-label` and `states()` labels draw in; `--penna-muted` is the ghost paint's, lighter in dark),
+  `--penna-syntax-{keyword,type,constructor,function,comment,string,number,boolean,property,constant,title,literal}`
+  (the highlighter's palette for the mode) and `--penna-glass-backdrop`, already in the shader's order: contrast,
+  then brightness added, not multiplied.
 - What is left is text raster: ala snaps glyph baselines and dilates light text, which the DOM can't copy exactly.
