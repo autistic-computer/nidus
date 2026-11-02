@@ -148,7 +148,8 @@ impl ButtonVariant {
         };
         let role = role.unwrap_or(match emphasis {
             Emphasis::Ghost if icon_only => SurfaceRole::ICON_BUTTON,
-            Emphasis::Ghost | Emphasis::Outline => SurfaceRole::QUIET_BUTTON,
+            Emphasis::Ghost => SurfaceRole::QUIET_BUTTON,
+            Emphasis::Outline => SurfaceRole::OUTLINE_BUTTON,
             Emphasis::Solid | Emphasis::Soft => Kind::Button.role(),
         });
         Some(
@@ -871,6 +872,32 @@ mod tests {
                 .map(|surface| surface.role),
             Some(SurfaceRole::ICON_BUTTON)
         );
+    }
+
+    #[test]
+    fn an_outline_button_draws_the_theme_outline_on_every_builtin_theme() {
+        use crate::{ThemeMode, interface_theme::builtin_themes, theme_css::kit_theme};
+
+        let expected = [("default", 0.75), ("macos", 0.5), ("yaru", 1.0)];
+        for ((id, interface), (expected_id, width)) in builtin_themes().iter().zip(expected) {
+            assert_eq!(*id, expected_id);
+            for mode in [ThemeMode::Light, ThemeMode::Dark] {
+                let theme = kit_theme(interface, mode);
+                let layer = |emphasis| {
+                    let surface = ButtonVariant::Paint(Tone::Neutral, emphasis)
+                        .surface(None, false, None)
+                        .unwrap();
+                    theme.layer(surface, PaintState::Rest)
+                };
+                let outline = layer(Emphasis::Outline);
+                assert_eq!(outline.border_width, px(width), "{id} {mode:?}");
+                assert_eq!(outline.border.a, 0.1, "{id} {mode:?}");
+                assert_eq!(outline.fill.a, 0.0, "{id} {mode:?}");
+                let ghost = layer(Emphasis::Ghost);
+                assert_eq!(ghost.border_width, px(0.0), "{id} {mode:?}");
+                assert_eq!(ghost.fill.a, 0.0, "{id} {mode:?}");
+            }
+        }
     }
 
     #[ala::test]
