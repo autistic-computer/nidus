@@ -277,6 +277,7 @@ impl ColorPicker {
     )]
     fn field(
         state: &Entity<ColorPickerState>,
+        author: Option<&SharedString>,
         hsv: Hsv,
         height: Pixels,
         cx: &App,
@@ -360,7 +361,16 @@ impl ColorPicker {
             .shadow(crate::lifted_shadow(cx));
         let state = state.clone();
         div()
-            .id(("penna-color-picker-field", state.entity_id()))
+            .id(author_part(
+                author,
+                "field",
+                ("penna-color-picker-field", state.entity_id()),
+            ))
+            .when_some(author, |field, author| {
+                field.accessibility_id(SharedString::from(format!("{author}-field")))
+            })
+            .role(ala::Role::Group)
+            .aria_label("Saturation and brightness")
             .debug_selector(|| "penna-color-picker-field".to_owned())
             .relative()
             .w_full()
@@ -477,7 +487,7 @@ impl ColorPicker {
         let hsv = state.read(cx).shown(inherited);
         v_flex()
             .gap(px(8.0))
-            .child(Self::field(state, hsv, px(field_height), cx))
+            .child(Self::field(state, author, hsv, px(field_height), cx))
             .child(Self::hue(state, author, hsv, cx))
             .child(Self::hex_row(state, author, cx))
     }
@@ -545,7 +555,16 @@ impl ColorPicker {
         field_chrome_on(
             field_text(
                 h_flex()
-                    .id(("penna-color-picker-field-trigger", self.state.entity_id()))
+                    .id(author_part(
+                        self.author.as_ref(),
+                        "trigger",
+                        ("penna-color-picker-field-trigger", self.state.entity_id()),
+                    ))
+                    .when_some(self.author.clone(), |trigger, author| {
+                        trigger.accessibility_id(author)
+                    })
+                    .role(ala::Role::Button)
+                    .aria_label(self.label.clone().unwrap_or_else(|| "Color".into()))
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())

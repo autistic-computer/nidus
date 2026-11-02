@@ -373,7 +373,7 @@ impl RenderOnce for Keycap {
         match self.id {
             Some(id) => cap
                 .author_id(id)
-                .role(Role::Keyboard)
+                .role(Role::Label)
                 .aria_label(self.name)
                 .into_any_element(),
             None => cap.into_any_element(),
