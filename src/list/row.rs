@@ -1,4 +1,4 @@
-use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, SharedString, Window};
+use ala::{App, ElementId, IntoElement, Pixels, RenderOnce, Role, SharedString, Window};
 
 use crate::{
     ActiveTheme as _, Ground, PaintState, Shape, Surface, SurfaceRole, Tone,
@@ -45,7 +45,7 @@ pub struct Row {
 impl Row {
     #[must_use]
     pub fn new(id: impl Into<ElementId>, look: RowLook) -> Self {
-        let mut plate = Plate::new(id, look.role());
+        let mut plate = Plate::new(id, look.role()).announce(Role::ListItem);
         plate.interactive = true;
         Self {
             plate,
@@ -55,7 +55,7 @@ impl Row {
 
     #[must_use]
     pub fn state(mut self, state: PaintState) -> Self {
-        self.plate.state = state;
+        self.plate = self.plate.with_choice(state);
         self
     }
 
@@ -86,6 +86,7 @@ impl Row {
     #[must_use]
     pub fn hover_group(mut self, group: impl Into<SharedString>) -> Self {
         self.plate.hover_group = Some(group.into());
+        self.plate.role = self.plate.role.filter(|role| *role != Role::ListItem);
         self
     }
 

@@ -53,7 +53,7 @@ pub trait AuthoredElement: InteractiveElement + Sized {
 
 impl<E: InteractiveElement> AuthoredElement for E {}
 
-fn author_name(id: &ElementId) -> SharedString {
+pub(crate) fn author_name(id: &ElementId) -> SharedString {
     match id {
         ElementId::Name(name) => name.clone(),
         id => id.to_string().into(),
