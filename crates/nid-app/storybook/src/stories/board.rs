@@ -66,7 +66,7 @@ pub const STORY: Story = Story {
         Section {
             id: "controlling",
             name: "Controlling",
-            summary: "The pointer is over on the other computer: its screen takes the primary tone and this computer's is dimmed.",
+            summary: "The pointer is over on the other computer: its screen is lit as the current one and this computer's is dimmed.",
             build: |_, cx| {
                 desk(
                     one_peer(PeerState::ControlledFromHere),

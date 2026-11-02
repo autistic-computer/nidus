@@ -1174,6 +1174,8 @@ impl Render for Board {
                     PaintState::Hover
                 } else if away || left {
                     PaintState::Disabled
+                } else if here {
+                    PaintState::Current
                 } else {
                     PaintState::Rest
                 };
