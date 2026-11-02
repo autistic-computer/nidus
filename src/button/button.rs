@@ -1,16 +1,16 @@
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
+    InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
+    Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
+    div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH, Ground, Icon,
-    IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Surface,
-    SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
+    IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing, StyledExt as _,
+    Surface, SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -84,6 +84,21 @@ pub enum ButtonLook {
 }
 
 impl ButtonLook {
+    const ALL: [Self; 12] = [
+        Self::Icon,
+        Self::Quiet,
+        Self::Flat,
+        Self::Chrome,
+        Self::Bar,
+        Self::Toggle,
+        Self::RowIcon,
+        Self::Floating,
+        Self::Row,
+        Self::Send,
+        Self::FloatingChip,
+        Self::Tray,
+    ];
+
     const fn role(self) -> SurfaceRole {
         match self {
             Self::Icon => SurfaceRole::ICON_BUTTON,
@@ -100,6 +115,15 @@ impl ButtonLook {
             Self::Tray => roles::TAB_TRAY,
         }
     }
+}
+
+pub(crate) fn rings_focus(role: SurfaceRole) -> bool {
+    role.kind == Kind::Button
+        && (role.id == Kind::Button.role().id
+            || role.id == SurfaceRole::OUTLINE_BUTTON.id
+            || ButtonLook::ALL
+                .into_iter()
+                .any(|look| look.role().id == role.id))
 }
 
 impl From<ButtonLook> for Surface {
@@ -437,6 +461,7 @@ fn with_focus_ring<T: ParentElement + Styled + Sized>(
     is_focused: bool,
     margins: Pixels,
     paint: &Paint,
+    smoothing: f32,
     window: &Window,
 ) -> T {
     if !is_focused {
@@ -510,6 +535,7 @@ fn with_focus_ring<T: ParentElement + Styled + Sized>(
             .right(-(inset + border_widths.right))
             .bottom(-(inset + border_widths.bottom))
             .focus_ring(paint)
+            .corner_smoothing(smoothing)
             .refine_style(&inner_style),
     )
 }
@@ -570,9 +596,17 @@ impl RenderOnce for Button {
             .clone();
         let is_focused = focus_handle.is_focused(window);
 
-        let rounding = match self.rounded {
-            ButtonRounded::Medium => rest.radius,
-            ButtonRounded::Size(px) => px,
+        let (rounding, smoothing) = match self.rounded {
+            ButtonRounded::Medium => (rest.radius, rest.smoothing),
+            ButtonRounded::Size(radius) if radius >= FULL_CORNER_RADIUS => {
+                (radius, Smoothing::CIRCLE.exponent())
+            }
+            ButtonRounded::Size(radius) => (
+                radius,
+                surface.map_or(crate::CORNER_SMOOTHING, |surface| {
+                    cx.theme().style_of(surface).smoothing.exponent()
+                }),
+            ),
         };
         let coarse = crate::touch::CoarsePointer::get(cx);
         let slop = self.hit_slop.filter(|_| coarse);
@@ -649,6 +683,7 @@ impl RenderOnce for Button {
                 }
             })
             .rounded(rounding)
+            .corner_smoothing(smoothing)
             .border(rest.border_width)
             .border_color(rest.border)
             .shadow(rest.shadow.clone())
@@ -683,6 +718,7 @@ impl RenderOnce for Button {
                         .absolute()
                         .inset_0()
                         .rounded(rounding)
+                        .corner_smoothing(smoothing)
                         .bg(press_fill)
                         .opacity(pressed),
                 )
@@ -755,7 +791,7 @@ impl RenderOnce for Button {
             _ => Tone::Neutral,
         };
         let focus_paint = cx.theme().paint_on(ground, tone, Emphasis::Ghost);
-        with_focus_ring(element, is_focused, px(0.), &focus_paint, window)
+        with_focus_ring(element, is_focused, px(0.), &focus_paint, smoothing, window)
     }
 }
 
@@ -915,5 +951,57 @@ mod tests {
             variant(Button::new("b").danger().emphasis(Emphasis::Outline)),
             ButtonVariant::Paint(Tone::Danger, Emphasis::Outline)
         );
+    }
+
+    #[ala::test]
+    fn a_button_draws_its_themes_corner_smoothing(cx: &mut ala::TestAppContext) {
+        use ala::{Context, IntoElement, ParentElement as _, Render, Styled as _, px};
+
+        struct Host(Option<ButtonLook>);
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let button = Button::new("b").label("Button");
+                div().p(px(10.)).child(match self.0 {
+                    Some(look) => button.look(look),
+                    None => button,
+                })
+            }
+        }
+
+        cx.update(crate::init);
+        for (id, look, smoothing) in [
+            ("default", None, 4.0),
+            ("yaru", None, 2.0),
+            ("macos", Some(ButtonLook::Send), 2.0),
+        ] {
+            cx.update(|cx| {
+                let theme = &crate::interface_theme::builtin_themes()
+                    .iter()
+                    .find(|(theme, _)| *theme == id)
+                    .expect("builtin theme")
+                    .1;
+                *crate::Theme::global_mut(cx) =
+                    crate::theme_css::kit_theme(theme, crate::ThemeMode::Dark);
+            });
+            let (_, cx) = cx.add_window_view(|window, _| {
+                window.set_default_corner_smoothing(crate::CORNER_SMOOTHING);
+                Host(look)
+            });
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+                let drawn = window
+                    .painted_quads()
+                    .iter()
+                    .filter(|quad| quad.corner_radii.top_left.0 > 0.0)
+                    .map(|quad| quad.corner_smoothing)
+                    .collect::<Vec<_>>();
+                assert!(!drawn.is_empty(), "{id}");
+                assert!(
+                    drawn.iter().all(|drawn| *drawn == smoothing),
+                    "{id}: {drawn:?}"
+                );
+            });
+        }
     }
 }

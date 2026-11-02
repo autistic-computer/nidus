@@ -42,9 +42,13 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
 
 - Wrap every text run in a span: ala ceils a text box's width to a whole px, so `button.js` does the same,
   or labels drift left along a row.
-- ala draws every quad with corner smoothing 4 (`corner-shape: superellipse(2)`), whatever the role's
-  `--penna-k` says, and a full radius (`--penna-r` of 9999px) as a plain round.
-- A focus ring is drawn 1.5px outside the border box, with its own adaptive radius, and leaves the fill alone,
-  so don't use `data-state="focused"` for it.
+- `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
+  theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
+  hardcode a `corner-shape`.
+- A button's focus ring is drawn 1.5px outside the border box in `--penna-focus`, with its own adaptive radius,
+  and leaves the fill alone: the tokens' focused rule changes nothing else on a button. Fields draw focus
+  with their edge.
+- `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
+  named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.
 - What is left is text raster: ala snaps glyph baselines and dilates light text, which the DOM can't copy exactly.

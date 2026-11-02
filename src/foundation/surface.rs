@@ -1577,12 +1577,13 @@ impl Theme {
             shadow,
             text,
             radius,
-            smoothing: if style.shape == Shape::Pill {
-                Smoothing::CIRCLE
+            smoothing: if radius >= FULL_CORNER_RADIUS {
+                Smoothing::CIRCLE.exponent()
+            } else if surface.role.row {
+                style.smoothing.exponent().min(super::ROW_CORNER_SMOOTHING)
             } else {
-                style.smoothing
-            }
-            .exponent(),
+                style.smoothing.exponent()
+            },
             ground: Ground {
                 fill: under,
                 ink: text,

@@ -147,7 +147,12 @@ pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
     }
 }
 
-fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordered: bool) -> Layer {
+pub(crate) fn field_layer(
+    theme: &Theme,
+    surface: Surface,
+    state: PaintState,
+    focus_bordered: bool,
+) -> Layer {
     let mut layer = theme.layer(surface, state);
     layer.border_width = layer.border_width.max(px(1.0));
     let style = theme.style(surface.role);
