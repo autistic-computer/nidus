@@ -83,7 +83,11 @@ pub fn status_line(status: &Status, beside: Option<(&str, &str)>) -> (String, Op
             status.title.clone(),
             Some("Turn on Sharing to switch computers".into()),
         ),
-        State::Checking | State::Setup | State::Attention => (status.title.clone(), None),
+        State::Setup => (
+            status.title.clone(),
+            Some("Find one running Nidus on this network".into()),
+        ),
+        State::Checking | State::Attention => (status.title.clone(), None),
     }
 }
 
@@ -128,6 +132,25 @@ pub fn unplaced_detail(computer: &Unplaced) -> String {
         UnplacedState::DifferentVersion => "Different Nidus version".into(),
         UnplacedState::DuplicateName => "Same name as another".into(),
         UnplacedState::Ready => computer.os.map(os_name).unwrap_or_default().into(),
+    }
+}
+
+pub fn unplaceable_note(computer: &Unplaced) -> Option<String> {
+    let name = &computer.name;
+    match computer.state {
+        UnplacedState::Identifying => Some(format!(
+            "Nidus is still asking {name} who it is. It can be added in a moment."
+        )),
+        UnplacedState::DifferentVersion => Some(match &computer.version {
+            Some(version) => format!(
+                "{name} runs Nidus {version} and {THIS_COMPUTER_LOWER} runs {}. Update the older one so both match, then add it.",
+                env!("CARGO_PKG_VERSION")
+            ),
+            None => format!(
+                "{name} runs a different version of Nidus. Update the older one so both match, then add it."
+            ),
+        }),
+        UnplacedState::Ready | UnplacedState::DuplicateName => None,
     }
 }
 
@@ -275,5 +298,49 @@ mod tests {
     fn screens_say_their_diagonal_when_they_know_it() {
         assert_eq!(screen_size(600, 340, 2560, 1440), "27″ · 2560 × 1440");
         assert_eq!(screen_size(0, 0, 1920, 1080), "1920 × 1080");
+    }
+
+    #[test]
+    fn the_status_line_names_a_connected_neighbor_over_an_offline_one() {
+        use nid::app::{
+            api::{Peer, PeerState},
+            layout_model::{Monitor, Seam},
+        };
+
+        let mut snapshot = crate::board::tests::snapshot();
+        let tower = Peer {
+            name: "tower".into(),
+            state: PeerState::Unreachable,
+            ..snapshot.peers[0].clone()
+        };
+        snapshot.peers.push(tower);
+        let layout = snapshot.layout.as_mut().unwrap();
+        let below = Monitor {
+            id: "peer:tower".into(),
+            label: "tower".into(),
+            peer: Some("tower".into()),
+            y: 1080,
+            ..layout.monitors[0].clone()
+        };
+        layout.monitors.push(below);
+        snapshot.seams.insert(
+            0,
+            Seam {
+                a: "local".into(),
+                b: "peer:tower".into(),
+                vertical: false,
+                at: 1080,
+                start: 0,
+                end: 1920,
+                same_computer: false,
+            },
+        );
+        let beside = crate::board::neighbor(&snapshot);
+        assert_eq!(beside, Some(("mac".to_owned(), "Right")));
+        let (_, hint) = status_line(
+            &snapshot.status,
+            beside.as_ref().map(|(peer, side)| (peer.as_str(), *side)),
+        );
+        assert_eq!(hint.as_deref(), Some("mac is to the right"));
     }
 }

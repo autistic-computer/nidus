@@ -125,20 +125,16 @@ impl NidWindow {
         } else {
             snapshot.as_ref().map(status_pill)
         };
-        let leading = h_flex()
+        let clearance = if cfg!(target_os = "macos") {
+            penna::title_bar::macos_traffic_light_clearance(cx)
+        } else {
+            px(12.0)
+        };
+        let trailing = h_flex()
             .flex_1()
             .h_full()
-            .min_w_0()
+            .justify_end()
             .gap(px(10.0))
-            .pl(if cfg!(target_os = "macos") {
-                penna::title_bar::macos_traffic_light_clearance(cx)
-            } else {
-                px(12.0)
-            })
-            .pr(px(8.0))
-            .child(div().flex_1())
-            .children(middle)
-            .child(div().flex_1())
             .when_some(sharing, |this, sharing| {
                 this.child(Label::new(TextStyle::Small, "Sharing").muted())
                     .child(
@@ -173,6 +169,24 @@ impl NidWindow {
                     this.model.update(cx, |model, cx| model.show(page, cx));
                 })),
             );
+        let leading = h_flex()
+            .flex_1()
+            .h_full()
+            .min_w_0()
+            .pr(px(8.0))
+            .child(
+                div()
+                    .flex_none()
+                    .w(penna::title_bar::window_controls_width(window) + px(8.0)),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .h_full()
+                    .child(div().flex_none().w(clearance)),
+            )
+            .child(h_flex().flex_none().px(px(10.0)).children(middle))
+            .child(trailing);
         let controls = WindowControls::new().on_close_window(|_, window, cx| {
             if platform::may_close(cx) {
                 window.remove_window();

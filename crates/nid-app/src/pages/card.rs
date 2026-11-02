@@ -11,7 +11,7 @@ use nid::{
     neighbors::Unplaced,
 };
 use penna::{
-    Disableable as _, Icon, IconName, Inspector, Label, Sizable as _, TextStyle, WindowExt as _,
+    Icon, IconName, Inspector, Label, Sizable as _, TextStyle, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dialog::{AlertDialog, DialogButtonProps},
     h_flex,
@@ -82,24 +82,26 @@ fn summary(computer: &Computer) -> String {
 }
 
 fn found_card(board: &Entity<Board>, computer: &Unplaced) -> Inspector {
-    let placeable = copy::placeable(computer);
-    let sides = Side::ALL.map(|side| {
-        let (board, id) = (board.clone(), computer.id.clone());
-        Button::new(SharedString::from(format!("side-{}", side.label())))
-            .label(side.label())
-            .disabled(!placeable)
-            .on_click(move |_, _, cx| board.read(cx).place(&id, side, cx))
-    });
-    inspector(
+    let card = inspector(
         board,
         computer.name.clone(),
         copy::unplaced_detail(computer),
         computer.mark.as_deref(),
-    )
-    .child(Label::new(TextStyle::Body, "Put it on this side of your screens:").muted())
-    .child(h_flex().flex_wrap().gap(px(8.0)).children(sides))
-    .child(Label::new(TextStyle::Small, "Or drag it onto the desk where it sits.").muted())
-    .when(computer.mark.is_some(), |this| {
+    );
+    let card = if let Some(note) = copy::unplaceable_note(computer) {
+        card.child(Label::new(TextStyle::Body, note).muted())
+    } else {
+        let sides = Side::ALL.map(|side| {
+            let (board, id) = (board.clone(), computer.id.clone());
+            Button::new(SharedString::from(format!("side-{}", side.label())))
+                .label(side.label())
+                .on_click(move |_, _, cx| board.read(cx).place(&id, side, cx))
+        });
+        card.child(Label::new(TextStyle::Body, "Put it on this side of your screens:").muted())
+            .child(h_flex().flex_wrap().gap(px(8.0)).children(sides))
+            .child(Label::new(TextStyle::Small, "Or drag it onto the desk where it sits.").muted())
+    };
+    card.when(computer.mark.is_some(), |this| {
         this.child(
             Label::new(
                 TextStyle::Small,

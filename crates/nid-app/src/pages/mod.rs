@@ -129,6 +129,10 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
                     Some(error) => {
                         this.child(Label::new(TextStyle::Small, error.clone()).tone(Tone::Danger))
                     }
+                    None if looking => this.child(
+                        Label::new(TextStyle::Small, format!("Looking for Nidus at {typed}…"))
+                            .muted(),
+                    ),
                     None => this.child(
                         Label::new(
                             TextStyle::Small,
@@ -140,7 +144,7 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
         )
         .button_props(
             DialogButtonProps::default()
-                .ok_text("Look up")
+                .ok_text(if looking { "Looking up…" } else { "Look up" })
                 .ok_variant(penna::button::ButtonVariant::Paint(
                     penna::Tone::Primary,
                     penna::Emphasis::Solid,

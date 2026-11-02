@@ -67,7 +67,11 @@ pub(super) fn problems(
 }
 
 pub fn host_name() -> String {
-    let name = nid::hello::local_name();
+    let name = if cfg!(target_family = "wasm") {
+        String::new()
+    } else {
+        nid::hello::local_name()
+    };
     if name.is_empty() {
         copy::THIS_COMPUTER_LOWER.to_owned()
     } else {

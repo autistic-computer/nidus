@@ -860,11 +860,11 @@ pub fn neighbor(snapshot: &Snapshot) -> Option<(String, &'static str)> {
         .filter(|monitor| monitor.peer.is_none())
         .map(|monitor| monitor.id.as_str())
         .collect();
-    snapshot
+    let beside: Vec<_> = snapshot
         .seams
         .iter()
         .filter(|seam| !seam.same_computer)
-        .find_map(|seam| {
+        .filter_map(|seam| {
             let here_is_a = local.contains(&seam.a.as_str());
             if here_is_a == local.contains(&seam.b.as_str()) {
                 return None;
@@ -876,6 +876,18 @@ pub fn neighbor(snapshot: &Snapshot) -> Option<(String, &'static str)> {
                 .clone()?;
             Some((peer, geometry::crossing_side(seam, here_is_a)))
         })
+        .collect();
+    let linked = |name: &str| {
+        snapshot
+            .peers
+            .iter()
+            .any(|peer| peer.name == name && copy::linked(peer.state))
+    };
+    beside
+        .iter()
+        .find(|(peer, _)| linked(peer))
+        .or_else(|| beside.first())
+        .cloned()
 }
 
 pub fn crossings<'a>(snapshot: &'a Snapshot, computer: &Computer) -> Vec<&'a Seam> {

@@ -1,4 +1,7 @@
-use ala::{AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use ala::{
+    AnyElement, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
+};
 use nid::app::api::{Level, Request};
 use penna::{
     ActiveTheme as _, Icon, IconName, Label, TextStyle,
@@ -61,8 +64,9 @@ pub fn render(
             .control(Keycap::new(shortcut.keys.clone()).on(card))
     });
 
-    let mut column = settings_scroll_column("settings")
-        .child(SettingsStack::titled("General").children(general));
+    let mut column = settings_scroll_column("settings").when(!general.is_empty(), |column| {
+        column.child(SettingsStack::titled("General").children(general))
+    });
     for stack in platform::settings_stacks(this, &snapshot, window, cx) {
         column = column.child(stack);
     }

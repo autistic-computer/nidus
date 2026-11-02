@@ -334,10 +334,12 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
             None,
         ),
     };
-    let notice = Notice::new(tone, title)
-        .dot(widgets::state_tone(state))
-        .stacked()
-        .detail(detail);
+    let dot = match state {
+        State::Controlling | State::Controlled => widgets::state_tone(state),
+        _ if problem.is_some() => tone,
+        _ => widgets::state_tone(state),
+    };
+    let notice = Notice::new(tone, title).dot(dot).stacked().detail(detail);
     match action {
         Some(action) => notice.action(action),
         None => notice,
