@@ -1,5 +1,5 @@
 use ala::{App, Window};
-use penna::{ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Theme, interface_theme};
+use penna::{ADAPTIVE_CORNER_FRACTION, Theme, interface_theme};
 
 pub fn init(cx: &mut App) {
     penna::init(cx);
@@ -8,7 +8,6 @@ pub fn init(cx: &mut App) {
 
 pub fn apply(mut window: Option<&mut Window>, cx: &mut App) {
     if let Some(window) = window.as_deref_mut() {
-        window.set_default_corner_smoothing(CORNER_SMOOTHING);
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
