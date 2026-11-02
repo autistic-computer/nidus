@@ -148,7 +148,7 @@
   top: 0.5px;
 }
 
-.penna-button:is([data-focused], :focus-visible)::after {
+.penna-button:is([data-state~="focused"], :focus-visible)::after {
   content: "";
   position: absolute;
   inset: var(--penna-ring-inset, -2px);

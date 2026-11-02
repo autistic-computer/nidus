@@ -31,7 +31,9 @@ node storybook/parity.mjs button --theme macos --mode dark   # score src/button'
 
 `#/<story>?solo=1` shows only the section canvases. A component's DOM version lives next to its Rust
 (`src/<component>/{index.html, parity.json}`, laid out with `web/story.css`); its elements carry `data-id`
-set to the canvas node's author id, or `role:name` when it has none. Results land in `target/parity/report.html`.
+set to the canvas node's author id, which is the id the story passed to the component (`("tab", 3)` reads
+`tab-3`). parity matches by id and falls back to `role:name` only for nodes with no id. Results land in
+`target/parity/report.html`.
 
 A section scores 100 × √(geometry × pixels): pixels allow 3 levels per channel, so fills and hover tints count,
 and the canvas's own ink is the denominator. Steps score only the target's box and need the DOM to change where
@@ -44,9 +46,11 @@ than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/
   or labels drift left along a row.
 - `--penna-k` is the smoothing penna draws the role with (`Layer::smoothing`, as `superellipse(log2)`): the
   theme's, capped at 2.5 on rows, and 1 (a plain round) for a full radius. `penna.css` applies it; don't
-  hardcode a `corner-shape`.
-- A button's focus ring is drawn 1.5px outside the border box in `--penna-focus`, with its own adaptive radius,
-  and leaves the fill alone: the tokens' focused rule changes nothing else on a button. Fields draw focus
+  hardcode a `corner-shape`. A radius set on one button drops the full-radius round and draws the role's own
+  smoothing, which for a plain button is the theme's: set `--penna-k: var(--penna-smoothing)` next to it.
+- Focus is the tokens' `data-state="focused"`: on a button it leaves the fill alone and sets `--penna-focus`.
+  ala draws the ring 1.5px outside the border box with its own adaptive radius, which a CSS outline can't
+  follow, so `button.css` swaps `penna.css`'s outline for a ring that `button.js` sizes. Fields draw focus
   with their edge.
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.

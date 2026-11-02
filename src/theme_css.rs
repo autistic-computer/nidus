@@ -335,6 +335,10 @@ fn write_root(css: &mut String, theme: &Theme) {
         ),
         ("--penna-radius".to_owned(), length(f32::from(theme.radius))),
         (
+            "--penna-smoothing".to_owned(),
+            number(theme.smoothing.exponent().log2()),
+        ),
+        (
             "--penna-pane-radius".to_owned(),
             length(f32::from(theme.pane_radius())),
         ),
