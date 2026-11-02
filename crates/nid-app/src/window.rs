@@ -5,8 +5,8 @@ use ala::{
 };
 use nid::app::api::{Request, State};
 use penna::{
-    ActiveTheme as _, Chip, Disableable as _, IconName, Label, Root, Selectable as _, TextStyle,
-    Tone, WindowControls, WindowExt as _, h_flex,
+    ActiveTheme as _, Chip, Disableable as _, IconName, Label, Selectable as _, TextStyle, Tone,
+    WindowControls, WindowExt as _, h_flex,
     input::InputState,
     shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
     sidebar::chrome_button,
@@ -220,17 +220,45 @@ impl Render for NidWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = pages::page(self, window, cx);
         let titlebar = self.titlebar(window, cx);
-        let dialogs = Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element);
-        let notifications =
-            Root::render_notification_layer(window, cx).map(IntoElement::into_any_element);
         app_shell_surface(
             SharedString::from("Nidus"),
             cx.theme().background,
             div(),
             Some(titlebar),
             content,
-            dialogs.into_iter().chain(notifications),
+            std::iter::empty(),
         )
         .track_focus(&self.focus)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use ala::{AppContext as _, TestAppContext};
+    use penna::Root;
+
+    use super::NidWindow;
+    use crate::model::Model;
+
+    #[ala::test]
+    fn the_address_dialog_draws(cx: &mut TestAppContext) {
+        cx.update(crate::theme::init);
+        let model = cx.new(|cx| Model::fake(crate::board::tests::snapshot(), cx).0);
+        let services = cx.new(|_| crate::platform::Services::test());
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| NidWindow::new(model, services, window, cx));
+            Root::new(view, window, cx)
+        });
+        let view = cx.update(|_, cx| {
+            root.read(cx)
+                .view()
+                .clone()
+                .downcast::<NidWindow>()
+                .unwrap()
+        });
+        cx.update(|window, cx| view.update(cx, |nid, cx| nid.open_add_address(window, cx)));
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
     }
 }

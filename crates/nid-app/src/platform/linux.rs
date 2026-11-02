@@ -124,6 +124,22 @@ pub struct Services {
 }
 
 impl Services {
+    #[cfg(test)]
+    pub fn test() -> Self {
+        Self {
+            updates: Updates::default(),
+            setup: None,
+            setup_error: None,
+            setup_busy: false,
+            installable: None,
+            restart_needed: false,
+            installing: false,
+            older_extension: false,
+            _setup: Task::ready(()),
+            _updates: Task::ready(()),
+        }
+    }
+
     pub fn new(cx: &mut Context<Self>) -> Self {
         let setup = cx.spawn(async move |this, cx| {
             loop {
