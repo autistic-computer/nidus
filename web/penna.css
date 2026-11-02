@@ -45,6 +45,11 @@ button[data-penna] {
   cursor: default;
 }
 
+[data-penna]:is(:focus-visible, [data-state~="focused"]) {
+  outline: 1.5px solid var(--penna-focus);
+  outline-offset: 0;
+}
+
 .penna-muted {
   color: var(--penna-muted);
 }

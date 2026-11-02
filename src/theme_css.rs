@@ -9,7 +9,9 @@ use ala::{BoxShadow, GlassMaterial, Hsla};
 use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
     Layer, PaintState, Surface, SurfaceRole, Theme, ThemeMode, Tone,
+    button::rings_focus,
     icon::glyphs,
+    input::field_layer,
     interface_theme::{InterfaceTheme, builtin_themes},
     oklab_lightness, roles, to_hex,
 };
@@ -31,7 +33,7 @@ const TONES: [(Tone, &str); 4] = [
     (Tone::Success, "success"),
 ];
 
-const PAINT: [(&str, &str); 11] = [
+const PAINT: [(&str, &str); 12] = [
     ("fill", "transparent"),
     ("edge", "transparent"),
     ("bw", "0px"),
@@ -43,9 +45,9 @@ const PAINT: [(&str, &str); 11] = [
     ("backdrop", "none"),
     ("rim", "0 0 #0000"),
     ("glass", "0"),
+    ("focus", "transparent"),
 ];
 
-const ROW_SMOOTHING: f32 = 2.5;
 const ROW_RADIUS_SHARE: f32 = 0.4;
 
 pub fn kit_theme(theme: &InterfaceTheme, mode: ThemeMode) -> Theme {
@@ -65,14 +67,7 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
     }
     write_root(&mut css, theme);
     for role in roles::all() {
-        write_role(
-            &mut css,
-            theme,
-            &selector(role),
-            Surface::new(role),
-            role,
-            "",
-        );
+        write_role(&mut css, theme, &selector(role), Surface::new(role), "");
     }
     let window = theme.ground();
     let mut grounds: Vec<(Ground, Vec<String>)> = Vec::new();
@@ -94,10 +89,12 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         {
             let surface = Surface::new(role).on(ground);
             let differs = STATES.iter().any(|state| {
-                theme.layer(surface, *state) != theme.layer(Surface::new(role), *state)
+                let plain = Surface::new(role);
+                vars(theme, surface, &drawn(theme, surface, *state))
+                    != vars(theme, plain, &drawn(theme, plain, *state))
             });
             if differs {
-                write_role(&mut css, theme, &selector(role), surface, role, "  ");
+                write_role(&mut css, theme, &selector(role), surface, "  ");
             }
         }
         let _ = writeln!(css, "}}");
@@ -110,16 +107,16 @@ pub fn stylesheet(theme: &Theme, toned: &[SurfaceRole]) -> String {
         for (tone, tone_name) in TONES {
             let toned = format!("{}[data-tone=\"{tone_name}\"]", selector(role));
             let surface = Surface::new(role).tone(tone);
-            write_role(&mut css, theme, &toned, surface, role, "");
+            write_role(&mut css, theme, &toned, surface, "");
         }
         if role.kind == Kind::Button {
             let prominent = format!("{}[data-prominent]", selector(role));
             let surface = Surface::new(role).prominent(true);
-            write_role(&mut css, theme, &prominent, surface, role, "");
+            write_role(&mut css, theme, &prominent, surface, "");
             for (tone, tone_name) in TONES {
                 let toned = format!("{prominent}[data-tone=\"{tone_name}\"]");
                 let surface = Surface::new(role).tone(tone).prominent(true);
-                write_role(&mut css, theme, &toned, surface, role, "");
+                write_role(&mut css, theme, &toned, surface, "");
             }
         }
     }
@@ -165,6 +162,16 @@ fn data_uri(svg: &str) -> String {
         .replace('\n', " ")
 }
 
+fn drawn(theme: &Theme, surface: Surface, state: PaintState) -> Layer {
+    match (surface.role.kind, state) {
+        (_, PaintState::Focused) if rings_focus(surface.role) => {
+            theme.layer(surface, PaintState::Rest)
+        }
+        (Kind::Field, _) => field_layer(theme, surface, state, true),
+        _ => theme.layer(surface, state),
+    }
+}
+
 fn is_container(kind: Kind) -> bool {
     matches!(
         kind,
@@ -204,28 +211,21 @@ fn state_selector(state: PaintState) -> &'static str {
     }
 }
 
-fn write_role(
-    css: &mut String,
-    theme: &Theme,
-    base: &str,
-    surface: Surface,
-    role: SurfaceRole,
-    indent: &str,
-) {
+fn write_role(css: &mut String, theme: &Theme, base: &str, surface: Surface, indent: &str) {
     let declarations = |vars: &[&(&str, String)]| {
         vars.iter()
             .map(|(name, value)| format!("--penna-{name}: {value};"))
             .collect::<Vec<_>>()
             .join(" ")
     };
-    let rest = vars(theme, &theme.layer(surface, PaintState::Rest), role);
+    let rest = vars(theme, surface, &drawn(theme, surface, PaintState::Rest));
     let set = rest
         .iter()
         .filter(|(name, value)| !PAINT.contains(&(name, value.as_str())))
         .collect::<Vec<_>>();
     let _ = writeln!(css, "{indent}{base} {{ {}", declarations(&set));
     for state in STATES.into_iter().skip(1) {
-        let all = vars(theme, &theme.layer(surface, state), role);
+        let all = vars(theme, surface, &drawn(theme, surface, state));
         let changed = all
             .iter()
             .filter(|var| !rest.contains(var))
@@ -242,16 +242,12 @@ fn write_role(
     let _ = writeln!(css, "{indent}}}");
 }
 
-fn vars(theme: &Theme, layer: &Layer, role: SurfaceRole) -> Vec<(&'static str, String)> {
+fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, String)> {
+    let role = surface.role;
     let fill = layer.glass.map_or(layer.fill, |material| material.tint);
     let muted = theme
         .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest);
-    let smoothing = if role.row {
-        ROW_SMOOTHING
-    } else {
-        layer.smoothing
-    };
     let mut vars = vec![
         ("fill", color(fill)),
         ("ink", color(layer.text)),
@@ -260,7 +256,7 @@ fn vars(theme: &Theme, layer: &Layer, role: SurfaceRole) -> Vec<(&'static str, S
         ("bw", length(f32::from(layer.border_width))),
         ("shadow", shadows(&layer.shadow)),
         ("r", length(f32::from(layer.radius))),
-        ("k", number(smoothing.log2())),
+        ("k", number(layer.smoothing.log2())),
         ("row", if role.row { "1" } else { "0" }.to_owned()),
         (
             "mark",
@@ -269,6 +265,11 @@ fn vars(theme: &Theme, layer: &Layer, role: SurfaceRole) -> Vec<(&'static str, S
                 .map_or_else(|| "transparent".to_owned(), |mark| color(mark.color)),
         ),
     ];
+    if rings_focus(role) {
+        let ground = surface.ground.unwrap_or_else(|| theme.ground());
+        let ring = theme.paint_on(ground, surface.tone, Emphasis::Ghost).focus;
+        vars.push(("focus", color(ring)));
+    }
     if let Some(material) = layer.glass {
         let themed = theme.glass.as_ref();
         let (backdrop, rim) = (backdrop(&material), rim(&material));
