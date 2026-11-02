@@ -37,9 +37,10 @@ set to the canvas node's author id, which is the id the story passed to the comp
 
 Only an element with an accessibility role reaches that tree. Plates, rows, list items, which-key and
 scrollbars announce themselves from the id they already take (a scrollbar adds `<id>-vertical` and
-`<id>-vertical-thumb`). `Kbd`, `Spinner`, `Separator`, `Steps`, `SettingsStack`, `Input`, `NumberInput`,
+`<id>-vertical-thumb`). A row given `hover_group` or `press_highlight(true)` is a fill under its
+parent and stays out of the tree. `Kbd`, `Spinner`, `Separator`, `Steps`, `SettingsStack`, `Input`, `NumberInput`,
 `ColorPicker` and a `SettingEntry` without `on_click` have no id of their own: give them `.id(..)` to make them a node
-(a number input names its parts `<id>-decrement`, `<id>-field`, `<id>-increment`; a color picker `<id>-hue`,
+(a number input names its parts `<id>-decrement`, `<id>-field`, `<id>-increment`; a color picker `<id>-field`, `<id>-hue`,
 `<id>-hex`, `<id>-clear`). Never give two siblings the same id: ala drops the second node and panics in a debug
 build once accessibility is on.
 

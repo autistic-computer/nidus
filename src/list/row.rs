@@ -86,8 +86,7 @@ impl Row {
     #[must_use]
     pub fn hover_group(mut self, group: impl Into<SharedString>) -> Self {
         self.plate.hover_group = Some(group.into());
-        self.plate.role = self.plate.role.filter(|role| *role != Role::ListItem);
-        self
+        self.silenced()
     }
 
     #[must_use]
@@ -99,6 +98,11 @@ impl Row {
     #[must_use]
     pub fn press_highlight(mut self, press: bool) -> Self {
         self.plate.press = press;
+        if press { self.silenced() } else { self }
+    }
+
+    fn silenced(mut self) -> Self {
+        self.plate.role = self.plate.role.filter(|role| *role != Role::ListItem);
         self
     }
 }

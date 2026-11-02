@@ -290,6 +290,13 @@ mod tests {
                         .child(Row::new("fill", RowLook::Sidebar).hover_group("outer")),
                 )
                 .child(
+                    div().id("button").role(Role::Button).child(
+                        Row::new("pressed", RowLook::Sidebar)
+                            .interactive(false)
+                            .press_highlight(true),
+                    ),
+                )
+                .child(
                     Row::new("item", RowLook::Menu)
                         .hover_group("outer")
                         .role(Role::MenuItem),
