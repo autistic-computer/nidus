@@ -8,7 +8,7 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
-    StyledExt as _, Surface, Tone,
+    RuleLook, StyledExt as _, Surface, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     color_picker::{ColorPicker, ColorPickerState},
@@ -715,7 +715,7 @@ impl Floating {
             .w_full()
             .max_w(px(PICKER_WIDTH))
             .overflow_hidden()
-            .surface(roles::PICKER, cx)
+            .surface(Surface::new(roles::PICKER), cx)
             .child(picker_header(cx).child(picker_search(&self.search, cx)))
             .child(
                 picker_list().children(FILES.iter().enumerate().map(|(index, (icon, path))| {
@@ -966,7 +966,6 @@ impl Phone {
             .map(|(index, (name, detail, current))| {
                 sheet_row(
                     ("creator-window-option", index),
-                    roles::PHONE_ROW,
                     Some(Icon::new(IconName::Layers)),
                     *name,
                     cx,
@@ -998,19 +997,17 @@ impl Phone {
                     div()
                         .mx(px(12.0))
                         .my(px(4.0))
-                        .rule_on(roles::LIST_RULE, Edge::Top, cx),
+                        .rule(RuleLook::List, Edge::Top, cx),
                 )
                 .child(sheet_row(
                     "creator-new-window",
-                    roles::PHONE_ROW,
                     Some(Icon::new(IconName::Plus)),
                     "New window",
                     cx,
                 )),
             px(0.0),
             |_, _| {},
-        )
-        .header_role(roles::PHONE_BAR);
+        );
         phone_frame("creator-phone-sheet", cx)
             .relative()
             .h(px(PHONE_SHEET_HEIGHT))

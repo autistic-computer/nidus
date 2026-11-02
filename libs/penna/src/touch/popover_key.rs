@@ -17,8 +17,8 @@ use super::{
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, PaintState, RULE_WIDTH, StyledExt as _, Surface,
-    SurfaceRole, Tone, rems_from_px, roles, separator::Separator,
+    ActiveTheme as _, Emphasis, Icon, IconName, PaintState, RULE_WIDTH, RuleLook, StyledExt as _,
+    Surface, SurfaceRole, Tone, rems_from_px, separator::Separator,
 };
 
 const HOLD: Duration = Duration::from_millis(280);
@@ -354,7 +354,7 @@ impl PopoverKey {
             .w(rems_from_px(width + 2.0 * CARD_PADDING))
             .p(rems_from_px(CARD_PADDING))
             .gap(rems_from_px(ITEM_GAP))
-            .surface(SurfaceRole::POPOVER, cx)
+            .surface(Surface::new(SurfaceRole::POPOVER), cx)
             .font_family(theme.font_family.clone())
             .text_size(rems_from_px(17.0))
             .line_height(rems_from_px(22.0))
@@ -373,11 +373,10 @@ impl PopoverKey {
             )
             .when_some(footer, |card, footer| {
                 card.child(
-                    div().px(rems_from_px(8.0)).py(rems_from_px(2.0)).child(
-                        Separator::horizontal()
-                            .surface_role(roles::LIST_RULE)
-                            .h(RULE_WIDTH),
-                    ),
+                    div()
+                        .px(rems_from_px(8.0))
+                        .py(rems_from_px(2.0))
+                        .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
                 .child(footer)
             })

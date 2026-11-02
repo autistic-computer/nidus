@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Edge, Ground, IconName, Sizable as _, StyledExt as _, Surface,
-    button::Button, roles,
+    ActiveTheme as _, Edge, Ground, IconName, PaintState, Sizable as _, StyledExt as _, Surface,
+    button::Button, foundation::RoleRuleExt as _, roles,
 };
 use ala::{
     App, CursorStyle, ElementId, Hsla, IntoElement, ParentElement as _, Pixels, Stateful,
@@ -92,6 +92,14 @@ pub fn sidebar_footer(
         .pb(window_inset)
         .child(leading)
         .children(trailing)
+}
+
+#[must_use]
+pub fn sidebar_fade(ground: Ground, cx: &App) -> Hsla {
+    let sidebar = cx
+        .theme()
+        .layer(Surface::new(roles::SIDEBAR).on(ground), PaintState::Rest);
+    ground.fill.blend(sidebar.fill)
 }
 
 #[must_use]

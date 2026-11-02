@@ -4,8 +4,8 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Fill, Icon, Layer, PaintState, Sizable, Size, StyledExt as _,
-    Surface, SurfaceRole, Theme, Tone, h_flex, rems_from_px,
+    ActiveTheme as _, Emphasis, Fill, Ground, Icon, Layer, PaintState, Sizable, Size,
+    StyledExt as _, Surface, SurfaceRole, Theme, Tone, h_flex, rems_from_px,
 };
 
 #[derive(IntoElement)]
@@ -14,7 +14,7 @@ pub struct Badge {
     icon: Option<Icon>,
     tone: Tone,
     emphasis: Emphasis,
-    surface_role: Option<SurfaceRole>,
+    ground: Option<Ground>,
     opaque: bool,
     size: Size,
     style: StyleRefinement,
@@ -29,7 +29,7 @@ impl Badge {
             icon: None,
             tone: Tone::default(),
             emphasis: Emphasis::default(),
-            surface_role: None,
+            ground: None,
             opaque: false,
             size: Size::default(),
             style: StyleRefinement::default(),
@@ -61,24 +61,26 @@ impl Badge {
     }
 
     #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.ground = Some(ground);
         self
     }
 
     fn surface_layer(&self, theme: &Theme) -> Layer {
-        let role = self.surface_role.unwrap_or(SurfaceRole::BADGE);
+        let role = SurfaceRole::BADGE;
         let role = match self.emphasis {
             Emphasis::Solid | Emphasis::Soft => role,
             Emphasis::Outline => role.with(role.patch.fill(Fill::None)),
             Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
         };
+        let ground = self.ground.unwrap_or_else(|| theme.ground());
         let surface = Surface::new(role)
             .tone(self.tone)
-            .prominent(self.emphasis == Emphasis::Solid);
+            .prominent(self.emphasis == Emphasis::Solid)
+            .on(ground);
         let mut layer = theme.layer(surface, PaintState::Rest);
         if self.opaque {
-            layer.fill = theme.ground().fill.blend(layer.fill);
+            layer.fill = layer.ground.fill;
         }
         layer
     }

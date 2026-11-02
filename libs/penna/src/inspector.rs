@@ -8,7 +8,7 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Edge, IconName, Label, Side, Space, StyledExt as _, Surface, SurfaceRole,
-    TextStyle, button::Button, h_flex, rems_from_px, roles, v_flex,
+    TextStyle, button::Button, foundation::RoleRuleExt as _, h_flex, rems_from_px, roles, v_flex,
 };
 
 const WIDTH: f32 = 340.0;
@@ -84,7 +84,7 @@ impl Styled for Inspector {
 
 impl RenderOnce for Inspector {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let ground = cx.theme().ground_of(SurfaceRole::INSPECTOR);
+        let ground = cx.theme().ground_of(Surface::new(SurfaceRole::INSPECTOR));
         let edge = match self.side {
             Side::Left => Edge::Right,
             Side::Right => Edge::Left,

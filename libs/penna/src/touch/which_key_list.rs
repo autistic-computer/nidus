@@ -6,7 +6,7 @@ use ala::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, rems_from_px, roles,
+    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, Surface, rems_from_px, roles,
     which_key::{WhichKeyCap, WhichKeyRow, cap_text, groups},
 };
 
@@ -57,15 +57,17 @@ impl WhichKeyList {
         let on_pick = self.on_pick.clone();
         let element_id = ElementId::named_usize("which-key-list-row", index);
         let height = px(ROW_HEIGHT);
-        let pressed = cx.theme().layer(roles::PHONE_ROW, PaintState::Active);
+        let pressed = cx
+            .theme()
+            .layer(Surface::new(roles::PHONE_ROW), PaintState::Active);
         let press = crate::touch::press_highlight(
             element_id.clone(),
             pressed.fill,
-            crate::touch::PressCorners::Row(crate::row_radius(&pressed, height)),
+            crate::touch::PressCorners::Row(crate::foundation::row_radius(&pressed, height)),
         );
-        crate::row_surface(
+        crate::foundation::row_surface(
             div().id(element_id),
-            roles::PHONE_ROW,
+            Surface::new(roles::PHONE_ROW),
             PaintState::Rest,
             height,
             cx,

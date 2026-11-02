@@ -3,7 +3,9 @@ use ala::{
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{ActiveTheme as _, PaintState, StyledExt as _, SurfaceRole, input::field_chrome};
+use crate::{
+    ActiveTheme as _, PaintState, StyledExt as _, Surface, SurfaceRole, input::field_chrome_on,
+};
 
 use super::{
     CodeEditorState,
@@ -19,7 +21,6 @@ pub struct CodeEditor {
     disabled: bool,
     background_opacity: f32,
     tab_index: isize,
-    surface_role: Option<SurfaceRole>,
 }
 
 impl CodeEditor {
@@ -32,7 +33,6 @@ impl CodeEditor {
             disabled: false,
             background_opacity: 1.0,
             tab_index: 0,
-            surface_role: None,
         }
     }
 
@@ -65,12 +65,6 @@ impl CodeEditor {
         self.tab_index = tab_index;
         self
     }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
 }
 
 impl Styled for CodeEditor {
@@ -82,8 +76,8 @@ impl Styled for CodeEditor {
 impl RenderOnce for CodeEditor {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let framed = self.bordered || self.focus_bordered;
-        let role = self.surface_role.unwrap_or(SurfaceRole::TEXT_AREA);
-        let frame = cx.theme().layer(role, PaintState::Rest);
+        let surface = Surface::new(SurfaceRole::TEXT_AREA);
+        let frame = cx.theme().layer(surface, PaintState::Rest);
         let edge = frame.border_width.max(px(1.0));
         let inner = Corners::all((frame.radius - edge).max(px(0.0)));
         self.state.update(cx, |state, cx| {
@@ -123,7 +117,7 @@ impl RenderOnce for CodeEditor {
             .track_focus(&focus_handle)
             .tab_index(self.tab_index)
             .when(framed, |this| {
-                field_chrome(this, role, paint_state, true, self.focus_bordered, cx)
+                field_chrome_on(this, surface, paint_state, true, self.focus_bordered, cx)
             })
             .when(!self.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, CodeEditorState::backspace))

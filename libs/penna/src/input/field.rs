@@ -1,7 +1,7 @@
 use ala::{
-    AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, DefiniteLength, Div, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement as _, Pixels, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
     foundation::restyle,
     h_flex,
     icon::{Icon, IconName},
+    roles,
     spinner::Spinner,
 };
 
@@ -56,11 +57,62 @@ pub struct Input {
     align: TextAlign,
     tone: Tone,
     emphasis: Option<Emphasis>,
-    surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
 
-pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FieldLook {
+    Composer,
+    Address,
+}
+
+impl FieldLook {
+    const fn role(self) -> SurfaceRole {
+        match self {
+            Self::Composer => roles::FIELD_COMPOSER,
+            Self::Address => roles::FIELD_ADDRESS,
+        }
+    }
+}
+
+impl From<FieldLook> for Surface {
+    fn from(look: FieldLook) -> Self {
+        Self::new(look.role())
+    }
+}
+
+pub fn field_underlay(look: FieldLook, inset: Pixels, cx: &App) -> Option<Div> {
+    let theme = cx.theme();
+    let layer = theme.layer(look, PaintState::Rest);
+    layer.glass.is_none().then(|| {
+        div()
+            .absolute()
+            .top(inset)
+            .bottom(inset)
+            .left(inset)
+            .right(inset)
+            .rounded(layer.radius - inset)
+            .corner_smoothing(layer.smoothing)
+            .bg(theme.background.opaque())
+    })
+}
+
+pub fn field_paint(look: FieldLook, cx: &App) -> Paint {
+    field_paint_on(look, cx)
+}
+
+pub fn field_chrome<E: Styled + InteractiveElement>(
+    element: E,
+    look: FieldLook,
+    ground: Option<Ground>,
+    state: PaintState,
+    cx: &App,
+) -> E {
+    let surface = Surface::from(look).on_maybe(ground);
+    field_chrome_on(element, surface, state, true, true, cx)
+}
+
+pub(crate) fn field_paint_on(surface: impl Into<Surface>, cx: &App) -> Paint {
     let surface = surface.into();
     let theme = cx.theme();
     theme.paint_on(
@@ -70,7 +122,7 @@ pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
     )
 }
 
-pub fn field_chrome<E: Styled + InteractiveElement>(
+pub(crate) fn field_chrome_on<E: Styled + InteractiveElement>(
     element: E,
     surface: impl Into<Surface>,
     state: PaintState,
@@ -139,7 +191,6 @@ impl Input {
             align: TextAlign::Left,
             tone: Tone::Neutral,
             emphasis: None,
-            surface_role: None,
             on: None,
         }
     }
@@ -153,12 +204,6 @@ impl Input {
     #[must_use]
     pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
         self.emphasis = Some(emphasis);
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
         self
     }
 
@@ -223,12 +268,11 @@ impl Input {
     }
 
     fn field_surface(&self, multi_line: bool) -> Surface {
-        let field = if multi_line {
+        let role = if multi_line {
             SurfaceRole::TEXT_AREA
         } else {
             Kind::Field.role()
         };
-        let role = self.surface_role.unwrap_or(field);
         let role = match self.emphasis {
             None => role,
             Some(Emphasis::Solid | Emphasis::Soft) => {
@@ -289,7 +333,7 @@ impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let multi_line = self.state.read(cx).mode().is_multi_line();
         let surface = self.field_surface(multi_line);
-        let paint = field_paint(surface, cx);
+        let paint = field_paint_on(surface, cx);
         let resting = if self.disabled {
             PaintState::Disabled
         } else {
@@ -360,7 +404,7 @@ impl RenderOnce for Input {
 
         element
             .when(self.appearance, |this| {
-                field_chrome(
+                field_chrome_on(
                     this,
                     surface,
                     paint_state,

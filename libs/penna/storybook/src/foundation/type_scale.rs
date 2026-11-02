@@ -1,6 +1,7 @@
 use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window};
 use penna::{
-    ActiveTheme as _, Ground, Kind, Label, Space, StyledExt as _, TextStyle, Tone, h_flex, v_flex,
+    ActiveTheme as _, Ground, Kind, Label, Space, StyledExt as _, Surface, TextStyle, Tone, h_flex,
+    v_flex,
 };
 
 use crate::story::{Section, Story, stateless, states};
@@ -29,6 +30,12 @@ pub const STORY: Story = Story {
             summary: ".type_style(style, cx) on a container sets the style its text children inherit.",
             build: |_, cx| stateless(inherited, cx),
         },
+        Section {
+            id: "code",
+            name: "Code",
+            summary: "Label::mono() and .type_style_mono(style, cx) set any style in the code font at its own size. Mono is Body in the code font.",
+            build: |_, cx| stateless(code, cx),
+        },
     ],
 };
 
@@ -53,14 +60,14 @@ fn scale(_: &mut Window, _: &mut App) -> AnyElement {
 }
 
 fn ink(_: &mut Window, cx: &mut App) -> AnyElement {
-    let card = cx.theme().ground_of(Kind::Card);
+    let card = cx.theme().ground_of(Surface::new(Kind::Card.role()));
     states()
         .state("on the window", lines(None))
         .state(
             "on a card, with .on(ground)",
             v_flex()
                 .p(Space::S8)
-                .surface(Kind::Card, cx)
+                .surface(Surface::new(Kind::Card.role()), cx)
                 .child(lines(Some(card))),
         )
         .state(
@@ -107,5 +114,24 @@ fn inherited(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child("cargo test -p nid-app")
                 .child("just libs pull penna"),
         )
+        .into_any_element()
+}
+
+fn code(_: &mut Window, cx: &mut App) -> AnyElement {
+    [TextStyle::Micro, TextStyle::Caption, TextStyle::Small]
+        .into_iter()
+        .fold(states(), |states, style| {
+            states.state(
+                format!("{} · mono", style.name()),
+                h_flex()
+                    .gap(Space::S8)
+                    .child(Label::new(style, "git log --oneline").mono())
+                    .child(
+                        v_flex()
+                            .type_style_mono(style, cx)
+                            .child("cargo test -p nid-app"),
+                    ),
+            )
+        })
         .into_any_element()
 }

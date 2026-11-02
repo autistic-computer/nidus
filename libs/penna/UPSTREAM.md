@@ -111,14 +111,15 @@ radius equal to the container radius minus 4px, without a fixed cap or Full-mode
 square corners when the theme does not inset rows. Container surfaces and multiline inputs keep
 `radius`.
 
-Rows are drawn through `row_corners`, `row_surface` and `list_row`: ala's per-element fixed radius
+Rows are drawn through `Row` and `list_row` (on the crate-private `row_corners` and `row_surface`): ala's per-element fixed radius
 mode, smoothing 2.5, and a radius capped at 40% of the row height. `row_state` picks the selected
 or disabled layer, and custom menu content receives the highlight state so descriptions brighten
 to the normal foreground. Fill and border use native ala painting; no highlight painter or row
 masks are involved. The menu surface keeps the window's adaptive squircle rounding.
 
-Fields (inputs, number fields, select triggers) are painted by `input::field_chrome` from the
-look's field paint (`input::field_paint`). They always reserve a 1px border, so focus changes only
+Fields (inputs, number fields, select triggers) are painted by the crate-private
+`input::field_chrome_on` from the look's field paint (`field_paint_on`); the public `field_chrome`
+and `field_paint` take a `FieldLook`. They always reserve a 1px border, so focus changes only
 the border color and never the layout. In an outlined look without glass, a focused field whose
 role highlights with an edge takes the paint's focus color on that edge. Neutral focus colors,
 button keyboard focus rings included, are the accent when the look's primary is the accent and the

@@ -17,11 +17,11 @@ use ala::{
 use markdown::mdast;
 
 use crate::{
-    ActiveTheme as _, Edge, Kind, PaintState, RULE_WIDTH, Sizable as _, StyledExt, SurfaceRole,
-    WindowExt as _,
+    ActiveTheme as _, Edge, PaintState, RuleLook, Sizable as _, StyledExt, Surface, WindowExt as _,
     check::Check,
     h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
+    roles,
     tooltip::Tooltip,
     v_flex,
 };
@@ -43,7 +43,6 @@ use super::{
 use crate::Colorize as _;
 
 const BLOCKQUOTE_BAR_WIDTH: Pixels = px(3.0);
-const RULE: SurfaceRole = Kind::Rule.role();
 
 thread_local! {
     static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
@@ -947,11 +946,9 @@ impl CodeBlock {
             .code_block_body
             .as_ref()
             .and_then(|body| body(self, window, cx));
-        let code = style
-            .code_role
-            .map(|role| cx.theme().layer(role, PaintState::Rest));
-        let plain = cx.theme().surface(crate::Elevation::Popover).fill;
-        let radius = cx.theme().radius;
+        let code = cx
+            .theme()
+            .layer(Surface::new(roles::CARD_CODE), PaintState::Rest);
 
         div()
             .w_full()
@@ -970,10 +967,7 @@ impl CodeBlock {
                     } else {
                         px(12.0)
                     })
-                    .map(|this| match &code {
-                        Some(layer) => this.layer(layer),
-                        None => this.rounded(radius).bg(plain),
-                    })
+                    .layer(&code)
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(cx.theme().mono_font_size)
                     .relative()
@@ -1004,7 +998,6 @@ impl CodeBlock {
                                 .flex()
                                 .items_center()
                                 .justify_end()
-                                .when(code.is_none(), |this| this.bg(plain).rounded(radius))
                                 .child(actions(&self, window, cx)),
                         )
                     }),
@@ -1047,7 +1040,6 @@ impl Paragraph {
                 span.unwrap_or_default(),
                 self.inline_flow_items(node_cx, cx),
             )
-            .code_role(node_cx.style.code_role)
             .links(node_cx.links.clone())
             .into_any_element();
         }
@@ -1079,7 +1071,6 @@ impl Paragraph {
                             highlights.clone(),
                         )
                         .code_ranges(code_ranges.clone())
-                        .code_role(node_cx.style.code_role)
                         .links(node_cx.links.clone())
                         .streaming_veil(
                             node_cx.streaming_veil.clone(),
@@ -1183,7 +1174,6 @@ impl Paragraph {
             child_nodes.push(
                 Inline::new(ix, self.state.clone(), links, highlights)
                     .code_ranges(code_ranges)
-                    .code_role(node_cx.style.code_role)
                     .links(node_cx.links.clone())
                     .streaming_veil(
                         node_cx.streaming_veil.clone(),
@@ -1740,7 +1730,9 @@ impl BlockNode {
                         .when(align == ColumnumnAlign::Right, |this| this.text_right())
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
+                        .when(!is_last_col, |this| {
+                            this.rule(RuleLook::Plain, Edge::Right, cx)
+                        })
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1750,7 +1742,7 @@ impl BlockNode {
                     .id("row")
                     .w_full()
                     .when(row_ix < row_count - 1, |this| {
-                        this.rule_on(RULE, Edge::Bottom, cx)
+                        this.rule(RuleLook::Plain, Edge::Bottom, cx)
                     })
                     .flex()
                     .flex_row()
@@ -1765,7 +1757,7 @@ impl BlockNode {
                 ("table", options.ix),
                 &scroll_handle,
                 &style.table,
-                figure(div().min_w_full().w(px(total_w)), style.figure_role, cx).children(rows),
+                figure(div().min_w_full().w(px(total_w)), cx).children(rows),
             ))
             .into_any_element()
     }
@@ -1802,7 +1794,9 @@ impl BlockNode {
                         .w(Length::Definite(relative(width)))
                         .px_2()
                         .py_1()
-                        .when(!is_last_col, |this| this.rule_on(RULE, Edge::Right, cx))
+                        .when(!is_last_col, |this| {
+                            this.rule(RuleLook::Plain, Edge::Right, cx)
+                        })
                         .refine_style(&style.table_cell)
                         .child(cell.children.render(node_cx, window, cx)),
                 );
@@ -1813,7 +1807,7 @@ impl BlockNode {
                     .id("row")
                     .w_full()
                     .when(row_ix < row_count - 1, |this| {
-                        this.rule_on(RULE, Edge::Bottom, cx)
+                        this.rule(RuleLook::Plain, Edge::Bottom, cx)
                     })
                     .flex()
                     .flex_row()
@@ -1825,14 +1819,10 @@ impl BlockNode {
             .pb(rems(1.))
             .w_full()
             .child(
-                figure(
-                    div().id(("table", options.ix)).w_full(),
-                    style.figure_role,
-                    cx,
-                )
-                .overflow_hidden()
-                .children(rows)
-                .refine_style(&style.table),
+                figure(div().id(("table", options.ix)).w_full(), cx)
+                    .overflow_hidden()
+                    .children(rows)
+                    .refine_style(&style.table),
             )
             .into_any_element()
     }
@@ -1970,7 +1960,7 @@ impl BlockNode {
                     div()
                         .id("horizontal-rule")
                         .w_full()
-                        .rule_on(RULE, Edge::Top, cx),
+                        .rule(RuleLook::Plain, Edge::Top, cx),
                 )
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),
@@ -2019,14 +2009,8 @@ fn measure_table_columns(table: &Table, col_count: usize, window: &mut Window) -
     col_w
 }
 
-fn figure<E: Styled>(element: E, role: Option<SurfaceRole>, cx: &App) -> E {
-    match role {
-        Some(role) => element.surface(role, cx),
-        None => element
-            .border(RULE_WIDTH)
-            .border_color(cx.theme().divider_color())
-            .rounded(cx.theme().radius),
-    }
+fn figure<E: Styled>(element: E, cx: &App) -> E {
+    element.surface(Surface::new(roles::CARD_FIGURE), cx)
 }
 
 #[cfg(test)]

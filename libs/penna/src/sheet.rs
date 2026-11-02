@@ -10,11 +10,11 @@ use web_time::{Duration, Instant};
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Shape, StyledExt as _,
+    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Shape, StyledExt as _,
     Surface, SurfaceRole, Tone,
     button::Button,
     foundation::{muted_on, row_radius, row_surface},
-    h_flex,
+    h_flex, roles,
 };
 
 const ENTER: Duration = Duration::from_millis(240);
@@ -73,8 +73,6 @@ pub struct BottomSheet {
     bottom_inset: Pixels,
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
-    surface_role: Option<SurfaceRole>,
-    header_role: Option<SurfaceRole>,
     heading: Option<AnyElement>,
     full: Option<Pixels>,
 }
@@ -95,8 +93,6 @@ pub fn bottom_sheet(
         bottom_inset,
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
-        surface_role: None,
-        header_role: None,
         heading: None,
         full: None,
     }
@@ -106,18 +102,6 @@ impl BottomSheet {
     #[must_use]
     pub fn content_scroll(mut self, handle: ScrollHandle) -> Self {
         self.content_scroll = Some(handle);
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = Some(role);
-        self
-    }
-
-    #[must_use]
-    pub fn header_role(mut self, role: SurfaceRole) -> Self {
-        self.header_role = Some(role);
         self
     }
 
@@ -132,6 +116,11 @@ impl BottomSheet {
         self.full = Some(top);
         self
     }
+}
+
+#[must_use]
+pub fn sheet_ground(cx: &App) -> Ground {
+    cx.theme().ground_of(Surface::new(SurfaceRole::DRAWER))
 }
 
 #[must_use]
@@ -171,7 +160,7 @@ pub fn sheet_option(
 ) -> Stateful<Div> {
     option_row(
         id,
-        SurfaceRole::MENU_ITEM,
+        Surface::new(SurfaceRole::MENU_ITEM),
         Lead::Check(checked),
         label.into(),
         cx,
@@ -186,7 +175,7 @@ pub fn sheet_action(
 ) -> Stateful<Div> {
     option_row(
         id,
-        SurfaceRole::MENU_ITEM,
+        Surface::new(SurfaceRole::MENU_ITEM),
         Lead::Tile(Box::new(Icon::new(icon))),
         label.into(),
         cx,
@@ -195,14 +184,13 @@ pub fn sheet_action(
 
 pub fn sheet_row(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
     slot: Option<Icon>,
     label: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
     option_row(
         id,
-        role,
+        Surface::new(roles::PHONE_ROW),
         slot.map_or(Lead::Empty, |icon| Lead::Tile(Box::new(icon))),
         label,
         cx,
@@ -211,15 +199,15 @@ pub fn sheet_row(
 
 pub fn sheet_detail_row(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
     slot: Option<Icon>,
     label: impl Into<SharedString>,
     detail: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
-    let layer = cx.theme().layer(role, PaintState::Rest);
-    let muted = muted_on(&layer, cx);
-    row_shell(id, role, px(DETAIL_HEIGHT), cx)
+    let surface = Surface::new(roles::PHONE_ROW);
+    let layer = cx.theme().layer(surface, PaintState::Rest);
+    let muted = muted_on(layer.ground, cx);
+    row_shell(id, surface, px(DETAIL_HEIGHT), cx)
         .children(slot.map(|icon| icon_tile(icon, TILE, &layer, cx)))
         .child(
             div()
@@ -258,12 +246,12 @@ enum Lead {
 
 fn option_row(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
+    surface: Surface,
     lead: Lead,
     label: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
-    let layer = cx.theme().layer(role, PaintState::Rest);
+    let layer = cx.theme().layer(surface, PaintState::Rest);
     let height = if matches!(lead, Lead::Tile(_)) {
         TILE_ROW_HEIGHT
     } else {
@@ -281,7 +269,7 @@ fn option_row(
         ),
         Lead::Tile(icon) => Some(icon_tile(*icon, TILE, &layer, cx).into_any_element()),
     };
-    row_shell(id, role, px(height), cx).children(lead).child(
+    row_shell(id, surface, px(height), cx).children(lead).child(
         div()
             .flex_1()
             .min_w_0()
@@ -295,15 +283,15 @@ fn option_row(
 
 fn row_shell(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
+    surface: Surface,
     height: Pixels,
     cx: &App,
 ) -> Stateful<Div> {
     let id = id.into();
-    let layer = cx.theme().layer(role, PaintState::Rest);
+    let layer = cx.theme().layer(surface, PaintState::Rest);
     row_surface(
         h_flex().id(id.clone()).flex_none().h(height),
-        role,
+        surface,
         PaintState::Rest,
         height,
         cx,
@@ -315,7 +303,7 @@ fn row_shell(
     .cursor_pointer()
     .child(crate::touch::instant_press_highlight(
         id,
-        cx.theme().layer(role, PaintState::Active).fill,
+        cx.theme().layer(surface, PaintState::Active).fill,
         crate::touch::PressCorners::Row(row_radius(&layer, height)),
     ))
 }
@@ -494,7 +482,7 @@ impl RenderOnce for BottomSheet {
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
         let full = self.full;
-        let sheet = self.surface_role.unwrap_or(SurfaceRole::DRAWER);
+        let sheet = Surface::new(SurfaceRole::DRAWER);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
             fill: theme
@@ -506,7 +494,7 @@ impl RenderOnce for BottomSheet {
                 PaintState::Rest,
             )
         };
-        let header = Surface::new(self.header_role.unwrap_or(Kind::Bar.role())).on(ground);
+        let header = Surface::new(roles::PHONE_BAR).on(ground);
         let close = state.clone();
         let scrim = div()
             .id("bottom-sheet-scrim")

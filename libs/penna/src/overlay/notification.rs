@@ -10,7 +10,7 @@ use ala::{
 
 use super::dialog::{CONTENT_PADDING, DEFAULT_WIDTH, DESCRIPTION_TEXT_SIZE, TITLE_TEXT_SIZE};
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, SurfaceRole,
+    ActiveTheme as _, Icon, IconName, Sizable as _, Size, StyledExt as _, Surface, SurfaceRole,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -51,7 +51,6 @@ pub struct Notification {
     content_builder: Option<ContentBuilder>,
     autohide: Option<Duration>,
     width: Pixels,
-    surface_role: SurfaceRole,
     closing: bool,
 }
 
@@ -66,7 +65,6 @@ impl Notification {
             content_builder: None,
             autohide: Some(AUTOHIDE_DELAY),
             width: DEFAULT_WIDTH,
-            surface_role: SurfaceRole::TOAST,
             closing: false,
         }
     }
@@ -126,12 +124,6 @@ impl Notification {
     #[must_use]
     pub fn width(mut self, width: Pixels) -> Self {
         self.width = width;
-        self
-    }
-
-    #[must_use]
-    pub fn surface_role(mut self, role: SurfaceRole) -> Self {
-        self.surface_role = role;
         self
     }
 
@@ -201,7 +193,7 @@ impl Render for Notification {
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
-            .surface(self.surface_role, cx)
+            .surface(Surface::new(SurfaceRole::TOAST), cx)
             .p(CONTENT_PADDING)
             .gap_2()
             .child(
