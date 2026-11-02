@@ -53,6 +53,17 @@ pub trait AuthoredElement: InteractiveElement + Sized {
 
 impl<E: InteractiveElement> AuthoredElement for E {}
 
+pub(crate) fn author_part(
+    author: Option<&SharedString>,
+    part: &str,
+    fallback: impl Into<ElementId>,
+) -> ElementId {
+    match author {
+        Some(author) => ElementId::Name(format!("{author}-{part}").into()),
+        None => fallback.into(),
+    }
+}
+
 pub(crate) fn author_name(id: &ElementId) -> SharedString {
     match id {
         ElementId::Name(name) => name.clone(),
