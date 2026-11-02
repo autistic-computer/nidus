@@ -49,6 +49,25 @@ and the canvas's own ink is the denominator. Steps score only the target's box a
 the canvas did. A section scores 0 if it holds an `img`, `canvas`, `iframe` or similar, or a `url()` image other
 than the kit's icon masks. The DOM page is served only `web/`, `storybook/fonts/` and the HTML, CSS and JS under `src/`, so pages can share a component's files.
 
+How parity drives the pages:
+
+- The DOM page loads with `?theme=<t>&mode=<m>&bare&flat&motion=0` and `prefers-reduced-motion: reduce`
+  emulated, so `kit.js` skips the glass lens (an `feImage`, still forbidden otherwise) and motion is off
+  through the media query. Leave `--penna-glass` on; pages need no motion switch of their own.
+- A step in `parity.json` is `{ "name", "section", "hover" | "press" | "click" | "key", "wait", "keep" }`.
+  `hover`, `press` and `click` take an id, `{ "id": "penna-number-decrement", "nth": 3 }` for the nth node
+  sharing an id (from 1, in tree order on the canvas and document order in the DOM),
+  `{ "at": [x, y] }` for a point in CSS px from the section's top-left corner on both sides, or
+  `{ "selector": ".thumb" }` for the centre of a DOM element in the section, whose section-relative point
+  the canvas gets too. Point and selector steps score the whole section; id steps score the node's box.
+- Each component loads the story fresh, so entity ids don't depend on what ran before. When a step
+  leaves its canvas section changed (an open menu, a picked value, a focus ring), both pages reload
+  before the next step and the next theme and mode, so no step has to undo itself or another.
+  `"keep": true` runs a step on the previous step's state instead; key steps keep by default
+  (`"keep": false` starts one fresh). Steps that leave nothing behind keep the fast path: one load
+  per component, knobs switched in place. The line after each component counts story loads.
+- `--timeout` is per component (default 5 minutes); Ctrl-C and `kill` close Chrome and the servers.
+
 `src/button` is the template to copy. What it learned about matching ala in the DOM:
 
 - Wrap every text run in a span marked `data-penna-text`: ala ceils a text box's width to a whole px, and
