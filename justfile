@@ -50,6 +50,7 @@ build platform *args: (_platform platform)
 [doc("Lint Rust code.")]
 lint:
     cargo clippy --locked --all-targets -- -D warnings
+    cargo clippy --locked -p nid-app --lib --target wasm32-unknown-unknown -- -D warnings
 
 [doc("Check formatting, lint, and run tests.")]
 check: fmt::check lint test::rust test::app test::desktop test::install test::release

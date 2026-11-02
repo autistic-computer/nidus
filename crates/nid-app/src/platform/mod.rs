@@ -1,14 +1,22 @@
+#[cfg(any(target_os = "linux", target_family = "wasm"))]
+mod entries;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_family = "wasm")]
+mod web;
 #[cfg(windows)]
 mod windows;
 
+#[cfg(any(target_os = "linux", target_family = "wasm"))]
+pub use entries::{login_entry, this_computer_entries};
 #[cfg(target_os = "linux")]
 pub use linux::*;
 #[cfg(target_os = "macos")]
 pub use macos::*;
+#[cfg(target_family = "wasm")]
+pub use web::*;
 #[cfg(windows)]
 pub use windows::*;
 

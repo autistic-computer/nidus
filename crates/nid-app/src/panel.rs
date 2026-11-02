@@ -138,7 +138,7 @@ pub fn toggle(anchor: Option<TrayAnchor>, cx: &mut App) {
         },
         |window, cx| {
             crate::theme::apply(Some(window), cx);
-            let view = cx.new(|cx| Panel::new(model, window, cx));
+            let view = cx.new(|cx| Panel::popup(model, window, cx));
             cx.new(|cx| Root::new(view, window, cx))
         },
     );
@@ -158,35 +158,48 @@ fn close(window: &mut Window, cx: &mut App) {
     shown.closed = Some(Instant::now());
 }
 
-fn go(page: Page, window: &mut Window, cx: &mut App) {
-    crate::model::model(cx).update(cx, |model, cx| model.show(page, cx));
-    close(window, cx);
-    crate::open(cx);
+fn go(page: Page) -> impl Fn(&mut Panel, &ala::ClickEvent, &mut Window, &mut Context<Panel>) {
+    move |panel, _, window, cx| {
+        panel
+            .model
+            .update(cx, |model, cx| model.show(page.clone(), cx));
+        if panel.popup {
+            close(window, cx);
+            crate::open(cx);
+        }
+    }
 }
 
 pub struct Panel {
     model: Entity<Model>,
     was_active: bool,
+    popup: bool,
     _observers: Vec<Subscription>,
 }
 
 impl Panel {
-    fn new(model: Entity<Model>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let observers = vec![
-            cx.observe(&model, |_, _, cx| cx.notify()),
-            cx.observe_window_activation(window, |this, window, cx| {
+    pub fn new(model: Entity<Model>, cx: &mut Context<Self>) -> Self {
+        Self {
+            _observers: vec![cx.observe(&model, |_, _, cx| cx.notify())],
+            model,
+            was_active: false,
+            popup: false,
+        }
+    }
+
+    fn popup(model: Entity<Model>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let mut panel = Self::new(model, cx);
+        panel.popup = true;
+        panel
+            ._observers
+            .push(cx.observe_window_activation(window, |this, window, cx| {
                 if window.is_window_active() {
                     this.was_active = true;
                 } else if this.was_active {
                     close(window, cx);
                 }
-            }),
-        ];
-        Self {
-            model,
-            was_active: false,
-            _observers: observers,
-        }
+            }));
+        panel
     }
 
     fn send(&self, request: Request, cx: &App) {
@@ -206,13 +219,13 @@ impl Render for Panel {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .child(computers(snapshot)),
+                        .child(computers(snapshot, cx)),
                 ),
                 None => panel
                     .child(Label::new(TextStyle::Body, "Starting…").muted())
                     .child(div().flex_1()),
             })
-            .child(footer())
+            .child(footer(cx))
     }
 }
 
@@ -294,7 +307,7 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
                     .small()
                     .primary()
                     .label("Open Nidus")
-                    .on_click(|_, window, cx| go(Page::Computers, window, cx))
+                    .on_click(cx.listener(go(Page::Computers)))
                     .into_any_element(),
             ),
         ),
@@ -332,7 +345,7 @@ fn status(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
     .into_any_element()
 }
 
-fn computers(snapshot: &Snapshot) -> AnyElement {
+fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
     let found: Vec<_> = snapshot
         .unplaced
         .iter()
@@ -353,7 +366,7 @@ fn computers(snapshot: &Snapshot) -> AnyElement {
                 peer.name.clone(),
                 peer_action(&peer.name, peer.state),
             )
-            .on_click(move |_, window, cx| go(Page::Computer(name.clone()), window, cx))
+            .on_click(cx.listener(go(Page::Computer(name))))
             .into_any_element()
         }))
         .children(found.into_iter().map(|computer| {
@@ -364,7 +377,7 @@ fn computers(snapshot: &Snapshot) -> AnyElement {
                 Button::new(SharedString::from(format!("add-{}", computer.id)))
                     .small()
                     .label("Add…")
-                    .on_click(|_, window, cx| go(Page::Computers, window, cx))
+                    .on_click(cx.listener(go(Page::Computers)))
                     .into_any_element(),
             )
             .into_any_element()
@@ -383,7 +396,7 @@ fn computers(snapshot: &Snapshot) -> AnyElement {
                         Button::new("set-up")
                             .small()
                             .label("Set up…")
-                            .on_click(|_, window, cx| go(Page::Computers, window, cx)),
+                            .on_click(cx.listener(go(Page::Computers))),
                     ),
             )
         })
@@ -426,20 +439,20 @@ fn peer_action(name: &str, state: PeerState) -> AnyElement {
         .into_any_element()
 }
 
-fn footer() -> AnyElement {
+fn footer(cx: &mut Context<Panel>) -> AnyElement {
     let buttons = h_flex()
         .gap(px(4.0))
         .child(
             Button::new("panel-arrange")
                 .ghost()
                 .label("Arrange…")
-                .on_click(|_, window, cx| go(Page::Computers, window, cx)),
+                .on_click(cx.listener(go(Page::Computers))),
         )
         .child(
             Button::new("panel-settings")
                 .ghost()
                 .label("Settings…")
-                .on_click(|_, window, cx| go(Page::Settings, window, cx)),
+                .on_click(cx.listener(go(Page::Settings))),
         )
         .child(div().flex_1())
         .child(

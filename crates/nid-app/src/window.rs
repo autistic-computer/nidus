@@ -68,9 +68,6 @@ impl NidWindow {
             cx.subscribe_in(&board, window, |this, _, _: &AddByAddress, window, cx| {
                 this.open_add_address(window, cx);
             }),
-            cx.observe_window_appearance(window, |_, window, cx| {
-                crate::theme::apply(Some(window), cx);
-            }),
             cx.observe_in(&model, window, |_, model, window, cx| {
                 if let Some(failure) = model.update(cx, |model, _| model.take_failure()) {
                     window.push_notification(
@@ -243,7 +240,7 @@ mod tests {
     #[ala::test]
     fn the_address_dialog_draws(cx: &mut TestAppContext) {
         cx.update(crate::theme::init);
-        let model = cx.new(|cx| Model::fake(crate::board::tests::snapshot(), cx).0);
+        let model = cx.new(|_| Model::fixture(crate::board::tests::snapshot()).0);
         let services = cx.new(|_| crate::platform::Services::test());
         let (root, cx) = cx.add_window_view(|window, cx| {
             let view = cx.new(|cx| NidWindow::new(model, services, window, cx));

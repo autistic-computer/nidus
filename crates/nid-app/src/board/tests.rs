@@ -83,8 +83,8 @@ fn board_with<'a>(
     let (model, requests) = {
         let mut requests = None;
         let shown = snapshot.clone();
-        let model = cx.new(|cx| {
-            let (model, queue) = Model::fake(shown, cx);
+        let model = cx.new(|_| {
+            let (model, queue) = Model::fixture(shown);
             requests = Some(queue);
             model
         });

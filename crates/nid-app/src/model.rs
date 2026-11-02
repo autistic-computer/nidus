@@ -1,11 +1,14 @@
-use std::{path::PathBuf, sync::mpsc, time::Duration};
+use std::{path::PathBuf, sync::mpsc};
 
-use ala::{App, AsyncApp, Context, Entity, Task, WeakEntity};
-use nid::app::{
-    api::{self, Request},
-    client::Client,
+use ala::{App, Context, Entity, Task};
+use nid::app::api::{self, Request};
+#[cfg(not(target_family = "wasm"))]
+use {
+    ala::{AsyncApp, WeakEntity},
+    nid::app::client::Client,
+    serde::Deserialize,
+    std::time::Duration,
 };
-use serde::Deserialize;
 
 use crate::platform::Platform;
 
@@ -13,7 +16,7 @@ pub type Snapshot = api::Snapshot<Option<Platform>>;
 
 #[cfg(target_os = "macos")]
 const POLL: Duration = Duration::from_millis(500);
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_family = "wasm")))]
 const POLL: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,6 +42,7 @@ enum Job {
     Shutdown(async_channel::Sender<()>),
 }
 
+#[cfg_attr(target_family = "wasm", allow(dead_code))]
 enum Event {
     Snapshot(Box<Snapshot>),
     Failed {
@@ -65,6 +69,7 @@ pub struct Model {
 }
 
 impl Model {
+    #[cfg(not(target_family = "wasm"))]
     pub fn new(config: PathBuf, cx: &mut Context<Self>) -> Self {
         let (jobs, queue) = mpsc::channel();
         let (events, inbox) = async_channel::unbounded();
@@ -98,8 +103,7 @@ impl Model {
         }
     }
 
-    #[cfg(test)]
-    pub fn fake(snapshot: Snapshot, _: &mut Context<Self>) -> (Self, Requests) {
+    pub fn fixture(snapshot: Snapshot) -> (Self, Requests) {
         let (jobs, queue) = mpsc::channel();
         (
             Self {
@@ -254,6 +258,7 @@ impl Model {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn work(
     config: &std::path::Path,
     jobs: &mpsc::Receiver<Job>,
@@ -363,10 +368,8 @@ fn work(
     }
 }
 
-#[cfg(test)]
 pub struct Requests(mpsc::Receiver<Job>);
 
-#[cfg(test)]
 impl Requests {
     pub fn next(&self, answer: serde_json::Value) -> Option<(Request, bool)> {
         match self.0.try_recv().ok()? {
@@ -417,7 +420,7 @@ mod tests {
     fn notices_come_once_and_only_about_paired_computers(cx: &mut TestAppContext) {
         let mut snapshot = crate::board::tests::snapshot();
         snapshot.notices = vec![joined(4, "mac", "996615")];
-        let model = cx.new(|cx| Model::fake(snapshot.clone(), cx).0);
+        let model = cx.new(|_| Model::fixture(snapshot.clone()).0);
         let names = |model: &mut Model| -> Vec<String> {
             model
                 .take_notices()
