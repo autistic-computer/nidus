@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use ala::{
     App, ElementId, Entity, Focusable as _, InteractiveElement as _, IntoElement, Length,
     ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div,
@@ -101,7 +102,7 @@ impl<D: SelectDelegate> RenderOnce for Select<D> {
         state.update(cx, |this, cx| this.apply(options, empty, window, cx));
 
         div()
-            .id(id)
+            .author_id(id)
             .key_context(CONTEXT)
             .flex_none()
             .when(!disabled, |this| {

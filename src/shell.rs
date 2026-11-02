@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use crate::{ActiveTheme as _, InteractiveElementExt};
 use ala::{
     AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, MouseButton,
@@ -29,7 +30,7 @@ pub fn app_shell_surface(
     overlays: impl IntoIterator<Item = AnyElement>,
 ) -> Stateful<ala::Div> {
     div()
-        .id(id)
+        .author_id(id)
         .relative()
         .flex()
         .flex_col()
@@ -66,7 +67,7 @@ pub fn app_titlebar_strip(
     cx: &App,
 ) -> Stateful<ala::Div> {
     div()
-        .id(id)
+        .author_id(id)
         .flex()
         .flex_none()
         .w_full()

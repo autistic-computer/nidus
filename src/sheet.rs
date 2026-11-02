@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::rc::Rc;
 
 use ala::{
@@ -290,7 +291,7 @@ fn row_shell(
     let id = id.into();
     let layer = cx.theme().layer(surface, PaintState::Rest);
     row_surface(
-        h_flex().id(id.clone()).flex_none().h(height),
+        h_flex().author_id(id.clone()).flex_none().h(height),
         surface,
         PaintState::Rest,
         height,
@@ -637,7 +638,7 @@ impl RenderOnce for BottomSheet {
                 },
             );
         div()
-            .id(self.id)
+            .author_id(self.id)
             .absolute()
             .inset_0()
             .occlude()

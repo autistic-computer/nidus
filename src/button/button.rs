@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::rc::Rc;
 
 use ala::{
@@ -222,7 +223,7 @@ impl Button {
 
         Self {
             id: id.clone(),
-            base: div().flex_shrink_0().id(id),
+            base: div().flex_shrink_0().author_id(id),
             style: StyleRefinement::default(),
             icon: None,
             label: None,
@@ -887,6 +888,41 @@ mod tests {
         assert_eq!(
             variant(Button::new("b").danger().emphasis(Emphasis::Outline)),
             ButtonVariant::Paint(Tone::Danger, Emphasis::Outline)
+        );
+    }
+
+    #[ala::test]
+    fn buttons_report_their_id_as_the_accessibility_author_id(cx: &mut ala::TestAppContext) {
+        use ala::{Context, IntoElement, ParentElement as _, Render};
+
+        struct Host;
+
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .child(Button::new("variant-Primary").label("Primary"))
+                    .child(Button::new(("tab", 3usize)).label("Tab"))
+            }
+        }
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| Host);
+        let ids = cx.update(|window, cx| {
+            window.set_a11y_forced(true);
+            window.draw(cx).clear(cx);
+            let tree = window.a11y_tree().expect("forced a11y builds a tree");
+            let mut ids = tree
+                .nodes
+                .iter()
+                .filter(|(_, node)| node.role() == Role::Button)
+                .map(|(_, node)| node.author_id().map(str::to_owned))
+                .collect::<Vec<_>>();
+            ids.sort();
+            ids
+        });
+        assert_eq!(
+            ids,
+            [Some("tab-3".to_owned()), Some("variant-Primary".to_owned())]
         );
     }
 }

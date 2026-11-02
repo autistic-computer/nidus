@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::{rc::Rc, time::Duration};
 
 use ala::{
@@ -181,7 +182,7 @@ impl RenderOnce for SegmentedControl {
             .collect::<Vec<AnyElement>>();
 
         field_chrome_on(
-            h_flex().id(self.id).flex_none().p(px(INSET)),
+            h_flex().author_id(self.id).flex_none().p(px(INSET)),
             track,
             PaintState::Rest,
             true,

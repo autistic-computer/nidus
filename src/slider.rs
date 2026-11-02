@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::{ops::RangeInclusive, rc::Rc};
 
 use ala::{
@@ -126,7 +127,7 @@ impl RenderOnce for DiscreteSlider {
             );
         }
         h_flex()
-            .id(self.id)
+            .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label.clone())
             .aria_value(value.clone())
@@ -416,7 +417,7 @@ impl Slider {
         let trigger = field_chrome_on(
             field_text(
                 h_flex()
-                    .id(self.id.clone())
+                    .author_id(self.id.clone())
                     .role(Role::Slider)
                     .aria_label(self.label.clone())
                     .aria_value(shown.clone())
@@ -600,7 +601,7 @@ impl Slider {
         let key_emit = Rc::clone(&emit);
         let key_release = Rc::clone(&release);
         div()
-            .id(self.id)
+            .author_id(self.id)
             .role(Role::Slider)
             .aria_label(self.label)
             .aria_value(SharedString::from(format!("{value}")))

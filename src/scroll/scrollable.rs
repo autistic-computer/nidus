@@ -1,3 +1,4 @@
+use crate::AuthoredElement as _;
 use std::{panic::Location, rc::Rc};
 
 use ala::{
@@ -177,7 +178,7 @@ where
             .child(content);
 
         div()
-            .id(root_id)
+            .author_id(root_id)
             .size_full()
             .refine_style(&root_style)
             .relative()
