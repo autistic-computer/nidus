@@ -9,7 +9,9 @@ penna is the widget kit on ala, a maintained fork of gpui-component. Read `UPSTR
 upstream fix.
 
 penna is the only place UI chrome is defined: tokens, surface roles, theme patches and components.
-Read `knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
+Read `knowledge/designs/foundations.md` before any UI work: it is the spec for every value, name
+and rule (space, type, sizes, color, layout) and the order of work bringing penna onto it. Read
+`knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
 
 - A component is in the kit when the storybook shows every state of it and it has been looked at
   on each theme in light and dark.
@@ -54,15 +56,19 @@ page markup is the live HTML and an HTML tab, and when `storybook/dist` is built
 HTML / Native switch that mounts the same section from the storybook wasm (its `mount(story,
 section, selector)` export) and follows the page's theme. The choice is remembered across pages.
 
+A ```` ```figure ```` fence is a picture with no code: `story=<story>/<section>` shows that section
+with the HTML / Native switch, and otherwise the fence body is penna DOM markup rendered as is,
+with `uses=label,input,...` adding those components' or blocks' CSS and JS to the page. Story
+labels are hidden inside figures. The site's own CSS is `docs/site.css`.
+
 ## Design system
 
-`design/` holds penna's foundations as a design system: `README.md` and `guide/*.md` are the
-rules, `tokens.json` the scales, and each `components/<Card>/` a `preview.html` with its
-`README.md`, drawn with the shared `components/bundle.css` and `bundle.js`. It is published as a
-Design System artifact with `design/` served under `project/` and the fonts taken from
-`storybook/fonts`. It is a draft under review: `guide/5-decisions.md` lists what is not in the
-code yet. Cards that show spacing mark containers with `data-gap` and `data-inset`, and
-`bundle.js` draws and names each gap and inset from them.
+People and agents read different documents. The Foundations pages of the docs site
+(`docs/pages/foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`) are for
+people: pictures made of real penna components and plain writing, with no values, tokens or
+code. `knowledge/designs/foundations.md` is the spec for agents: every value, name and rule, and
+which step of the work order each one lands in. When they disagree, the spec wins and the pages
+get fixed.
 
 ## Storybook
 
