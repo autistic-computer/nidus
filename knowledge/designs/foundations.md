@@ -111,7 +111,7 @@ Reading rhythm (built): blocks (paragraphs, lists, quotes, code, tables) sit `sp
 
 Touch, for the compact and touch blocks (step 6): `touch-small` 15 on 20, `touch-body` 17 on 22, `touch-title` 34 on 40, weights 400, 400, 600.
 
-Component text (step 3, built for rows, lists and menus): list and tree rows `lead` (4 + 20 + 4 makes the 28 row), their details `small`; sidebar headings strong `lead`; menu rows and their shortcuts `small` (`body` under a coarse pointer), menu section labels `caption`. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
+Component text (step 3, built for rows, lists and menus): list and tree rows `lead` (4 + 20 + 4 makes the 28 row), their details `small`; sidebar headings strong `small`, under the `body` rows they head; menu rows and their shortcuts `small` (`body` under a coarse pointer), menu section labels `caption`. The HTML versions read the `--penna-text-*` variables instead of copying sizes.
 
 Code takes the size and line of the text around it, in the code face: `mono` in the interface, `read-body` size in reading text. ala can't size one run differently inside a line.
 
