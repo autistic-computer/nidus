@@ -1,0 +1,30 @@
+<!-- @dsCard group="Layout" height=296 width=960 subtitle="A column no wider than a measure, centered in its container" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Center</title>
+<style>
+  .ce-pane { width: 912px; border-radius: var(--radius-theme); box-shadow: 0 0 0 1px var(--divider); }
+  .ce-pane .pd-center { --pd-measure: var(--measure); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap</span>
+    <span class="pd-key" data-kind="inset">inset</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="ce-pane" data-inset="page">
+    <div class="pd-center pd-stack" data-gap="related">
+      <div class="read-h2">Install the kit</div>
+      <div class="read-body">Add ala, ala-platform and penna as git dependencies, call penna's init once at startup, and every window gets the theme, the fonts and the tokens. Lines stop at the measure, about seventy-five characters, however wide the window grows.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

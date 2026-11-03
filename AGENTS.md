@@ -54,6 +54,16 @@ page markup is the live HTML and an HTML tab, and when `storybook/dist` is built
 HTML / Native switch that mounts the same section from the storybook wasm (its `mount(story,
 section, selector)` export) and follows the page's theme. The choice is remembered across pages.
 
+## Design system
+
+`design/` holds penna's foundations as a design system: `README.md` and `guide/*.md` are the
+rules, `tokens.json` the scales, and each `components/<Card>/` a `preview.html` with its
+`README.md`, drawn with the shared `components/bundle.css` and `bundle.js`. It is published as a
+Design System artifact with `design/` served under `project/` and the fonts taken from
+`storybook/fonts`. It is a draft under review: `guide/5-decisions.md` lists what is not in the
+code yet. Cards that show spacing mark containers with `data-gap` and `data-inset`, and
+`bundle.js` draws and names each gap and inset from them.
+
 ## Storybook
 
 `storybook/` is penna's own page and the harness apps build theirs on: an app's storybook crate

@@ -1,0 +1,206 @@
+<!-- @dsCard group="Foundations" height=616 width=960 subtitle="Where the letters sit inside a line box, magnified four times" page -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Text box</title>
+<style>
+  .tb-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--space-32); align-items: start; }
+  .tb-stage { position: relative; overflow: hidden; border-radius: var(--radius-theme); background: color-mix(in srgb, var(--fg) 3%, var(--bg)); padding: var(--space-24) var(--space-24) var(--space-24) 88px; }
+  .tb-box { position: relative; background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .tb-text { position: absolute; left: 0; top: 0; white-space: nowrap; font-family: var(--font-sans); color: var(--fg); }
+  .tb-probe { display: inline-block; width: 0; height: 0; vertical-align: baseline; }
+  .tb-line { position: absolute; left: -64px; right: -24px; height: 0; border-top: 1px solid var(--fg-faint); }
+  .tb-line[data-key="cap"], .tb-line[data-key="base"] { border-top-color: var(--accent); }
+  .tb-line[data-key="box-top"], .tb-line[data-key="box-bottom"] { border-top-color: var(--fg); }
+  .tb-line span { position: absolute; left: 0; transform: translateY(-50%); padding-right: var(--space-4); background: color-mix(in srgb, var(--fg) 3%, var(--bg)); color: var(--fg-muted); font: 500 10px/14px var(--font-mono); }
+  .tb-line[data-key="cap"] span, .tb-line[data-key="base"] span { color: var(--accent); }
+  .tb-band { position: absolute; left: 0; right: 0; background: color-mix(in srgb, var(--redline-inset) 18%, transparent); }
+  .tb-facts { display: grid; grid-template-columns: auto auto; gap: var(--space-4) var(--space-16); margin: 0; font-variant-numeric: tabular-nums; }
+  .tb-facts dt { color: var(--fg-muted); }
+  .tb-facts dd { margin: 0; text-align: right; font-family: var(--font-mono); }
+  .tb-facts dd[data-good="true"] { color: var(--success); }
+  .tb-seen { display: flex; gap: var(--space-32); align-items: flex-start; flex-wrap: wrap; }
+  .tb-card { position: relative; width: 300px; padding: calc(var(--inset-card) * 2); border-radius: calc(var(--radius-theme)); background: color-mix(in srgb, var(--fg) 4%, var(--bg)); }
+  .tb-card-text { position: relative; font-size: 26px; line-height: 36px; }
+  .tb-rule { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--redline-inset); }
+  .tb-rule.cap { border-top-color: var(--accent); }
+  .tb-rule span { position: absolute; right: var(--space-8); transform: translateY(calc(-100% - 2px)); white-space: nowrap; font: 500 10px/14px var(--font-mono); padding: 0 4px; border-radius: 4px; background: var(--bg); box-shadow: 0 0 0 1px var(--redline-inset); }
+  .tb-rule.cap span { transform: translateY(3px); box-shadow: 0 0 0 1px var(--accent); }
+  .tb-inset { position: absolute; left: 0; right: 0; top: 0; background: color-mix(in srgb, var(--redline-inset) 20%, transparent); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body">
+  <div class="pd-tools small">
+    <div class="pd-choice" role="group" aria-label="Text style" id="styles"></div>
+    <label class="pd-toggle"><input type="checkbox" id="phi"> ala's default line height (1.618)</label>
+  </div>
+
+  <div class="tb-body">
+    <div class="tb-stage">
+      <div class="tb-box" id="box">
+        <div class="tb-text" id="text">Hamburg<span class="tb-probe" id="probe"></span></div>
+      </div>
+    </div>
+    <div class="pd-stack" data-gap="related">
+      <div class="heading" id="name">body</div>
+      <dl class="tb-facts small" id="facts"></dl>
+      <p class="pd-note small" id="verdict"></p>
+    </div>
+  </div>
+
+  <div class="pd-stack" data-gap="related">
+    <div class="heading">Space you set and space you see</div>
+    <div class="tb-seen">
+      <div class="tb-card" id="card">
+        <div class="tb-card-text">Mode<br><span class="pd-muted">Follow the system</span></div>
+      </div>
+      <p class="pd-note small" id="seen-note"></p>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    var INTER = { upm: 2048, asc: 1984, desc: 494, cap: 1490, x: 1118 };
+    var PHI = 1.618034;
+    var SCALE = 4;
+    var STYLES = [
+      { name: "small", size: 12, line: 16 },
+      { name: "body", size: 13, line: 18 },
+      { name: "heading", size: 16, line: 22, weight: 600 },
+      { name: "title", size: 20, line: 26, weight: 600 },
+      { name: "read-body", size: 16, line: 26 }
+    ];
+    var current = STYLES[1];
+    var group = document.getElementById("styles");
+    var phi = document.getElementById("phi");
+
+    function metrics(size, line) {
+      var asc = INTER.asc / INTER.upm * size;
+      var desc = INTER.desc / INTER.upm * size;
+      var cap = INTER.cap / INTER.upm * size;
+      var xh = INTER.x / INTER.upm * size;
+      var half = (line - asc - desc) / 2;
+      var base = half + asc;
+      return { asc: asc, desc: desc, cap: cap, xh: xh, half: half, base: base, capTop: base - cap, below: line - base };
+    }
+
+    function f2(n) { return (Math.round(n * 100) / 100).toFixed(2); }
+
+    function line(box, key, y, text) {
+      var el = document.createElement("div");
+      el.className = "tb-line";
+      el.dataset.key = key;
+      el.style.top = y + "px";
+      var label = document.createElement("span");
+      label.textContent = text;
+      el.appendChild(label);
+      box.appendChild(el);
+    }
+
+    function band(box, y, h) {
+      var el = document.createElement("div");
+      el.className = "tb-band";
+      el.style.top = y + "px";
+      el.style.height = h + "px";
+      box.appendChild(el);
+    }
+
+    function render() {
+      var size = current.size;
+      var lh = phi.checked ? size * PHI : current.line;
+      var m = metrics(size, lh);
+      var box = document.getElementById("box");
+      var text = document.getElementById("text");
+      box.querySelectorAll(".tb-line, .tb-band").forEach(function (el) { el.remove(); });
+      box.style.height = lh * SCALE + "px";
+      text.style.fontSize = size * SCALE + "px";
+      text.style.lineHeight = lh * SCALE + "px";
+      text.style.fontWeight = current.weight || 400;
+      var probe = document.getElementById("probe");
+      var base = probe.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      var cap = m.cap * SCALE;
+      band(box, 0, base - cap);
+      band(box, base, lh * SCALE - base);
+      line(box, "box-top", 0, "0");
+      line(box, "cap", base - cap, f2(m.capTop));
+      line(box, "base", base, f2(m.base));
+      line(box, "box-bottom", lh * SCALE, f2(lh));
+
+      document.getElementById("name").textContent = current.name + (phi.checked ? " at 1.618" : "");
+      var centered = Math.abs((m.capTop + m.base) / 2 - lh / 2) < 0.05;
+      var rows = [
+        ["Size", size + "px"],
+        ["Line box", f2(lh) + "px"],
+        ["Half-leading", f2(m.half)],
+        ["Cap top", f2(m.capTop)],
+        ["Baseline", f2(m.base)],
+        ["Baseline to bottom", f2(m.below)],
+        ["Cap center", f2((m.capTop + m.base) / 2)],
+        ["Box center", f2(lh / 2)]
+      ];
+      var facts = document.getElementById("facts");
+      facts.textContent = "";
+      rows.forEach(function (r, i) {
+        var dt = document.createElement("dt");
+        dt.textContent = r[0];
+        var dd = document.createElement("dd");
+        dd.textContent = r[1];
+        if (i >= 6) dd.dataset.good = String(centered);
+        facts.appendChild(dt);
+        facts.appendChild(dd);
+      });
+      var verdict = document.getElementById("verdict");
+      if (phi.checked) {
+        verdict.textContent = "With no style, ala sets the line to 1.618 times the size: " + f2(lh) + "px, which lands between pixels. Root sets body on the window so this stops happening.";
+      } else {
+        verdict.textContent = "The capitals are centered in the box, so a control centers its text by centering the line box. The shaded bands are the space above the capitals and below the baseline: " + f2(m.capTop) + "px each.";
+      }
+    }
+
+    STYLES.forEach(function (s) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = s.name;
+      b.setAttribute("aria-pressed", String(s === current));
+      b.addEventListener("click", function () {
+        current = s;
+        group.querySelectorAll("button").forEach(function (o) { o.setAttribute("aria-pressed", String(o === b)); });
+        render();
+      });
+      group.appendChild(b);
+    });
+    phi.addEventListener("change", render);
+
+    function seen() {
+      var card = document.getElementById("card");
+      card.querySelectorAll(".tb-rule, .tb-inset").forEach(function (el) { el.remove(); });
+      var m = metrics(13, 18);
+      var inset = parseFloat(getComputedStyle(card).paddingTop);
+      var k = 2;
+      var shade = document.createElement("div");
+      shade.className = "tb-inset";
+      shade.style.height = inset + "px";
+      card.appendChild(shade);
+      function rule(cls, top, text) {
+        var el = document.createElement("div");
+        el.className = "tb-rule" + (cls ? " " + cls : "");
+        el.style.top = top + "px";
+        var label = document.createElement("span");
+        label.textContent = text;
+        el.appendChild(label);
+        card.appendChild(el);
+      }
+      rule("", inset, "line box: inset-card 12");
+      rule("cap", inset + m.capTop * k, "capitals: " + f2(12 + m.capTop));
+      document.getElementById("seen-note").textContent = "Shown at twice the size. A card's inset reaches the line box, not the letters: with body text, the capitals start " + f2(m.capTop) + "px further in, so 12px reads as about " + Math.round(12 + m.capTop) + "px. Keep the token and never nudge the text; when a gap looks too big, pick the next step down.";
+    }
+
+    function all() { render(); seen(); }
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(all);
+    all();
+  })();
+</script>
+</body>
+</html>

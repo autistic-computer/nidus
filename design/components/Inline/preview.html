@@ -1,0 +1,40 @@
+<!-- @dsCard group="Layout" height=212 width=960 subtitle="Children in a row on one line, a gap apart, wrapping when asked" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inline</title>
+<style>
+  .in-chips { width: 420px; }
+  .in-chip { --pd-h: var(--control-xs); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap</span>
+    <span class="pd-key" data-kind="inset">inset</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="pd-inline" data-gap="related">
+    <button class="pd-control body" data-size="md">Back</button>
+    <button class="pd-control body" data-size="md">Forward</button>
+    <button class="pd-control pd-field body" data-size="md">Search panes</button>
+    <button class="pd-control pd-primary body" data-size="md">New pane</button>
+  </div>
+  <div class="pd-inline in-chips" data-gap="related" data-wrap>
+    <span class="pd-control caption" data-size="xs">main</span>
+    <span class="pd-control caption" data-size="xs">nidus</span>
+    <span class="pd-control caption" data-size="xs">penna docs</span>
+    <span class="pd-control caption" data-size="xs">ala build</span>
+    <span class="pd-control caption" data-size="xs">notes</span>
+    <span class="pd-control caption" data-size="xs">storybook</span>
+    <span class="pd-control caption" data-size="xs">parity</span>
+    <span class="pd-control caption" data-size="xs">release</span>
+  </div>
+</div>
+</body>
+</html>

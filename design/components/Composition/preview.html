@@ -1,0 +1,135 @@
+<!-- @dsCard group="Foundations" height=620 width=960 subtitle="A settings window built from tokens, with every gap and inset labeled" page -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Composition</title>
+<style>
+  .cm-window { width: 860px; }
+  .cm-main { min-height: 0; }
+  .cm-setting { min-height: var(--control-md); }
+  .cm-swatches .pd-swatch:nth-child(2) { background: var(--success); }
+  .cm-swatches .pd-swatch:nth-child(3) { background: var(--warning); }
+  .cm-swatches .pd-swatch:nth-child(4) { background: var(--danger); }
+  .cm-swatches .pd-swatch:nth-child(5) { background: var(--fg-muted); }
+  .cm-value { min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  .cm-select { min-width: 140px; }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap: owned by the parent</span>
+    <span class="pd-key" data-kind="inset">inset: owned by the container</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="pd-window pd-stack cm-window body" data-gap="0">
+    <div class="pd-bar pd-inline" data-gap="related" data-inset="chrome">
+      <span class="pd-lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="pd-spacer"></span>
+      <span class="body pd-label">Settings</span>
+      <span class="pd-spacer"></span>
+      <button class="pd-control pd-quiet pd-icon-only" data-size="chrome" aria-label="Search settings">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="7" cy="7" r="4.25"/><path d="M10.25 10.25 13.5 13.5"/></svg>
+      </button>
+    </div>
+
+    <div class="pd-split" style="--pd-aside: 200px">
+      <nav class="pd-sidebar pd-stack" data-gap="0" data-inset="row" aria-label="Settings sections">
+        <div class="pd-heading-row small pd-label">General</div>
+        <a class="pd-row" href="#appearance" aria-current="page">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M1.5 8H3M13 8h1.5M3.4 3.4l1 1M11.6 11.6l1 1M3.4 12.6l1-1M11.6 4.4l1-1"/></svg>
+          Appearance
+        </a>
+        <a class="pd-row" href="#keyboard">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="4" width="12.5" height="8" rx="2"/><path d="M4.5 7h.01M7 7h.01M9.5 7h.01M12 7h.01M5.5 9.5h5"/></svg>
+          Keyboard
+        </a>
+        <a class="pd-row" href="#notifications">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5V7.5a4 4 0 0 1 8 0v4l1 1H3z"/><path d="M6.75 14h2.5"/></svg>
+          Notifications
+        </a>
+        <div class="pd-heading-row small pd-label">Account</div>
+        <a class="pd-row" href="#profile">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 14a5.25 5.25 0 0 1 10.5 0"/></svg>
+          Profile
+        </a>
+        <a class="pd-row" href="#devices">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.75" y="2.75" width="12.5" height="8.5" rx="1.5"/><path d="M5.5 14h5M8 11.25V14"/></svg>
+          Devices
+        </a>
+      </nav>
+
+      <main class="cm-main" data-inset="pane">
+        <div class="pd-stack" data-gap="section">
+          <header class="pd-stack" data-gap="tight">
+            <div class="title">Appearance</div>
+            <div class="body pd-muted">Theme, accent and corners for every window.</div>
+          </header>
+
+          <section class="pd-stack" data-gap="related">
+            <div class="heading">Theme</div>
+            <div class="pd-card pd-stack" data-gap="group" data-inset="card">
+              <div class="pd-inline cm-setting" data-gap="related">
+                <div class="pd-stack" data-gap="tight">
+                  <div class="body">Mode</div>
+                  <div class="small pd-muted">Follow the system or pick one.</div>
+                </div>
+                <span class="pd-spacer"></span>
+                <div class="pd-seg body" role="tablist" aria-label="Mode">
+                  <span role="tab" aria-selected="false">Light</span>
+                  <span role="tab" aria-selected="false">Dark</span>
+                  <span role="tab" aria-selected="true">Auto</span>
+                </div>
+              </div>
+              <div class="pd-inline cm-setting" data-gap="related">
+                <div class="body">Accent</div>
+                <span class="pd-spacer"></span>
+                <div class="pd-inline cm-swatches" data-gap="related" role="radiogroup" aria-label="Accent">
+                  <span class="pd-swatch" aria-selected="true"></span>
+                  <span class="pd-swatch"></span>
+                  <span class="pd-swatch"></span>
+                  <span class="pd-swatch"></span>
+                  <span class="pd-swatch"></span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="pd-stack" data-gap="related">
+            <div class="heading">Layout</div>
+            <div class="pd-card pd-stack" data-gap="group" data-inset="card">
+              <div class="pd-inline cm-setting" data-gap="related">
+                <div class="body">Density</div>
+                <span class="pd-spacer"></span>
+                <button class="pd-control pd-field pd-select cm-select body" aria-label="Density">
+                  Regular
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>
+                </button>
+              </div>
+              <div class="pd-inline cm-setting" data-gap="related">
+                <div class="body">Corner radius</div>
+                <span class="pd-spacer"></span>
+                <div class="pd-inline" data-gap="related">
+                  <span class="pd-slider" role="slider" aria-label="Corner radius" aria-valuenow="24"></span>
+                  <span class="body pd-muted cm-value">24</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="pd-inline" data-gap="related">
+            <span class="pd-spacer"></span>
+            <button class="pd-control body">Reset</button>
+            <button class="pd-control pd-primary body">Save</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+</body>
+</html>

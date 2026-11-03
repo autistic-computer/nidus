@@ -1,0 +1,39 @@
+<!-- @dsCard group="Layout" height=276 width=960 subtitle="Children in a column, a gap apart" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stack</title>
+<style>
+  .st-form { width: 360px; }
+  .st-form .pd-field { width: 100%; color: var(--fg); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap</span>
+    <span class="pd-key" data-kind="inset">inset</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="pd-stack st-form" data-gap="group">
+    <div class="pd-stack" data-gap="tight">
+      <span class="small pd-label">Name</span>
+      <button class="pd-control pd-field body" data-size="md">penna</button>
+    </div>
+    <div class="pd-stack" data-gap="tight">
+      <span class="small pd-label">Repository</span>
+      <button class="pd-control pd-field body" data-size="md">github.com/autistic-computer/penna</button>
+    </div>
+    <div class="pd-inline" data-gap="related">
+      <span class="pd-spacer"></span>
+      <button class="pd-control body">Cancel</button>
+      <button class="pd-control pd-primary body">Create</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!-- @dsCard group="Foundations" height=1200 width=960 subtitle="Every spacing, font size and line height penna uses today, against the proposed scales" page -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Audit</title>
+<style>
+  .au-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap-group); }
+  .au-tile { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--inset-card) var(--inset-pane); border-radius: var(--radius-theme); background: color-mix(in srgb, var(--fg) 4%, var(--bg)); }
+  .au-big { font-size: 26px; line-height: 32px; font-weight: 600; }
+  .au-chart { position: relative; }
+  .au-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .au-chart .grid { stroke: var(--divider); stroke-width: 1; shape-rendering: crispEdges; }
+  .au-chart .tick { fill: var(--fg-muted); font: 400 10px var(--font-sans); font-variant-numeric: tabular-nums; }
+  .au-chart .tick.off { fill: var(--fg); font-weight: 600; }
+  .au-chart .on { fill: var(--accent); }
+  .au-chart .off { fill: var(--muted); }
+  .au-chart .hit { fill: transparent; cursor: default; outline: none; }
+  .au-chart .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+  .au-chart .bar.dim { opacity: 0.45; }
+  .au-tip { position: absolute; z-index: 3; pointer-events: none; padding: var(--space-6) var(--space-8); border-radius: 8px; background: var(--popover); box-shadow: var(--shadow-float); color: var(--fg); white-space: nowrap; }
+  .au-tip[hidden] { display: none; }
+  .au-legend { display: flex; gap: var(--space-16); color: var(--fg-muted); }
+  .au-legend span { display: inline-flex; align-items: center; gap: var(--space-4); }
+  .au-legend i { width: 10px; height: 10px; border-radius: 2px; }
+  .au-legend .on { background: var(--accent); }
+  .au-legend .off { background: var(--muted); }
+  .au-table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .au-table th, .au-table td { padding: var(--space-4) var(--space-12) var(--space-4) 0; text-align: left; border-bottom: 1px solid var(--divider); }
+  .au-table th { color: var(--fg-muted); font-weight: 500; }
+  .au-table td.n { text-align: right; }
+  details summary { cursor: pointer; color: var(--fg-muted); }
+  .au-ways { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap-related); }
+  .au-way { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--inset-card); border-radius: var(--radius-theme); background: color-mix(in srgb, var(--fg) 4%, var(--bg)); }
+  .au-way code { font-family: var(--font-mono); }
+  .au-meter { height: var(--space-4); border-radius: 2px; background: var(--control); overflow: hidden; }
+  .au-meter i { display: block; height: 100%; background: var(--accent); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body">
+  <div class="pd-stack" data-gap="tight">
+    <div class="title">Penna today</div>
+    <p class="pd-note">Every literal length in penna's components and blocks, Rust and CSS together, measured on main at faf29da. The values are mostly right already. What is missing is one way to name them.</p>
+  </div>
+
+  <div class="au-tiles" id="tiles"></div>
+
+  <div class="pd-stack" data-gap="related">
+    <div class="heading">Four ways to write a space</div>
+    <p class="pd-note small">Each card writes 8px its way and counts how many of the 434 spacing values in padding, margin and gap are written like that. Only the first is a token.</p>
+    <div class="au-ways small" id="ways"></div>
+  </div>
+
+  <div class="au-legend small">
+    <span><i class="on"></i>On the proposed scale</span>
+    <span><i class="off"></i>Off the scale (tick label in bold)</span>
+  </div>
+
+  <div class="pd-stack" data-gap="related" id="charts"></div>
+</div>
+<script>
+  (function () {
+    var DATA = {
+      space: [[0,5,1],[0.5,0,1],[1,3,5],[2,13,23],[3,4,1],[4,25,27],[5,2,2],[6,15,26],[7,1,2],[8,46,75],[10,18,19],[11,1,1],[12,23,30],[14,1,3],[16,14,23],[18,1,1],[20,1,3],[24,3,5],[32,1,1],[40,2,2],[44,0,1],[50,0,1],[96,1,1]],
+      font: [[10,0,3],[11,0,12],[12,0,27],[13,2,21],[14,1,8],[15,1,6],[15.75,0,1],[16,2,8],[17,1,3],[17.5,0,1],[20,0,1],[21,0,1],[22,1,0],[24,1,1],[28,0,1],[34,1,1]],
+      line: [[12,0,1],[14,0,3],[15,0,1],[16,5,26],[17,1,1],[18,0,7],[19,0,1],[19.5,0,1],[20,0,4],[21,1,2],[22,0,3],[22.5,0,3],[25.5,0,1],[26,0,1],[28.5,0,1],[30,1,1],[32.5,0,1],[34,0,1],[41,1,1],[45.5,0,1]]
+    };
+    var SCALES = {
+      space: [0, 2, 4, 6, 8, 10, 12, 16, 24, 32, 40, 64],
+      font: [10, 11, 12, 13, 14, 15, 16, 17, 18, 20, 22, 26, 28, 34],
+      line: [14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40]
+    };
+    var TITLES = {
+      space: ["Spacing", "padding, margin and gap"],
+      font: ["Font sizes", "every font-size and text_size"],
+      line: ["Line heights", "every explicit line height"]
+    };
+    var WAYS = [
+      ["Space::S4", "Space token", 25],
+      ["gap_2()", "ala helper, 4px steps", 55],
+      ["px(8.)", "raw Rust", 100],
+      ["8px", "raw CSS", 254]
+    ];
+    var NS = "http://www.w3.org/2000/svg";
+
+    function total(rows) { return rows.reduce(function (s, r) { return s + r[1] + r[2]; }, 0); }
+    function onScale(key, rows) { return rows.filter(function (r) { return SCALES[key].indexOf(r[0]) >= 0; }); }
+
+    var tiles = document.getElementById("tiles");
+    Object.keys(DATA).forEach(function (key) {
+      var rows = DATA[key], all = total(rows), on = total(onScale(key, rows));
+      var t = document.createElement("div");
+      t.className = "au-tile";
+      t.innerHTML = '<span class="small pd-muted">' + TITLES[key][0] + '</span><span class="au-big">' + Math.round(on / all * 100) + '%</span><span class="small pd-muted">' + on + " of " + all + " uses on the scale, " + rows.length + " different values</span>";
+      tiles.appendChild(t);
+    });
+
+    var ways = document.getElementById("ways");
+    var sum = WAYS.reduce(function (s, w) { return s + w[2]; }, 0);
+    WAYS.forEach(function (w) {
+      var d = document.createElement("div");
+      d.className = "au-way";
+      var pct = Math.round(w[2] / sum * 100);
+      d.innerHTML = "<code>" + w[0] + '</code><span class="pd-muted">' + w[1] + "</span><strong>" + w[2] + " uses · " + pct + '%</strong><span class="au-meter"><i style="width:' + pct + '%"></i></span>';
+      ways.appendChild(d);
+    });
+
+    function svg(tag, attrs) {
+      var e = document.createElementNS(NS, tag);
+      Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+      return e;
+    }
+
+    function topRounded(x, y, w, h, r) {
+      r = Math.min(r, w / 2, h);
+      return "M" + x + "," + (y + h) + "V" + (y + r) + "Q" + x + "," + y + " " + (x + r) + "," + y + "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) + "V" + (y + h) + "Z";
+    }
+
+    function fmt(n) { return String(n); }
+
+    function chart(key) {
+      var rows = DATA[key], scale = SCALES[key];
+      var wrap = document.createElement("div");
+      wrap.className = "pd-stack";
+      wrap.dataset.gap = "related";
+      var head = document.createElement("div");
+      head.innerHTML = '<span class="heading">' + TITLES[key][0] + '</span> <span class="small pd-muted">' + TITLES[key][1] + ", uses per value in px</span>";
+      wrap.appendChild(head);
+      var box = document.createElement("div");
+      box.className = "au-chart";
+      var W = 912, H = 168, top = 8, bottom = 22, left = 28;
+      var max = Math.max.apply(null, rows.map(function (r) { return r[1] + r[2]; }));
+      var step = max > 60 ? 40 : max > 20 ? 10 : 5;
+      var ceil = Math.ceil(max / step) * step;
+      var band = (W - left) / rows.length;
+      var plot = H - top - bottom;
+      var s = svg("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": TITLES[key][0] + " in use today" });
+      for (var g = 0; g <= ceil; g += step) {
+        var y = top + plot - g / ceil * plot;
+        s.appendChild(svg("line", { class: "grid", x1: left, x2: W, y1: y, y2: y }));
+        var label = svg("text", { class: "tick", x: left - 6, y: y + 3, "text-anchor": "end" });
+        label.textContent = g;
+        s.appendChild(label);
+      }
+      var tip = document.createElement("div");
+      tip.className = "au-tip small";
+      tip.hidden = true;
+      var bars = [];
+      rows.forEach(function (r, i) {
+        var v = r[0], n = r[1] + r[2], on = scale.indexOf(v) >= 0;
+        var x = left + i * band + 1, w = band - 2, h = n / ceil * plot, y = top + plot - h;
+        var bar = svg("path", { class: "bar " + (on ? "on" : "off"), d: topRounded(x, y, w, Math.max(h, 1), 4) });
+        s.appendChild(bar);
+        bars.push(bar);
+        var t = svg("text", { class: "tick" + (on ? "" : " off"), x: x + w / 2, y: H - 6, "text-anchor": "middle" });
+        t.textContent = fmt(v);
+        s.appendChild(t);
+        var hit = svg("rect", { class: "hit", x: left + i * band, y: top, width: band, height: plot, tabindex: "0" });
+        hit.setAttribute("aria-label", v + "px: " + n + " uses, " + (on ? "on" : "off") + " the scale");
+        function show() {
+          bars.forEach(function (b) { b.classList.toggle("dim", b !== bar); });
+          tip.innerHTML = "<strong>" + v + "px</strong> · " + n + " uses<br><span class=\"pd-muted\">" + r[1] + " Rust, " + r[2] + " CSS · " + (on ? "on the scale" : "off the scale") + "</span>";
+          tip.hidden = false;
+          var bb = box.getBoundingClientRect(), hb = hit.getBoundingClientRect();
+          var tx = hb.left - bb.left + hb.width / 2 - tip.offsetWidth / 2;
+          tip.style.left = Math.max(0, Math.min(bb.width - tip.offsetWidth, tx)) + "px";
+          tip.style.top = Math.max(0, (y / H) * bb.height - tip.offsetHeight - 8) + "px";
+        }
+        function hide() { tip.hidden = true; bars.forEach(function (b) { b.classList.remove("dim"); }); }
+        hit.addEventListener("mouseenter", show);
+        hit.addEventListener("focus", show);
+        hit.addEventListener("mouseleave", hide);
+        hit.addEventListener("blur", hide);
+        s.appendChild(hit);
+      });
+      box.appendChild(s);
+      box.appendChild(tip);
+      wrap.appendChild(box);
+      var details = document.createElement("details");
+      details.className = "small";
+      var rowsHtml = rows.map(function (r) {
+        return "<tr><td>" + r[0] + 'px</td><td class="n">' + r[1] + '</td><td class="n">' + r[2] + '</td><td class="n">' + (r[1] + r[2]) + "</td><td>" + (scale.indexOf(r[0]) >= 0 ? "on" : "off") + "</td></tr>";
+      }).join("");
+      details.innerHTML = "<summary>Table</summary><table class=\"au-table\"><thead><tr><th>Value</th><th>Rust</th><th>CSS</th><th>Uses</th><th>Scale</th></tr></thead><tbody>" + rowsHtml + "</tbody></table>";
+      wrap.appendChild(details);
+      return wrap;
+    }
+
+    var charts = document.getElementById("charts");
+    ["space", "font", "line"].forEach(function (k, i) {
+      if (i) {
+        var gap = document.createElement("div");
+        gap.style.height = "var(--space-16)";
+        charts.appendChild(gap);
+      }
+      charts.appendChild(chart(k));
+    });
+  })();
+</script>
+</body>
+</html>

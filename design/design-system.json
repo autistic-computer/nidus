@@ -1,0 +1,14 @@
+{
+  "v": 3,
+  "layout": "files",
+  "createdOnFiles": { "v": 1, "at": "2026-11-03T18:20:46Z" },
+  "title": "penna design system",
+  "namespace": "pennaDesign",
+  "libraries": [],
+  "sections": {},
+  "groups": [],
+  "assetGroups": {},
+  "blobs": {},
+  "docs": { "sections": [] },
+  "lastChange": { "by": "fabrico", "at": "2026-11-03T18:20:46Z", "via": "penna/design", "note": "Draft 0 of the foundations: scales, rules and the cards that show them" }
+}

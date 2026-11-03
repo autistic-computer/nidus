@@ -1,0 +1,31 @@
+<!-- @dsCard group="Layout" height=236 width=960 subtitle="Padding around one child, from the inset tokens" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inset</title>
+<style>
+  .is-pane { width: 520px; border-radius: var(--radius-theme); box-shadow: 0 0 0 1px var(--divider); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap</span>
+    <span class="pd-key" data-kind="inset">inset</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="is-pane" data-inset="pane">
+    <div class="pd-card" data-inset="card">
+      <div class="pd-stack" data-gap="tight">
+        <div class="heading">Paired computers</div>
+        <div class="body pd-muted">Keyboard and pointer move to whichever screen the cursor reaches. Two computers are paired.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

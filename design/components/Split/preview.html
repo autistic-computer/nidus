@@ -1,0 +1,46 @@
+<!-- @dsCard group="Layout" height=420 width=960 subtitle="A fixed side beside a flexible main area" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Split</title>
+<style>
+  .sp-window { width: 640px; height: 220px; overflow: hidden; border-radius: var(--radius-theme); box-shadow: 0 0 0 1px var(--divider); }
+  .sp-window > .pd-sidebar { box-shadow: inset -1px 0 0 var(--divider); }
+  .sp-media { width: 520px; }
+  .sp-thumb { height: 64px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
+</style>
+</head>
+<body>
+<div id="root" class="pd-frame body" data-redline>
+  <div class="pd-tools small">
+    <label class="pd-toggle"><input type="checkbox" id="show-spacing" data-redline-toggle checked> Show spacing</label>
+    <span class="pd-key" data-kind="gap">gap</span>
+    <span class="pd-key" data-kind="inset">inset</span>
+    <span class="pd-muted">Hover anything, or a token, to see it.</span>
+    <div class="pd-tokens" data-redline-tokens></div>
+  </div>
+
+  <div class="pd-split sp-window" style="--pd-aside: 180px">
+    <nav class="pd-sidebar pd-stack" data-gap="0" data-inset="row" aria-label="Panes">
+      <a class="pd-row body" href="#a" aria-current="page">zz main</a>
+      <a class="pd-row body" href="#b">nidus</a>
+      <a class="pd-row body" href="#c">penna docs</a>
+    </nav>
+    <div data-inset="pane">
+      <div class="pd-stack" data-gap="tight">
+        <div class="title">zz main</div>
+        <div class="body pd-muted">Three panes, last active a minute ago.</div>
+      </div>
+    </div>
+  </div>
+  <div class="pd-split sp-media" data-gap="group" style="--pd-aside: 96px">
+    <div class="sp-thumb"></div>
+    <div class="pd-stack" data-gap="tight">
+      <div class="heading">Screenshot.png</div>
+      <div class="small pd-muted">Shared from the pane on the left, 2.4 MB.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

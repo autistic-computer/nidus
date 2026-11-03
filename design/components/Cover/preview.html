@@ -1,0 +1,42 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>penna</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--font-sans); }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; }
+  .art { position: absolute; top: 0; left: 480px; width: 480px; height: 288px; }
+  .art svg { display: block; width: 480px; height: 288px; overflow: visible; }
+  .ink { fill: var(--fg); }
+  .hue { fill: var(--accent); }
+  .tint { fill: var(--fg-faint); }
+  .cut { fill: var(--bg); }
+  .words { position: absolute; left: var(--space-40); bottom: var(--space-40); max-width: 440px; }
+  .name { margin: 0; font-size: 120px; line-height: 0.9; font-weight: 600; letter-spacing: -0.03em; }
+  .tag { margin: var(--space-12) 0 0 var(--space-6); color: var(--fg-muted); font-size: 14px; line-height: 20px; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <div class="art" aria-hidden="true">
+    <svg viewBox="0 0 480 288" width="480" height="288">
+      <rect class="ink" x="32" y="-24" width="192" height="272" rx="24"/>
+      <rect class="hue" x="240" y="40" width="264" height="128" rx="24"/>
+      <rect class="tint" x="240" y="184" width="144" height="64" rx="24"/>
+      <rect class="cut" x="56" y="48" width="64" height="20" rx="9"/>
+      <rect class="cut" x="56" y="76" width="80" height="24" rx="10.8"/>
+      <rect class="cut" x="56" y="108" width="96" height="28" rx="12.6"/>
+      <rect class="cut" x="56" y="144" width="112" height="32" rx="14.4"/>
+      <rect class="cut" x="56" y="184" width="144" height="40" rx="18"/>
+    </svg>
+  </div>
+  <div class="words">
+    <h1 class="name">penna</h1>
+    <p class="tag">One set of scales for every window, drawn by ala and by the browser.</p>
+  </div>
+</div>
+</body>
+</html>
