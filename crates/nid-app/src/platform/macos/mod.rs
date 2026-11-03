@@ -25,9 +25,9 @@ use objc2_foundation::{NSActivityOptions, NSBundle, NSObjectProtocol, NSProcessI
 use objc2_service_management::{SMAppService, SMAppServiceStatus};
 use penna::{
     Disableable as _, Icon, IconName, Label, TextStyle,
-    button::{Button, ButtonVariants as _},
-    settings::{SettingEntry, SettingsStack, settings_card_ground},
-    switch::Switch,
+    blocks::settings::{SettingEntry, SettingsStack, settings_card_ground},
+    components::button::{Button, ButtonVariants as _},
+    components::switch::Switch,
 };
 
 use super::{LocalNetwork, Updates};
@@ -1072,7 +1072,7 @@ pub fn this_computer_entries(
     ]
 }
 
-pub fn tray_look(look: crate::panel::Look) -> penna::tray::TrayIcon {
+pub fn tray_look(look: crate::panel::Look) -> penna::blocks::tray::TrayIcon {
     use crate::panel::Look;
     let mark = match look {
         Look::Ready => format!(r#"<path d="{ARROW}"/><path d="{DASHES}"/>"#),
@@ -1099,7 +1099,7 @@ pub fn tray_look(look: crate::panel::Look) -> penna::tray::TrayIcon {
             r#"<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="166 149 640 640">{mark}</svg>"#
         )
     };
-    penna::tray::TrayIcon {
+    penna::blocks::tray::TrayIcon {
         png: crate::tray::rasterize(&svg, 36),
         template: true,
     }

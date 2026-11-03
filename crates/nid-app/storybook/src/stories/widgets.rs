@@ -4,7 +4,7 @@ use nid::{
     pairing_window::{Holding, Reason, State as Pairing, View},
 };
 use nid_app::{copy, widgets};
-use penna::{Dot, Label, TextStyle, button::Button, h_flex};
+use penna::{Dot, Label, TextStyle, components::button::Button, h_flex};
 use penna_storybook::{
     Section, Story,
     story::{row, stateless, states},

@@ -720,10 +720,10 @@ use ala::{AnyElement, IntoElement, ParentElement as _, Styled as _, Window, div,
 use nid::app::api::{Action, Health, Peer};
 use penna::{
     Disableable as _, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dialog::DialogButtonProps,
-    settings::{SettingEntry, SettingsStack, settings_card_ground},
-    switch::Switch,
+    blocks::dialog::DialogButtonProps,
+    blocks::settings::{SettingEntry, SettingsStack, settings_card_ground},
+    components::button::{Button, ButtonVariants as _},
+    components::switch::Switch,
 };
 
 use crate::{model::Snapshot, widgets, window::NidWindow};

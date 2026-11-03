@@ -1,9 +1,9 @@
 use ala::Context;
 use nid::app::api::Request;
 use penna::{
-    button::Button,
-    settings::{SettingEntry, settings_card_ground},
-    switch::Switch,
+    blocks::settings::{SettingEntry, settings_card_ground},
+    components::button::Button,
+    components::switch::Switch,
 };
 
 use crate::{model::Snapshot, window::NidWindow};

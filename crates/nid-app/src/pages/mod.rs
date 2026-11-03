@@ -12,9 +12,9 @@ use ala::{
 use nid::app::api::{Action, Request};
 use penna::{
     Label, TextStyle, Tone,
-    button::{Button, ButtonVariants as _},
-    dialog::{Dialog, DialogButtonProps},
-    input::Input,
+    blocks::dialog::{Dialog, DialogButtonProps},
+    components::button::{Button, ButtonVariants as _},
+    components::input::Input,
     v_flex,
 };
 
@@ -45,7 +45,7 @@ pub fn page(this: &mut NidWindow, window: &mut Window, cx: &mut Context<NidWindo
             .flex()
             .items_center()
             .justify_center()
-            .child(penna::spinner::Spinner::new())
+            .child(penna::components::spinner::Spinner::new())
             .into_any_element(),
     };
     v_flex()
@@ -145,7 +145,7 @@ pub fn add_address(this: &Entity<NidWindow>, dialog: Dialog, cx: &mut App) -> Di
         .button_props(
             DialogButtonProps::default()
                 .ok_text(if looking { "Looking up…" } else { "Look up" })
-                .ok_variant(penna::button::ButtonVariant::Paint(
+                .ok_variant(penna::components::button::ButtonVariant::Paint(
                     penna::Tone::Primary,
                     penna::Emphasis::Solid,
                 ))

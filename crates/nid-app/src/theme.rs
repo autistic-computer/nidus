@@ -1,5 +1,5 @@
 use ala::{App, Window};
-use penna::{ADAPTIVE_CORNER_FRACTION, Theme, interface_theme};
+use penna::{ADAPTIVE_CORNER_FRACTION, Theme, foundation::interface_theme};
 
 pub fn init(cx: &mut App) {
     penna::init(cx);

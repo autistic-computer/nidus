@@ -19,10 +19,10 @@ use ala::{
 use nid::app::api::{Action, Health, Peer, Request};
 use penna::{
     Disableable as _, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dialog::DialogButtonProps,
-    settings::{SettingEntry, SettingsStack, settings_card_ground},
-    switch::Switch,
+    blocks::dialog::DialogButtonProps,
+    blocks::settings::{SettingEntry, SettingsStack, settings_card_ground},
+    components::button::{Button, ButtonVariants as _},
+    components::switch::Switch,
 };
 use windows::{
     Win32::{
@@ -797,8 +797,8 @@ pub fn quit(cx: &mut App) {
     cx.quit();
 }
 
-pub fn tray_look(_: crate::panel::Look) -> penna::tray::TrayIcon {
-    penna::tray::TrayIcon {
+pub fn tray_look(_: crate::panel::Look) -> penna::blocks::tray::TrayIcon {
+    penna::blocks::tray::TrayIcon {
         png: include_bytes!("../../../../assets/windows/nid.png").to_vec(),
         template: false,
     }

@@ -17,15 +17,14 @@ use ala::{
 use nid::app::api::{Level, PeerState, Request, State};
 use penna::{
     Label, Notice, Root, Sizable as _, Space, TextStyle, Tone,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-    kbd::Keycap,
-    list::ListItem,
-    separator::Separator,
-    switch::Switch,
-    tray::TrayAnchor,
-    tray::TrayPanel,
-    v_flex,
+    blocks::tray::TrayAnchor,
+    blocks::tray::TrayPanel,
+    components::button::{Button, ButtonVariants as _},
+    components::kbd::Keycap,
+    components::list::ListItem,
+    components::separator::Separator,
+    components::switch::Switch,
+    h_flex, v_flex,
 };
 
 use crate::{

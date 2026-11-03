@@ -5,11 +5,11 @@ use ala::{
 use nid::app::api::{Level, Request};
 use penna::{
     ActiveTheme as _, Icon, IconName, Label, TextStyle,
-    button::Button,
+    blocks::settings::{SettingEntry, SettingsStack, settings_card_ground, settings_scroll_column},
+    components::button::Button,
+    components::kbd::Keycap,
+    components::switch::Switch,
     h_flex,
-    kbd::Keycap,
-    settings::{SettingEntry, SettingsStack, settings_card_ground, settings_scroll_column},
-    switch::Switch,
 };
 
 use crate::{platform, window::NidWindow};

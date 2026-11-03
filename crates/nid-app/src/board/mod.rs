@@ -16,7 +16,7 @@ use nid::app::{
 use penna::{
     ActiveTheme as _, Chip, Colorize as _, Dock, Icon, IconName, Label, PaintState,
     Selectable as _, Sizable as _, Space, TextStyle, Tile, TileVariant, Tone, Well,
-    button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonVariants as _},
     h_flex, muted_on,
 };
 
@@ -1221,7 +1221,7 @@ impl Render for Board {
                             |this| {
                                 this.child(
                                     div().m(px(5.0)).min_w_0().child(
-                                        penna::badge::Badge::new(
+                                        penna::components::badge::Badge::new(
                                             monitor
                                                 .display
                                                 .as_ref()
@@ -1237,7 +1237,8 @@ impl Render for Board {
                         .tooltip({
                             let label = SharedString::from(monitor.label.clone());
                             move |window, cx| {
-                                penna::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                                penna::components::tooltip::Tooltip::new(label.clone())
+                                    .build(window, cx)
                             }
                         }),
                 );
@@ -1268,7 +1269,7 @@ impl Render for Board {
                             None => island.name.clone(),
                         };
                         move |window, cx| {
-                            penna::tooltip::Tooltip::new(text.clone()).build(window, cx)
+                            penna::components::tooltip::Tooltip::new(text.clone()).build(window, cx)
                         }
                     })
                     .into_any_element(),

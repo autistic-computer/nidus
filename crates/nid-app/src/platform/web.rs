@@ -1,6 +1,6 @@
 use ala::{AnyElement, App, AppContext as _, Context, Entity, Window};
 use nid::app::api::{Action, Health, Peer};
-use penna::settings::{SettingEntry, SettingsStack};
+use penna::blocks::settings::{SettingEntry, SettingsStack};
 
 use crate::{model::Snapshot, window::NidWindow};
 

@@ -10,13 +10,12 @@ use nid::{
 use penna::{
     Disableable as _, Emphasis, Icon, IconName, Label, PaintState, Sizable as _, Steps, StyledExt,
     TextStyle, Tile, Tone, Well,
-    button::{Button, ButtonVariant, ButtonVariants},
-    check::Check,
-    h_flex,
-    kbd::Keycap,
-    segmented::SegmentedControl,
-    spinner::Spinner,
-    v_flex,
+    components::button::{Button, ButtonVariant, ButtonVariants},
+    components::check::Check,
+    components::kbd::Keycap,
+    components::segmented::SegmentedControl,
+    components::spinner::Spinner,
+    h_flex, v_flex,
 };
 
 use super::computers::{host_name, problems};

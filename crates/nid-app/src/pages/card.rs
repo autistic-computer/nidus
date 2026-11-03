@@ -12,12 +12,12 @@ use nid::{
 };
 use penna::{
     Icon, IconName, Inspector, Label, Sizable as _, TextStyle, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dialog::{AlertDialog, DialogButtonProps},
+    blocks::dialog::{AlertDialog, DialogButtonProps},
+    blocks::settings::{SettingEntry, SettingsStack, settings_card_ground},
+    components::button::{Button, ButtonVariants as _},
+    components::menu::{DropdownMenu as _, PopupMenuItem},
+    components::switch::Switch,
     h_flex,
-    menu::{DropdownMenu as _, PopupMenuItem},
-    settings::{SettingEntry, SettingsStack, settings_card_ground},
-    switch::Switch,
 };
 
 use crate::{
@@ -394,7 +394,7 @@ pub fn forget_alert(alert: AlertDialog, name: &str, model: &Entity<Model>) -> Al
         .button_props(
             DialogButtonProps::default()
                 .ok_text("Forget")
-                .ok_variant(penna::button::ButtonVariant::Paint(
+                .ok_variant(penna::components::button::ButtonVariant::Paint(
                     penna::Tone::Danger,
                     penna::Emphasis::Solid,
                 ))

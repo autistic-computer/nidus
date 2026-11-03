@@ -1,6 +1,6 @@
 use ala::{App, Entity};
 use nid::app::api::Request;
-use penna::tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
+use penna::blocks::tray::{Menu, MenuEntry, Tray, TrayEvent, TrayOptions};
 
 use crate::{
     copy,

@@ -6,11 +6,12 @@ use ala::{
 use nid::app::api::{Request, State};
 use penna::{
     ActiveTheme as _, Chip, Disableable as _, IconName, Label, Selectable as _, TextStyle, Tone,
-    WindowControls, WindowExt as _, h_flex,
-    input::InputState,
-    shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
-    sidebar::chrome_button,
-    switch::Switch,
+    WindowControls, WindowExt as _,
+    blocks::shell::{app_shell_surface, app_titlebar_strip, window_drag_handle},
+    blocks::sidebar::chrome_button,
+    components::input::InputState,
+    components::switch::Switch,
+    h_flex,
 };
 
 use crate::{
@@ -71,7 +72,7 @@ impl NidWindow {
             cx.observe_in(&model, window, |_, model, window, cx| {
                 if let Some(failure) = model.update(cx, |model, _| model.take_failure()) {
                     window.push_notification(
-                        penna::notification::Notification::warning(failure)
+                        penna::blocks::notification::Notification::warning(failure)
                             .title("That didn’t work"),
                         cx,
                     );
@@ -126,7 +127,7 @@ impl NidWindow {
             snapshot.as_ref().map(status_pill)
         };
         let clearance = if cfg!(target_os = "macos") {
-            penna::title_bar::macos_traffic_light_clearance(cx)
+            penna::blocks::title_bar::macos_traffic_light_clearance(cx)
         } else {
             px(12.0)
         };
@@ -177,7 +178,7 @@ impl NidWindow {
             .child(
                 div()
                     .flex_none()
-                    .w(penna::title_bar::window_controls_width(window) + px(8.0)),
+                    .w(penna::blocks::title_bar::window_controls_width(window) + px(8.0)),
             )
             .child(
                 h_flex()
