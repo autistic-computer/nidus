@@ -2591,6 +2591,7 @@ dependencies = [
  "tree-sitter-toml-ng",
  "unicode-segmentation",
  "url",
+ "web-sys",
  "web-time",
  "windows",
 ]
