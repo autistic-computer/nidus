@@ -385,7 +385,7 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
             Label::new(TextStyle::Caption, "Computers")
                 .strong()
                 .muted()
-                .pb(Space::S2),
+                .pb(Space::S4),
         )
         .children(snapshot.peers.iter().map(|peer| {
             let name = peer.name.clone();
@@ -435,11 +435,11 @@ fn computers(snapshot: &Snapshot, cx: &mut Context<Panel>) -> AnyElement {
 fn row(id: SharedString, dot: penna::Dot, label: String, action: AnyElement) -> ListItem {
     ListItem::new(id)
         .h(px(ROW))
-        .px(Space::S4)
+        .px(Space::S8)
         .mx(px(-8.0))
         .child(
             h_flex()
-                .gap(Space::S5)
+                .gap(Space::S10)
                 .child(dot)
                 .child(
                     Label::new(TextStyle::Lead, label)
@@ -497,7 +497,7 @@ fn footer(cx: &mut Context<Panel>) -> AnyElement {
                 }),
         );
     v_flex()
-        .gap(Space::S3)
+        .gap(Space::S6)
         .child(Separator::horizontal())
         .child(buttons)
         .into_any_element()

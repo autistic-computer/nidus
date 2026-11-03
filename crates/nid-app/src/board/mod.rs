@@ -1395,8 +1395,8 @@ fn found_tile(
         .flex_col()
         .w(px(FOUND_SIZE.0))
         .h(px(FOUND_SIZE.1))
-        .px(Space::S5)
-        .py(Space::S3)
+        .px(Space::S10)
+        .py(Space::S6)
         .cursor_pointer()
         .child(
             h_flex()
