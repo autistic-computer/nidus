@@ -510,7 +510,7 @@ impl Builder {
                 html
             });
         Ok(format!(
-            "<div class=\"penna-docs-example\" data-penna=\"card.figure\" role=\"figure\">\
+            "<div class=\"penna-docs-example\" role=\"figure\">\
              {targets}{preview}{switch}<div class=\"penna-docs-code\">{panes}</div></div>\n"
         ))
     }
@@ -533,7 +533,7 @@ impl Builder {
             None => format!("<div class=\"penna-docs-preview\">{}</div>", code.value),
         };
         Ok(format!(
-            "<div class=\"penna-docs-example docs-figure\" data-penna=\"card.figure\" role=\"figure\">{body}</div>\n"
+            "<div class=\"penna-docs-example docs-figure\" role=\"figure\">{body}</div>\n"
         ))
     }
 

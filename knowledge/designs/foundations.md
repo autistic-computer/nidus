@@ -256,7 +256,7 @@ States:
 | focused | the focus ring; fill unchanged | from the keyboard only, never from a click |
 | selected | the picked look (`data-state="current"`) | a button that stands for an on state in a group |
 | disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
-| loading | the icon becomes a spinner | clicks are ignored; the label and width stay |
+| loading | a spinner in the icon's place, or before the label when there is no icon | clicks are ignored; the label and width stay |
 
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
@@ -268,7 +268,7 @@ Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's 
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
 
-Status: two gaps. The caret is 12 at every size, where this section asks for the select's chevron at the same size. `.warning()` and `.success()` are still on `ButtonVariants` and in the buttons story's variants, where this section rules them out.
+Status: three gaps. The caret is 12 at every size, where this section asks for the select's chevron at the same size. `.warning()` and `.success()` are still on `ButtonVariants` and in the buttons story's variants, where this section rules them out. A busy button with no icon only dims, natively and in HTML, and the HTML twin never draws the spinner.
 
 ## Work order
 

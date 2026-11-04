@@ -3,7 +3,7 @@
   "source": "https://github.com/autistic-computer/penna",
   "groups": [
     { "title": "Getting started", "pages": ["introduction", "installation"] },
-    { "title": "Foundations", "pages": ["principles", "foundations", "color", "typography", "spacing", "sizes"] },
+    { "title": "Foundations", "pages": ["foundations", "principles", "color", "typography", "spacing", "sizes"] },
     { "title": "Components", "pages": ["button"] }
   ]
 }

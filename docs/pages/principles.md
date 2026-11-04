@@ -1,76 +1,60 @@
 # Principles
 
-penna draws zz and nidus: tools people keep open all day, mostly from the keyboard, where the work matters more than the interface around it. Six principles follow from that. Every rule, scale and component in penna keeps one of them, and when something is not covered, they decide it.
+Six rules every penna screen follows. Where the spec is silent, they decide.
 
-## The keyboard comes first
+## Keyboard first
 
-Every action has a keyboard path, and the interface shows it. Shortcuts sit beside the menu rows that run them, and a ring appears whenever the keyboard moves focus. The pointer and touch reach the same actions, sized for them.
+Every action has a key, and the interface shows it.
 
-```figure story=menus/popup-menu
+```figure uses=menu
+<div class="penna-popup" data-penna="popover" style="width: 220px"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="plus"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>New tab</span><span class="penna-label penna-popup-key" data-penna-text>⌘T</span></span></div><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="panel-right"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span><span class="penna-label penna-popup-key" data-penna-text>⌘D</span></span></div><div class="penna-popup-row" data-penna="menu-item" role="menuitem"><span class="penna-popup-icon"><i data-icon="xmark"></i></span><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span><span class="penna-label penna-popup-key" data-penna-text>⌘W</span></span></div></div></div>
 ```
 
-## Calm, dense screens
+## Calm and dense
 
-Most text on a screen is one size. Weight and a few larger steps carry the hierarchy, and color is kept for meaning. Spacing follows how things relate, so even a dense screen groups clearly. Density is a setting people choose, never a squeeze.
+One text size does most of the work. Weight sets the hierarchy; color is kept for meaning.
 
 ```figure uses=label,kbd
-<div class="docs-full penna-stack" data-gap="section" style="max-width: 460px">
-  <div class="penna-stack" data-gap="tight">
-    <span class="penna-type" data-type="title" data-penna-text>Keyboard</span>
-    <span class="penna-type docs-text" data-type="body" data-muted data-penna-text>Shortcuts work in every window, including the storybook.</span>
-  </div>
-  <div class="penna-settings" style="padding: 0">
-    <div>
-      <h2>Panes</h2>
-      <div data-penna="settings.card">
-        <div class="penna-setting"><div class="penna-copy">Next pane<small>Move to the pane on the right.</small></div><span class="penna-inline" data-gap="tight"><kbd class="penna-kbd" data-penna="keycap" data-kbd="ctrl-b"></kbd><kbd class="penna-kbd" data-penna="keycap" data-kbd="right"></kbd></span></div>
-        <div class="penna-setting"><div class="penna-copy">Previous pane<small>Move to the pane on the left.</small></div><span class="penna-inline" data-gap="tight"><kbd class="penna-kbd" data-penna="keycap" data-kbd="ctrl-b"></kbd><kbd class="penna-kbd" data-penna="keycap" data-kbd="left"></kbd></span></div>
-      </div>
-    </div>
-  </div>
-</div>
+<div class="penna-settings" style="padding: 0; width: 420px"><div><div data-penna="settings.card"><div class="penna-setting"><div class="penna-copy">Next pane<small>Move to the pane on the right.</small></div><span class="penna-inline" data-gap="tight"><kbd class="penna-kbd" data-penna="keycap" data-kbd="ctrl-b"></kbd><kbd class="penna-kbd" data-penna="keycap" data-kbd="right"></kbd></span></div><div class="penna-setting"><div class="penna-copy">Previous pane<small>Move to the pane on the left.</small></div><span class="penna-inline" data-gap="tight"><kbd class="penna-kbd" data-penna="keycap" data-kbd="ctrl-b"></kbd><kbd class="penna-kbd" data-penna="keycap" data-kbd="left"></kbd></span></div></div></div></div>
 ```
 
 ## One highlight
 
-One color marks what is on, picked or in focus. In the default look that color is the ink itself, so the interface stays black and white until someone picks an accent. Red, amber and green mean something went wrong, needs a look or went right, and always come with an icon or a word. A view has one main action at most.
+One color marks on, picked and focused. One main action per view.
 
 ```figure
-<div class="docs-compare docs-full">
-  <div>
-    <div class="docs-actions">
-      <button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button>
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Add host</span></button>
-    </div>
-    <div class="docs-verdict" data-verdict="do"><i data-icon="circle-check"></i><span class="penna-type" data-type="small" data-penna-text>One main action, drawn in the highlight.</span></div>
-  </div>
-  <div>
-    <div class="docs-actions">
-      <button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Cancel</span></button>
-      <button class="penna-button" data-penna="button" data-tone="success"><span class="penna-label" data-penna-text>Add host</span></button>
-    </div>
-    <div class="docs-verdict" data-verdict="dont"><i data-icon="circle-x"></i><span class="penna-type" data-type="small" data-penna-text>Two loud buttons, and green that means nothing.</span></div>
-  </div>
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Add host</span></button></div><figcaption>One main action, in the highlight</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="success"><span class="penna-label" data-penna-text>Add host</span></button></div><figcaption>Don't color actions for decoration</figcaption></figure>
 </div>
 ```
 
-## The work leads, chrome recedes
+## Content first
 
-Bars, headers and toolbars use quiet controls with no fill until they are pointed at, muted labels and the smaller sizes, so the eye goes to the content. Text people read, like documents and chat, is larger and more open than text people scan.
+Chrome stays quiet so the work stands out.
 
-```figure story=title_bar/bar
+```figure
+<div class="docs-dodont">
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button.quiet" aria-label="Split"><i data-icon="panel-right"></i></button><button class="penna-button" data-penna="button.quiet" aria-label="Search"><i data-icon="search"></i></button><button class="penna-button" data-penna="button.quiet" aria-label="More"><i data-icon="ellipsis"></i></button></div><figcaption>Ghost buttons in bars</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" aria-label="Split"><i data-icon="panel-right"></i></button><button class="penna-button" data-penna="button" aria-label="Search"><i data-icon="search"></i></button><button class="penna-button" data-penna="button" aria-label="More"><i data-icon="ellipsis"></i></button></div><figcaption>Don't fill every control in chrome</figcaption></figure>
+</div>
 ```
 
 ## Every state shows
 
-A control always tells what it is doing: resting, pointed at, pressed, focused, picked, switched off, busy or in error. Feedback comes the moment something is touched. Motion is short, shows where something came from or went, and turns off for people who ask for less motion.
+Each state has its own look. Motion is short and stops for reduced motion.
 
-```figure story=buttons/states
+```figure uses=spinner
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Rest</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="hover"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Hover</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="hover active"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Pressed</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-state="focused"><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Focused</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" disabled><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Off</span></div>
+  <div class="docs-cell"><button class="penna-button" data-penna="button" data-loading><span class="penna-spinner" data-size="small"><i data-icon="loader"></i></span><span class="penna-label" data-penna-text>Save</span></button><span class="docs-note">Busy</span></div>
+</div>
 ```
 
-## One kit everywhere
+## One kit
 
-The same components draw native windows on every desktop, the phone and this site, in three looks, light and dark. A look changes materials, corners and typefaces, never sizes, spacing or behavior. Every picture on these pages is penna itself: switch the look in the corner, or use the switch on an example to see it drawn natively.
-
-```figure story=selection/switch
-```
+The same components draw native windows, the phone and this site, in every look. A look changes materials, never sizes or behavior.
