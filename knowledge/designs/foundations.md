@@ -261,7 +261,7 @@ States:
 
 In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
 
-Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay.
+Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay, and at once when the keyboard focuses the button.
 
 Content: the label is a verb or a short verb phrase in sentence case, one to three words ("Save", "Add host", "Open in browser"), with no closing period. It names the action, never "OK" or "Yes". End it with an ellipsis ("Allow…") when the action asks for more before it happens, such as opening a dialog. A danger button names what it removes ("Delete branch").
 
@@ -999,9 +999,9 @@ States:
 | rest | as above | |
 | hover | a stepped pill's fill takes its hover step | the continuous slider has none |
 | pressed | the knob follows the pointer | continuous |
-| focused | a 1.5px edge in the primary's focus ink, inside the knob or the picked pill's bar | from a press or the keyboard; see Status |
+| focused | the focus ring outside the knob or the picked pill's bar, in the neutral focus ink | from the keyboard only: Tab, or a key that moves it after a press. A press focuses it with no ring |
 
-Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
+Both kinds are tab stops. Behavior, continuous: a press anywhere on the box moves the knob there and focuses it, and a drag follows. `on_change` fires on every move, or once on release with `.commit_on_release()`. Left and Down step down, Right and Up step up (a hundredth of the range without `.step()`), Shift moves ten steps, Home and End go to the ends.
 
 Behavior, stepped: a click on a pill picks that step and focuses the slider. The arrow keys move one step, Home and End go to the ends. Each pill's tooltip names its step.
 
@@ -1009,9 +1009,9 @@ Content: the label names the setting in sentence case ("Scrollback", "Opacity").
 
 Placement: in a settings row, between its title and its value; a stepped slider fills the row it sits in.
 
-HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index) and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The continuous slider is `.penna-slider` in `penna.css`: `--penna-value` as a percentage, and a `.penna-rail` holding `.penna-fill` and `.penna-knob`.
+HTML: the stepped slider is `.penna-steps` with `data-label`, `data-steps` (a comma list), `data-value` (the picked index) and `data-focused` to draw focus. `slider.js` builds `.penna-steps-label`, `.penna-steps-pills` of `.penna-step` (`role="button"`, `data-filled`, `data-picked`) and `.penna-steps-value`, sets `role="slider"`, answers the same keys and fires `change` with `{ index, value }`. The ring shows on `:focus-visible` or `data-focused`, which the script sets when a key moves the slider and clears on a press or blur. The continuous slider is `.penna-slider` in `penna.css`: `--penna-value` as a percentage, a `.penna-rail` holding `.penna-fill` and `.penna-knob`, and the same ring on `:focus-visible` or `data-focused`.
 
-Status: three gaps. Neither kind has a disabled state or a size API; both draw at `control-md`. Focus is an edge drawn inside the knob or the picked pill in the primary's own ink, so it barely shows where the fill matches it (every stepped slider in the default look, the knob in dark), where Corners asks for a ring outside the box. The continuous slider's HTML twin is a picture: `.penna-slider` has no script and draws focus as an accent edge on the knob, while the working one lives in the Appearance block as `.appearance-slider`.
+Status: two gaps. Neither kind has a disabled state or a size API; both draw at `control-md`. The continuous slider's HTML twin is a picture: `.penna-slider` has no script, while the working one lives in the Appearance block as `.appearance-slider`.
 
 ### Spinner
 
@@ -1232,7 +1232,7 @@ Kinds:
 | Label | `Tooltip::new(text)`; `.tooltip(text)` on a button, switch or slider | names the control |
 | Label and key | `Tooltip::new(text).action(&action, context)` | names it and shows the key bound to that action in that key context |
 
-Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`.
+Any element takes one with ala's `.tooltip(|window, cx| Tooltip::new(..).build(window, cx))`; that one shows on hover only. A button's `.tooltip(text)` also shows on keyboard focus.
 
 Anatomy, left to right:
 
@@ -1247,15 +1247,15 @@ States:
 | hidden | nothing | |
 | shown | the box, at once | no fade in or out |
 
-Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
+Behavior: it shows 500ms after the pointer comes to rest on its target. Its frame starts 1px right of and below the pointer and the box sits `space-12` inside that frame, so it clears the cursor by 13. Where it would cross the window's right or bottom edge it flips to the other side of the pointer. It hides when the pointer leaves the target or presses. When the keyboard focuses its target it shows at once, placed as if the pointer rested on the middle of the target's bottom edge, and hides when focus leaves, on Escape (which still reaches the rest of the window) or when the pointer moves; it comes back only on the next keyboard focus. Natively, a long press on touch shows it until the finger lifts. One tooltip shows at a time, and a disabled button's tooltip still shows.
 
 Content: a noun or a short verb phrase in sentence case that names the action or the thing ("Split right", "Notifications", "Copy path"), with no closing period. Never an instruction ("Click to split") or a sentence. On an icon-only button it is required and is the button's accessible name too. Don't repeat a label that is already visible; on a labeled control a tooltip adds the key or nothing. Give the key with `.action()` (`data-tooltip-key`), never typed into the text.
 
 Placement: it follows the pointer, not the target, so there is nothing to place. Give one to every icon-only button (Button) and to controls whose key is worth learning.
 
-HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
+HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
 
-Status: two gaps. A tooltip shows on hover only, never when the keyboard focuses its target (Principles 1). The HTML twin has no long press, so touch never shows a tooltip on the web.
+Status: one gap. The HTML twin has no long press, so touch never shows a tooltip on the web.
 
 ### Tree
 

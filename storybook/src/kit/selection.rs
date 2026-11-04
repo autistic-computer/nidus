@@ -1,6 +1,6 @@
 use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    SharedString, Styled as _, Subscription, Window, div, px,
+    SharedString, Styled as _, Window, div, px,
 };
 use penna::{
     Disableable as _, IndexPath, Sizable as _, Size,
@@ -11,7 +11,7 @@ use penna::{
     h_flex,
 };
 
-use super::support::{Probe, after_first_frame, click, dispatch, when_visible};
+use super::support::{after_first_frame, dispatch, tab};
 use crate::story::{Section, Story, row, states};
 
 pub const STORY: Story = Story {
@@ -65,7 +65,7 @@ pub const STORY: Story = Story {
         Section {
             id: "slider-focused",
             name: "Discrete slider, focused",
-            summary: "A press on the slider focuses it; the picked pill then carries a border in the focus color and the arrow keys step it.",
+            summary: "Tab focuses the slider: a ring outside the picked pill, and the arrow keys step it. A press focuses it too, with no ring until a key moves it.",
             build: |window, cx| FocusedSlider::view(window, cx),
         },
     ],
@@ -388,23 +388,12 @@ impl Render for Sliders {
 
 struct FocusedSlider {
     picked: usize,
-    label: Probe,
-    _bounds: Subscription,
 }
 
 impl FocusedSlider {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let label = Probe::default();
-        let probe = label.clone();
-        when_visible(&label, window, move |window, cx| click(&probe, window, cx));
-        cx.new(|cx| Self {
-            picked: 1,
-            label,
-            _bounds: cx.observe_window_bounds(window, |this: &mut Self, window, cx| {
-                click(&this.label, window, cx);
-            }),
-        })
-        .into()
+        after_first_frame(window, tab);
+        cx.new(|_| Self { picked: 1 }).into()
     }
 }
 
@@ -416,25 +405,13 @@ impl Render for FocusedSlider {
         });
         states().state(
             "focused",
-            div()
-                .relative()
-                .w(px(360.0))
-                .child(DiscreteSlider::new(
-                    "slider-focused",
-                    "Scrollback",
-                    labels(&SCROLLBACK),
-                    self.picked,
-                    move |index, window, cx| pick(&index, window, cx),
-                ))
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .w(px(24.0))
-                        .h_full()
-                        .child(self.label.measure()),
-                ),
+            div().w(px(360.0)).child(DiscreteSlider::new(
+                "slider-focused",
+                "Scrollback",
+                labels(&SCROLLBACK),
+                self.picked,
+                move |index, window, cx| pick(&index, window, cx),
+            )),
         )
     }
 }

@@ -720,9 +720,17 @@ impl RenderOnce for Button {
                     .border_color(rest.border.opacity(0.8))
                     .text_color(rest.text.opacity(0.8))
             })
-            .when_some(self.tooltip, |this, tooltip| {
+            .when_some(self.tooltip.clone(), |this, tooltip| {
                 this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
             });
+        let element = crate::components::tooltip::with_focus_tooltip(
+            element,
+            &self.id,
+            is_focused,
+            self.tooltip,
+            window,
+            cx,
+        );
 
         let tone = match variant {
             ButtonVariant::Paint(tone, _) => tone,
