@@ -487,6 +487,7 @@ pub struct Appearance {
     pub zoom: f32,
     pub animations: bool,
     pub animation_speed: f32,
+    pub density: crate::Density,
 }
 
 impl Default for Appearance {
@@ -500,6 +501,7 @@ impl Default for Appearance {
             zoom: 1.0,
             animations: true,
             animation_speed: crate::foundation::motion::DEFAULT_ANIMATION_SPEED,
+            density: crate::Density::Regular,
         }
     }
 }
@@ -517,6 +519,7 @@ pub enum AppearanceChange {
     Zoom(f32),
     Animations(bool),
     AnimationSpeed(f32),
+    Density(crate::Density),
 }
 
 pub type SavedThemes = [(SharedString, InterfaceTheme)];
@@ -598,6 +601,7 @@ impl Appearance {
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Animations(animations) => self.animations = animations,
             AppearanceChange::AnimationSpeed(speed) => self.animation_speed = speed,
+            AppearanceChange::Density(density) => self.density = density,
         }
     }
 
@@ -615,6 +619,7 @@ impl Appearance {
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
         theme.set_contrast(self.contrast);
+        self.density.set();
         cx.set_global(crate::UiZoom(self.zoom));
         if let Some(window) = window {
             window.set_zoom(self.zoom);
@@ -982,7 +987,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"density":"comfortable","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1000,6 +1005,7 @@ mod tests {
                 zoom: 1.25,
                 animations: false,
                 animation_speed: 0.5,
+                density: crate::Density::Comfortable,
             }
         );
         let written = serde_json::to_value(&appearance).unwrap();
@@ -1017,6 +1023,7 @@ mod tests {
                 "animation_speed",
                 "animations",
                 "contrast",
+                "density",
                 "mode",
                 "radius",
                 "theme",
@@ -1074,7 +1081,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn applying_an_appearance_shows_its_theme_contrast_zoom_and_reduced_motion(
+    fn applying_an_appearance_shows_its_theme_contrast_zoom_density_and_reduced_motion(
         cx: &mut ala::TestAppContext,
     ) {
         let appearance = Appearance {
@@ -1087,6 +1094,7 @@ mod tests {
             contrast: 1.5,
             zoom: 1.25,
             animations: false,
+            density: crate::Density::Compact,
             ..Appearance::default()
         };
         cx.update(|cx| {
@@ -1100,6 +1108,15 @@ mod tests {
             assert_eq!(theme.font_family, ala::Font::default().family);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
+            assert_eq!(
+                crate::Size::LADDER.map(|size| size.control_px()),
+                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0]
+            );
+            assert_eq!(
+                [22.0, 28.0].map(|height| crate::Size::Size(px(height)).rung()),
+                [crate::Size::Small, crate::Size::Medium]
+            );
+            crate::Density::Regular.set();
         });
     }
 
