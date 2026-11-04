@@ -541,6 +541,79 @@ button[data-penna] {
   overflow: hidden;
 }
 
+.penna-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.penna-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.penna-inline[data-wrap] {
+  flex-wrap: wrap;
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="tight"] {
+  gap: var(--penna-gap-tight);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="related"] {
+  gap: var(--penna-gap-related);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="group"] {
+  gap: var(--penna-gap-group);
+}
+
+:is(.penna-stack, .penna-inline, .penna-split, .penna-tiles)[data-gap="section"] {
+  gap: var(--penna-gap-section);
+}
+
+.penna-inset[data-inset="chrome"] {
+  padding: var(--penna-inset-chrome);
+}
+
+.penna-inset[data-inset="card"] {
+  padding: var(--penna-inset-card);
+}
+
+.penna-inset[data-inset="pane"] {
+  padding: var(--penna-inset-pane);
+}
+
+.penna-inset[data-inset="page"] {
+  padding: var(--penna-inset-page);
+}
+
+.penna-split {
+  display: flex;
+  align-items: flex-start;
+}
+
+.penna-split > :first-child {
+  flex: none;
+  width: var(--penna-aside);
+}
+
+.penna-split > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.penna-center {
+  width: 100%;
+  max-width: var(--penna-measure);
+  margin-inline: auto;
+}
+
+.penna-tiles {
+  display: grid;
+  grid-template-columns: repeat(var(--penna-tiles), minmax(0, 1fr));
+}
+
 .penna-gaps {
   --penna-titlebar-height: 46px;
 }
