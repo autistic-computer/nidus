@@ -884,16 +884,17 @@ States:
 | rest | the track, labels in the quiet ink | |
 | hover | the label takes the quiet button's hover ink, which no shipped theme sets apart from its rest ink | not on the picked segment |
 | selected | the pill under it, its label in the selected ink | exactly one segment |
+| focused | the focus ring, 1.5 outside the track; the track takes the field's focused edge, which only the default theme sets apart | from the keyboard only, never from a click |
 
-Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
+Behavior: a click on a segment picks it and calls `on_select` with its index; the caller sets `selected`. With `on_select` the control is one tab stop: Left and Up pick the previous segment, Right and Down the next, Home and End the first and last, each through `on_select`, and they stop at the ends. A click picks without focusing. The pill slides to the new segment in 220ms (`turn`) with an ease out, and holds still with reduced motion. Under a coarse pointer each segment's hit area grows to the touch slop.
 
 Content: one or two words per segment, sentence case, no period ("System", "Light", "Dark"). Keep the labels about the same length, since each segment is as wide as its own.
 
 Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` places the pill, sets `aria-selected`, moves the pick on click and fires `change` with `{ index }`.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws.
 
-Status: three gaps. It has no keyboard path: segments can't take focus and the arrow keys do nothing, natively and in HTML (Principles 1). It has no disabled state, and no hover look in any shipped theme. It has one size only, `control-md`.
+Status: two gaps. It has no disabled state, and no hover look in any shipped theme. It has one size only, `control-md`.
 
 ### Select
 
@@ -1072,17 +1073,18 @@ States:
 |---|---|---|
 | off | neutral track, thumb at the start | |
 | on | primary track, thumb at the end | |
-| disabled | track and thumb at half strength | presses are ignored |
+| focused | the focus ring, 1.5 outside the track | from the keyboard only, never from a click |
+| disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
-Behavior: a press flips it and calls `on_click` with the new value; the caller sets `checked`. The thumb slides in 150ms and holds still with motion off.
+Behavior: it flips on release of a click or tap inside it, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. It is a tab stop when it has `on_click`. The thumb slides in 150ms and holds still with motion off.
 
 Content: the row title names the setting in sentence case ("Share clipboard"), never its state ("On", "Enabled"). A description under the title says what on does.
 
 Placement: at the trailing end of a settings row, one switch per row.
 
-HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`.
+HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: three gaps. Natively it can't take focus and doesn't answer Space or Enter (Principles 1); the HTML button takes focus but draws no ring. It has no hover or pressed look. It flips on press natively and on release in HTML.
+Status: one gap. It has no hover or pressed look.
 
 ### Tabs
 

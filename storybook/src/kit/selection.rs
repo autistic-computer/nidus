@@ -39,10 +39,22 @@ pub const STORY: Story = Story {
             build: |window, cx| Segmented::view(window, cx),
         },
         Section {
+            id: "segmented-focused",
+            name: "Segmented control, focused",
+            summary: "Tab focus rings the whole track. The arrow keys, Home and End move the pick; a click picks without focusing.",
+            build: |window, cx| FocusedSegmented::view(window, cx),
+        },
+        Section {
             id: "switch",
             name: "Switch",
             summary: "Off, on, small and disabled, then every other size on the ladder. A press flips the enabled ones; the thumb slides between states and holds still with motion off.",
             build: |window, cx| Switches::view(window, cx),
+        },
+        Section {
+            id: "switch-focused",
+            name: "Switch, focused",
+            summary: "Tab focus rings the track; Space or Enter flips it. A click flips it on release without focusing.",
+            build: |window, cx| FocusedSwitch::view(window, cx),
         },
         Section {
             id: "slider",
@@ -182,6 +194,34 @@ impl Render for Segmented {
     }
 }
 
+struct FocusedSegmented {
+    picked: usize,
+}
+
+impl FocusedSegmented {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        after_first_frame(window, Window::focus_next);
+        cx.new(|_| Self { picked: 1 }).into()
+    }
+}
+
+impl Render for FocusedSegmented {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let pick = cx.listener(|this, index: &usize, _, cx| {
+            this.picked = *index;
+            cx.notify();
+        });
+        states().state(
+            "focused",
+            row().child(
+                SegmentedControl::new("segmented-focused", labels(&["System", "Light", "Dark"]))
+                    .selected(self.picked)
+                    .on_select(move |index, window, cx| pick(&index, window, cx)),
+            ),
+        )
+    }
+}
+
 struct Switches {
     on: [bool; 12],
 }
@@ -253,6 +293,36 @@ impl Render for Switches {
                     .child(switch("switch-touch-off", 10).touch())
                     .child(switch("switch-touch-on", 11).touch()),
             )
+    }
+}
+
+struct FocusedSwitch {
+    on: [bool; 2],
+}
+
+impl FocusedSwitch {
+    fn view(window: &mut Window, cx: &mut App) -> AnyView {
+        after_first_frame(window, Window::focus_next);
+        cx.new(|_| Self { on: [false; 2] }).into()
+    }
+}
+
+impl Render for FocusedSwitch {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let switch = |id: &'static str, at: usize| {
+            Switch::new(id).checked(self.on[at]).on_click(cx.listener(
+                move |this, on: &bool, _, cx| {
+                    this.on[at] = *on;
+                    cx.notify();
+                },
+            ))
+        };
+        states().state(
+            "focused, resting",
+            row()
+                .child(switch("switch-focused", 0))
+                .child(switch("switch-resting", 1)),
+        )
     }
 }
 
