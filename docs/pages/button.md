@@ -78,7 +78,7 @@ Medium is the default and follows density. One size per row.
 
 - Focus ring: keyboard only.
 - Off: leaves the keyboard path, keeps its tooltip.
-- Busy: keeps label and width, ignores clicks.
+- Busy: a spinner, the label stays, clicks are ignored.
 
 ## Labels
 
