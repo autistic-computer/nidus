@@ -663,8 +663,8 @@ Kinds, by how it opens (`PopupMenu` is the one surface; the select opens it too)
 
 | Kind | Call | Opens | Use |
 |---|---|---|---|
-| Dropdown | `Button::dropdown_menu(build)` | `space-4` below its button, on a press | a button's set of actions; give the button a caret |
-| Context | `.context_menu(build)` on any element | at the pointer, on a right press or a long press | actions on the thing under the pointer |
+| Dropdown | `Button::dropdown_menu(build)` | `space-4` below its button, on a press, or on Enter, Space or Down while the button has focus | a button's set of actions; give the button a caret |
+| Context | `.context_menu(build)` on any element | at the pointer, on a right press or a long press; at the element's top-left on Shift+F10 or the Menu key while focus is in it | actions on the thing under the pointer |
 | Submenu | `.submenu_with_icon(icon, label, window, cx, build)` | beside its row, when the row is highlighted | a group that would crowd the parent |
 
 Row kinds (`PopupMenuItem`): an action (`new`, with `.icon()` and `.action()`), a checked row (`.checked(true)`), a link (`link(label, href)`), custom content (`element`), a stepper (`stepper`), a submenu row, a section label (`label`) and a separator (`separator`).
@@ -696,7 +696,7 @@ States:
 
 Behavior:
 
-- Opening: a dropdown opens on a press of its trigger, focused; a context menu opens on a right press or a long press, at the pointer, kept 8 from the window's edges. A submenu opens when its row is highlighted, beside the row with 8 of overlap, on the left when the right has no room, kept 4 from the window's edges.
+- Opening: a dropdown opens on a press of its trigger, or on Enter, Space or Down while the trigger has focus; a context menu opens on a right press or a long press, at the pointer, or on Shift+F10 or the Menu key while focus is in its region, at the region's top-left. `.context_menu` doesn't make the region focusable: give it `.track_focus` for the keys to reach it. Either way the menu opens focused, kept 8 from the window's edges; opened from the keyboard, its first enabled row is highlighted. A submenu opens when its row is highlighted, beside the row with 8 of overlap, on the left when the right has no room, kept 4 from the window's edges.
 - Keys while open: Up and Down move the highlight over enabled rows and wrap. Right opens a highlighted submenu and moves into it; Left steps back to the parent. On a stepper Left and Right step and Enter resets. Enter runs the highlighted row and closes the menu. Escape closes it and every parent, and gives focus back to where it was. No type-ahead.
 - Pointer: pointing at a row highlights it; leaving clears it unless the last input was a key. A click runs the row on release and closes the whole chain; a press outside closes it. Stepper buttons step without closing.
 - A row runs its handler, or else dispatches its action to the menu's action context.
@@ -706,9 +706,9 @@ Content: a row's label is a verb or a short verb phrase in sentence case with no
 
 Placement: a dropdown hangs `space-4` below its trigger, aligned to the trigger's start, and its trigger carries a caret. A context menu opens where the pointer is. Keep submenus to one level where you can.
 
-HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down (Down highlights the first row), a context menu on the Menu key or Shift+F10.
+HTML: built at runtime by `menu.js`: `pennaMenu.dropdown(trigger, items)`, `pennaMenu.context(region, items)` or `new pennaMenu.Menu(items)`, where an item is `{ label, icon, key, checked, disabled, link }` or `{ kind: "label" | "separator" | "submenu" | "stepper" | "note", ... }`. The markup: `.penna-popup[data-penna="popover"]` holds `.penna-popup-items[role="menu"]`, whose rows are `.penna-popup-row[data-penna="menu-item"][role="menuitem"]` with `data-kind` (`item`, `label`, `submenu`, `stepper`, `note`), `data-disabled`, and `data-selected` with `data-state="selected"` (`"hover"` on a submenu row) while highlighted. A row holds `.penna-popup-icon`, then `.penna-popup-main` with the `.penna-label` and a `.penna-label.penna-popup-key`; labels and submenu rows wrap theirs in `.penna-popup-line`; marks are `i.penna-popup-detail`, a link's label `.penna-popup-link`, a stepper's group `.penna-popup-stepper`. Separators are `.penna-popup-separator[role="separator"]`; an open submenu is a `.penna-popup.penna-popup-sub` inside its row. `@media (pointer: coarse)` switches rows to 44, `body` and 14 icons. A dropdown also opens on Enter, Space and Down, a context menu on the Menu key or Shift+F10 at the region's top-left, each with its first enabled row highlighted.
 
-Status: one gap. Natively a menu opens only from the pointer: a dropdown on a press and a context menu on a right press or long press, while the HTML twin also opens them from the keyboard.
+Status: matches.
 
 ### Panel
 
@@ -764,17 +764,14 @@ States: closed, or open. While open the trigger is selected and the panel holds 
 
 Behavior:
 
-- A pointer press on the trigger opens the panel; another press on the trigger closes it.
+- A pointer press on the trigger, or Enter, Space or Down while the trigger has focus, opens the panel; the same again closes it. Keys pressed inside the panel stay with the panel.
 - Opening moves focus into the panel; closing returns it to what had it, when focus was still inside.
 - Escape closes it. A press outside closes it unless `.overlay_closable(false)`.
 - `.on_dismiss` runs whenever it closes. There is no call to open it from code.
 
-HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above) and `right` (aligns trailing edges); `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, and exposes `pennaPopover.setOpen(popover, open)`.
+HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above) and `right` (aligns trailing edges); `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, opens on Enter, Space and Down on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, and exposes `pennaPopover.setOpen(popover, open)`.
 
-Status: two gaps.
-
-- Only a pointer press opens it: Space and Enter on the focused trigger do nothing, natively and in HTML.
-- The HTML twin has no centered anchor and doesn't keep the panel inside the window.
+Status: one gap. The HTML twin has no centered anchor and doesn't keep the panel inside the window.
 
 ### Row
 
