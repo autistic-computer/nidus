@@ -1,7 +1,7 @@
 ---
 type: Design Plan
-title: "Foundations: the scales and rules every penna screen is built from"
-description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
+title: "Foundations: penna's design language"
+description: "The spec for penna's design language and the source of truth for every penna screen: principles, the rules and scales (space, type, sizes, color, corners, depth, focus, motion, layout), and each component's purpose, anatomy, states, behavior, content and placement. The docs site draws it with real components."
 status: Built (2026-11-04, steps 1 to 9)
 resource: src/foundation/space.rs
 tags:
@@ -14,11 +14,22 @@ timestamp: 2026-11-03T00:00:00Z
 
 # Foundations
 
-The spec agents read before building or changing UI with penna. It holds every value, name and rule. People read the Foundations pages of the docs site (`docs/pages/foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`), which show the same ideas with real components and no numbers. When the two disagree, this file wins and the pages get fixed.
+penna's design language: the principles, the rules and scales, and how each component looks and behaves. It is the source of truth for every penna screen and the spec agents read before building or changing UI. The docs site draws it: every section here has a page there made of real penna components (`docs/pages/principles.md`, `foundations.md`, `color.md`, `typography.md`, `spacing.md`, `sizes.md`, and a page per component), so people can see it. When a page and this file disagree, this file wins and the page gets fixed; when the code and this file disagree, the code gets fixed, and each component's Status says where it stands.
 
 Values are design pixels: one unit is 1/16 of the root rem, so the interface font size and window zoom scale everything together. `rems_from_px` converts.
 
 Status marks: **built** is in the code; **step N** is planned in the work order at the end.
+
+## Principles
+
+penna draws zz and nidus: tools people keep open all day, mostly driven from the keyboard, where the work (a terminal, a transcript, a document, the computers on a desk) matters more than the interface around it. Six principles follow from that. The rules and scales below are how they are kept; when a case is not covered, decide it by these.
+
+1. **The keyboard comes first.** Every action has a keyboard path, and the interface shows it: shortcuts sit beside menu rows and in which-key, and a focus ring appears whenever the keyboard moves focus. Pointer and touch reach the same actions, sized for them. So: every control is focusable unless it is disabled, activates with Space and Enter, and shows its shortcut where it is offered.
+2. **Calm, dense screens.** Most text on a screen is one size (`body`); weight and a few larger steps carry the hierarchy, and color is kept for meaning. Spacing follows relationships, so a dense screen still groups clearly, and density is a setting, never a squeeze. So: two or three text styles in a view, gaps picked by relationship, nothing added for decoration.
+3. **One highlight.** One color marks what is on, picked or in focus. In the default look it is the ink itself, so the interface stays black and white until someone picks an accent. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
+4. **The work leads, chrome recedes.** Bars, headers and toolbars use quiet controls (no fill at rest), muted labels and the smaller rungs, so the eye goes to the content. Text people read (documents, chat) is larger and more open than text people scan (`read-body` against `body`). So: chrome never competes with content for the strongest ink, size or color.
+5. **Every state shows.** A control always tells what it is doing: rest, hover, pressed, focused, selected, disabled, loading or in error. Feedback comes in the same frame as the input. Motion is short (120 to 220ms), shows where something came from or went, and turns off with reduced motion. So: no state without a look, and no animation that only decorates.
+6. **One kit everywhere.** The same components draw native windows on every desktop, the phone and the web, in three looks, light and dark. A look changes materials, corners and faces, never sizes, spacing or behavior. So: a component that only works in one look, one mode or one platform has a bug.
 
 ## Rules
 
@@ -198,9 +209,66 @@ Arrangement geometry stays with the app: where nidus puts computers on its board
 
 ## Components
 
-Every component page and story shows, where they apply: sizes, variants, tones, and the states rest, hover, pressed, focused, selected, disabled, loading and error, plus icon support. Known gaps: error states on select, text field, checkbox and radio; helper text; an indeterminate checkbox; radio groups; prefix and suffix on fields; equal-width tabs.
+Every component has a section here, written in one shape: what it is for (and what to use instead), anatomy, kinds, sizes, states, behavior, content, placement, its HTML twin, and Status. Its docs page draws each part with the real component and carries the anatomy in plain words; the values stay here. The widget and its HTML twin take the same properties.
 
-Each component's docs page carries an anatomy in plain words: its parts and what sets each one. The values stay in this file. The widget and its HTML version take the same properties.
+Every component page and story shows, where they apply: sizes, variants, tones, and the states rest, hover, pressed, focused, selected, disabled, loading and error, plus icon support. Known gaps across the kit: error states on select, text field, checkbox and radio; helper text; an indeterminate checkbox; radio groups; prefix and suffix on fields; equal-width tabs; a size API on segmented controls and sliders.
+
+Status marks for a component: **matches** (the code and its page follow its section), or a list of what does not yet.
+
+### Button
+
+A button starts an action now. To go somewhere, use a link button; inside a menu, a menu row; for a setting that applies at once, a switch; to pick one of a few views, a segmented control.
+
+Kinds, by tone and emphasis (`ButtonVariants`):
+
+| Kind | Call | Paint | Use |
+|---|---|---|---|
+| Primary | `.primary()` | `Tone::Primary`, `Emphasis::Solid` | the main action of a view: at most one per dialog, form or pane |
+| Secondary | default | `Tone::Neutral`, `Emphasis::Soft` | every other action |
+| Ghost | `.ghost()` | `Tone::Neutral`, `Emphasis::Ghost` | actions in bars, toolbars and rows, where a fill at rest is noise; it fills on hover |
+| Outline | `.emphasis(Emphasis::Outline)` | the tone's outline ink, no fill | a secondary action on a ground that has its own fill, where a soft fill would blend in |
+| Danger | `.danger()` | `Tone::Danger`, `Emphasis::Soft` | an action that destroys something or can't be undone; the confirm button of a destructive dialog |
+| Warning, Success | `.warning()`, `.success()` | the tone, `Emphasis::Soft` | not for an action on its own: status colors mean status (Principles 3). A notice's or callout's action is a primary placed on its ground (`.primary().on(Notice::ground(tone, cx))`), which paints it in that tone |
+| Link | `.link()` | underlined ink, no padding | goes somewhere: a page, a URL, a settings pane; sits in text or at a row's end |
+| Text | `.text()` | ink, no padding, muted while pressed | a plain action inside a line of text |
+
+Apps' chrome uses the kit looks in `ButtonLook` (`Bar`, `Chrome`, `RowIcon`, `Floating`, `Send`, and the rest in kit.md); they follow this section like any button.
+
+Anatomy, left to right, all from the button's rung of the control ladder (Size):
+
+- Container: height `control_px`, radius the theme radius capped at 45% of the height, inset `inset` at both sides (8, 8, 12, 16, 16, 16 from `xs` to `touch`). Link and text buttons have no container inset.
+- Icon (optional): `icon_px` (12, 12, 14, 16, 16, 16), before the label, `icon_gap` from it (4, 4, 6, 6, 8, 8). While loading it is a spinner of the same size.
+- Label: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`) at weight 400. A primary's label takes whichever of near-white or near-black reads better on its fill.
+- Caret (optional, `.dropdown_caret(true)`): a chevron at the end, `icon_gap` after the label, for a button that opens a menu. It is the same mark as a select's chevron at that size: a rung smaller than the button's icon from `md` up.
+- Focus ring: 1.5px, outside the container, its own radius (Corners, depth, focus, motion).
+
+Icon only: the button is square (width = height) and must carry a tooltip that names the action, which is also its accessible name. A row's trailing actions use `Button::compact_icon` (24, ghost).
+
+Sizes: `md` by default (follows density). `sm` and `xs` in toolbars, lists and rows that repeat; `lg` and `xl` for the one main action of a sparse screen (an empty state, a first run); `touch` under a coarse pointer. Every button in a row has the same size (Rules 6).
+
+States:
+
+| State | Look | Notes |
+|---|---|---|
+| rest | the kind's paint | |
+| hover | the paint's hover step (a lift) | not under a coarse pointer, not when selected or disabled |
+| pressed | the paint's active step, while held | not under a coarse pointer, which draws the press highlight instead |
+| focused | the focus ring; fill unchanged | from the keyboard only, never from a click |
+| selected | the picked look (`data-state="current"`) | a button that stands for an on state in a group |
+| disabled | faint label, no hover or press | leaves the focus order; its tooltip still shows |
+| loading | the icon becomes a spinner | clicks are ignored; the label and width stay |
+
+In a window that is not active, a glass button flattens and its label fades, like the rest of the window's chrome.
+
+Behavior: it fires on release of a click or tap inside it, and on Space or Enter while focused. A button with a caret opens its menu below it. A tooltip shows after the hover delay.
+
+Content: the label is a verb or a short verb phrase in sentence case, one to three words ("Save", "Add host", "Open in browser"), with no closing period. It names the action, never "OK" or "Yes". End it with an ellipsis ("Allow…") when the action asks for more before it happens, such as opening a dialog. A danger button names what it removes ("Delete branch").
+
+Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's actions sit at its end, aligned to the trailing edge, the primary last and its cancel just before it. A destructive dialog confirms with a danger button, not a primary one. Ghost buttons in a bar sit `inset-chrome` from its edges.
+
+HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
+
+Status: two gaps. The caret is 12 at every size, where this section asks for the select's chevron at the same size. `.warning()` and `.success()` are still on `ButtonVariants` and in the buttons story's variants, where this section rules them out.
 
 ## Work order
 
