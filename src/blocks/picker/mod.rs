@@ -10,7 +10,7 @@ use ala::{
     SharedString, Stateful, div, prelude::*, px, relative,
 };
 
-const PICKER_ROW_HEIGHT: Pixels = px(26.0);
+const PICKER_ROW_HEIGHT: Pixels = px(28.0);
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 
 pub(crate) fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {

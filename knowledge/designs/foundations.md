@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-04, steps 1 to 6 of 9 built)
+status: In progress (2026-11-04, steps 1 to 7 of 9 built)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -39,7 +39,7 @@ Status marks: **built** is in the code; **step N** is planned in the work order 
 | `gap-related` | `--penna-gap-related` | `Space::GAP_RELATED` | built |
 | `inset-card` | `--penna-inset-card` | `Space::INSET_CARD` | built |
 | text style `body` | `--penna-text-body-size`, `-line`, `-weight` | `TextStyle::Body` | built |
-| `control-md` | `--penna-control-md` | `Size::Medium` | step 7 |
+| `control-md` | `--penna-control-md` | `Size::Medium` | built |
 | colors | `--penna-fg`, `--penna-fg-muted`, ... | `cx.theme()` fields and looks | built |
 
 Until step 1, `Space` variants were named in 2px steps (`Space::S4` was 8px), while ala's helpers count 4px steps (`gap_4()` is 16px). Don't use ala's spacing helpers (`gap_2()`, `px_3()`, ...) in penna; use `Space`.
@@ -127,16 +127,16 @@ Control ladder. Every control at a size shares one anatomy:
 
 | Token | px | Text | Inset | Field inset | Icon | Icon gap | Status |
 |---|---|---|---|---|---|---|---|
-| `control-xs` | 20 | `caption` | 8 | 6 | 12 | 4 | step 7 (chips today) |
+| `control-xs` | 20 | `caption` | 8 | 6 | 12 | 4 | built: `Size::XSmall` (the small chip) |
 | `control-sm` | 24 | `small` | 8 | 6 | 12 | 4 | built: `Size::Small` |
 | `control-md` | 28 | `body` | 12 | 8 | 14 | 6 | built: `Size::Medium`, the default |
-| `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | step 7 |
-| `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | step 7 |
-| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | step 7 |
+| `control-lg` | 32 | `body` | 16 | 10 | 16 | 6 | built: `Size::Large`, tabs |
+| `control-xl` | 40 | `lead` | 16 | 12 | 16 | 8 | built: `Size::XLarge` |
+| `touch` | 44 | `touch-body` | 16 | 12 | 16 | 8 | built: `Size::Touch` |
 
-Fields use the field inset because their text starts at the edge.
+Fields use the field inset because their text starts at the edge. `Size` carries the whole row of the table: `control_px`, `control_text`, `inset`, `field_inset`, `icon_px` and `icon_gap`, and `Size::Size(px)` takes the nearest rung for everything but its height. Badges, keycaps and checkboxes sit in a line of text, so from `Large` up they draw like `Medium`. A field's own marks (clear button, spinner, select chevron) are a rung smaller than the field from `Large` up.
 
-Other heights: `control-chrome` 22 (controls in bars, today `PANE_HEADER_CONTROL_HEIGHT`); `bar` 34 = `control-chrome` + 2 × `inset-chrome` (title bar and pane headers); `row` 28 (list, sidebar and menu rows; menu rows are 26 today and move to 28 in step 7); tabs take the ladder (36 today becomes 32 or 40 in step 7).
+Other heights: `control-chrome` 22 (controls in bars, today `PANE_HEADER_CONTROL_HEIGHT`); `bar` 34 = `control-chrome` + 2 × `inset-chrome` (title bar and pane headers); `row` 28 (list, sidebar, picker and menu rows); tabs are `control-lg` 32 by default and take any rung with `.with_size()`.
 
 Icons: 12 beside `small` and `caption`, 14 beside `body`, 16 beside `lead` and `heading`.
 
@@ -210,7 +210,7 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | 4 | Root text style: `Root` and `penna.css` set `body` | app text with no style goes from 16 on 26 to 13 on 18; penna itself doesn't move | built |
 | 5 | Layout primitives, native and DOM, with stories | none by themselves | built |
 | 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | built |
-| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `touch`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
+| 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `touch`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | built |
 | 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | built |
 | 9 | Density setting | new option | |
 

@@ -286,46 +286,117 @@ pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub enum Size {
     Size(Pixels),
+    XSmall,
     Small,
     #[default]
     Medium,
+    Large,
+    XLarge,
+    Touch,
 }
 
 impl Size {
+    pub const LADDER: [Self; 6] = [
+        Self::XSmall,
+        Self::Small,
+        Self::Medium,
+        Self::Large,
+        Self::XLarge,
+        Self::Touch,
+    ];
+
+    pub fn name(&self) -> &'static str {
+        match self.rung() {
+            Size::XSmall => "xs",
+            Size::Small => "sm",
+            Size::Large => "lg",
+            Size::XLarge => "xl",
+            Size::Touch => "touch",
+            _ => "md",
+        }
+    }
+
+    pub fn rung(&self) -> Self {
+        match self {
+            Size::Size(value) => {
+                let height = value.as_f32();
+                Self::LADDER
+                    .into_iter()
+                    .rev()
+                    .min_by(|a, b| {
+                        (a.control_px() - height)
+                            .abs()
+                            .total_cmp(&(b.control_px() - height).abs())
+                    })
+                    .unwrap_or_default()
+            }
+            size => *size,
+        }
+    }
+
     pub fn control_px(&self) -> f32 {
         match self {
             Size::Size(value) => value.as_f32(),
+            Size::XSmall => 20.,
             Size::Small => 24.,
             Size::Medium => 28.,
+            Size::Large => 32.,
+            Size::XLarge => 40.,
+            Size::Touch => 44.,
         }
     }
 
     pub fn control_text(&self) -> TextStyle {
-        match self {
+        match self.rung() {
+            Size::XSmall => TextStyle::Caption,
             Size::Small => TextStyle::Small,
-            Size::Medium => TextStyle::Body,
-            Size::Size(value) => match value.as_f32() {
-                height if height < 22. => TextStyle::Caption,
-                height if height < 26. => TextStyle::Small,
-                height if height < 36. => TextStyle::Body,
-                _ => TextStyle::Lead,
-            },
+            Size::XLarge => TextStyle::Lead,
+            Size::Touch => TextStyle::TouchBody,
+            _ => TextStyle::Body,
+        }
+    }
+
+    pub fn inset(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S8,
+            Size::Large | Size::XLarge | Size::Touch => Space::S16,
+            _ => Space::S12,
+        }
+    }
+
+    pub fn field_inset(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S6,
+            Size::Large => Space::S10,
+            Size::XLarge | Size::Touch => Space::S12,
+            _ => Space::S8,
+        }
+    }
+
+    pub fn icon_px(&self) -> f32 {
+        match self.rung() {
+            Size::XSmall | Size::Small => 12.,
+            Size::Large | Size::XLarge | Size::Touch => 16.,
+            _ => 14.,
+        }
+    }
+
+    pub fn icon_gap(&self) -> Space {
+        match self.rung() {
+            Size::XSmall | Size::Small => Space::S4,
+            Size::XLarge | Size::Touch => Space::S8,
+            _ => Space::S6,
         }
     }
 
     pub fn input_px(&self) -> DefiniteLength {
-        match self {
-            Self::Medium => rems_from_px(8.).into(),
-            Self::Small => rems_from_px(6.).into(),
-            Self::Size(_) => px(8.).into(),
-        }
+        self.field_inset().into()
     }
 
     pub fn input_py(&self) -> DefiniteLength {
-        match self {
-            Size::Medium => rems_from_px(2.).into(),
-            Size::Small => rems_from_px(0.).into(),
-            Size::Size(_) => px(2.).into(),
+        match self.rung() {
+            Size::XSmall | Size::Small => rems_from_px(0.).into(),
+            _ => Space::S2.into(),
         }
     }
 
@@ -364,8 +435,28 @@ pub trait Sizable: Sized {
     fn with_size(mut self, size: impl Into<Size>) -> Self;
 
     #[inline(always)]
+    fn xsmall(self) -> Self {
+        self.with_size(Size::XSmall)
+    }
+
+    #[inline(always)]
     fn small(self) -> Self {
         self.with_size(Size::Small)
+    }
+
+    #[inline(always)]
+    fn large(self) -> Self {
+        self.with_size(Size::Large)
+    }
+
+    #[inline(always)]
+    fn xlarge(self) -> Self {
+        self.with_size(Size::XLarge)
+    }
+
+    #[inline(always)]
+    fn touch(self) -> Self {
+        self.with_size(Size::Touch)
     }
 }
 
