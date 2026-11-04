@@ -104,14 +104,14 @@ impl Materials {
 }
 
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
-    ("blue", "#146ae3", "#76abfd"),
-    ("purple", "#8a4fd7", "#bd97fe"),
-    ("pink", "#c63187", "#f585bd"),
-    ("red", "#d32e33", "#ff877f"),
-    ("orange", "#b35407", "#f88e4f"),
-    ("yellow", "#8d6a07", "#d3a229"),
-    ("green", "#028132", "#59be6d"),
-    ("graphite", "#6f6f6f", "#aaaaaa"),
+    ("blue", "#0a64dd", "#76abfd"),
+    ("purple", "#8549d1", "#bd97fe"),
+    ("pink", "#c02a82", "#f585bd"),
+    ("red", "#cc252d", "#ff877f"),
+    ("orange", "#ad4f00", "#f88e4f"),
+    ("yellow", "#876400", "#d3a229"),
+    ("green", "#007b2c", "#59be6d"),
+    ("graphite", "#6a6a6a", "#aaaaaa"),
 ];
 
 pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
@@ -698,13 +698,29 @@ mod tests {
                     assert!(ratio >= 3.0, "{id} {mode:?} {name} is {ratio:.2}:1");
                 }
             }
-            let accent = kit.paint(crate::Tone::Primary, crate::Emphasis::Solid);
-            let ink = kit.on_accent.unwrap_or(accent.text);
-            let ratio = contrast(ink, kit.accent);
-            assert!(
-                ratio >= 3.0,
-                "{id} {mode:?} text on the accent is {ratio:.2}:1"
-            );
+            for (name, color) in [
+                ("muted text", kit.foreground.muted()),
+                ("accent", kit.accent),
+                ("success", kit.success),
+                ("warning", kit.warning),
+                ("danger", kit.danger),
+            ] {
+                let ratio = contrast(color, kit.background);
+                assert!(ratio >= 4.5, "{id} {mode:?} {name} as text is {ratio:.2}:1");
+            }
+            for tone in [
+                crate::Tone::Accent,
+                crate::Tone::Success,
+                crate::Tone::Warning,
+                crate::Tone::Danger,
+            ] {
+                let solid = kit.paint(tone, crate::Emphasis::Solid);
+                let ratio = contrast(solid.text, solid.fill);
+                assert!(
+                    ratio >= 4.5,
+                    "{id} {mode:?} text on a solid {tone:?} fill is {ratio:.2}:1"
+                );
+            }
         }
     }
 
