@@ -228,9 +228,10 @@ Kinds, by tone and emphasis (`ButtonVariants`):
 | Ghost | `.ghost()` | `Tone::Neutral`, `Emphasis::Ghost` | actions in bars, toolbars and rows, where a fill at rest is noise; it fills on hover |
 | Outline | `.emphasis(Emphasis::Outline)` | the tone's outline ink, no fill | a secondary action on a ground that has its own fill, where a soft fill would blend in |
 | Danger | `.danger()` | `Tone::Danger`, `Emphasis::Soft` | an action that destroys something or can't be undone; the confirm button of a destructive dialog |
-| Warning, Success | `.warning()`, `.success()` | the tone, `Emphasis::Soft` | not for an action on its own: status colors mean status (Principles 3). A notice's or callout's action is a primary placed on its ground (`.primary().on(Notice::ground(tone, cx))`), which paints it in that tone |
 | Link | `.link()` | underlined ink, no padding | goes somewhere: a page, a URL, a settings pane; sits in text or at a row's end |
 | Text | `.text()` | ink, no padding, muted while pressed | a plain action inside a line of text |
+
+There are no warning or success buttons: status colors mean status (Principles 3). A notice's or callout's action is a primary placed on its ground (`.primary().on(Notice::ground(tone, cx))`), which paints it in that tone.
 
 Apps' chrome uses the kit looks in `ButtonLook` (`Bar`, `Chrome`, `RowIcon`, `Floating`, `Send`, and the rest in kit.md); they follow this section like any button.
 
@@ -268,7 +269,7 @@ Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's 
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
 
-Status: three gaps. The caret is 12 at every size, where this section asks for the select's chevron at the same size. `.warning()` and `.success()` are still on `ButtonVariants` and in the buttons story's variants, where this section rules them out. A busy button with no icon only dims, natively and in HTML, and the HTML twin never draws the spinner.
+Status: matches.
 
 ### Badge
 
