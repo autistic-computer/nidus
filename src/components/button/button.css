@@ -6,7 +6,7 @@
   justify-content: center;
   gap: var(--penna-space-6);
   box-sizing: border-box;
-  height: 28px;
+  height: var(--penna-control-md);
   min-width: 0;
   margin: 0;
   padding: 0 var(--penna-space-12);
@@ -77,7 +77,7 @@
 }
 
 .penna-button[data-compact] {
-  min-width: 28px;
+  min-width: var(--penna-control-md);
   padding: 0 var(--penna-space-6);
 }
 
@@ -107,8 +107,8 @@
 }
 
 .penna-button[data-shape="icon"] {
-  width: 28px;
-  height: 28px;
+  width: var(--penna-control-md);
+  height: var(--penna-control-md);
   padding: 0;
 }
 

@@ -19,6 +19,14 @@ body {
   margin: 0;
 }
 
+:root[data-density="compact"] {
+  --penna-control-md: 24px;
+}
+
+:root[data-density="comfortable"] {
+  --penna-control-md: 32px;
+}
+
 [data-penna] {
   background:
     linear-gradient(var(--penna-mark), var(--penna-mark)) 0 50% / 3px 16px no-repeat,
@@ -122,7 +130,7 @@ button[data-penna] {
   align-items: center;
   justify-content: center;
   gap: var(--penna-space-6);
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 0 var(--penna-space-12);
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -184,8 +192,8 @@ button[data-penna] {
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: var(--penna-control-md);
+  height: var(--penna-control-md);
   padding: 0;
   --penna-icon-size: 14px;
 }
@@ -224,7 +232,7 @@ button[data-penna] {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 2px 8px;
   font-size: var(--penna-text-body-size);
   font-weight: var(--penna-text-body-weight);
@@ -305,7 +313,7 @@ button[data-penna] {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 0 var(--penna-space-8);
   font-size: var(--penna-text-small-size);
   line-height: var(--penna-text-small-line);
@@ -425,7 +433,7 @@ button[data-penna] {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 28px;
+  height: var(--penna-control-md);
   padding: 0 8px;
   outline: none;
   touch-action: none;

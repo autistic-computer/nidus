@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use super::{
     ActiveTheme, Edge, Emphasis, Ground, Kind, Layer, PaintState, StatefulSurfaceExt, Surface,
     SurfaceRole, TextStyle, Tone,
@@ -283,6 +285,47 @@ pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
     cx.theme().lifted_shadows()
 }
 
+#[derive(Clone, Default, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Density {
+    Compact,
+    #[default]
+    Regular,
+    Comfortable,
+}
+
+impl Density {
+    pub const ALL: [Self; 3] = [Self::Compact, Self::Regular, Self::Comfortable];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Regular => "regular",
+            Self::Comfortable => "comfortable",
+        }
+    }
+
+    pub fn control_px(self) -> f32 {
+        match self {
+            Self::Compact => 24.,
+            Self::Regular => 28.,
+            Self::Comfortable => 32.,
+        }
+    }
+
+    pub fn get() -> Self {
+        DENSITY.get()
+    }
+
+    pub fn set(self) {
+        DENSITY.set(self);
+    }
+}
+
+thread_local! {
+    static DENSITY: Cell<Density> = const { Cell::new(Density::Regular) };
+}
+
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub enum Size {
     Size(Pixels),
@@ -324,9 +367,9 @@ impl Size {
                     .into_iter()
                     .rev()
                     .min_by(|a, b| {
-                        (a.control_px() - height)
+                        (a.ladder_px() - height)
                             .abs()
-                            .total_cmp(&(b.control_px() - height).abs())
+                            .total_cmp(&(b.ladder_px() - height).abs())
                     })
                     .unwrap_or_default()
             }
@@ -336,10 +379,17 @@ impl Size {
 
     pub fn control_px(&self) -> f32 {
         match self {
+            Size::Medium => Density::get().control_px(),
+            size => size.ladder_px(),
+        }
+    }
+
+    fn ladder_px(&self) -> f32 {
+        match self {
             Size::Size(value) => value.as_f32(),
             Size::XSmall => 20.,
             Size::Small => 24.,
-            Size::Medium => 28.,
+            Size::Medium => Density::Regular.control_px(),
             Size::Large => 32.,
             Size::XLarge => 40.,
             Size::Touch => 44.,

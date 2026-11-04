@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Foundations: the scales and rules every penna screen is built from"
 description: "The agent-facing spec for penna's foundations: space, gap and inset tokens named by their pixel value, the interface, reading and touch type ladders, the control size ladder, color roles and contrast, corners, depth, focus, motion, the six layout primitives, and the order of work that brings penna onto them. People read the Foundations pages of the docs site instead."
-status: In progress (2026-11-04, steps 1 to 7 of 9 built)
+status: Built (2026-11-04, steps 1 to 9)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -144,7 +144,7 @@ Inside a line of text, keycaps, badges and checkboxes take the line height of th
 
 Width: reading text stops at a measure of 640 (about 75 characters of `read-body`). Sidebars are 200 to 256 wide, layout geometry rather than tokens.
 
-Density (step 9): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay.
+Density (built): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay, and so do the other rungs. It is `Appearance::density` (Advanced, under UI zoom), and `Size::Medium.control_px()` follows it, so buttons, fields, selects, segmented controls and list, menu and picker rows move together. The HTML reads `--penna-control-md`, which `:root[data-density]` changes (`?density=` on a page). `Size::rung()` measures `Size(px)` against the regular ladder, so a fixed-height control keeps its rung at any density.
 
 ## Color
 
@@ -212,6 +212,6 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | built |
 | 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `touch`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | built |
 | 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | built |
-| 9 | Density setting | new option | |
+| 9 | Density setting | new option | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

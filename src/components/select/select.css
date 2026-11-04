@@ -13,7 +13,7 @@
   justify-content: space-between;
   gap: 6px;
   box-sizing: border-box;
-  height: 28px;
+  height: var(--penna-control-md);
   min-width: 0;
   padding: 0 8px;
   border-width: max(1px, var(--penna-bw));
