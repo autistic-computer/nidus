@@ -168,7 +168,7 @@ Surfaces stack in this order, each layer a step away from the one under it (dark
 
 Highlight: what is on, picked or in focus uses `primary`, which is the ink itself in the default look and the accent once one is picked in Appearance.
 
-Contrast (WCAG 2, on `bg`): `fg` 16.4 light / 14.0 dark; `fg-muted` 5.8 / 4.4; `muted` 5.9 / 5.9; `fg-faint` 3.1 / 2.0; `accent` as text 4.4 / 5.8; `on-accent` on `accent` 3.8 / 6.8; `success` 4.3 / 7.5; `warning` 4.6 / 8.4; `danger` 4.9 / 5.3. Under 4.5 and flagged for step 8: `fg-muted` dark, `accent` and `success` as text in light, `on-accent` light. Check all six theme variants (three looks, light and dark), not only the default.
+Contrast (WCAG 2, built in step 8): in all six theme variants (three looks, light and dark) and for every pickable accent at any tint, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of any of them. The muted mix is 0.30 of the way to the contrast pole. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone accent and status fills. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
 
 ## Corners, depth, focus, motion
 
@@ -211,7 +211,7 @@ Each component's docs page carries an anatomy: its parts and the tokens they use
 | 5 | Layout primitives, native and DOM, with stories | none by themselves | built |
 | 6 | Components onto the primitives and space tokens, one family at a time, starting with Appearance (its 11 and 14 insets) | small spacing moves, reviewed per family | built |
 | 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `touch`, rows 28, tabs on the ladder | menu rows grow 2px, tabs move | |
-| 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | |
+| 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | built |
 | 9 | Density setting | new option | |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.
