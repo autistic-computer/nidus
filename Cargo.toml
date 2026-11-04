@@ -111,7 +111,7 @@ objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSRunningApplication", "NSSavePanel", "NSView", "NSWindow"] }
 objc2-foundation = { version = "0.3.2", default-features = false }
 penna = { path = "libs/penna", features = ["tray"] }
-resvg = { version = "0.48.1", default-features = false, features = [
+resvg = { version = "0.49.0", default-features = false, features = [
     "text",
     "system-fonts",
     "memmap-fonts",
@@ -120,7 +120,7 @@ resvg = { version = "0.48.1", default-features = false, features = [
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
 windows = "=0.62.2"
-windows-registry = "0.6.0"
+windows-registry = "0.100.0"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
