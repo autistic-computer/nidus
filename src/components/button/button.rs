@@ -2,17 +2,19 @@ use crate::Space;
 use std::rc::Rc;
 
 use ala::{
-    AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
-    InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
-    Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder as _, px,
+    AnyElement, App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, Hsla, InteractiveElement,
+    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
+    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH,
-    Ground, Icon, IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, Smoothing,
-    StyledExt as _, Surface, SurfaceRole, Tone, components::tooltip::Tooltip, foundation::roles,
+    ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable, Emphasis, Ground, Icon,
+    IconName, Kind, Layer, PaintState, Selectable, Sizable, Size, Smoothing, StyledExt as _,
+    Surface, SurfaceRole, Tone,
+    components::tooltip::Tooltip,
     components::{input::trailing_size, spinner::Spinner},
+    foundation::roles,
     h_flex, rems_from_px,
 };
 
@@ -454,90 +456,6 @@ impl InteractiveElement for Button {
     }
 }
 
-fn with_focus_ring<T: ParentElement + Styled + Sized>(
-    mut this: T,
-    is_focused: bool,
-    margins: Pixels,
-    paint: &Paint,
-    smoothing: f32,
-    window: &Window,
-) -> T {
-    if !is_focused {
-        return this;
-    }
-
-    let rem_size = window.rem_size();
-    let style = this.style();
-
-    let border_widths = Edges::<Pixels> {
-        top: style
-            .border_widths
-            .top
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        bottom: style
-            .border_widths
-            .bottom
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        left: style
-            .border_widths
-            .left
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        right: style
-            .border_widths
-            .right
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-    };
-
-    let radius = Corners::<Pixels> {
-        top_left: style
-            .corner_radii
-            .top_left
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        top_right: style
-            .corner_radii
-            .top_right
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        bottom_left: style
-            .corner_radii
-            .bottom_left
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-        bottom_right: style
-            .corner_radii
-            .bottom_right
-            .map(|v| v.to_pixels(rem_size))
-            .unwrap_or_default(),
-    }
-    .map(|v| *v + FOCUS_RING_WIDTH);
-
-    let mut inner_style = StyleRefinement::default();
-    inner_style.corner_radii.top_left = Some(radius.top_left.into());
-    inner_style.corner_radii.top_right = Some(radius.top_right.into());
-    inner_style.corner_radii.bottom_left = Some(radius.bottom_left.into());
-    inner_style.corner_radii.bottom_right = Some(radius.bottom_right.into());
-
-    let inset = FOCUS_RING_WIDTH + margins;
-
-    this.child(
-        div()
-            .flex_none()
-            .absolute()
-            .top(-(inset + border_widths.top))
-            .left(-(inset + border_widths.left))
-            .right(-(inset + border_widths.right))
-            .bottom(-(inset + border_widths.bottom))
-            .focus_ring(paint)
-            .corner_smoothing(smoothing)
-            .refine_style(&inner_style),
-    )
-}
-
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let variant = self.variant;
@@ -787,12 +705,12 @@ impl RenderOnce for Button {
                         .children(self.children)
                         .when(self.dropdown_caret, |this| {
                             this.justify_between().child(
-                                Icon::new(IconName::ChevronDown).with_size(trailing_size(self.size)).text_color(
-                                    match self.disabled {
+                                Icon::new(IconName::ChevronDown)
+                                    .with_size(trailing_size(self.size))
+                                    .text_color(match self.disabled {
                                         true => rest.text.opacity(0.3),
                                         false => rest.text.opacity(0.5),
-                                    },
-                                ),
+                                    }),
                             )
                         })
                 }),
@@ -811,7 +729,14 @@ impl RenderOnce for Button {
             _ => Tone::Neutral,
         };
         let focus_paint = cx.theme().paint_on(ground, tone, Emphasis::Ghost);
-        with_focus_ring(element, is_focused, px(0.), &focus_paint, smoothing, window)
+        crate::foundation::focus::with_focus_ring(
+            element,
+            is_focused,
+            px(0.),
+            &focus_paint,
+            smoothing,
+            window,
+        )
     }
 }
 
