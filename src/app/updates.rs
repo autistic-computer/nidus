@@ -194,14 +194,12 @@ async fn notify(connection: &zbus::Connection, tag: &str) -> zbus::Result<()> {
     use zbus::{MatchRule, MessageStream, message::Type};
     const NOTIFICATIONS: &str = "org.freedesktop.Notifications";
     let signal = |member| {
-        Ok::<_, zbus::Error>(
-            MatchRule::builder()
-                .msg_type(Type::Signal)
-                .sender(NOTIFICATIONS)?
-                .interface(NOTIFICATIONS)?
-                .member(member)?
-                .build(),
-        )
+        MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(NOTIFICATIONS)
+            .interface(NOTIFICATIONS)
+            .member(member)
+            .build()
     };
     let mut clicks =
         MessageStream::for_match_rule(signal("ActionInvoked")?, connection, None).await?;
@@ -244,7 +242,7 @@ type Notification<'a> = (
     String,
     &'a str,
     Vec<&'a str>,
-    HashMap<&'a str, zbus::zvariant::Value<'a>>,
+    HashMap<&'a str, zbus::Variant<'a>>,
     i32,
 );
 
@@ -342,7 +340,7 @@ mod tests {
 
     #[test]
     fn the_notification_matches_the_notify_signature() {
-        use zbus::zvariant::Type;
+        use zbus::Type;
         assert_eq!(
             Notification::SIGNATURE.to_string(),
             "(susssasa{sv}i)",

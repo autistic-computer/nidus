@@ -14,10 +14,8 @@ use tokio::{
     time::timeout_at,
 };
 use zbus::{
-    Connection, MatchRule, MessageStream,
-    export::futures_core::Stream,
-    message::Type,
-    zvariant::{OwnedObjectPath, OwnedValue},
+    Connection, MatchRule, MessageStream, OwnedObjectPath, OwnedVariant,
+    export::futures_core::Stream, message::Type,
 };
 
 const PRIMARY_SEAT: &str = "seat0";
@@ -27,7 +25,7 @@ const MANAGER_PATH: &str = "/org/freedesktop/login1";
 
 const DEFAULT_QUERY_TIMEOUT: Duration = Duration::from_millis(200);
 const SIGNAL_DEBOUNCE: Duration = Duration::from_millis(25);
-const SIGNAL_QUEUE: usize = 64;
+const SIGNAL_QUEUE: std::num::NonZeroUsize = std::num::NonZeroUsize::new(64).unwrap();
 const RETRY_MIN: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(5);
 
@@ -119,7 +117,7 @@ impl LogindBusQuery {
         })
     }
 
-    fn query(&self, kind: &str, id: &str) -> Result<HashMap<String, OwnedValue>, LogindError> {
+    fn query(&self, kind: &str, id: &str) -> Result<HashMap<String, OwnedVariant>, LogindError> {
         self.runtime.block_on(async {
             let deadline = tokio::time::Instant::now() + self.timeout;
             let mut connection = timeout_at(deadline, self.connection.lock())
@@ -128,7 +126,7 @@ impl LogindBusQuery {
             let result = timeout_at(deadline, async {
                 if connection.is_none() {
                     *connection = Some(
-                        zbus::connection::Builder::address(self.address.as_str())?
+                        zbus::connection::Builder::address(self.address.as_str())
                             .build()
                             .await?,
                     );
@@ -184,9 +182,9 @@ impl LogindQuery for LogindBusQuery {
     }
 }
 
-fn property<T>(values: &mut HashMap<String, OwnedValue>, name: &str) -> Result<T, LogindError>
+fn property<T>(values: &mut HashMap<String, OwnedVariant>, name: &str) -> Result<T, LogindError>
 where
-    T: TryFrom<OwnedValue>,
+    T: TryFrom<OwnedVariant>,
     T::Error: fmt::Display,
 {
     let value = values.remove(name).ok_or_else(|| LogindError::Property {
@@ -199,7 +197,7 @@ where
     })
 }
 
-fn seat_properties(mut values: HashMap<String, OwnedValue>) -> Result<Properties, LogindError> {
+fn seat_properties(mut values: HashMap<String, OwnedVariant>) -> Result<Properties, LogindError> {
     let id: String = property(&mut values, "Id")?;
     let (active, _): (String, OwnedObjectPath) = property(&mut values, "ActiveSession")?;
     let sessions: Vec<(String, OwnedObjectPath)> = property(&mut values, "Sessions")?;
@@ -220,7 +218,9 @@ fn seat_properties(mut values: HashMap<String, OwnedValue>) -> Result<Properties
     ]))
 }
 
-fn session_properties(mut values: HashMap<String, OwnedValue>) -> Result<Properties, LogindError> {
+fn session_properties(
+    mut values: HashMap<String, OwnedVariant>,
+) -> Result<Properties, LogindError> {
     let mut properties = Properties::new();
     for name in ["Id", "TTY", "Type", "Class", "State"] {
         properties.insert(name.into(), property::<String>(&mut values, name)?);
@@ -371,20 +371,20 @@ struct LogindSignals {
 
 impl LogindSignals {
     async fn subscribe() -> zbus::Result<Self> {
-        let connection = zbus::connection::Builder::address(SYSTEM_BUS_ADDRESS)?
+        let connection = zbus::connection::Builder::address(SYSTEM_BUS_ADDRESS)
             .build()
             .await?;
         let logind = MatchRule::builder()
             .msg_type(Type::Signal)
-            .sender(LOGIND)?
-            .build();
+            .sender(LOGIND)
+            .build()?;
         let owner = MatchRule::builder()
             .msg_type(Type::Signal)
-            .sender("org.freedesktop.DBus")?
-            .interface("org.freedesktop.DBus")?
-            .member("NameOwnerChanged")?
-            .arg(0, LOGIND)?
-            .build();
+            .sender("org.freedesktop.DBus")
+            .interface("org.freedesktop.DBus")
+            .member("NameOwnerChanged")
+            .arg(0, LOGIND)
+            .build()?;
         Ok(Self {
             logind: MessageStream::for_match_rule(logind, &connection, Some(SIGNAL_QUEUE)).await?,
             owner: MessageStream::for_match_rule(owner, &connection, Some(SIGNAL_QUEUE)).await?,
@@ -806,25 +806,25 @@ mod tests {
         assert_eq!(state.injection_gate(), InjectionGate::Denied);
     }
 
-    fn bus_properties(text: &str) -> HashMap<String, OwnedValue> {
-        use zbus::zvariant::{ObjectPath, Value};
+    fn bus_properties(text: &str) -> HashMap<String, OwnedVariant> {
+        use zbus::{ObjectPath, Variant};
         let path = ObjectPath::try_from("/org/freedesktop/login1/test").unwrap();
         parse_properties(text)
             .unwrap()
             .into_iter()
             .map(|(name, value)| {
                 let value = match name.as_str() {
-                    "ActiveSession" | "Seat" => Value::from((value, path.clone())),
-                    "Sessions" => Value::from(
+                    "ActiveSession" | "Seat" => Variant::from((value, path.clone())),
+                    "Sessions" => Variant::from(
                         value
                             .split_whitespace()
                             .map(|id| (id.to_owned(), path.clone()))
                             .collect::<Vec<_>>(),
                     ),
-                    "User" => Value::from((value.parse::<u32>().unwrap(), path.clone())),
-                    "VTNr" => Value::from(value.parse::<u32>().unwrap()),
-                    "Remote" | "Active" | "CanLock" | "LockedHint" => Value::from(value == "yes"),
-                    _ => Value::from(value),
+                    "User" => Variant::from((value.parse::<u32>().unwrap(), path.clone())),
+                    "VTNr" => Variant::from(value.parse::<u32>().unwrap()),
+                    "Remote" | "Active" | "CanLock" | "LockedHint" => Variant::from(value == "yes"),
+                    _ => Variant::from(value),
                 };
                 (name, value.try_into().unwrap())
             })
@@ -857,12 +857,12 @@ mod tests {
             missing.remove(name);
             assert!(session_properties(missing).is_err(), "missing {name}");
             let mut wrong = bus_properties(WAYLAND);
-            wrong.insert(name.into(), OwnedValue::from(17u8));
+            wrong.insert(name.into(), OwnedVariant::from(17u8));
             assert!(session_properties(wrong).is_err(), "wrong type for {name}");
         }
         for name in ["ActiveSession", "Sessions"] {
             let mut wrong = bus_properties(SEAT_ACTIVE);
-            wrong.insert(name.into(), OwnedValue::from(17u8));
+            wrong.insert(name.into(), OwnedVariant::from(17u8));
             assert!(seat_properties(wrong).is_err(), "wrong type for {name}");
         }
     }

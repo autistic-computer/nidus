@@ -381,12 +381,12 @@ fn chord_label(keys: &[String]) -> String {
 }
 
 pub(super) async fn connect(state: Arc<Mutex<State>>) -> Result<zbus::Connection> {
-    let connection = zbus::connection::Builder::session()?
-        .serve_at(PATH, Service(state))?
+    let connection = zbus::connection::Builder::session()
+        .serve_at(PATH, Service(state))
         .build()
         .await?;
     connection
-        .request_name_with_flags(BUS, zbus::fdo::RequestNameFlags::DoNotQueue.into())
+        .request_name_with_flags(BUS, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
         .await
         .context("The Nidus desktop agent is already running")?;
     Ok(connection)

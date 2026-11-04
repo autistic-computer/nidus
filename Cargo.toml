@@ -55,7 +55,7 @@ cc = "1.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 pipewire = "0.10"
-zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
+zbus = { version = "6.2", default-features = false, features = ["proxy", "service", "tokio"] }
 evdev = "0.13.2"
 mio = { version = "1.2.2", default-features = false, features = ["os-ext", "os-poll"] }
 nix = { version = "0.31", features = ["socket", "user"] }

@@ -347,25 +347,23 @@ async fn forward_signals(
     use anyhow::Context;
     use zbus::{MatchRule, MessageStream, message::Type};
     let from_shell = |member| {
-        Ok::<_, zbus::Error>(
-            MatchRule::builder()
-                .msg_type(Type::Signal)
-                .sender(owner)?
-                .path(crate::desktop::OBJECT_PATH)?
-                .interface(crate::desktop::BUS_NAME)?
-                .member(member)?
-                .build(),
-        )
+        MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(owner)
+            .path(crate::desktop::OBJECT_PATH)
+            .interface(crate::desktop::BUS_NAME)
+            .member(member)
+            .build()
     };
     let changes = from_shell("FocusChanged")?;
     let hits = from_shell("EdgeHit")?;
     let owners = MatchRule::builder()
         .msg_type(Type::Signal)
-        .sender("org.freedesktop.DBus")?
-        .interface("org.freedesktop.DBus")?
-        .member("NameOwnerChanged")?
-        .arg(0, crate::desktop::BUS_NAME)?
-        .build();
+        .sender("org.freedesktop.DBus")
+        .interface("org.freedesktop.DBus")
+        .member("NameOwnerChanged")
+        .arg(0, crate::desktop::BUS_NAME)
+        .build()?;
     let mut changes = MessageStream::for_match_rule(changes, connection, None).await?;
     let mut hits = MessageStream::for_match_rule(hits, connection, None).await?;
     let mut owners = MessageStream::for_match_rule(owners, connection, None).await?;
@@ -621,7 +619,7 @@ async fn shell_call(connection: &zbus::Connection, method: &str) -> zbus::Result
 }
 
 async fn extension_state(connection: &zbus::Connection) -> zbus::Result<Option<f64>> {
-    let info: std::collections::HashMap<String, zbus::zvariant::OwnedValue> =
+    let info: std::collections::HashMap<String, zbus::OwnedVariant> =
         shell_call(connection, "GetExtensionInfo")
             .await?
             .body()
@@ -886,14 +884,14 @@ mod tests {
         fn get_extension_info(
             &self,
             uuid: &str,
-        ) -> std::collections::HashMap<String, zbus::zvariant::OwnedValue> {
+        ) -> std::collections::HashMap<String, zbus::OwnedVariant> {
             assert_eq!(uuid, crate::desktop::EXTENSION_ID);
             let state = *self.0.lock().unwrap();
             state
                 .map(|state| {
                     (
                         "state".into(),
-                        zbus::zvariant::Value::from(state).try_into().unwrap(),
+                        zbus::Variant::from(state).try_into().unwrap(),
                     )
                 })
                 .into_iter()
@@ -911,11 +909,8 @@ mod tests {
         let _turn = SHELL_NAME.lock().await;
         let state = Arc::new(Mutex::new(None));
         let _shell = zbus::connection::Builder::session()
-            .unwrap()
             .name("org.gnome.Shell")
-            .unwrap()
             .serve_at("/org/gnome/Shell", Extensions(state.clone()))
-            .unwrap()
             .build()
             .await
             .unwrap();
@@ -968,9 +963,7 @@ mod tests {
         );
         assert!(lock(&state).message.starts_with("Enable the Nidus"));
         let shell = zbus::connection::Builder::session()
-            .unwrap()
             .name("org.gnome.Shell")
-            .unwrap()
             .build()
             .await
             .unwrap();
@@ -1033,7 +1026,6 @@ mod tests {
         let clipboard = Arc::new(Mutex::new(("png".to_owned(), png.clone())));
         let calls = Arc::new(Mutex::new(Vec::new()));
         let shell = zbus::connection::Builder::session()
-            .unwrap()
             .serve_at(
                 OBJECT_PATH,
                 ClipboardShell {
@@ -1041,7 +1033,6 @@ mod tests {
                     calls: calls.clone(),
                 },
             )
-            .unwrap()
             .build()
             .await
             .unwrap();
@@ -1171,9 +1162,7 @@ mod tests {
         let _turn = SHELL_NAME.lock().await;
         let agent = zbus::Connection::session().await.unwrap();
         let shell = zbus::connection::Builder::session()
-            .unwrap()
             .serve_at(OBJECT_PATH, FocusShell)
-            .unwrap()
             .build()
             .await
             .unwrap();

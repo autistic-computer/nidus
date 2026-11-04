@@ -43,7 +43,7 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security", 
 windows-registry.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = { version = "5.19", default-features = false, features = ["blocking-api", "tokio"] }
+zbus = { version = "6.2", default-features = false, features = ["proxy", "service", "tokio"] }
 
 [dev-dependencies]
 ala = { workspace = true, features = ["test-support"] }

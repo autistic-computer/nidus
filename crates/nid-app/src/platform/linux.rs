@@ -3,7 +3,7 @@ use std::{collections::HashMap, path::PathBuf, process::Command, time::Duration}
 use ala::{App, AppContext as _, Context, Entity, Task};
 use anyhow::{Context as _, Result, anyhow, bail};
 use serde::Deserialize;
-use zbus::zvariant::OwnedValue;
+use zbus::OwnedVariant;
 
 use super::Updates;
 
@@ -351,32 +351,32 @@ enum Ask {
 
 const ACTIVATION_TOKEN: &str = "activation-token";
 
-fn activation_token(mut platform_data: HashMap<String, OwnedValue>) -> Option<String> {
+fn activation_token(mut platform_data: HashMap<String, OwnedVariant>) -> Option<String> {
     platform_data
         .remove(ACTIVATION_TOKEN)
         .and_then(|value| String::try_from(value).ok())
 }
 
-static INSTANCE: std::sync::OnceLock<(zbus::blocking::Connection, async_channel::Receiver<Ask>)> =
+static INSTANCE: std::sync::OnceLock<(zbus::Connection, async_channel::Receiver<Ask>)> =
     std::sync::OnceLock::new();
 
 struct Instance(async_channel::Sender<Ask>);
 
 #[zbus::interface(name = "org.freedesktop.Application")]
 impl Instance {
-    fn activate(&self, platform_data: HashMap<String, OwnedValue>) {
+    fn activate(&self, platform_data: HashMap<String, OwnedVariant>) {
         let _ = self.0.try_send(Ask::Show(activation_token(platform_data)));
     }
 
-    fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedValue>) {
+    fn open(&self, _uris: Vec<String>, platform_data: HashMap<String, OwnedVariant>) {
         let _ = self.0.try_send(Ask::Show(activation_token(platform_data)));
     }
 
     fn activate_action(
         &self,
         action: &str,
-        _parameter: Vec<OwnedValue>,
-        platform_data: HashMap<String, OwnedValue>,
+        _parameter: Vec<OwnedVariant>,
+        platform_data: HashMap<String, OwnedVariant>,
     ) {
         let ask = if action == "quit" {
             Ask::Quit
@@ -404,11 +404,13 @@ pub fn before_start(arguments: &crate::Arguments) -> bool {
 }
 
 fn claim_instance() -> Result<bool> {
-    nid::app::client::on_bus_runtime(|| {
-        let bus = zbus::blocking::Connection::session()?;
+    nid::app::client::block_on(async {
+        let bus = zbus::Connection::session().await?;
         let (asks, inbox) = async_channel::unbounded();
-        bus.object_server().at(BUS_PATH, Instance(asks))?;
-        match bus.request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DoNotQueue.into())
+        bus.object_server().at(BUS_PATH, Instance(asks)).await?;
+        match bus
+            .request_name_with_flags(BUS_NAME, zbus::fdo::RequestNameFlags::DO_NOT_QUEUE)
+            .await
         {
             Ok(zbus::fdo::RequestNameReply::PrimaryOwner) => {
                 let _ = INSTANCE.set((bus, inbox));
@@ -422,29 +424,33 @@ fn claim_instance() -> Result<bool> {
 
 fn ask_running(quit: bool) -> Result<()> {
     let bus = nid::app::client::session_bus()?;
-    let mut platform_data = HashMap::<&str, zbus::zvariant::Value>::new();
+    let mut platform_data = HashMap::<&str, zbus::Variant>::new();
     let token = std::env::var("XDG_ACTIVATION_TOKEN").ok();
     if let Some(token) = &token {
         platform_data.insert(ACTIVATION_TOKEN, token.as_str().into());
     }
-    if quit {
-        bus.call_method(
-            Some(BUS_NAME),
-            BUS_PATH,
-            Some(APPLICATION),
-            "ActivateAction",
-            &("quit", Vec::<zbus::zvariant::Value>::new(), platform_data),
-        )?;
-    } else {
-        bus.call_method(
-            Some(BUS_NAME),
-            BUS_PATH,
-            Some(APPLICATION),
-            "Activate",
-            &(platform_data,),
-        )?;
-    }
-    Ok(())
+    nid::app::client::block_on(async {
+        if quit {
+            bus.call_method(
+                Some(BUS_NAME),
+                BUS_PATH,
+                Some(APPLICATION),
+                "ActivateAction",
+                &("quit", Vec::<zbus::Variant>::new(), platform_data),
+            )
+            .await?;
+        } else {
+            bus.call_method(
+                Some(BUS_NAME),
+                BUS_PATH,
+                Some(APPLICATION),
+                "Activate",
+                &(platform_data,),
+            )
+            .await?;
+        }
+        Ok(())
+    })
 }
 
 fn answer_other_copies(cx: &mut App) {
@@ -509,7 +515,7 @@ pub fn notification_response(_: &ala::SystemNotificationResponse, _: &mut App) {
 
 pub fn restart(cx: &mut App) {
     if let Some((bus, _)) = INSTANCE.get() {
-        let _ = nid::app::client::on_bus_runtime(|| Ok(bus.release_name(BUS_NAME)?));
+        let _ = nid::app::client::block_on(async { Ok(bus.release_name(BUS_NAME).await?) });
     }
     match Command::new(nid_executable()).arg("settings").spawn() {
         Ok(_) => cx.quit(),
@@ -573,32 +579,38 @@ fn metered() -> bool {
     let Ok(bus) = nid::app::client::system_bus() else {
         return false;
     };
-    let metered: Option<u32> = bus
-        .call_method(
-            Some("org.freedesktop.NetworkManager"),
-            "/org/freedesktop/NetworkManager",
-            Some("org.freedesktop.DBus.Properties"),
-            "Get",
-            &("org.freedesktop.NetworkManager", "Metered"),
-        )
-        .ok()
-        .and_then(|reply| reply.body().deserialize::<OwnedValue>().ok())
-        .and_then(|value| u32::try_from(value).ok());
+    let metered: Option<u32> = nid::app::client::block_on(async {
+        Ok(bus
+            .call_method(
+                Some("org.freedesktop.NetworkManager"),
+                "/org/freedesktop/NetworkManager",
+                Some("org.freedesktop.DBus.Properties"),
+                "Get",
+                &("org.freedesktop.NetworkManager", "Metered"),
+            )
+            .await?)
+    })
+    .ok()
+    .and_then(|reply| reply.body().deserialize::<OwnedVariant>().ok())
+    .and_then(|value| u32::try_from(value).ok());
     matches!(metered, Some(1 | 3))
 }
 
 fn extension_facts() -> Result<ExtensionFacts> {
     let bus = nid::app::client::session_bus()?;
-    let info: HashMap<String, OwnedValue> = bus
-        .call_method(
-            Some("org.gnome.Shell"),
-            "/org/gnome/Shell",
-            Some("org.gnome.Shell.Extensions"),
-            "GetExtensionInfo",
-            &UUID,
-        )?
-        .body()
-        .deserialize()?;
+    let info: HashMap<String, OwnedVariant> = nid::app::client::block_on(async {
+        Ok(bus
+            .call_method(
+                Some("org.gnome.Shell"),
+                "/org/gnome/Shell",
+                Some("org.gnome.Shell.Extensions"),
+                "GetExtensionInfo",
+                &UUID,
+            )
+            .await?
+            .body()
+            .deserialize()?)
+    })?;
     let metadata = installed_metadata();
     Ok(ExtensionFacts {
         state: info
@@ -641,16 +653,19 @@ fn take_step(step: Setup) -> Result<()> {
     let bus = nid::app::client::session_bus()?;
     match step {
         Setup::Enable => {
-            let enabled: bool = bus
-                .call_method(
-                    Some("org.gnome.Shell"),
-                    "/org/gnome/Shell",
-                    Some("org.gnome.Shell.Extensions"),
-                    "EnableExtension",
-                    &UUID,
-                )?
-                .body()
-                .deserialize()?;
+            let enabled: bool = nid::app::client::block_on(async {
+                Ok(bus
+                    .call_method(
+                        Some("org.gnome.Shell"),
+                        "/org/gnome/Shell",
+                        Some("org.gnome.Shell.Extensions"),
+                        "EnableExtension",
+                        &UUID,
+                    )
+                    .await?
+                    .body()
+                    .deserialize()?)
+            })?;
             if !enabled {
                 bail!("GNOME could not turn on the Nidus extension");
             }
@@ -659,13 +674,17 @@ fn take_step(step: Setup) -> Result<()> {
             if step != Setup::Update {
                 enable_at_login()?;
             }
-            bus.call_method(
-                Some("org.gnome.SessionManager"),
-                "/org/gnome/SessionManager",
-                Some("org.gnome.SessionManager"),
-                "Logout",
-                &0u32,
-            )?;
+            nid::app::client::block_on(async {
+                bus.call_method(
+                    Some("org.gnome.SessionManager"),
+                    "/org/gnome/SessionManager",
+                    Some("org.gnome.SessionManager"),
+                    "Logout",
+                    &0u32,
+                )
+                .await?;
+                Ok(())
+            })?;
         }
         Setup::Install | Setup::Outdated | Setup::StoreOutdated => {}
     }

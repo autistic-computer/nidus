@@ -7,7 +7,7 @@ pub struct Client {
     #[cfg(target_os = "macos")]
     engine: super::host::Engine,
     #[cfg(target_os = "linux")]
-    bus: zbus::blocking::Connection,
+    bus: zbus::Connection,
     #[cfg(windows)]
     pipe: super::windows_view::Pipe,
 }
@@ -41,18 +41,22 @@ impl Client {
         return self.engine.request(request.clone());
         #[cfg(target_os = "linux")]
         {
-            let reply: String = self
-                .bus
-                .call_method(
-                    Some(super::gnome::BUS),
-                    super::gnome::PATH,
-                    Some(super::gnome::BUS),
-                    "Call",
-                    &serde_json::to_string(request)?,
-                )
-                .map_err(agent_error)?
-                .body()
-                .deserialize()?;
+            let body = serde_json::to_string(request)?;
+            let reply: String = block_on(async {
+                Ok(self
+                    .bus
+                    .call_method(
+                        Some(super::gnome::BUS),
+                        super::gnome::PATH,
+                        Some(super::gnome::BUS),
+                        "Call",
+                        &body,
+                    )
+                    .await
+                    .map_err(agent_error)?
+                    .body()
+                    .deserialize()?)
+            })?;
             Ok(serde_json::from_str(&reply)?)
         }
         #[cfg(windows)]
@@ -82,22 +86,21 @@ static BUS_RUNTIME: std::sync::LazyLock<Option<tokio::runtime::Runtime>> =
     });
 
 #[cfg(target_os = "linux")]
-pub fn on_bus_runtime<T>(work: impl FnOnce() -> Result<T>) -> Result<T> {
-    let runtime = BUS_RUNTIME
+pub fn block_on<T>(work: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    BUS_RUNTIME
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("Could not start the D-Bus runtime"))?;
-    let _inside = runtime.enter();
-    work()
+        .ok_or_else(|| anyhow::anyhow!("Could not start the D-Bus runtime"))?
+        .block_on(work)
 }
 
 #[cfg(target_os = "linux")]
-pub fn session_bus() -> Result<zbus::blocking::Connection> {
-    on_bus_runtime(|| Ok(zbus::blocking::Connection::session()?))
+pub fn session_bus() -> Result<zbus::Connection> {
+    block_on(async { Ok(zbus::Connection::session().await?) })
 }
 
 #[cfg(target_os = "linux")]
-pub fn system_bus() -> Result<zbus::blocking::Connection> {
-    on_bus_runtime(|| Ok(zbus::blocking::Connection::system()?))
+pub fn system_bus() -> Result<zbus::Connection> {
+    block_on(async { Ok(zbus::Connection::system().await?) })
 }
 
 pub const ANSWERS_WITH_SNAPSHOT: bool = !cfg!(target_os = "linux");
@@ -106,9 +109,13 @@ pub const ANSWERS_WITH_SNAPSHOT: bool = !cfg!(target_os = "linux");
 fn agent_error(error: zbus::Error) -> anyhow::Error {
     match error {
         zbus::Error::MethodError(_, Some(message), _) => anyhow::anyhow!(message),
-        zbus::Error::MethodError(name, None, _) if name.as_str().ends_with("ServiceUnknown") => {
+        zbus::Error::FDO(fdo) if matches!(*fdo, zbus::fdo::Error::ServiceUnknown(_)) => {
             anyhow::anyhow!("Nidus's desktop service is not running")
         }
+        zbus::Error::FDO(fdo) => match zbus::DBusError::description(&*fdo) {
+            Some(message) => anyhow::anyhow!(message.to_owned()),
+            None => anyhow::anyhow!(fdo),
+        },
         error => error.into(),
     }
 }

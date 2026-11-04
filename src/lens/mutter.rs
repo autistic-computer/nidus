@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::sync::watch;
-use zbus::zvariant::{DynamicType, OwnedObjectPath, OwnedValue, Value};
+use zbus::{DynamicType, OwnedObjectPath, OwnedVariant, Variant};
 
 const REMOTE_DESKTOP: &str = "org.gnome.Mutter.RemoteDesktop";
 const REMOTE_DESKTOP_PATH: &str = "/org/gnome/Mutter/RemoteDesktop";
@@ -48,7 +48,7 @@ fn lock(held: &Mutex<Held>) -> MutexGuard<'_, Held> {
 async fn call<B, R>(proxy: &zbus::Proxy<'_>, method: &str, body: &B) -> Result<R>
 where
     B: serde::Serialize + DynamicType,
-    R: for<'d> zbus::zvariant::DynamicDeserialize<'d>,
+    R: for<'d> zbus::wire::DynamicDeserialize<'d>,
 {
     tokio::time::timeout(CALL, proxy.call(method, body))
         .await
@@ -70,26 +70,26 @@ async fn signals(
 ) -> Result<zbus::MessageStream> {
     let rule = zbus::MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
-        .sender(owner)?
-        .path(path.as_str())?
-        .interface(interface)?
-        .member(member)?
-        .build();
+        .sender(owner)
+        .path(path.as_str())
+        .interface(interface)
+        .member(member)
+        .build()?;
     Ok(zbus::MessageStream::for_match_rule(rule, bus, None).await?)
 }
 
-fn strings(value: &Value<'_>) -> Vec<String> {
+fn strings(value: &Variant<'_>) -> Vec<String> {
     match value {
-        Value::Array(array) => array
+        Variant::Array(array) => array
             .inner()
             .iter()
             .filter_map(|value| match value {
-                Value::Str(text) => Some(text.to_string()),
+                Variant::Str(text) => Some(text.to_string()),
                 _ => None,
             })
             .collect(),
-        Value::Structure(fields) => fields.fields().first().map(strings).unwrap_or_default(),
-        Value::Value(inner) => strings(inner),
+        Variant::Structure(fields) => fields.fields().first().map(strings).unwrap_or_default(),
+        Variant::Variant(inner) => strings(inner),
         _ => Vec::new(),
     }
 }
@@ -100,7 +100,7 @@ fn text_type(types: &[String]) -> Option<&'static str> {
         .find(|text| types.iter().any(|offered| offered == text))
 }
 
-fn owner_changed(mut options: HashMap<String, OwnedValue>) -> Vec<String> {
+fn owner_changed(mut options: HashMap<String, OwnedVariant>) -> Vec<String> {
     let owned = options
         .remove("session-is-owner")
         .and_then(|value| bool::try_from(value).ok())
@@ -114,7 +114,7 @@ fn owner_changed(mut options: HashMap<String, OwnedValue>) -> Vec<String> {
 async fn watch_selection(mut owners: zbus::MessageStream, selection: watch::Sender<Selection>) {
     while let Some(message) = next_message(&mut owners).await {
         let options = message.map_err(anyhow::Error::from).and_then(|message| {
-            let (options,): (HashMap<String, OwnedValue>,) = message.body().deserialize()?;
+            let (options,): (HashMap<String, OwnedVariant>,) = message.body().deserialize()?;
             Ok(options)
         });
         match options {
@@ -164,13 +164,13 @@ impl Desk {
             "org.freedesktop.DBus.Properties",
         )
         .await?;
-        let id: OwnedValue = call(&properties, "Get", &(SESSION, "SessionId")).await?;
+        let id: OwnedVariant = call(&properties, "Get", &(SESSION, "SessionId")).await?;
         let id = String::try_from(id).context("Mutter sent a session id that is not text")?;
         let screen_cast = zbus::Proxy::new(bus, SCREEN_CAST, SCREEN_CAST_PATH, SCREEN_CAST).await?;
-        let options = HashMap::from([("remote-desktop-session-id", Value::from(id))]);
+        let options = HashMap::from([("remote-desktop-session-id", Variant::from(id))]);
         let cast_path: OwnedObjectPath = call(&screen_cast, "CreateSession", &(options,)).await?;
         let cast = zbus::Proxy::new(bus, SCREEN_CAST, cast_path, CAST_SESSION).await?;
-        let options = HashMap::from([("cursor-mode", Value::U32(0))]);
+        let options = HashMap::from([("cursor-mode", Variant::U32(0))]);
         let stream: OwnedObjectPath = call(&cast, "RecordMonitor", &("", options)).await?;
 
         let names = zbus::fdo::DBusProxy::new(bus).await?;
@@ -198,7 +198,7 @@ impl Desk {
             watcher,
             stopped: false,
         };
-        let options = HashMap::<&str, Value>::new();
+        let options = HashMap::<&str, Variant>::new();
         call::<_, ()>(&desk.session, "EnableClipboard", &(options,)).await?;
         tracing::info!(
             node,
@@ -296,7 +296,7 @@ impl Desk {
             }
             Err(_) => anyhow::bail!("nothing new was copied"),
         };
-        let fd: zbus::zvariant::OwnedFd =
+        let fd: zbus::OwnedFd =
             tokio::time::timeout_at(deadline, self.session.call("SelectionRead", &(mime,)))
                 .await
                 .context("Mutter did not answer SelectionRead")?
@@ -361,7 +361,7 @@ impl Drop for Desk {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zbus::zvariant::{Array, StructureBuilder};
+    use zbus::{Array, Structure};
 
     fn types(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -378,16 +378,16 @@ mod tests {
 
     #[test]
     fn mime_types_are_read_bare_or_wrapped_in_a_tuple() {
-        let bare = Value::from(Array::from(vec!["text/plain", "image/png"]));
+        let bare = Variant::from(Array::from(vec!["text/plain", "image/png"]));
         assert_eq!(strings(&bare), types(&["text/plain", "image/png"]));
-        let wrapped = Value::from(
-            StructureBuilder::new()
+        let wrapped = Variant::from(
+            Structure::builder()
                 .add_field(Array::from(vec!["UTF8_STRING"]))
                 .build()
                 .unwrap(),
         );
         assert_eq!(strings(&wrapped), types(&["UTF8_STRING"]));
-        assert!(strings(&Value::from(7_u32)).is_empty());
+        assert!(strings(&Variant::from(7_u32)).is_empty());
     }
 
     #[test]
@@ -396,9 +396,9 @@ mod tests {
             HashMap::from([
                 (
                     "mime-types".to_string(),
-                    OwnedValue::try_from(Value::from(Array::from(vec!["text/plain"]))).unwrap(),
+                    OwnedVariant::try_from(Variant::from(Array::from(vec!["text/plain"]))).unwrap(),
                 ),
-                ("session-is-owner".to_string(), OwnedValue::from(owned)),
+                ("session-is-owner".to_string(), OwnedVariant::from(owned)),
             ])
         };
         assert_eq!(owner_changed(options(false)), types(&["text/plain"]));
