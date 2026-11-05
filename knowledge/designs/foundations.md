@@ -632,9 +632,9 @@ Content: one meaning per glyph across an app; the same action keeps the same ico
 
 Placement: before its label, `icon_gap` from it (4 at `xs` and `sm`, 6 at `md` and `lg`, 8 at `xl` and `touch`), centered on the label's capitals: center the line box, and drop the icon by `cap_center_drop(font_size, icon_size, cx)` where the face sits its capitals off center. A marker beside a first line (notices, callouts, notifications) sits in a box as tall as that line.
 
-HTML: `<i data-icon="name">` with the kebab-case `IconName` (`panel-right`, `circle-check`), drawn as a mask from the theme's `-icons.css` painted in `currentColor`. Its size is `--penna-icon-size`, 14 when nothing sets it; components set it for their rung, and with `icon.css` loaded `data-size` sets it on the icon (`xsmall` to `touch` from the ladder, `ambient` for 1em, `6` for 24). `data-tone` (`foreground`, `muted`, `accent`, `success`, `warning`, `danger`) sets the color, `data-turn` (1 to 3) turns it by quarters. A `.penna-glyph` around it lets `icon.js` thicken the stroke to match the native raster.
+HTML: `<i data-icon="name">` with the kebab-case `IconName` (`panel-right`, `circle-check`), drawn as a mask from the theme's `-icons.css` painted in `currentColor`. Its size is `--penna-icon-size`, 14 when nothing sets it; components set it for their rung, and with `icon.css` loaded `data-size` sets it on the icon (`xsmall` to `touch` from the ladder, `6` for 24). `data-tone` (`foreground`, `muted`, `accent`, `success`, `warning`, `danger`) sets the color, `data-turn` (1 to 3) turns it by quarters. A `.penna-glyph` around it lets `icon.js` thicken the stroke to match the native raster.
 
-Status: one gap. With no size, an icon takes the font size around it (13 beside `body`, 14 beside `lead`), off the icon sizes (Rules 1), and its HTML twin falls back to 14 instead.
+Status: matches.
 
 ### Input
 
