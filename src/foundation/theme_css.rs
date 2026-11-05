@@ -241,7 +241,10 @@ fn solid_rules(theme: &Theme, toned: &[SurfaceRole]) -> String {
             }
         }
         for role in ROW_BUTTONS {
-            let key = format!("{}:not([data-prominent])", selector(role));
+            let key = format!(
+                "{}:not([data-prominent], [data-penna^=\"field\"] *)",
+                selector(role)
+            );
             write_role(
                 &mut looks,
                 theme,
@@ -1038,7 +1041,7 @@ mod tests {
             )
         );
         assert!(solid.contains(
-            "  [data-penna=\"icon-button.row\"]:not([data-prominent]) { --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-r: 9999px; --penna-style-k: 2; --penna-focus: #0a64ddcc;\n"
+            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-r: 9999px; --penna-style-k: 2; --penna-focus: #0a64ddcc;\n"
         ));
         let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
         assert!(!ink.contains("[data-penna=\"menu-item\"]:not([data-tone])"));
