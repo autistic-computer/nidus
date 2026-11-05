@@ -60,9 +60,10 @@ const PAINT: [(&str, &str); 14] = [
     ("ring-gap", "0px"),
 ];
 
-const ROW_BUTTONS: [SurfaceRole; 3] = [
+const ROW_BUTTONS: [SurfaceRole; 4] = [
     SurfaceRole::QUIET_BUTTON,
     SurfaceRole::ICON_BUTTON,
+    SurfaceRole::FLAT_ICON_BUTTON,
     roles::ICON_BUTTON_ROW,
 ];
 
@@ -251,7 +252,7 @@ fn solid_rules(theme: &Theme, toned: &[SurfaceRole]) -> String {
                 &key,
                 Surface::new(role).on(ground),
                 "  ",
-                false,
+                true,
             );
         }
         for body in [inks, looks] {
@@ -1041,11 +1042,18 @@ mod tests {
             )
         );
         assert!(solid.contains(
-            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-r: 9999px; --penna-style-k: 2; --penna-focus: #0a64ddcc;\n"
+            "  [data-penna=\"icon-button.row\"]:not([data-prominent], [data-penna^=\"field\"] *) { --penna-fill: transparent; --penna-ink: #ebebeb; --penna-muted: #ebebeb; --penna-edge: transparent; --penna-bw: 0px; --penna-shadow: 0 0 #0000; --penna-r: 9999px; --penna-k: 1; --penna-style-k: 2; --penna-row: 0; --penna-mark: transparent; --penna-focus: #0a64ddcc; --penna-ring-gap: 0px;"
         ));
         let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
         assert!(!ink.contains("[data-penna=\"menu-item\"]:not([data-tone])"));
         assert!(ink.contains("[data-penna=\"menu-item\"][data-tone=\"primary\"]"));
+        let quiet =
+            "  [data-penna=\"button.quiet\"]:not([data-prominent], [data-penna^=\"field\"] *) {";
+        let start = ink
+            .find(quiet)
+            .expect("a toned row's selection repaints its quiet buttons");
+        let rule = &ink[start..start + ink[start..].find('\n').expect("the rule ends")];
+        assert!(rule.contains("--penna-ring-gap: 0px;"));
     }
 
     #[test]
