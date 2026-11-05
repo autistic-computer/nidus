@@ -601,7 +601,7 @@ Placement: in a form a field sits in a Field, which puts its label above it and 
 
 HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas and steps number inputs.
 
-Status: matches. The inputs story's Fields section shows a danger field in a Field, and hover is a parity step (`hover-field`, `hover-danger-field`) rather than a resting cell, since a field takes no paint state from its caller.
+Status: matches.
 
 ### Keycap
 
