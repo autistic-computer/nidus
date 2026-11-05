@@ -1015,6 +1015,8 @@ impl Theme {
         let ground = surface.ground.unwrap_or_else(|| self.ground());
         let tone = if surface.prominent && surface.tone == Tone::Neutral {
             Tone::Primary
+        } else if !surface.prominent && super::color::is_colored(ground.fill) {
+            Tone::Neutral
         } else {
             surface.tone
         };
@@ -1699,6 +1701,33 @@ mod tests {
         );
         theme.style(Kind::Card.role());
         assert!(drawn_roles().is_empty());
+    }
+
+    #[test]
+    fn content_on_a_tinted_selection_takes_its_ink() {
+        let mut theme = theme();
+        let chip = |theme: &Theme, tone, ground| {
+            theme.layer(
+                Surface::new(SurfaceRole::CHIP).tone(tone).on(ground),
+                PaintState::Rest,
+            )
+        };
+        let washed = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        assert_eq!(
+            chip(&theme, Tone::Success, washed).fill,
+            theme.success.opacity(0.12)
+        );
+
+        theme.accent = crate::parse_hex("#ad4f00").unwrap();
+        theme.primary = PrimaryStyle::Accent;
+        let picked = theme.ground_at(Surface::new(SurfaceRole::MENU_ITEM), PaintState::Selected);
+        let toned = chip(&theme, Tone::Success, picked);
+        let neutral = chip(&theme, Tone::Neutral, picked);
+        assert_eq!(toned.fill, neutral.fill);
+        assert_eq!(crate::to_hex(toned.text), "#ebebeb");
+        let label = theme.paint_on(picked, Tone::Danger, Emphasis::Ghost);
+        assert_eq!(crate::to_hex(label.text), "#ebebeb");
+        assert_eq!(crate::to_hex(label.muted_at(PaintState::Rest)), "#ebebeb");
     }
 
     #[test]

@@ -195,7 +195,7 @@ pub(super) fn edge_weight() -> f32 {
     scaled(EDGE_WEIGHT)
 }
 
-pub(super) fn is_colored(color: Hsla) -> bool {
+pub(crate) fn is_colored(color: Hsla) -> bool {
     let (_, a, b) = oklab::rgb_to_oklab(color.into());
     a.hypot(b) > COLORED_CHROMA
 }

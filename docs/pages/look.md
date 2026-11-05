@@ -40,6 +40,15 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
 </div>
 ```
 
+On a tint's solid selection everything in the row takes its ink, and a toned chip turns to a wash of it. With the ink as tint the highlight is a wash and the chip keeps its tone.
+
+```figure uses=list,chip
+<div class="docs-show" data-gap="wide">
+  <div class="docs-cell"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>ink</code></span></div>
+  <div class="docs-cell" data-look="blue"><span class="penna-list" style="width: 220px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span><span class="penna-chip" data-penna="chip" data-tone="success" data-size="xsmall"><i class="penna-dot" data-tone="success"></i><span class="penna-text penna-chip-label" data-penna-text>Ready</span></span></span></span></span><span class="docs-note"><code>blue</code></span></div>
+</div>
+```
+
 ## Neutral
 
 `neutral` tints the window, the text and every surface above them: a hue and an amount, warm 60 at 0.15 by default. Status colors and contrast hold at every value.

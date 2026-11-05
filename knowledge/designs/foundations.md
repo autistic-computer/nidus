@@ -175,7 +175,7 @@ Roles (CSS root names, the look with the default knobs):
 | `primary` | #1c1c1a | #e9e7e3 | primary fills and the highlight; follows `fg` while the tint is the ink |
 | `success`, `warning`, `danger` | #007b3e, #a75400, #cc2737 | #3fbf74, #f0a14a, #f2555f | status, always with an icon or a word |
 
-The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it.
+The kit's base colors are these values and the default `neutral` reproduces them exactly (Look). Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it (on a tint's solid fill it is the ink itself, Look).
 
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
@@ -210,7 +210,9 @@ How each kind draws, at rest and under the pointer:
 | Rule | a hairline in `divider` | | |
 
 - The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set.
-- On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
+- On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`, with `cx.theme().ground_at(look, state)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
+- The rule is one for every colored ground (a fill whose chroma passes `is_colored`, which only a tint's or a tone's solid fill does): there every tone but a solid one reads as neutral, and muted ink is the ink itself; faint keeps its mix toward the fill. A solid chip or badge keeps its tone, since its own fill carries its label. A status dot turns to the muted ink with the rest.
+- In HTML the tokens write one scope per solid ground, listing every role whose selected or current highlight is that fill (rows, list items, menu, sidebar and tree rows, tabs, toggled buttons). It carries the inks that differ, `--penna-dot` for chip dots (`chip.css` reads it before the tone), and the label looks (badges, chips, keycaps) painted on that fill. A button set in such a row keeps its window paint in HTML. Tree rows, like list items, switch their icons to the row's muted ink on selection.
 - Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
@@ -272,10 +274,10 @@ How the knobs are spelled and decided:
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
 - Glass is neutral: a floating surface with a tone (a solid or soft toned floating chip) draws its tone's own fill, opaque, under `shadow-float`, since a toned tint can't hold text at 4.5:1 over any backdrop. Only the neutral floating chip is glass; a callout keeps neutral glass and shows its tone in its icon. A soft toned chip lays its soft fill opaque on its ground with the soft ink, a solid one its solid fill; any tone counts, `primary` included, and a solid neutral chip is solid `primary`. In HTML a floating chip (`chip.floating`, `chip.marker`, `chip.drag`) takes `data-tone` like a badge, and `data-emphasis="solid"` draws no glass.
 - A press replaces the hover look; nothing draws its pressed wash over its hover wash. Natively a press highlight (sheet rows, touch which-key rows, and menu rows, rows, tabs and chips under a coarse pointer) paints the wash that turns the hover wash into the pressed one, and a row that has one sets no pressed style of its own.
-- Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's.
+- Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's: `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, as values. Natively they mix the ink toward the ground's fill in OKLab rather than fade it, so the tokens write the mixed color. Cards, panels and floating grounds differ in muted and faint only; tone inks follow the ground's ink, which only a solid selection changes.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: HTML faint and tone ink are worked out for the window, not the ground under them; a toned chip on a selected row in a tinted look keeps its tone. Step 12 closes them.
+Status: built (steps 10 and 12). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Step 12 closed the last differences between native and HTML; what remains is raster: text, and glass blur at its edges.
 
 ## Focus and keys
 
@@ -754,7 +756,7 @@ Content: sentence case, no closing period on a single line. Two or three text st
 
 Placement: a label and what it names sit `gap-tight` (4) apart: a title and its description, a field label and its field.
 
-HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted takes the ink of the surface around it, as `.on(ground)` does natively; faint and tone take the root `--penna-faint` and `--penna-<tone>-ink`, worked out for the window, so a faint label on a card mixes toward the window's fill.
+HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted, faint and tone take `--penna-muted`, `--penna-faint` and `--penna-<tone>-ink`, which the surface around it and each ground scope (`data-ground`, `data-on`, a tint's solid selection) set for their ground, as `.on(ground)` does natively.
 
 Status: matches.
 
@@ -1473,6 +1475,6 @@ Status: matches.
 | 9 | Density setting | new option | built |
 | 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | built |
 | 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
-| 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | step 12 |
+| 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | built |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.

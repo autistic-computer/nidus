@@ -7,7 +7,7 @@ use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Fill, Ground, Icon, Label, PaintState, Selectable,
     Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, Tone,
     components::plate::{Plate, plate_element},
-    foundation::roles,
+    foundation::{is_colored, roles},
     rems_from_px,
 };
 
@@ -332,11 +332,12 @@ pub(crate) fn dot(tone: Tone, ground: Ground, cx: &App) -> Div {
 
 fn dot_color(tone: Tone, ground: Ground, cx: &App) -> Hsla {
     let theme = cx.theme();
-    match tone {
-        Tone::Neutral => theme
+    if tone == Tone::Neutral || is_colored(ground.fill) {
+        theme
             .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest),
-        tone => theme.tone(tone),
+            .muted_at(PaintState::Rest)
+    } else {
+        theme.tone(tone)
     }
 }
 
