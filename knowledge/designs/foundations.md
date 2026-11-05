@@ -625,9 +625,9 @@ Content: one meaning per glyph across an app; the same action keeps the same ico
 
 Placement: before its label, `icon_gap` from it (4 at `xs` and `sm`, 6 at `md` and `lg`, 8 at `xl` and `touch`), centered on the label's capitals: center the line box, and drop the icon by `cap_center_drop(font_size, icon_size, cx)` where the face sits its capitals off center. A marker beside a first line (notices, callouts, notifications) sits in a box as tall as that line.
 
-HTML: `<i data-icon="name">` with the kebab-case `IconName` (`panel-right`, `circle-check`), drawn as a mask from the theme's `-icons.css` painted in `currentColor`. Its size is `--penna-icon-size`, 14 when nothing sets it; components set it for their rung, and with `icon.css` loaded `data-size` sets it on the icon (`xsmall` to `touch` from the ladder, `ambient` for 1em, `6` for 24). `data-tone` (`foreground`, `muted`, `accent`, `success`, `warning`, `danger`) sets the color, `data-turn` (1 to 3) turns it by quarters. A `.penna-glyph` around it lets `icon.js` thicken the stroke to match the native raster.
+HTML: `<i data-icon="name">` with the kebab-case `IconName` (`panel-right`, `circle-check`), drawn as a mask from the theme's `-icons.css` painted in `currentColor`. Its size is `--penna-icon-size`, 14 when nothing sets it; components set it for their rung, and with `icon.css` loaded `data-size` sets it on the icon (`xsmall` to `touch` from the ladder, `6` for 24). `data-tone` (`foreground`, `muted`, `accent`, `success`, `warning`, `danger`) sets the color, `data-turn` (1 to 3) turns it by quarters. A `.penna-glyph` around it lets `icon.js` thicken the stroke to match the native raster.
 
-Status: one gap. With no size, an icon takes the font size around it (13 beside `body`, 14 beside `lead`), off the icon sizes (Rules 1), and its HTML twin falls back to 14 instead.
+Status: matches.
 
 ### Input
 
@@ -748,9 +748,9 @@ Content: sentence case, no closing period on a single line. Two or three text st
 
 Placement: a label and what it names sit `gap-tight` (4) apart: a title and its description, a field label and its field.
 
-HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`.
+HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted takes the ink of the surface around it, as `.on(ground)` does natively; faint and tone take the root `--penna-faint` and `--penna-<tone>-ink`, worked out for the window, so a faint label on a card mixes toward the window's fill.
 
-Status: two gaps. The HTML twin has no faint level, no tone and no code face outside `mono`. The HTML twin never wraps (`white-space: nowrap`), where a native label wraps unless it truncates.
+Status: matches.
 
 ### List
 
@@ -1187,7 +1187,7 @@ Placement: in a button it takes the icon's place, or sits before the label when 
 
 HTML: `.penna-spinner` holding `<i data-icon="loader">`, with `data-size` (`xsmall` to `touch`), `data-color` (`muted`, `accent`, `success`, `warning`, `danger`), `--penna-icon-size` for a size off the ladder, and `role="progressbar"` with `aria-label="Loading"` and no value when it stands alone, as natively. `spinner.css` stops the turn under `prefers-reduced-motion`.
 
-Status: one gap. The HTML twin announces itself as a status (`role="status"`), where the native spinner is a progress indicator.
+Status: matches.
 
 ### Switch
 
@@ -1398,9 +1398,9 @@ Content: a noun or a short verb phrase in sentence case that names the action or
 
 Placement: it follows the pointer, not the target, so there is nothing to place. Give one to every icon-only button (Button) and to controls whose key is worth learning.
 
-HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
+HTML: any element with `data-tooltip="Label"` gets one from `tooltip.js`; `data-tooltip-key="cmd-d"` adds the key, written by `kbd.js` as a keycap's text. The script builds `.penna-tooltip[data-penna="tooltip"][role="tooltip"][data-floating]` with a `span[data-penna-text]` per run and `.penna-tooltip-key` for the key, sets `data-open` while shown, and places it with the same delay, offset and edge flip: on the window with `data-fixed`, or inside the nearest `[data-tooltip-host]` within a story section. A `[data-tooltip]` element that takes focus matching `:focus-visible` shows its tooltip at once from the middle of its bottom edge, until `focusout`, Escape or a pointer move. A touch press held 500ms on a `[data-tooltip]` element shows its tooltip from the press point until the finger lifts, as natively: moving more than 8 before then cancels it, and once shown the press neither scrolls nor clicks. `data-tooltip-pinned` keeps it open. A static box is the same markup without `data-floating`; the key run takes `data-kbd-text`.
 
-Status: one gap. The HTML twin has no long press, so touch never shows a tooltip on the web.
+Status: matches.
 
 ### Tree
 
