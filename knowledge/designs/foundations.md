@@ -952,7 +952,7 @@ Placement: rows in an inset list sit `space-2` apart with the row inset at the s
 
 HTML: `.penna-row[data-penna]` (the look's recipe), with no size, inset or text style of its own (the page sets them, as the caller does natively), and `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
 
-Status: one gap. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
+Status: matches.
 
 ### Scrollbar
 
@@ -1004,8 +1004,8 @@ Kinds: one.
 
 Anatomy, all from the control's rung of the control ladder (Size):
 
-- Track: the field's paint (fill, a hairline edge of at least 1px, corners), height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
-- Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`.
+- Track: the field's paint (fill, a hairline edge of at least 1px, corners), with its hover and pressed fills while the pointer is on it, height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
+- Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`, and a full pill inside a full track.
 - Segments: one per option, side by side with no gap, each as wide as its label plus the rung's field inset and `space-2` at both sides (8, 8, 10, 12, 14, 14 from `xs` to `touch`), as tall as the track less `space-2` and the edge on each side.
 - Labels: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`). The picked one takes the selected ink, the others the quiet button's ink.
 
@@ -1028,9 +1028,9 @@ Content: one or two words per segment, sentence case, no period ("System", "Ligh
 
 Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
 
-Status: one gap. It has no hover look.
+Status: matches.
 
 ### Select
 
@@ -1221,6 +1221,8 @@ States:
 | on | primary track, thumb at the end | |
 | hover | the track one fill step deeper (on: the primary's hover fill); the thumb doesn't change | while interactive |
 | pressed | the track one more step (on: the primary's active fill), while held | as hover |
+
+Off, a fill step is the neutral soft paint's own step (its pressed fill less its hover fill), so hover and pressed sit one and two steps past `--penna-control`.
 | focused | the focus ring, 1.5 outside the track, one ring width off it when on | from the keyboard only, never from a click |
 | disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
@@ -1230,9 +1232,9 @@ Content: the row title names the setting in sentence case ("Share clipboard"), n
 
 Placement: at the trailing end of a settings row, one switch per row.
 
-HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:hover` or `data-state="hover"` and `:active` or `data-state="active"` draw hover and pressed; `:focus-visible` or `data-state="focused"` draws the ring.
+HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:hover` or `data-state="hover"` and `:active` or `data-state="active"` draw hover and pressed (off: `--penna-control` at 4/3 and 5/3 of its alpha; on: `--penna-primary-hover` and `--penna-primary-pressed`); `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: one gap. It has no hover or pressed look.
+Status: matches.
 
 ### Tabs
 
@@ -1277,7 +1279,7 @@ Placement: tabs sit side by side in a bar, each as wide as its content; an app t
 
 HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`.
 
-Status: one gap. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
+Status: matches.
 
 ### Text
 
@@ -1332,9 +1334,9 @@ Variants (`TileVariant`, `.variant()`):
 
 | Variant | Recipe | Paint | Use |
 |---|---|---|---|
-| Card (default) | `tile.card` | solid, one step above its ground, hairline outline, `shadow-contact` | a card for something you can place, in a dock under a well |
+| Card (default) | `tile.card` | solid, one step above its ground, no outline, no shadow | a card for something you can place, in a dock under a well |
 | Screen | `tile.screen` | as Card | a screen drawn to scale on a well |
-| Drop | `tile.drop` | a floating tint, hairline outline (`.edge(width)` sets its width), no shadow; deeper on hover and selected | where a dragged thing will land |
+| Drop | `tile.drop` | a floating tint, no outline (under Increase contrast a hairline, whose width `.edge(width)` sets), no shadow; deeper on hover and selected | where a dragged thing will land |
 | Veil | `tile.drop` at hover, no edge, on a glass ground | the hover tint | laid over panes while something is dragged |
 | Mini | `tile.mini` | no fill of its own (the caller's `.bg` and `.rounded` show), no glass | a pane inside a window's tile in the phone overview |
 
@@ -1351,21 +1353,18 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the variant's paint | |
-| hover | Card, Screen and Mini lift: `shadow-float` in place of `shadow-contact`; Drop one tint step deeper | the app sets it while the tile is dragged |
+| hover | Card, Screen and Mini lift: `shadow-float` under them; Drop one tint step deeper | the app sets it while the tile is dragged |
 | selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
 
 Behavior: the native tile paints a state; the app picks, drags and drops. A tile with a click handler is a tab stop announced as a button: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
 
-Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step from its ground with a contact shadow.
+Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step of fill from its ground, and casts a shadow only while dragged.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the selected ring in `::before` and the focus ring in `::after`; size and inset are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-float`, the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
-Status: two gaps.
-
-- A tile being dragged (hover) draws like one at rest.
-- The HTML twin fixes each variant's size and padding and picks and drags on its own, where the native tile leaves both to the app.
+Status: matches.
 
 ### Tooltip
 
@@ -1426,11 +1425,11 @@ Behavior: the app owns the rows, the selection (`active_row`), focus and what a 
 
 Content: a row's label is the thing's own name ("lib.rs"), never its path: the depth already says where it is. One icon per kind of thing.
 
-Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken. The list keeps `space-2` free on every side, so a focused row's ring shows whole, natively and in HTML.
+Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken. The list keeps `space-2` free on every side, so a focused row's ring shows whole, natively and in HTML: natively the app pads its `uniform_list` with `.p(Space::S2)`, inside the list's clip, and the guides move with the rows.
 
-HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
+HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.css` pads the tree `space-2`, and `tree.js` adds a `.penna-tree-guide` per guide inside that padding, `data-active` on the lit one.
 
-Status: one gap. A focused row runs the full width of its `uniform_list`, which clips the sides of its ring natively; the HTML tree doesn't clip, so the twin shows the whole ring.
+Status: matches.
 
 ### Well
 

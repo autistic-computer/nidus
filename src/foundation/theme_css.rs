@@ -551,9 +551,22 @@ fn write_root(css: &mut String, theme: &Theme) {
 
 fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
     let outline = theme.paint(Tone::Neutral, Emphasis::Outline);
+    let quiet = |state| {
+        theme
+            .layer(Surface::new(SurfaceRole::QUIET_BUTTON), state)
+            .fill
+    };
     let mut vars = vec![
         ("--penna-outline-hover".to_owned(), color(outline.hover)),
         ("--penna-outline-pressed".to_owned(), color(outline.active)),
+        (
+            "--penna-quiet-hover".to_owned(),
+            color(quiet(PaintState::Hover)),
+        ),
+        (
+            "--penna-quiet-pressed".to_owned(),
+            color(quiet(PaintState::Active)),
+        ),
     ];
     for (tone, name) in TONES {
         let solid = theme.paint(tone, Emphasis::Solid);
