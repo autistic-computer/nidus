@@ -60,10 +60,9 @@ const PAINT: [(&str, &str); 14] = [
     ("ring-gap", "0px"),
 ];
 
-const ROW_BUTTONS: [SurfaceRole; 4] = [
+const ROW_BUTTONS: [SurfaceRole; 3] = [
     SurfaceRole::QUIET_BUTTON,
     SurfaceRole::ICON_BUTTON,
-    SurfaceRole::FLAT_ICON_BUTTON,
     roles::ICON_BUTTON_ROW,
 ];
 
