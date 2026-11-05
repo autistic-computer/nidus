@@ -110,6 +110,7 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
             "tones, solid",
             row().children(Tone::ALL.map(|tone| {
                 Chip::new(tone.name(), tone.name())
+                    .dot(tone)
                     .tone(tone)
                     .emphasis(Emphasis::Solid)
             })),
