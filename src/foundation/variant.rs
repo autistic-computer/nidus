@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     Colorize as _, Theme,
-    color::{faint_weight, is_colored, muted_weight, readable_on},
+    color::{faint_weight, muted_weight, readable_on},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -134,6 +134,7 @@ pub struct Ground {
     pub ink: Hsla,
     pub elevation: Elevation,
     pub glass: bool,
+    pub solid: bool,
 }
 
 impl Ground {
@@ -174,11 +175,12 @@ impl Paint {
     }
 
     pub fn muted_at(&self, state: PaintState) -> Hsla {
-        let ground = self.ground_at(state).fill;
-        if is_colored(ground) {
+        let ground = self.ground_at(state);
+        if ground.solid {
             return self.text_at(state);
         }
-        self.text_at(state).mix_oklab(ground, 1.0 - muted_weight())
+        self.text_at(state)
+            .mix_oklab(ground.fill, 1.0 - muted_weight())
     }
 
     pub fn faint_at(&self, state: PaintState) -> Hsla {
@@ -199,9 +201,11 @@ impl Paint {
     }
 
     pub fn ground_at(&self, state: PaintState) -> Ground {
+        let fill = self.fill_at(state);
         Ground {
-            fill: self.ground.fill.blend(self.fill_at(state)),
+            fill: self.ground.fill.blend(fill),
             ink: self.text_at(state),
+            solid: self.ground.solid || fill.a > OPAQUE_ENOUGH,
             ..self.ground
         }
     }
@@ -246,6 +250,7 @@ impl Theme {
             ink: self.foreground,
             elevation: Elevation::Window,
             glass: false,
+            solid: false,
         }
     }
 
@@ -264,6 +269,7 @@ impl Theme {
             ink: self.foreground,
             elevation,
             glass: false,
+            solid: false,
         }
     }
 
@@ -272,7 +278,7 @@ impl Theme {
     }
 
     pub fn paint_on(&self, ground: Ground, tone: Tone, emphasis: Emphasis) -> Paint {
-        let tone = if emphasis != Emphasis::Solid && is_colored(ground.fill) {
+        let tone = if emphasis != Emphasis::Solid && ground.solid {
             Tone::Neutral
         } else {
             tone

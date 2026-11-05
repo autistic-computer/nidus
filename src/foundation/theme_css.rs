@@ -14,7 +14,6 @@ use crate::{
     components::input::field_layer,
     foundation::highlighter::HighlightTheme,
     foundation::interface_theme::{Glass, InterfaceTheme, builtin_themes},
-    foundation::is_colored,
     foundation::roles,
     oklab_lightness, to_hex,
 };
@@ -239,7 +238,7 @@ fn solid_rows(theme: &Theme) -> Vec<(Ground, String)> {
     for state in [PaintState::Selected, PaintState::Current] {
         for role in roles::all() {
             let ground = theme.ground_at(Surface::new(role), state);
-            if !is_colored(ground.fill) {
+            if !ground.solid {
                 continue;
             }
             let states = match grounds.iter_mut().find(|(seen, _)| *seen == ground) {
