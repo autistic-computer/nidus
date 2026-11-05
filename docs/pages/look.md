@@ -9,24 +9,23 @@ Steps of fill carry the structure, so a dense screen holds few lines. Only what 
 ```figure uses=badge,input,list,separator
 <div class="docs-tokens">
   <span class="docs-head">Kind</span><span class="docs-head">Rest</span><span class="docs-head">Picked</span><span class="docs-head">Example</span>
-  <span>Button</span><span>A wash of the ink</span><span>A deeper wash</span><span class="docs-row"><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button></span>
-  <span>Item</span><span>No fill</span><span>The highlight</span><span><span class="penna-list" style="width: 200px"><span class="penna-list-item" data-penna="menu-item" role="option"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>logs</span></span></span></span></span></span>
-  <span>Field</span><span>A wash, no edge</span><span>An edge while typing</span><span class="docs-row"><label class="penna-input" data-penna="field"><input placeholder="Host" aria-label="Host" /></label><label class="penna-input" data-penna="field" data-state="focused"><input value="studio" aria-label="Host" /></label></span>
-  <span>Card</span><span>One step above its ground</span><span>A ring</span><span><span class="penna-card" data-penna="card" style="display: block; width: 160px; padding: var(--penna-inset-card)"><span class="penna-type" data-type="small" data-penna-text>3 panes, 1 window</span></span></span>
-  <span>Floating</span><span>Glass, <code>shadow-float</code></span><span></span><span><span class="penna-tooltip" data-penna="tooltip" role="tooltip" style="position: static"><span data-penna-text>Split right</span></span></span>
-  <span>Label</span><span>A soft wash in its tone</span><span></span><span class="docs-row"><span class="penna-badge" data-penna="badge"><span class="badge-text" data-penna-text>12</span></span><span class="penna-badge" data-penna="badge" data-tone="danger"><i data-icon="circle-x"></i><span class="badge-text" data-penna-text>3 failing</span></span></span>
+  <span>Button</span><span>A wash</span><span>A deeper wash</span><span class="docs-row"><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Cancel</span></button><button class="penna-button" data-penna="button" data-tone="primary" data-prominent><span class="penna-label" data-penna-text>Save</span></button></span>
+  <span>Item</span><span>No fill</span><span>The highlight</span><span class="docs-row"><span class="penna-list" style="width: 104px"><span class="penna-list-item" data-penna="menu-item" role="option"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>work</span></span></span></span></span><span class="penna-list" style="width: 104px"><span class="penna-list-item" data-penna="menu-item" role="option" data-state="selected" aria-selected="true"><span class="penna-list-content"><i class="penna-list-icon" data-icon="square-terminal"></i><span class="penna-list-label"><span class="penna-text" data-penna-text>logs</span></span></span></span></span></span>
+  <span>Field</span><span>A wash</span><span>An edge, typing</span><span class="docs-row"><label class="penna-input" data-penna="field" style="width: 104px"><input placeholder="Host" aria-label="Host" /></label><label class="penna-input" data-penna="field" data-state="focused" style="width: 104px"><input value="studio" aria-label="Host" /></label></span>
+  <span>Card</span><span>A step of fill</span><span>A ring</span><span><span class="penna-card" data-penna="card" style="display: block; width: 160px; padding: var(--penna-inset-card)"><span class="penna-type" data-type="small" data-penna-text>3 panes, 1 window</span></span></span>
+  <span>Floating</span><span>Glass and a shadow</span><span></span><span><span class="penna-tooltip" data-penna="tooltip" role="tooltip" style="position: static"><span data-penna-text>Split right</span></span></span>
+  <span>Label</span><span>A wash in its tone</span><span></span><span class="docs-row"><span class="penna-badge" data-penna="badge"><span class="badge-text" data-penna-text>12</span></span><span class="penna-badge" data-penna="badge" data-tone="danger"><i data-icon="circle-x"></i><span class="badge-text" data-penna-text>3 failing</span></span></span>
   <span>Rule</span><span>A hairline</span><span></span><span><span class="penna-separator-rule" role="separator" style="display: block; width: 160px"><span data-penna="rule.bar"></span></span></span>
 </div>
 ```
 
 Hairlines mean something: a rule, an outline variant, a field being typed in. Increase contrast adds one to every surface.
 
-```figure
+```figure uses=input
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>A step of fill</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card); box-shadow: inset 0 0 0 1px var(--penna-border), var(--penna-shadow-lifted)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>Don't add an edge and a shadow</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Host" aria-label="Host" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Connect</span></button></div><figcaption>Washes, no edges</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><label class="penna-input" data-penna="field" style="width: 140px; box-shadow: inset 0 0 0 1px var(--penna-border)"><input placeholder="Host" aria-label="Host" /></label><button class="penna-button" data-penna="button" style="box-shadow: inset 0 0 0 1px var(--penna-border)"><span class="penna-label" data-penna-text>Connect</span></button></div><figcaption>Don't edge every control</figcaption></figure>
 </div>
-```
 
 ## Tint
 
@@ -88,7 +87,7 @@ Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency
 ```figure uses=menu
 <div class="docs-dodont">
   <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><div class="penna-popup" data-penna="popover"><div class="penna-popup-items" role="menu"><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Split right</span></span></div><div class="penna-popup-row" data-penna="menu-item" data-kind="item" role="menuitem"><span class="penna-popup-main"><span class="penna-label" data-penna-text>Close pane</span></span></div></div></div></div><figcaption>Glass on what floats</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card); background: var(--penna-glass-tint); backdrop-filter: var(--penna-glass-backdrop); box-shadow: var(--penna-glass-rim)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>Don't make a card, pane or control glass</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><div class="penna-card" data-penna="card" style="padding: var(--penna-inset-card); background: color-mix(in srgb, var(--penna-popover) 70%, transparent); backdrop-filter: var(--penna-glass-backdrop)"><span class="penna-type" data-type="small" data-penna-text>build · cargo test</span></div></div><figcaption>Don't make a card, pane or control glass</figcaption></figure>
 </div>
 ```
 
@@ -110,11 +109,11 @@ The same in every app, in Appearance.
 
 Knob values with names, nothing more.
 
-| Preset | `tint` | `radius` | `control-radius` | `smoothing` | `glass` |
+| Preset | Tint | Radius | Control radius | Smoothing | Glass |
 | --- | --- | --- | --- | --- | --- |
-| `default` | `ink` | 12 | 12 | 3 | the platform's |
-| `macos` | blue | 12 | `full` | 4 | `liquid` |
-| `yaru` | orange | 8 | 8 | 2 | `none` |
+| `default` | ink | 12 | 12 | 3 | the platform's |
+| `macos` | blue | 12 | full | 4 | liquid |
+| `yaru` | orange | 8 | 8 | 2 | none |
 
 ## Theme file
 
@@ -141,15 +140,15 @@ studio.activate(None, Some(window), cx);
 
 | Theme file | Rust | Does |
 | --- | --- | --- |
-| `name` | `InterfaceTheme::name` | Name shown in Appearance |
-| `tint` | `tint: Tint` | `ink`, an accent name, a hex color, or `{ "light", "dark" }`; `ink` by default |
-| `neutral` | `neutral: Neutral` | `{ "hue", "amount" }`: hue 0 to 360, amount 0 to 1 |
-| `radius` | `radius` | Container corners, 0 to 25; 12 by default |
-| `control-radius` | `control_radius: Option<ControlRadius>` | Control corners, 0 to 25 or `full`; follows `radius` when left out |
-| `smoothing` | `smoothing` | Corner shape, 2 to 5; 3 by default |
-| `glass` | `glass: Option<Glass>` | `none`, `frosted`, `liquid` or a material; the platform's when left out |
-| `face` | `face` | Interface face; the platform's when left out |
-| `mode` | `mode: ModeLock` | `follow`, `light` or `dark`; beats the person's Mode |
+| `name` | `.name` | Shown in Appearance |
+| `tint` | `.tint` | Ink, an accent, a hex color, or a light and dark pair |
+| `neutral` | `.neutral` | Hue 0 to 360, amount 0 to 1 |
+| `radius` | `.radius` | Container corners, 0 to 25 |
+| `control-radius` | `.control_radius` | Control corners, 0 to 25 or full; the radius when left out |
+| `smoothing` | `.smoothing` | Corner shape, 2 to 5 |
+| `glass` | `.glass` | None, frosted, liquid or a material; the platform's when left out |
+| `face` | `.face` | Interface face; the platform's when left out |
+| `mode` | `.mode` | Follow, light or dark; beats the person's Mode |
 | | `parse_theme(json)` | Reads a theme file |
 | | `.activate(mode, window, cx)` | Draws the app in it |
 
