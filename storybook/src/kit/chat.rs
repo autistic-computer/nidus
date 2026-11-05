@@ -316,7 +316,7 @@ fn composer(
         action: composer_action_button(
             SharedString::from(format!("{id}-action")),
             action,
-            true,
+            enabled,
             cx,
         )
         .into_any_element(),
