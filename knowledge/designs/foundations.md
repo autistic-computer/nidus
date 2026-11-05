@@ -493,9 +493,9 @@ Anatomy, top to bottom, the parts `gap-tight` 4 apart:
 - Label (optional, `.label()`): `body` at 500, in the ink.
 - Control: the input, select, checkbox or radio group, as the caller built it.
 - Help (optional, `.help()`): `small` in `fg-muted`.
-- Error (optional, `.error()`): in place of the help while it is set, `small` in the danger ink, after a 12 `circle-x` icon `space-4` before the text and centered on its first line's capitals.
+- Error (optional, `.error()`): in place of the help while it is set, `small` in `danger` (the role's own color, text and icon alike), after a 12 `circle-x` icon `space-4` before the text and centered on its first line's capitals: the icon sits in a box one `small` line (16) tall, dropped by `cap_center_drop`. The line is the `sm` rung of the control ladder: its text, icon and icon gap.
 
-A field is as wide as its parent, and its help and errors wrap at that width.
+A field is as wide as its parent, and its help and errors wrap at that width. It never stretches its control: an input fills the width by itself, and a select stays as wide as its value unless the caller sets a width.
 
 States:
 
@@ -512,9 +512,9 @@ Content: the label is a noun or a short noun phrase in sentence case, with no co
 
 Placement: fields in a form sit `gap-group` 16 apart. Two short fields can share a line `gap-related` 8 apart, each with its own label.
 
-HTML: `.penna-field` holding `.penna-field-label`, the control, and `.penna-field-help` or `.penna-field-error` (an `<i data-icon="circle-x">` before its text).
+HTML: `.penna-field` holding `.penna-field-label`, the control, and `.penna-field-help` or `.penna-field-error` (an `<i data-icon="circle-x">` before its text). Text runs are spans marked `data-penna-text`; `field.css` holds the twin.
 
-Status: not built yet.
+Status: matches.
 
 ### Icon
 
@@ -589,6 +589,8 @@ States:
 | loading | a spinner in the suffix | the text stays editable |
 | error | `.tone(Tone::Danger)` paints the field in the danger tone: its edge, at rest and focused | its Field shows the message with an icon (Field) |
 
+A tone paints only the edge: the tone's outline ink at rest and hovered, its focus ink when focused, and half of it when disabled. The fill, its hover step, the text and the placeholder stay the field's, and the edge draws on every theme, even one whose fields have none at rest. Every tone paints this way; forms use danger.
+
 A selection stays painted while the field is not focused.
 
 Behavior: a click places the caret and a drag selects. The keyboard edits as the platform does: arrows, word jumps (Alt, or Ctrl), line ends (Cmd, Home, End), Shift to select, Cmd-Z and Shift-Cmd-Z, cut, copy and paste. Enter emits `PressEnter`; in a multi-line field it inserts a line break unless the state submits on Enter, and Shift-Enter always breaks the line. Escape closes the context menu or ends a composition, then passes up. `validate` rejects an edit that fails it. The clear button empties the field and focuses it, and is never a tab stop. A number input steps with Up and Down and with its buttons, clamps to `min` and `max`, and keeps the step's decimals.
@@ -599,7 +601,7 @@ Placement: in a form a field sits in a Field, which puts its label above it and 
 
 HTML: `label.penna-input` with `data-penna="field"` (`field.outline` for outline; `field.multiline` with `data-multiline` around a `<textarea>` that takes `data-min-rows` and `data-max-rows`), holding an `<input>`; `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `data-disabled` with `aria-disabled="true"` and `disabled` on the input, `data-bare`, `data-borderless`, `data-align` (`center`, `right`), and `data-selection="start,end"` on the input for a resting selection. `.penna-input-prefix` and `.penna-input-suffix` sit around the input; the suffix holds `.penna-spinner` while loading and `.penna-input-clear` (a ghost icon button a rung smaller) when cleanable. A number input is `.penna-number` (`data-penna="field"`, `role="spinbutton"`, `data-step`, `data-min`, `data-max`) holding a bare centered field between two buttons with `data-step-by`. `input.js` paints the caret and the resting selection the way ala does, sets `data-state="focused"`, grows text areas and steps number inputs.
 
-Status: not built yet: the HTML twin has no danger field, and the inputs story shows neither an error in a Field nor a hovered field.
+Status: matches. The inputs story's Fields section shows a danger field in a Field, and hover is a parity step (`hover-field`, `hover-danger-field`) rather than a resting cell, since a field takes no paint state from its caller.
 
 ### Keycap
 
@@ -978,7 +980,7 @@ States:
 | focused | the field's focus edge | also while the menu is open |
 | open | the focused look, with the menu under it and the picked row highlighted | |
 | disabled | the field's disabled paint, faint value | leaves the focus order and never opens |
-| error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field | its Field shows the message with an icon (Field) |
+| error | `.tone(Tone::Danger)` paints the trigger in the danger tone, like a field: its edge only | its Field shows the message with an icon (Field) |
 
 Behavior: a press on the trigger opens the menu, and a second press closes it. While focused, Enter, Space, Up or Down open it. In the menu, Up and Down move, Enter picks, Escape closes it and returns focus to the trigger. Picking a row closes the menu and emits `SelectEvent::Confirm`. Under a coarse pointer the trigger's hit area grows to the touch slop.
 
@@ -986,9 +988,9 @@ Content: options are short nouns in sentence case ("Rust", "Floating"). The plac
 
 Placement: like a field: in a Field in a form, or at the end of a settings row whose title names it.
 
-HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`.
+HTML: `div.penna-select` with `data-options` (a comma list), `data-value` (the picked index), `data-placeholder`, `data-size` (`xsmall` to `touch`), `data-tone="danger"` for an error, `aria-disabled="true"`, and `data-open` (with `data-pinned` to stay open without focus). `select.js` builds `.penna-select-trigger` (`data-penna="field"`, carrying the select's `data-tone`) holding `.penna-select-title` (`data-placeholder` while nothing is picked) and `<i data-icon="chevron-down">`, and the menu `.penna-menu.penna-select-menu` (`data-penna="popover"`) of `menu-item` rows, each with a `.penna-select-check`. It sets `role="combobox"`, answers the same keys (Tab also closes), closes on a press outside and fires `change` with `{ index, value }`.
 
-Status: not built yet: `Select` takes no tone, natively or in HTML.
+Status: matches.
 
 ### Separator
 

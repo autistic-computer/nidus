@@ -329,8 +329,9 @@ async function tab(cdp) {
         await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
     };
     const shot = async (clip) => {
-        await front();
-        const result = await send("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 }, captureBeyondViewport: true });
+        const [left, top, width, height] = await evaluate("[scrollX, scrollY, innerWidth, innerHeight]");
+        const inView = clip.x >= left && clip.y >= top && clip.x + clip.width <= left + width && clip.y + clip.height <= top + height;
+        const result = await send("Page.captureScreenshot", { format: "png", clip: { ...clip, scale: 1 }, captureBeyondViewport: !inView });
         return `data:image/png;base64,${result.data}`;
     };
     return { send, evaluate, call, media, navigate, mouse, key, shot };

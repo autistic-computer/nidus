@@ -208,7 +208,7 @@ fn is_content(kind: Kind) -> bool {
 }
 
 fn has_tones(kind: Kind) -> bool {
-    matches!(kind, Kind::Button | Kind::Label)
+    matches!(kind, Kind::Button | Kind::Field | Kind::Label)
 }
 
 fn selector(role: SurfaceRole) -> String {
