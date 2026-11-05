@@ -430,49 +430,6 @@ button[data-penna] {
   background: var(--penna-on-accent);
 }
 
-.penna-slider {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: var(--penna-control-md);
-  padding: 0 var(--penna-space-8);
-  outline: none;
-  touch-action: none;
-}
-
-.penna-slider > .penna-rail {
-  position: relative;
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--penna-control);
-}
-
-.penna-slider > .penna-rail > .penna-fill {
-  width: var(--penna-value, 0%);
-  height: 100%;
-  border-radius: 999px;
-  background: var(--penna-primary);
-}
-
-.penna-slider > .penna-rail > .penna-knob {
-  position: absolute;
-  top: -5px;
-  left: var(--penna-value, 0%);
-  width: 16px;
-  height: 16px;
-  margin-left: -8px;
-  border-radius: 50%;
-  background: var(--penna-knob);
-  box-shadow: var(--penna-shadow-lifted);
-}
-
-.penna-slider:is(:focus-visible, [data-focused]) > .penna-rail > .penna-knob {
-  outline: 1.5px solid var(--penna-focus-neutral);
-  outline-offset: var(--penna-knob-ring-gap, 0px);
-}
-
 [data-penna="dialog"] {
   display: flex;
   flex-direction: column;
