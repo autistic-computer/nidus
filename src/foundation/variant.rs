@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     Colorize as _, Theme,
-    color::{faint_weight, muted_weight, readable_on},
+    color::{faint_weight, is_colored, muted_weight, readable_on},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -174,8 +174,11 @@ impl Paint {
     }
 
     pub fn muted_at(&self, state: PaintState) -> Hsla {
-        self.text_at(state)
-            .mix_oklab(self.ground_at(state).fill, 1.0 - muted_weight())
+        let ground = self.ground_at(state).fill;
+        if is_colored(ground) {
+            return self.text_at(state);
+        }
+        self.text_at(state).mix_oklab(ground, 1.0 - muted_weight())
     }
 
     pub fn faint_at(&self, state: PaintState) -> Hsla {
@@ -269,6 +272,11 @@ impl Theme {
     }
 
     pub fn paint_on(&self, ground: Ground, tone: Tone, emphasis: Emphasis) -> Paint {
+        let tone = if emphasis != Emphasis::Solid && is_colored(ground.fill) {
+            Tone::Neutral
+        } else {
+            tone
+        };
         let neutral = tone == Tone::Neutral
             || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground);
         let ink = ground.ink;

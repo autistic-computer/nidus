@@ -14,6 +14,7 @@ use crate::{
     components::input::field_layer,
     foundation::highlighter::HighlightTheme,
     foundation::interface_theme::{Glass, InterfaceTheme, builtin_themes},
+    foundation::is_colored,
     foundation::roles,
     oklab_lightness, to_hex,
 };
@@ -33,6 +34,14 @@ const TONES: [(Tone, &str); 4] = [
     (Tone::Danger, "danger"),
     (Tone::Warning, "warning"),
     (Tone::Success, "success"),
+];
+
+const INKED: [(Tone, &str); 5] = [
+    (Tone::Primary, "primary"),
+    (Tone::Danger, "danger"),
+    (Tone::Warning, "warning"),
+    (Tone::Success, "success"),
+    (Tone::Accent, "accent"),
 ];
 
 const PAINT: [(&str, &str); 14] = [
@@ -140,6 +149,7 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
     for (ground, containers) in grounds {
         let scope = format!(":is({})", containers.join(", "));
         let mut css = format!("{scope} {{\n");
+        write_inks(&mut css, theme, ground);
         for role in SurfaceRole::KIT
             .into_iter()
             .filter(|role| is_content(role.kind))
@@ -163,10 +173,35 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         let _ = writeln!(css, "}}");
         rules.push((scope, css));
     }
+    for (ground, scope) in solid_rows(theme) {
+        let mut css = format!("{scope} {{\n");
+        write_inks(&mut css, theme, ground);
+        let dot = theme
+            .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
+            .muted_at(PaintState::Rest);
+        let _ = writeln!(css, "  --penna-dot: {};", color(dot));
+        for role in SurfaceRole::KIT
+            .into_iter()
+            .filter(|role| role.kind == Kind::Label)
+        {
+            let surface = Surface::new(role).on(ground);
+            write_role(&mut css, theme, &selector(role), surface, "  ", full);
+            for (key, variant) in variants(role) {
+                write_over(&mut css, theme, &key, variant.on(ground), surface);
+            }
+        }
+        let _ = writeln!(css, "}}");
+        rules.push((scope, css));
+    }
     for container in roles::all().filter(|role| is_container(role.kind)) {
         let ground = theme.ground_of(Surface::new(container));
         let key = format!("[data-on=\"{}\"]", container.id);
-        let css = format!("{key} {{ --penna-ground: {}; }}\n", color(ground.fill));
+        let inks = declared_inks(theme, ground);
+        let css = format!(
+            "{key} {{ --penna-ground: {};{}{inks} }}\n",
+            color(ground.fill),
+            if inks.is_empty() { "" } else { " " }
+        );
         rules.push((key, css));
     }
     for role in SurfaceRole::KIT
@@ -195,6 +230,81 @@ fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
         variants.extend(toned(&prominent, base.prominent(true)));
     }
     variants
+}
+
+fn solid_rows(theme: &Theme) -> Vec<(Ground, String)> {
+    let mut grounds: Vec<(Ground, Vec<(PaintState, Vec<String>)>)> = Vec::new();
+    for state in [PaintState::Selected, PaintState::Current] {
+        for role in roles::all() {
+            let ground = theme.ground_at(Surface::new(role), state);
+            if !is_colored(ground.fill) {
+                continue;
+            }
+            let states = match grounds.iter_mut().find(|(seen, _)| *seen == ground) {
+                Some((_, states)) => states,
+                None => {
+                    grounds.push((ground, Vec::new()));
+                    &mut grounds.last_mut().expect("just pushed").1
+                }
+            };
+            match states.iter_mut().find(|(seen, _)| *seen == state) {
+                Some((_, rows)) => rows.push(selector(role)),
+                None => states.push((state, vec![selector(role)])),
+            }
+        }
+    }
+    grounds
+        .into_iter()
+        .map(|(ground, states)| {
+            let rows = states
+                .iter()
+                .map(|(state, rows)| {
+                    format!(
+                        ":is({}):is({})",
+                        rows.join(", "),
+                        state_selector(*state, Kind::Item).replace('&', "")
+                    )
+                })
+                .collect::<Vec<_>>();
+            (ground, format!(":is({})", rows.join(", ")))
+        })
+        .collect()
+}
+
+fn inks(theme: &Theme, ground: Ground) -> Vec<(String, String)> {
+    let neutral = theme.paint_on(ground, Tone::Neutral, Emphasis::Ghost);
+    let mut inks = vec![
+        (
+            "--penna-muted".to_owned(),
+            color(neutral.muted_at(PaintState::Rest)),
+        ),
+        (
+            "--penna-faint".to_owned(),
+            color(neutral.faint_at(PaintState::Rest)),
+        ),
+    ];
+    inks.extend(INKED.map(|(tone, name)| {
+        let ink = theme.paint_on(ground, tone, Emphasis::Ghost).text;
+        (format!("--penna-{name}-ink"), color(ink))
+    }));
+    inks
+}
+
+fn declared_inks(theme: &Theme, ground: Ground) -> String {
+    let window = inks(theme, theme.ground());
+    inks(theme, ground)
+        .into_iter()
+        .filter(|ink| !window.contains(ink))
+        .map(|(name, value)| format!("{name}: {value};"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn write_inks(css: &mut String, theme: &Theme, ground: Ground) {
+    let inks = declared_inks(theme, ground);
+    if !inks.is_empty() {
+        let _ = writeln!(css, "  {inks}");
+    }
 }
 
 pub fn icons(theme: &Theme) -> String {
@@ -425,7 +535,6 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
-    let ghost = theme.paint(Tone::Neutral, Emphasis::Ghost);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -448,14 +557,6 @@ fn write_root(css: &mut String, theme: &Theme) {
         (
             "--penna-fg-faint".to_owned(),
             color(theme.foreground.faint()),
-        ),
-        (
-            "--penna-muted".to_owned(),
-            color(ghost.muted_at(PaintState::Rest)),
-        ),
-        (
-            "--penna-faint".to_owned(),
-            color(ghost.faint_at(PaintState::Rest)),
         ),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
@@ -541,6 +642,7 @@ fn write_root(css: &mut String, theme: &Theme) {
             length(f32::from(theme.font_size)),
         ),
     ];
+    root.extend(inks(theme, theme.ground()));
     root.extend(paint_vars(theme));
     root.extend(scale_vars());
     root.extend(syntax_vars(theme));
@@ -578,10 +680,6 @@ fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
         vars.push((format!("--penna-{name}-hover"), color(solid.hover)));
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
-    }
-    for (tone, name) in TONES.into_iter().chain([(Tone::Accent, "accent")]) {
-        let ghost = theme.paint(tone, Emphasis::Ghost);
-        vars.push((format!("--penna-{name}-ink"), color(ghost.text)));
     }
     vars
 }
@@ -842,6 +940,42 @@ mod tests {
         assert!(scope.contains(
             "  [data-penna=\"button\"][data-prominent] { --penna-fill: #1c1c1a; --penna-ink: #ebebeb;"
         ));
+    }
+
+    #[test]
+    fn a_ground_carries_the_inks_that_differ_from_the_windows() {
+        let css = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
+        let start = css
+            .find(":is([data-penna=\"panel\"][data-ground]")
+            .expect("the panel's ground has a scope");
+        let scope = &css[start..];
+        let inks = &scope[scope.find('\n').expect("the scope opens")..];
+        assert!(inks.starts_with("\n  --penna-muted: #525250; --penna-faint: #858582;\n"));
+        assert!(css.contains(
+            "[data-on=\"card\"] { --penna-ground: #e9e9e6; --penna-muted: #525250; --penna-faint: #858582; }"
+        ));
+        assert!(css.contains("[data-on=\"bar\"] { --penna-ground: #f6f6f3; }"));
+    }
+
+    #[test]
+    fn a_tinted_selection_sets_the_ground_inside_it() {
+        let (_, macos) = &builtin_themes()[1];
+        let css = stylesheet(&kit_theme(macos, ThemeMode::Light), &[]);
+        let start = css
+            .find(":is(:is([data-penna=\"button.quiet\"]")
+            .expect("the tint's selection has a scope");
+        let end = start + css[start..].find("\n}\n").expect("the scope closes");
+        let scope = &css[start..end];
+        assert!(scope.contains("[data-penna=\"sidebar.row\"]"));
+        assert!(scope.contains("--penna-success-ink: #ebebeb;"));
+        assert!(scope.contains("  --penna-dot: #ebebeb;\n"));
+        assert!(
+            scope.contains(
+                "  [data-penna=\"chip\"] { --penna-fill: #ffffff0a; --penna-ink: #ebebeb;"
+            )
+        );
+        let ink = stylesheet(&kit_theme(&builtin_themes()[0].1, ThemeMode::Light), &[]);
+        assert!(!ink.contains("--penna-dot"));
     }
 
     #[test]
