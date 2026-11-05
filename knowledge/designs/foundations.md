@@ -247,7 +247,7 @@ Corners: `radius` rounds containers and `control-radius` rounds controls. A cont
 
 Glass is only for floating surfaces, since it reads only with content behind it; never for controls, panes or cards. A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
 
-- `frosted`: blur 20 and the `popover` fill at 70% over it, a faint light rim (specular 0.2 lit from above), no bezel, refraction, saturation or edge shadow. It draws the same natively and on the web.
+- `frosted`: blur 20 and the `popover` fill at 70% over it, no bezel, refraction, saturation or edge shadow. Its specular (0.2, lit from above) lights only a bezel, so it draws no rim. It draws the same natively and on the web.
 - `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
 - A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
 
@@ -861,7 +861,7 @@ Looks (`PanelLook`, `Panel::new(id, look)`):
 | Inline | `inline-panel` | as Popover | panels raised inside a view: question cards, failure alerts |
 | Picker | `picker`, under `dialog` | as Popover | dialogs that search a list and pick from it |
 | Toast | `toast` | as Popover; announced as a status | notifications and banners |
-| Plain | `panel` | filled with the ground under it (the window `bg`); square, no outline, no shadow | an opaque cover, such as a slide-over |
+| Plain | `panel` | the `panel` fill, opaque; square, no outline, no shadow | an opaque cover, such as a slide-over |
 
 The four floating looks paint the same; each is its own recipe.
 
