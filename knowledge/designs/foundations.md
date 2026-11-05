@@ -187,8 +187,19 @@ Contrast (WCAG 2, built in step 8): in all six theme variants (three looks, ligh
 
 - Corners: `radius-theme` is a theme knob people change (24 in default and macOS, 16 in Yaru; 25 at most). A control's radius is the theme radius capped at 45% of its height (`corner-fraction`). A corner inside another is concentric: inner radius = outer radius minus the inset between them. Rows draw at most smoothing 2.5.
 - Depth: `shadow-contact` (0 1 4 #00000033) for controls on a surface; `shadow-lifted` for cards that move; `shadow-float` for menus, popovers, dialogs and the window. Themes can turn outlines and shadows off, so never let a shadow alone separate two surfaces.
-- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius. Only fields change their fill or edge on focus.
+- Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
+
+## Focus and keys
+
+How Principles 1 is kept, for every component:
+
+- A control (button, switch, segmented control, slider, select, field, checkbox, an interactive chip or tile) is one tab stop unless it is disabled, and Space and Enter act on it the way a click does. It acts on release of a click, never on press.
+- A group of parts (a tab strip, a list, a tree, a segmented control's segments, a radio group) is one tab stop: the arrow keys move within it, Home and End go to its ends. Where penna draws the parts (`Tab`, `ListItem`, `Row`, tree rows), the container that holds them owns focus and the keys and tells the focused part with `PaintState::Focused`; penna owns how that looks.
+- Focus shows as the 1.5px ring outside the border box, and only from the keyboard: a press on a control does not focus it. A focused part draws the ring, never its selected fill, so focus and selection always look different; selected and focused draws both. Where a control's fill is the ring's own color (a primary button or an on switch in the default look, where both are the ink), the ring stands one ring width off the edge so it still shows.
+- A menu or popover trigger opens on Enter, Space and Down; focus goes into the menu, Escape closes it and returns focus to the trigger.
+- A control's tooltip shows when the keyboard focuses it, as on hover.
+- Keys never leave a focused terminal or text field: app shortcuts that act while one has focus need a modifier.
 
 ## Layout primitives (built)
 
@@ -269,7 +280,7 @@ Placement: buttons in a group sit `gap-related` 8 apart. A dialog's or a form's 
 
 HTML: `.penna-button` with `data-penna` (the recipe: `button`, `button.quiet` for ghost, `button.outline`), `data-tone`, `data-prominent` (solid), `data-size` (`xsmall` to `touch`), `data-state="current"` (selected), `data-variant` (`link`, `text`), `disabled`, `data-loading`; the label is `.penna-label`, the icon `<i data-icon>`, and a button with a caret takes `data-caret` and holds a `.penna-caret`.
 
-Status: matches.
+Status: one gap. The ring touches the edge, so on a primary button in the default look, whose fill is the ring's own color, it disappears (Focus and keys).
 
 ### Badge
 
@@ -1085,7 +1096,7 @@ Placement: at the trailing end of a settings row, one switch per row.
 
 HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: one gap. It has no hover or pressed look.
+Status: two gaps. It has no hover or pressed look. The ring touches the track, so an on switch in the default look, whose fill is the ring's own color, shows no ring (Focus and keys).
 
 ### Tabs
 

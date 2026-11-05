@@ -3,7 +3,7 @@
 Turns a setting on or off, and the change applies at once. For one of a few modes use a segmented control.
 
 ```figure uses=notice
-<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>It has no hover or pressed look.</span></div></div></div>
+<div class="docs-full penna-notice" data-penna="notice" data-tone="warning"><div class="penna-notice-tone" data-penna="chip" data-tone="warning"><span class="penna-notice-lead"><i data-icon="triangle-alert"></i></span><div class="penna-notice-body"><span class="penna-text penna-notice-title" data-penna-text>Being reworked</span><span class="penna-text penna-notice-detail" data-penna-text>It has no hover or pressed look. When on, the focus ring blends into the track.</span></div></div></div>
 ```
 
 ## Anatomy
