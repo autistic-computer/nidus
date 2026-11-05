@@ -1013,19 +1013,24 @@ impl Theme {
         let kind = surface.role.kind;
         let style = self.style(surface.role);
         let ground = surface.ground.unwrap_or_else(|| self.ground());
-        let mut glass = match style.fill {
-            Fill::Glass if !ground.glass => self.drawn_glass(),
-            _ => None,
-        };
-        let fill = match style.fill {
-            Fill::Glass if ground.glass => Fill::Tint,
-            Fill::Glass if glass.is_none() => Fill::Solid,
-            fill => fill,
-        };
         let tone = if surface.prominent && surface.tone == Tone::Neutral {
             Tone::Primary
         } else {
             surface.tone
+        };
+        let opaque = tone != Tone::Neutral
+            && super::roles::FLOATING_CHIPS
+                .iter()
+                .any(|chip| chip.id == surface.role.id);
+        let mut glass = match style.fill {
+            Fill::Glass if !ground.glass && !opaque => self.drawn_glass(),
+            _ => None,
+        };
+        let fill = match style.fill {
+            Fill::Glass if opaque => Fill::Solid,
+            Fill::Glass if ground.glass => Fill::Tint,
+            Fill::Glass if glass.is_none() => Fill::Solid,
+            fill => fill,
         };
 
         let soft = self.paint_on(ground, tone, Emphasis::Soft);
@@ -1044,7 +1049,7 @@ impl Theme {
         let glass_fill = soft.opaque().fill;
         let paint = if surface.prominent && fill != Fill::Glass {
             solid
-        } else if kind.is_control() {
+        } else if kind.is_control() || opaque {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
                 Fill::Tint => soft,
@@ -1496,6 +1501,37 @@ mod tests {
         let layer = theme.layer(Surface::new(role).prominent(true), PaintState::Rest);
         assert!(layer.glass.is_some());
         assert_eq!(layer.text, theme.paint(Tone::Primary, Emphasis::Solid).text);
+    }
+
+    #[test]
+    fn a_toned_floating_chip_draws_its_tone_opaque_and_only_the_neutral_one_is_glass() {
+        let mut theme = theme();
+        theme.glass = Some(GlassMaterial::frosted());
+        let chip = Surface::new(crate::foundation::roles::CHIP_FLOATING);
+        let ground = theme.ground();
+        assert!(theme.layer(chip, PaintState::Rest).glass.is_some());
+
+        let soft = theme.layer(chip.tone(Tone::Danger), PaintState::Rest);
+        assert!(soft.glass.is_none());
+        assert_eq!(
+            soft.fill,
+            theme
+                .paint_on(ground, Tone::Danger, Emphasis::Soft)
+                .opaque()
+                .fill
+        );
+        assert_eq!(soft.fill.a, 1.0);
+
+        let solid = theme.layer(chip.tone(Tone::Danger).prominent(true), PaintState::Rest);
+        assert!(solid.glass.is_none());
+        assert_eq!(
+            solid.fill,
+            theme.paint_on(ground, Tone::Danger, Emphasis::Solid).fill
+        );
+        assert_eq!(solid.shadow, theme.float_shadows());
+
+        let callout = Surface::new(crate::foundation::roles::INLINE_PANEL).tone(Tone::Danger);
+        assert!(theme.layer(callout, PaintState::Rest).glass.is_some());
     }
 
     #[test]

@@ -4,7 +4,7 @@ penna draws one look. An app sets a few knobs in its theme file, a person sets a
 
 ## Kinds
 
-Steps of fill carry the structure, so a dense screen holds few lines. Only what floats over content casts a shadow.
+Steps of fill carry the structure, so a dense screen holds few lines. Only what floats over content casts a shadow. A press replaces the hover wash, never stacks on it.
 
 ```figure uses=badge,input,list,separator
 <div class="docs-tokens">
@@ -83,7 +83,7 @@ Glass is for what floats over content: menus, popovers, tooltips, toasts. `none`
 </div>
 ```
 
-Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`.
+Text on any glass reads at 4.5:1 over the worst content, and Reduce transparency draws it as the popover fill. Where the renderer can't bend light, `liquid` draws as `frosted`. Glass is neutral: a floating chip with a tone draws its tone opaque.
 
 ```figure uses=menu
 <div class="docs-dodont">

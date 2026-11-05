@@ -252,6 +252,8 @@ Glass is only for floating surfaces, since it reads only with content behind it;
 - `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above, one set of values for light and one for dark (`interface_theme::liquid`). Where the renderer can't bend light, it draws as `frosted`: the web draws it with its lens only where `kit.js` refracts, and natively a window that can't sample its backdrop draws the fallback.
 - A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
 
+Natively the blur reads the backdrop up to 2.5 blur radii past a glass surface's edge; the web's backdrop filter reads only what is under the surface. Where the backdrop changes just outside a glass edge, as under a dialog stacked over another, the two blend it a little differently. That is a raster difference, like text, not a choice.
+
 Presets: `macos` (tint blue, #0a64dd and #76abfd, since ala exposes no system accent; `control-radius` `full`; `smoothing` 4; `glass` `liquid`) and `yaru` (tint orange; `radius` 8; `smoothing` 2; `glass` `none`) are knob values with names, nothing more.
 
 HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look. A theme that leaves `glass` out gets `frosted` in its tokens. `--penna-control-radius` carries the control corner (9999px for `full`). Under `prefers-reduced-transparency: reduce` the tokens give every glass role the `popover` fill and no backdrop. A card inside a container marked `data-ground` rises one step from that container's fill.
@@ -268,12 +270,12 @@ How the knobs are spelled and decided:
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
 - Rings on a selected pane, card or tile, and a row's bar mark, take the highlight color, not `accent`.
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
-- Glass is neutral: a floating surface with a tone (a solid or soft toned floating chip) draws its tone's own fill, opaque, under `shadow-float`, since a toned tint can't hold text at 4.5:1 over any backdrop. Only the neutral floating chip is glass.
-- A press replaces the hover look; nothing draws its pressed wash over its hover wash.
+- Glass is neutral: a floating surface with a tone (a solid or soft toned floating chip) draws its tone's own fill, opaque, under `shadow-float`, since a toned tint can't hold text at 4.5:1 over any backdrop. Only the neutral floating chip is glass; a callout keeps neutral glass and shows its tone in its icon. A soft toned chip lays its soft fill opaque on its ground with the soft ink, a solid one its solid fill; any tone counts, `primary` included, and a solid neutral chip is solid `primary`. In HTML a floating chip (`chip.floating`, `chip.marker`, `chip.drag`) takes `data-tone` like a badge, and `data-emphasis="solid"` draws no glass.
+- A press replaces the hover look; nothing draws its pressed wash over its hover wash. Natively a press highlight (sheet rows, touch which-key rows, and menu rows, rows, tabs and chips under a coarse pointer) paints the wash that turns the hover wash into the pressed one, and a row that has one sets no pressed style of its own.
 - Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash; HTML faint and tone ink are worked out for the window, not the ground under them; a toned chip on a selected row in a tinted look keeps its tone. Step 12 closes them.
+Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: HTML faint and tone ink are worked out for the window, not the ground under them; a toned chip on a selected row in a tinted look keeps its tone. Step 12 closes them.
 
 ## Focus and keys
 
@@ -1357,7 +1359,7 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the variant's paint | |
-| hover | Card, Screen and Mini lift: one step of fill above rest and `shadow-lifted` under them (Depth), so the lift reads in dark too, where a shadow barely shows; Drop one tint step deeper | the app sets it while the tile is dragged |
+| hover | Card, Screen and Mini lift: one step of fill above rest and `shadow-lifted` under them (Depth), so the lift reads in dark too, where a shadow barely shows; Drop one tint step deeper | the app sets it while the tile is dragged; the step is one wash of the ground's pole (`washed(1)`, the hover step of a solid surface) over the fill, a Mini's caller fill included |
 | selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
@@ -1366,7 +1368,7 @@ Behavior: the native tile paints a state; the app picks, drags and drops. A tile
 
 Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step of fill from its ground, and casts a shadow only while dragged.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted`, the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-lifted` under an inset `--penna-wash` (one wash step, laid over whatever fill the tile or its well draws), the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
 Status: matches.
 

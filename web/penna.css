@@ -410,6 +410,9 @@ button[data-penna] {
 
 [data-penna][data-emphasis="solid"] {
   background: var(--penna-solid);
+  --penna-backdrop: none;
+  --penna-rim: 0 0 #0000;
+  --penna-glass: 0;
 }
 
 [data-penna][data-solid="primary"] {

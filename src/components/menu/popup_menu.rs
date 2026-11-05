@@ -892,20 +892,30 @@ impl PopupMenu {
             rems_from_px(Size::Medium.control_px()).to_pixels(window.rem_size())
         };
         let icon_size = if coarse { Size::Medium } else { Size::Small };
+        let surface = Surface::new(SurfaceRole::MENU_ITEM);
         let row = cx.theme().layer(
-            Surface::new(SurfaceRole::MENU_ITEM),
+            surface,
             if selected {
                 PaintState::Selected
             } else {
                 PaintState::Rest
             },
         );
+        let pressed = cx.theme().layer(surface, PaintState::Active).fill;
+        let pressed = if selected {
+            pressed
+        } else {
+            crate::blocks::touch::over_hover(
+                cx.theme().layer(surface, PaintState::Hover).fill,
+                pressed,
+            )
+        };
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
                 this.child(crate::blocks::touch::press_highlight(
                     ala::ElementId::NamedInteger(group_name.clone().into(), 0),
-                    None,
+                    pressed,
                     crate::blocks::touch::PressCorners::Row(
                         row_radius(&row, item_height),
                         row.smoothing,

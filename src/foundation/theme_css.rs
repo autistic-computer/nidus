@@ -173,9 +173,11 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         .into_iter()
         .chain(toned.iter().copied())
         .filter(|role| has_tones(role.kind))
+        .chain(roles::FLOATING_CHIPS)
     {
         for (key, surface) in variants(role) {
             let mut css = String::new();
+            let full = full || role.kind == Kind::Floating;
             write_role(&mut css, theme, &key, surface, "", full);
             rules.push((key, css));
         }
@@ -461,6 +463,7 @@ fn write_root(css: &mut String, theme: &Theme) {
         ("--penna-on-accent".to_owned(), color(primary.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
         ("--penna-control".to_owned(), color(control)),
+        ("--penna-wash".to_owned(), color(theme.background.washed(1))),
         ("--penna-knob".to_owned(), color(knob)),
         ("--penna-thumb".to_owned(), color(thumb)),
         ("--penna-success".to_owned(), color(theme.success)),

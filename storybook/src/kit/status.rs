@@ -220,6 +220,21 @@ fn chip_looks(_: &mut Window, cx: &mut App) -> AnyElement {
                         .emphasis(Emphasis::Solid),
                 ),
         )
+        .state(
+            "floating with a tone",
+            row()
+                .child(
+                    Chip::new("chip-floating-danger", "Dead")
+                        .look(ChipLook::Floating)
+                        .tone(Tone::Danger),
+                )
+                .child(
+                    Chip::new("chip-floating-solid", "Sync")
+                        .look(ChipLook::Floating)
+                        .tone(Tone::Danger)
+                        .emphasis(Emphasis::Solid),
+                ),
+        )
         .into_any_element()
 }
 
