@@ -376,9 +376,7 @@ fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, St
 
 fn write_root(css: &mut String, theme: &Theme) {
     let primary = theme.paint(Tone::Primary, Emphasis::Solid);
-    let muted = theme
-        .paint(Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
+    let ghost = theme.paint(Tone::Neutral, Emphasis::Ghost);
     let control = theme
         .paint(Tone::Neutral, Emphasis::Soft)
         .fill_at(PaintState::Active);
@@ -402,7 +400,14 @@ fn write_root(css: &mut String, theme: &Theme) {
             "--penna-fg-faint".to_owned(),
             color(theme.foreground.faint()),
         ),
-        ("--penna-muted".to_owned(), color(muted)),
+        (
+            "--penna-muted".to_owned(),
+            color(ghost.muted_at(PaintState::Rest)),
+        ),
+        (
+            "--penna-faint".to_owned(),
+            color(ghost.faint_at(PaintState::Rest)),
+        ),
         ("--penna-accent".to_owned(), color(theme.accent)),
         ("--penna-on-accent".to_owned(), color(primary.text)),
         ("--penna-primary".to_owned(), color(primary.fill)),
@@ -507,6 +512,10 @@ fn paint_vars(theme: &Theme) -> Vec<(String, String)> {
         vars.push((format!("--penna-{name}-hover"), color(solid.hover)));
         vars.push((format!("--penna-{name}-pressed"), color(solid.active)));
         vars.push((format!("--penna-on-{name}"), color(solid.text)));
+    }
+    for (tone, name) in TONES.into_iter().chain([(Tone::Accent, "accent")]) {
+        let ghost = theme.paint(tone, Emphasis::Ghost);
+        vars.push((format!("--penna-{name}-ink"), color(ghost.text)));
     }
     vars
 }

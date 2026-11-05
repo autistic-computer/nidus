@@ -16,7 +16,7 @@ pub const STORY: Story = Story {
     id: "display",
     name: "Display",
     group: "Kit",
-    summary: "Small read-only pieces: key caps, badges, spinners, separators and list rows.",
+    summary: "Small read-only pieces: key caps, badges, labels, spinners, separators and list rows.",
     sections: &[
         Section {
             id: "kbd",
@@ -29,6 +29,12 @@ pub const STORY: Story = Story {
             name: "Badge",
             summary: "Badge::new(label) with .emphasis(..) and .tone(..). Its height is the line it sits in, its icon 12 at every size. .opaque() fills it with its ground's own fill, so it reads over a bubble or a picture.",
             build: |_, cx| stateless(badges, cx),
+        },
+        Section {
+            id: "label",
+            name: "Label",
+            summary: "Label::new(style, text) with .muted(), .faint(), .tone(..), .strong() and .mono(), the code face at the style's own size. It wraps when it runs out of room, unless it truncates.",
+            build: |_, cx| stateless(labels, cx),
         },
         Section {
             id: "spinner",
@@ -154,6 +160,48 @@ fn badges(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(Label::new(TextStyle::Body, "Review"))
                 .child(Badge::new("2").tone(Tone::Danger).on(bubble))
                 .child(Badge::new("2").tone(Tone::Danger).opaque().on(bubble)),
+        )
+        .into_any_element()
+}
+
+fn labels(_: &mut Window, _: &mut App) -> AnyElement {
+    let sentence = "Keyboard and pointer follow the cursor to the next computer";
+    states()
+        .columns(2)
+        .state(
+            "full, muted, faint, strong",
+            row()
+                .child(Label::new(TextStyle::Body, "Ready"))
+                .child(Label::new(TextStyle::Body, "ubuntu is to the right").muted())
+                .child(Label::new(TextStyle::Body, "Last seen").faint())
+                .child(Label::new(TextStyle::Body, "Paired").strong()),
+        )
+        .state(
+            "tones",
+            row().children(
+                [
+                    (Tone::Primary, "Picked"),
+                    (Tone::Danger, "Failed"),
+                    (Tone::Warning, "Waiting"),
+                    (Tone::Success, "Ready"),
+                    (Tone::Accent, "Linked"),
+                ]
+                .map(|(tone, word)| Label::new(TextStyle::Body, word).tone(tone)),
+            ),
+        )
+        .state(
+            "code, small and body",
+            row()
+                .child(Label::new(TextStyle::Small, "git log --oneline").mono())
+                .child(Label::new(TextStyle::Body, "just libs pull penna").mono()),
+        )
+        .state(
+            "wrapping and truncated, 180 wide",
+            v_flex()
+                .w(px(180.0))
+                .gap(Space::S8)
+                .child(Label::new(TextStyle::Body, sentence))
+                .child(Label::new(TextStyle::Body, sentence).truncate()),
         )
         .into_any_element()
 }

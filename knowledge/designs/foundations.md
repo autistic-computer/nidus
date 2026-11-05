@@ -755,9 +755,9 @@ Content: sentence case, no closing period on a single line. Two or three text st
 
 Placement: a label and what it names sit `gap-tight` (4) apart: a title and its description, a field label and its field.
 
-HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`.
+HTML: `.penna-type` with `data-type` (the style's name: `micro` to `display`, `mono`, `read-h1` to `read-body`, `touch-small` to `touch-title`), `data-strong`, `data-muted`, `data-faint`, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`), `data-mono` (the code face at the style's own size) and `data-truncate`; the run is marked `data-penna-text`. It wraps unless `data-truncate`. Muted takes the ink of the surface around it, as `.on(ground)` does natively; faint and tone take the root `--penna-faint` and `--penna-<tone>-ink`, worked out for the window, so a faint label on a card mixes toward the window's fill.
 
-Status: two gaps. The HTML twin has no faint level, no tone and no code face outside `mono`. The HTML twin never wraps (`white-space: nowrap`), where a native label wraps unless it truncates.
+Status: matches.
 
 ### List
 
