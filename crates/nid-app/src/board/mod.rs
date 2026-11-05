@@ -1169,7 +1169,7 @@ impl Render for Board {
             for (monitor, _, at) in &island.screens {
                 let moving = moving_ids.contains(&monitor.id);
                 let state = if moving && refused {
-                    PaintState::Focused
+                    PaintState::Selected
                 } else if moving {
                     PaintState::Hover
                 } else if away || left {
