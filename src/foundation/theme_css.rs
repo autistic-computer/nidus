@@ -143,6 +143,7 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         for role in SurfaceRole::KIT
             .into_iter()
             .filter(|role| is_content(role.kind))
+            .chain(roles::all().filter(|role| role.kind == Kind::Card))
         {
             let surface = Surface::new(role).on(ground);
             let differs = STATES.iter().any(|state| {
@@ -324,9 +325,7 @@ fn write_role(
 fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, String)> {
     let role = surface.role;
     let fill = layer.glass.map_or(layer.fill, |material| material.tint);
-    let muted = theme
-        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
+    let muted = layer.muted_text();
     let mut vars = vec![
         ("fill", color(fill)),
         ("ink", color(layer.text)),

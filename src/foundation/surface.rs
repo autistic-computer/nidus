@@ -1086,7 +1086,8 @@ impl Theme {
 
         let highlight = match state {
             PaintState::Hover | PaintState::Active => style.hover,
-            PaintState::Selected | PaintState::Current | PaintState::Focused => style.selected,
+            PaintState::Selected | PaintState::Current => style.selected,
+            PaintState::Focused if kind == Kind::Field => style.selected,
             _ => Highlight::None,
         };
         let highlight = match highlight {
