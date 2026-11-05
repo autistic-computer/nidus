@@ -141,12 +141,8 @@ impl Plate {
                 Some(height) => PressCorners::Row(row_radius(&pressed, height), pressed.smoothing),
                 None => PressCorners::Adaptive(pressed.radius),
             };
-            let fill = if lively {
-                over_hover(layer_at(PaintState::Hover).fill, pressed.fill)
-            } else {
-                pressed.fill
-            };
-            press_highlight(id, fill, corners)
+            let shown = if lively { PaintState::Hover } else { state };
+            press_highlight(id, over_hover(layer_at(shown).fill, pressed.fill), corners)
         });
         let (hover, active) = match (lively, hover_group) {
             (false, _) => (None, None),

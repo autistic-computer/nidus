@@ -901,15 +901,7 @@ impl PopupMenu {
                 PaintState::Rest
             },
         );
-        let pressed = cx.theme().layer(surface, PaintState::Active).fill;
-        let pressed = if selected {
-            pressed
-        } else {
-            crate::blocks::touch::over_hover(
-                cx.theme().layer(surface, PaintState::Hover).fill,
-                pressed,
-            )
-        };
+        let pressed = press_wash(cx.theme(), selected);
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .when(coarse && item.is_clickable(), |this| {
@@ -1269,6 +1261,19 @@ impl Render for PopupMenu {
             });
         crate::foundation::surface_enter(surface, "menu-open", px(0.0))
     }
+}
+
+fn press_wash(theme: &crate::Theme, selected: bool) -> Hsla {
+    let surface = Surface::new(SurfaceRole::MENU_ITEM);
+    let shown = if selected {
+        PaintState::Selected
+    } else {
+        PaintState::Hover
+    };
+    crate::blocks::touch::over_hover(
+        theme.layer(surface, shown).fill,
+        theme.layer(surface, PaintState::Active).fill,
+    )
 }
 
 #[cfg(test)]
@@ -1739,5 +1744,34 @@ mod tests {
         );
         assert_eq!(PopupMenuItem::separator().a11y_label(), None);
         assert_eq!(PopupMenuItem::element(|_, _, _| div()).a11y_label(), None);
+    }
+    #[test]
+    fn a_press_on_a_selected_row_draws_one_pressed_wash() {
+        let mut theme = crate::Theme::from(&*crate::ThemeColor::light());
+        let row = Surface::new(SurfaceRole::MENU_ITEM);
+        let close = |drawn: Hsla, want: Hsla| {
+            let (drawn, want) = (ala::Rgba::from(drawn), ala::Rgba::from(want));
+            for (drawn, want) in [(drawn.r, want.r), (drawn.g, want.g), (drawn.b, want.b)] {
+                assert!((drawn - want).abs() < 0.5 / 255.0, "{drawn} != {want}");
+            }
+        };
+        let selected = theme.layer(row, PaintState::Selected).fill;
+        let pressed = theme.layer(row, PaintState::Active).fill;
+        close(
+            theme
+                .background
+                .blend(selected)
+                .blend(press_wash(&theme, true)),
+            theme.background.blend(pressed),
+        );
+
+        theme.accent = crate::parse_hex("#0a64dd").unwrap();
+        theme.primary = crate::PrimaryStyle::Accent;
+        let selected = theme.layer(row, PaintState::Selected).fill;
+        assert_eq!(selected.a, 1.0);
+        assert_eq!(
+            press_wash(&theme, true),
+            theme.layer(row, PaintState::Active).fill
+        );
     }
 }
