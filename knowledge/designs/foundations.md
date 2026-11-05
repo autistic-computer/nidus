@@ -1014,8 +1014,8 @@ Kinds: one.
 
 Anatomy, all from the control's rung of the control ladder (Size):
 
-- Track: the field's paint (fill, a hairline edge of at least 1px, corners), height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
-- Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`.
+- Track: the field's paint (fill, a hairline edge of at least 1px, corners), with its hover and pressed fills while the pointer is on it, height `control_px` (28 at `md`, which follows density), `space-2` inside the edge.
+- Pill: behind the picked segment, in the quiet button's selected paint (`data-state="current"`). It is as tall as the segments and its radius is concentric with the track's: the track radius less its edge and `space-2`, and a full pill inside a full track.
 - Segments: one per option, side by side with no gap, each as wide as its label plus the rung's field inset and `space-2` at both sides (8, 8, 10, 12, 14, 14 from `xs` to `touch`), as tall as the track less `space-2` and the edge on each side.
 - Labels: the rung's text style (`caption`, `small`, `body`, `body`, `lead`, `touch-body`). The picked one takes the selected ink, the others the quiet button's ink.
 
@@ -1038,9 +1038,9 @@ Content: one or two words per segment, sentence case, no period ("System", "Ligh
 
 Placement: at the trailing end of a settings row (Appearance's mode and density), or above content to switch its view (the docs' Rust and HTML tabs).
 
-HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`. `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
+HTML: `.penna-segmented` (`data-penna="field"`, `role="radiogroup"`, `data-value` the picked index, `data-size` (`xsmall` to `touch`), `aria-disabled="true"`) holding `.penna-segments` (`data-penna="button.quiet"`, `data-state="current"`), which holds a `.penna-segment-pill` and a `.penna-segment` (`role="button"`) per option with a `.penna-label` inside. `.penna-segment` takes `:hover` or `data-state="hover"` and `:active` or `data-state="active"`, drawn in the root `--penna-quiet-hover` and `--penna-quiet-pressed` (the quiet button's fills) with the pill's radius (`--penna-pill-r`, which `segmented.js` sets). `segmented.js` makes the track a tab stop, places the pill, sets `aria-selected`, moves the pick on click and on the keys above, fires `change` with `{ index }`, and sizes the ring (`--penna-ring-r`) that `:focus-visible` or `data-state="focused"` draws. With `aria-disabled="true"` it leaves the track out of the tab order, ignores clicks and keys, and marks `.penna-segments` disabled so the tokens give the labels their disabled ink.
 
-Status: one gap. It has no hover look.
+Status: matches.
 
 ### Select
 
@@ -1233,6 +1233,8 @@ States:
 | on | primary track, thumb at the end | |
 | hover | the track one fill step deeper (on: the primary's hover fill); the thumb doesn't change | while interactive |
 | pressed | the track one more step (on: the primary's active fill), while held | as hover |
+
+Off, a fill step is the neutral soft paint's own step (its pressed fill less its hover fill), so hover and pressed sit one and two steps past `--penna-control`.
 | focused | the focus ring, 1.5 outside the track, one ring width off it when on | from the keyboard only, never from a click |
 | disabled | track and thumb at half strength | presses are ignored, and it leaves the focus order |
 
@@ -1242,9 +1244,9 @@ Content: the row title names the setting in sentence case ("Share clipboard"), n
 
 Placement: at the trailing end of a settings row, one switch per row.
 
-HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:hover` or `data-state="hover"` and `:active` or `data-state="active"` draw hover and pressed; `:focus-visible` or `data-state="focused"` draws the ring.
+HTML: `button.penna-toggle` with `aria-checked` (`true`, `false`), `data-size` (`xsmall` to `touch`), `disabled` and `aria-label`. `switch.js` sets `role="switch"`, adds `.penna-toggle-track` holding `.penna-toggle-thumb`, flips `aria-checked` on click and fires `change` with `{ checked }`. `:hover` or `data-state="hover"` and `:active` or `data-state="active"` draw hover and pressed (off: `--penna-control` at 4/3 and 5/3 of its alpha; on: `--penna-primary-hover` and `--penna-primary-pressed`); `:focus-visible` or `data-state="focused"` draws the ring.
 
-Status: one gap. It has no hover or pressed look.
+Status: matches.
 
 ### Tabs
 
