@@ -962,7 +962,7 @@ Placement: rows in an inset list sit `space-2` apart with the row inset at the s
 
 HTML: `.penna-row[data-penna]` (the look's recipe), with no size, inset or text style of its own (the page sets them, as the caller does natively), and `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
 
-Status: one gap. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
+Status: matches.
 
 ### Scrollbar
 
@@ -1289,7 +1289,7 @@ Placement: tabs sit side by side in a bar, each as wide as its content; an app t
 
 HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`.
 
-Status: one gap. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
+Status: matches.
 
 ### Text
 
