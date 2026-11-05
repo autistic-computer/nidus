@@ -430,13 +430,9 @@ Behavior: none of its own. Its controls are focusable and act as themselves; the
 
 Placement: across the top of a sheet, pane or window, or across the top or bottom of a panel, at window level. It runs edge to edge across what holds it, with no inset around it.
 
-HTML: `.penna-bar` with `data-penna` set to `bar`, `bar.pane` or `titlebar`, and `role="toolbar"` (`role="banner"` on the title bar, which has no ARIA role of its own); `bar.css` lays it out as a centered row with square corners, the bar's height and `inset-chrome` at the sides. An edge rule is `data-rule` (`rule.bar` and the other rule looks) with `data-edge` (`top`, `right`, `bottom` when absent, `left`) on any element, and the kit's CSS draws it: a 1px border in the divider ink on that edge, taking its pixel of room as `.rule()` does natively.
+HTML: `.penna-bar` with `data-penna` set to `bar`, `bar.pane` or `titlebar`, and `role="toolbar"` (`role="banner"` on the title bar, which has no ARIA role of its own); `bar.css` lays it out as a centered row with square corners, `--penna-bar` tall (the theme's `pane_header_height()`; HTML has no pane margin, so the title bar is as tall) with `inset-chrome` at the sides. It sets the height and inset at the weight of one class, so a page's own class or inline style replaces them. An edge rule is `data-rule` (`rule.bar` and the other rule looks) with `data-edge` (`top`, `right`, `bottom` when absent, `left`, or several, as `top left`) on any element, and `penna.css` draws it: a 1px border in the divider ink on that edge, taking its pixel of room as `.rule()` does natively. Every rule look draws in the one look, so nothing checks the theme first.
 
-Status: three gaps.
-
-- Bar sets no height or inset, so callers pick their own (the story's bars are 36 tall with 12 at the sides and medium buttons), where Size gives `pane_header_height()` and `inset-chrome` 6.
-- No kit stylesheet draws `.rule()`: the story page draws the border after `panel.js` marks `data-ruled`.
-- The HTML twin sets no role, where native announces a toolbar or a title bar.
+Status: matches.
 
 ### Card
 
@@ -462,12 +458,9 @@ Behavior: none. A card doesn't light on hover or take focus.
 
 Placement: cards sit in the content, one step above what holds them: window `bg`, then `panel`, then cards, then popover. Cards in a column sit `gap-group` 16 apart; a heading sits `gap-related` 8 above its card. The parent sets both.
 
-HTML: `.penna-card` with `data-penna` set to `card.bubble`, `card.code`, `card.figure` or `card.image`; Figure and Image take `role="figure"`. `card.css` sets `box-sizing` and the `inset-card` padding; the caller lays out the inside. A card inside a container marked `data-ground` rises one step from that container's fill, as `.on(ground)` does natively. `data-ground` on the card makes controls inside paint on its ground.
+HTML: `.penna-card` with `data-penna` set to `card.bubble`, `card.code`, `card.figure` or `card.image`; Bubble and Code take `role="group"` and Figure and Image `role="figure"`, as natively. `card.css` sets `box-sizing` and the `inset-card` padding at the weight of one class, so a page's own class or inline style replaces it; the caller lays out the inside. A card inside a container marked `data-ground` rises one step from that container's fill, as `.on(ground)` does natively: the tokens write every card look under each container's ground. `data-ground` on the card makes controls inside paint on its ground.
 
-Status: two gaps.
-
-- Card sets no inset, so callers pick their own (the bubble story pads 8 by 12), where Space gives cards `inset-card` 12.
-- The HTML twin has no `.on(ground)` and sets no role, where native announces Figure and Image as figures.
+Status: matches.
 
 ### Checkbox and radio
 
@@ -880,12 +873,9 @@ Behavior: none. A panel doesn't light on hover, take focus, open or close; the a
 
 Placement: the floating looks sit at the top of the surface stack (window `bg`, then `panel`, then cards, then popover and floating panels). Their fill is two steps above the window whatever they cover, so a panel over a card still reads as above it. Plain sits at window level and hides what is under it. The parent sets the gap around a panel.
 
-HTML: `.penna-panel` with `data-penna` set to `popover`, `inline-panel`, `picker`, `toast` or `panel`. `panel.css` lays it out as a column and fills `panel` with `--penna-bg`; `data-inset="8"` grows the corner (`panel.js` reads a number on a `.penna-panel` only, after the tokens load, so the layout primitive's `data-inset="card"` keeps its own meaning); `data-ground` on the panel makes controls inside paint on its ground, and a toned control there keeps its tone. A toast takes `role="status"`, the other looks `role="group"`.
+HTML: `.penna-panel` with `data-penna` set to `popover`, `inline-panel`, `picker`, `toast` or `panel`. `panel.css` lays it out as a column and fills `panel` with `--penna-bg`; `data-inset="8"` grows the corner (`panel.js` reads a number on a `.penna-panel` only, after the tokens load, so the layout primitive's `data-inset="card"` keeps its own meaning); `data-ground` on the panel makes controls inside paint on its ground, and a toned or prominent control there keeps its tone: the tokens write each tone and the prominent paint under each ground, with only the values that differ from the plain control there. A toast takes `role="status"`, the other looks `role="group"`.
 
-Status: two gaps.
-
-- The HTML twin sets no role, where native announces a toast as a status and the other looks as a group.
-- `panel.js` reads `data-inset` on every element, so the layout primitive's `data-inset="card"` on a rounded surface leaves it with square corners.
+Status: matches.
 
 ### Popover
 
@@ -911,9 +901,9 @@ Behavior:
 - Escape closes it. A press outside closes it unless `.overlay_closable(false)`.
 - `.on_dismiss` runs whenever it closes. There is no call to open it from code.
 
-HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above), `right` (aligns trailing edges) and `center` (centers on the trigger), alone or as `bottom right` and `bottom center`; `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, opens on Enter, Space and Down on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, keeps the panel `8` inside the visual viewport and moves it up when that shrinks, and exposes `pennaPopover.setOpen(popover, open)`.
+HTML: `.penna-popover` holds a `.penna-popover-trigger` (a button with `aria-haspopup`) and a `.penna-popover-panel` with `data-penna="popover"`, `tabindex="-1"` and `role="dialog"`. `data-open` marks it open; `data-anchor` takes `bottom` (opens above), `right` (aligns trailing edges) and `center` (centers on the trigger), alone or as `bottom right` and `bottom center`; `data-closable="false"` keeps it open on a press outside. `popover.js` sets `aria-expanded` and `data-state="current"` on the trigger, opens on Enter, Space and Down on the trigger, moves focus, closes on Escape and outside presses, fires `penna-open` and `penna-dismiss`, keeps the panel `8` inside the visual viewport on both axes, as natively, and moves it up when that shrinks, and exposes `pennaPopover.setOpen(popover, open)`. A panel whose trigger is out of view stays where it hangs, so a popover left open further down a page doesn't jump to the top of the screen. `popover.css` sizes the panel to its content, as natively.
 
-Status: one gap. The HTML twin has no centered anchor and doesn't keep the panel inside the window.
+Status: matches.
 
 ### Row
 
@@ -1108,9 +1098,7 @@ Content: plain ink. `.tone(tone)` draws the line in a tone's ink (`Primary`, `Da
 
 HTML: `.penna-separator-rule` holding a `div` with `data-penna` set to `rule`, `rule.bar`, `rule.list` or `rule.tree`; `data-axis="vertical"` for a vertical one, `data-tone` (`primary`, `danger`, `warning`, `success`, `accent`) for a toned line, `role="separator"` (and `aria-orientation="vertical"`) where native gives it an id. The line is 1px, offset half a pixel to sit centered.
 
-Status: one gap.
-
-- `.color()` takes any color, where Rule 8 wants colors from the theme's roles; the HTML twin offers only danger.
+Status: matches.
 
 ### Slider
 

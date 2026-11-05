@@ -39,7 +39,7 @@ pub const STORY: Story = Story {
         Section {
             id: "separator",
             name: "Separator",
-            summary: "A one pixel rule that takes no room along its axis. A vertical rule needs a parent with a definite height.",
+            summary: "A one pixel rule that takes no room along its axis. A vertical rule needs a parent with a definite height; .tone(tone) draws it in a tone's ink.",
             build: |_, cx| stateless(separators, cx),
         },
         Section {
@@ -224,7 +224,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(div().text_color(muted).child("3 panes")),
         )
         .state(
-            "custom color",
+            "danger tone",
             v_flex()
                 .gap(Space::S8)
                 .type_style(TextStyle::Lead, cx)
@@ -232,7 +232,7 @@ fn separators(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(
                     Separator::horizontal()
                         .id("separator-danger")
-                        .color(theme.danger),
+                        .tone(Tone::Danger),
                 )
                 .child(div().text_color(muted).child("Kill every session")),
         )

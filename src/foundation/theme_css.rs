@@ -153,6 +153,11 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
             });
             if differs {
                 write_role(&mut css, theme, &selector(role), surface, "  ", full);
+                if has_tones(role.kind) {
+                    for (key, variant) in variants(role) {
+                        write_over(&mut css, theme, &key, variant.on(ground), surface);
+                    }
+                }
             }
         }
         let _ = writeln!(css, "}}");
@@ -169,25 +174,27 @@ fn rules(theme: &Theme, toned: &[SurfaceRole], full: bool) -> Vec<(String, Strin
         .chain(toned.iter().copied())
         .filter(|role| has_tones(role.kind))
     {
-        let mut rule = |key: String, surface: Surface| {
+        for (key, surface) in variants(role) {
             let mut css = String::new();
             write_role(&mut css, theme, &key, surface, "", full);
             rules.push((key, css));
-        };
-        for (tone, tone_name) in TONES {
-            let toned = format!("{}[data-tone=\"{tone_name}\"]", selector(role));
-            rule(toned, Surface::new(role).tone(tone));
-        }
-        if role.kind == Kind::Button {
-            let prominent = format!("{}[data-prominent]", selector(role));
-            rule(prominent.clone(), Surface::new(role).prominent(true));
-            for (tone, tone_name) in TONES {
-                let toned = format!("{prominent}[data-tone=\"{tone_name}\"]");
-                rule(toned, Surface::new(role).tone(tone).prominent(true));
-            }
         }
     }
     rules
+}
+
+fn variants(role: SurfaceRole) -> Vec<(String, Surface)> {
+    let base = Surface::new(role);
+    let toned = |key: &str, surface: Surface| {
+        TONES.map(|(tone, name)| (format!("{key}[data-tone=\"{name}\"]"), surface.tone(tone)))
+    };
+    let mut variants = toned(&selector(role), base).to_vec();
+    if role.kind == Kind::Button {
+        let prominent = format!("{}[data-prominent]", selector(role));
+        variants.push((prominent.clone(), base.prominent(true)));
+        variants.extend(toned(&prominent, base.prominent(true)));
+    }
+    variants
 }
 
 pub fn icons(theme: &Theme) -> String {
@@ -276,6 +283,13 @@ fn state_selector(state: PaintState, kind: Kind) -> &'static str {
     }
 }
 
+fn declarations(vars: &[&(&str, String)]) -> String {
+    vars.iter()
+        .map(|(name, value)| format!("--penna-{name}: {value};"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn write_role(
     css: &mut String,
     theme: &Theme,
@@ -284,12 +298,6 @@ fn write_role(
     indent: &str,
     full: bool,
 ) {
-    let declarations = |vars: &[&(&str, String)]| {
-        vars.iter()
-            .map(|(name, value)| format!("--penna-{name}: {value};"))
-            .collect::<Vec<_>>()
-            .join(" ")
-    };
     let mut rest = vars(theme, surface, &drawn(theme, surface, PaintState::Rest));
     if full {
         let unset = PAINT
@@ -320,6 +328,47 @@ fn write_role(
         }
     }
     let _ = writeln!(css, "{indent}}}");
+}
+
+fn write_over(css: &mut String, theme: &Theme, base: &str, surface: Surface, under: Surface) {
+    let at = |surface: Surface, state| vars(theme, surface, &drawn(theme, surface, state));
+    let rest = at(surface, PaintState::Rest);
+    let below = at(under, PaintState::Rest);
+    let set = rest
+        .iter()
+        .filter(|var| !below.contains(var))
+        .collect::<Vec<_>>();
+    let states = STATES
+        .into_iter()
+        .skip(1)
+        .filter_map(|state| {
+            let below = at(under, state);
+            let all = at(surface, state);
+            let changed = all
+                .iter()
+                .filter(|var| {
+                    if set.iter().any(|(name, _)| *name == var.0) {
+                        !rest.contains(var)
+                    } else {
+                        !below.contains(var)
+                    }
+                })
+                .collect::<Vec<_>>();
+            (!changed.is_empty()).then(|| {
+                format!(
+                    "    {} {{ {} }}\n",
+                    state_selector(state, surface.role.kind),
+                    declarations(&changed)
+                )
+            })
+        })
+        .collect::<String>();
+    if set.is_empty() && states.is_empty() {
+        return;
+    }
+    let _ = writeln!(css, "  {base} {{ {}", declarations(&set));
+    css.push_str(&states);
+    let _ = writeln!(css, "  }}");
 }
 
 fn vars(theme: &Theme, surface: Surface, layer: &Layer) -> Vec<(&'static str, String)> {
@@ -450,6 +499,10 @@ fn write_root(css: &mut String, theme: &Theme) {
         (
             "--penna-pane-radius".to_owned(),
             length(f32::from(theme.pane_radius())),
+        ),
+        (
+            "--penna-bar".to_owned(),
+            length(f32::from(theme.pane_header_height())),
         ),
         (
             "--penna-outline".to_owned(),
@@ -750,6 +803,23 @@ mod tests {
         assert_eq!(tone(1.12, 0.07), "contrast(0.982) brightness(1.14)");
         assert_eq!(tone(1.0, -0.02), "brightness(0.962) contrast(1.04)");
         assert_eq!(tone(1.0, 0.0), "contrast(1) brightness(1)");
+    }
+
+    #[test]
+    fn toned_and_prominent_controls_keep_their_paint_on_a_ground() {
+        let theme = kit_theme(&builtin_themes()[0].1, ThemeMode::Light);
+        let css = stylesheet(&theme, &[]);
+        let start = css
+            .find(":is([data-penna=\"panel\"][data-ground]")
+            .expect("the panel's ground has a scope");
+        let end = start + css[start..].find("\n}\n").expect("the scope closes");
+        let scope = &css[start..end];
+        assert!(scope.contains(
+            "  [data-penna=\"badge\"][data-tone=\"danger\"] { --penna-fill: #cc27371f; --penna-ink: #942c2f;"
+        ));
+        assert!(scope.contains(
+            "  [data-penna=\"button\"][data-prominent] { --penna-fill: #1c1c1a; --penna-ink: #ebebeb;"
+        ));
     }
 
     #[test]
