@@ -473,30 +473,6 @@ button[data-penna] {
   outline-offset: var(--penna-knob-ring-gap, 0px);
 }
 
-.penna-check {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: calc(var(--penna-radius) / 4);
-  corner-shape: superellipse(var(--penna-window-k, 1));
-  border: 1px solid color-mix(in oklab, var(--penna-fg) 30%, transparent);
-  color: var(--penna-on-accent);
-  --penna-icon-size: 11px;
-}
-
-.penna-check:is([data-size="xsmall"], [data-size="small"]) {
-  width: 14px;
-  height: 14px;
-  --penna-icon-size: 10px;
-}
-
-.penna-check[data-on] {
-  border-color: var(--penna-accent);
-  background: var(--penna-accent);
-}
-
 [data-penna="dialog"] {
   display: flex;
   flex-direction: column;
