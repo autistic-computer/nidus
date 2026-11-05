@@ -1438,11 +1438,11 @@ Behavior: the app owns the rows, the selection (`active_row`), focus and what a 
 
 Content: a row's label is the thing's own name ("lib.rs"), never its path: the depth already says where it is. One icon per kind of thing.
 
-Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken. The list keeps `space-2` free on every side, so a focused row's ring shows whole, natively and in HTML.
+Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken. The list keeps `space-2` free on every side, so a focused row's ring shows whole, natively and in HTML: natively the app pads its `uniform_list` with `.p(Space::S2)`, inside the list's clip, and the guides move with the rows.
 
-HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
+HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.css` pads the tree `space-2`, and `tree.js` adds a `.penna-tree-guide` per guide inside that padding, `data-active` on the lit one.
 
-Status: one gap. A focused row runs the full width of its `uniform_list`, which clips the sides of its ring natively; the HTML tree doesn't clip, so the twin shows the whole ring.
+Status: matches.
 
 ### Well
 
