@@ -20,6 +20,7 @@ mod markdown;
 pub mod menus;
 mod navigation;
 mod notifications;
+mod palette;
 mod panels;
 mod rows;
 mod scrollbars;
@@ -37,6 +38,7 @@ pub const STORIES: &[Story] = &[
     checks::STORY,
     display::STORY,
     menus::STORY,
+    palette::STORY,
     dialogs::STORY,
     feedback::STORY,
     status::STORY,
