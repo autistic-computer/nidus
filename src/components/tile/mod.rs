@@ -97,7 +97,7 @@ impl RenderOnce for Tile {
             let edge = self.edge;
             let mini = self.variant == TileVariant::Mini;
             let lifted = (plate.state == PaintState::Hover && self.variant != TileVariant::Drop)
-                .then(|| cx.theme().float_shadows());
+                .then(|| cx.theme().lifted_shadows());
             return plate.paint_with(window, cx, move |layer| {
                 if let Some(width) = edge.filter(|_| layer.border_width > Pixels::ZERO) {
                     layer.border_width = width;
