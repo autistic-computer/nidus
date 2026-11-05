@@ -1199,7 +1199,7 @@ Placement: in a button it takes the icon's place, or sits before the label when 
 
 HTML: `.penna-spinner` holding `<i data-icon="loader">`, with `data-size` (`xsmall` to `touch`), `data-color` (`muted`, `accent`, `success`, `warning`, `danger`), `--penna-icon-size` for a size off the ladder, and `role="progressbar"` with `aria-label="Loading"` and no value when it stands alone, as natively. `spinner.css` stops the turn under `prefers-reduced-motion`.
 
-Status: one gap. The HTML twin announces itself as a status (`role="status"`), where the native spinner is a progress indicator.
+Status: matches.
 
 ### Switch
 
