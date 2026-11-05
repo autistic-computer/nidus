@@ -899,6 +899,8 @@ Anatomy:
 - Track: `space-16` (16) wide along the area's end edge (the right for vertical, the bottom for horizontal), no fill. It is the hit area.
 - Thumb: `space-6` (6) wide at rest in Scrolling, `space-8` (8) otherwise, set `space-2` (2) in from the outer edge and the track's ends. Its length is the visible share of the track, at least three track widths (48). Fill `fg` at 28% (`fg.wash()`, `--penna-thumb`), 35% (`fg.glow()`) under the pointer or while dragged. Radius: the theme radius capped at half the thumb's width, so round in every shipped theme.
 
+The lengths are `Rems` (`GUTTER_WIDTH`, `THUMB_WIDTH`, `THUMB_INSET`, `MIN_THUMB_SIZE`), turned into pixels with the window's rem when the bar lays out, so paint, hit testing and drag all use the same scaled lengths. A caller that draws its own thumb (zz's terminal scrollback) converts them the same way. `scroll.js` reads `--penna-space-16` and `--penna-space-2` at layout and again when the tokens load.
+
 States:
 
 | State | Look | Notes |
@@ -918,7 +920,7 @@ Placement: the last child of the scroll area's frame, absolutely filling it (`.v
 
 HTML: `.penna-scroll[data-axis="vertical|horizontal|both"][data-show="scrolling|hover|always"]` around a `.penna-scroll-viewport`. `scroll.js` adds a `.penna-scrollbar[data-axis]` holding `.penna-scroll-thumb` > `.penna-scroll-fill` per axis (or uses ones in the markup), sets `--penna-thumb-start` and `--penna-thumb-length`, `data-visible` while the bar shows, `data-state="hover"` on the thumb under the pointer and `data-state="active"` on the bar while dragged, and `hidden` on a bar whose axis doesn't overflow. `data-bar` names the bars' `data-id`s (`<id>-vertical`, `<id>-vertical-thumb`), `data-scroll-x` and `data-scroll-y` set a starting offset, and `data-hovered` shows the thumb hovered until the pointer moves. `pennaScroll.mount(element)` wires an area added later. With no `data-show` the bar is Scrolling, the kit's default, since a page can't read the system's choice.
 
-Status: two gaps. Track, thumb and inset are pixel literals (16, 6, 8, 2) with a 48 minimum thumb, natively and in HTML, so they don't scale with the rem (Rules 1). With no `data-show`, the HTML bar always draws and comes back after its fade, where the native default follows the theme's `scrollbar_show`.
+Status: matches.
 
 ### Segmented control
 
