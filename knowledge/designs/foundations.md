@@ -320,7 +320,7 @@ Placement: after the text it tags, `gap-related` (8) from it, or at the end of a
 
 HTML: `.penna-badge` with `data-penna` (`badge`, or `badge.outline` for outline), `data-tone`, `data-size` (`xsmall`, `small`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` as on a chip) and `data-opaque` with `data-on` naming the ground; the label is a `span.badge-text` marked `data-penna-text`, the icon `<i data-icon>`.
 
-Status: two gaps. Its height and icon are plain pixels (`px`), so they don't grow with the interface font size the way the label does. The HTML twin has no solid, ghost or opaque badge.
+Status: one gap. The HTML twin has no solid, ghost or opaque badge.
 
 ### Bar
 
@@ -480,7 +480,7 @@ Placement: chips in a row sit `gap-related` (8) apart.
 
 HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
-Status: one gap. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
+Status: matches.
 
 ### Field
 
@@ -636,7 +636,7 @@ Placement: the caps of one sequence sit `gap-tight` (4) apart; a cap sits at the
 
 HTML: `<kbd class="penna-kbd" data-penna="keycap">` with `data-kbd`, the keystroke as the keymap spells it (`cmd-shift-p`), which `kbd.js` fills with glyphs and an `aria-label`; `data-kbd-lowercase`; `data-size` (`xsmall`, `small`). A fixed label holds its text in a `span` marked `data-penna-text`, as `kbd.js` writes it. `data-kbd-text` on any element fills it with the spelled-out keystroke.
 
-Status: one gap. Its height and minimum width are plain pixels (`px`), so the cap doesn't grow with the interface font size the way its text does.
+Status: matches.
 
 ### Label
 

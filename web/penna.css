@@ -372,7 +372,7 @@ button[data-penna] {
   display: inline-flex;
   align-items: center;
   gap: var(--penna-space-4);
-  height: 18px;
+  height: var(--penna-text-body-line);
   padding: 0 var(--penna-space-6);
   font-size: var(--penna-text-caption-size);
   font-weight: 500;
@@ -381,7 +381,7 @@ button[data-penna] {
 }
 
 :is([data-penna="badge"], [data-penna="badge.outline"]):is([data-size="xsmall"], [data-size="small"]) {
-  height: 16px;
+  height: var(--penna-text-small-line);
   padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-micro-size);
   line-height: var(--penna-text-micro-line);
@@ -390,8 +390,8 @@ button[data-penna] {
 [data-penna="keycap"] {
   display: inline-grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: var(--penna-text-body-line);
+  height: var(--penna-text-body-line);
   padding: 0 var(--penna-space-4);
   font-size: var(--penna-text-caption-size);
   font-weight: var(--penna-text-caption-weight);
