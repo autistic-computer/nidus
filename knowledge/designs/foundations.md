@@ -26,10 +26,10 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 
 1. **The keyboard comes first.** Every action has a keyboard path, and the interface shows it: shortcuts sit beside menu rows and in which-key, and a focus ring appears whenever the keyboard moves focus. Pointer and touch reach the same actions, sized for them. So: every control is focusable unless it is disabled, activates with Space and Enter, and shows its shortcut where it is offered.
 2. **Calm, dense screens.** Most text on a screen is one size (`body`); weight and a few larger steps carry the hierarchy, and color is kept for meaning. Spacing follows relationships, so a dense screen still groups clearly, and density is a setting, never a squeeze. So: two or three text styles in a view, gaps picked by relationship, nothing added for decoration.
-3. **One highlight.** One color marks what is on, picked or in focus. In the default look it is the ink itself, so the interface stays black and white until someone picks an accent. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
+3. **One highlight.** One color marks what is on, picked or in focus. With the default tint it is the ink itself, so the interface stays black and white until an app sets a tint or someone picks an accent. Status colors mean status and always come with an icon or a word. So: at most one primary action in a view, and no color that only decorates.
 4. **The work leads, chrome recedes.** Bars, headers and toolbars use quiet controls (no fill at rest), muted labels and the smaller rungs, so the eye goes to the content. Text people read (documents, chat) is larger and more open than text people scan (`read-body` against `body`). So: chrome never competes with content for the strongest ink, size or color.
 5. **Every state shows.** A control always tells what it is doing: rest, hover, pressed, focused, selected, disabled, loading or in error. Feedback comes in the same frame as the input. Motion is short (120 to 220ms), shows where something came from or went, and turns off with reduced motion. So: no state without a look, and no animation that only decorates.
-6. **One kit everywhere.** The same components draw native windows on every desktop, the phone and the web, in three looks, light and dark. A look changes materials, corners and faces, never sizes, spacing or behavior. So: a component that only works in one look, one mode or one platform has a bug.
+6. **One kit everywhere.** The same components draw native windows on every desktop, the phone and the web, in one look, light and dark, that apps and people adjust with a few knobs (Look). A knob changes color, corners, glass or faces, never a component's fills, edges, sizes, spacing or behavior. So: a component that only works in one look, one mode or one platform has a bug.
 
 ## Rules
 
@@ -40,7 +40,7 @@ penna draws zz and nidus: tools people keep open all day, mostly driven from the
 5. Every piece of text has a text style: size, line height and weight together. Never set a size without its line height.
 6. Every control in one row has the same size.
 7. A token has one name everywhere. Its number is its pixel value. Rust and CSS spell it the same way (see Names).
-8. Color comes from the theme's roles and looks, never a literal. Status colors always come with an icon or a word.
+8. Color comes from the look's roles, never a literal. Status colors always come with an icon or a word.
 
 ## Names
 
@@ -80,7 +80,7 @@ Insets, set by the container:
 | `inset-card` | 12 | cards and popovers |
 | `inset-pane` | 16 | panes and dialogs |
 | `inset-page` | 32 | document pages |
-| row inset | theme | lists and menus around their rows: `theme.row_inset` at the sides, a theme knob (5 in default and macOS, 6 in Yaru); menus add `space-4` above and below |
+| row inset | theme | lists and menus around their rows: `theme.row_inset` at the sides, 6; menus add `space-4` above and below |
 
 Rows in a plain list (row inset 0) touch: their height keeps the rhythm. In an inset list (`theme.inset_rows()`, a row inset above 0, as in every shipped theme) rows sit `space-2` apart, so their rounded highlights never merge: menus, select lists, settings navigation and the touch which-key list. `list_inset` sets both the side inset and that gap. The docs navigation keeps its rows `space-2` apart in every theme.
 
@@ -159,36 +159,103 @@ Density (built): one setting picks the default control and row height: compact 2
 
 ## Color
 
-Roles (CSS root names, default theme):
+Roles (CSS root names, the look with the default knobs):
 
 | Role | Light | Dark | Use |
 |---|---|---|---|
-| `bg` | #fcfcfc | #18181a | window and page |
-| `panel` | #efefef | #1f1f21 | sidebars and side panels |
-| `popover` | #e2e2e2 | #272729 | menus and popovers |
-| `fg` | #1d1d1f | #e4e4e7 | text and icons |
-| `fg-muted` | #58585a | #8d8d8f | descriptions, captions, story labels |
-| `muted` | #585859 | #a0a0a3 | muted labels and the ghost paint |
-| `fg-faint` | #909091 | #4b4b4c | placeholders and disabled text only |
-| `accent` | #325fe3 | #6b8cff | the accent people pick in Appearance; `primary` takes it once picked. Text views draw links in the ink, underlined, and select with a wash of the ink |
+| `bg` | #f6f6f3 | #1a1a19 | window and page |
+| `panel` | #e9e9e6 | #212120 | sidebars and side panels |
+| `popover` | #dcdcda | #292928 | menus and popovers, and the glass fallback |
+| `fg` | #1c1c1a | #e9e7e3 | text and icons |
+| `fg-muted` | #575756 | #908f8c | descriptions, captions, story labels |
+| `muted` | #555553 | #a4a3a0 | muted labels and the ghost paint |
+| `fg-faint` | #90908e | #4d4c4b | placeholders and disabled text only |
+| `accent` | #2f62d8 | #7f9fff | links of the interface and the accent people pick in Appearance; `primary` takes the tint or the picked accent. Text views draw links in the ink, underlined, and select with a wash of the ink |
 | `on-accent` | #ebebeb | #010101 | text on accent fills |
-| `primary` | #1d1d1f | #e4e4e7 | primary fills; follows `fg` unless an accent is picked |
+| `primary` | #1c1c1a | #e9e7e3 | primary fills and the highlight; follows `fg` while the tint is the ink |
 | `success`, `warning`, `danger` | #007b3e, #a75400, #cc2737 | #3fbf74, #f0a14a, #f2555f | status, always with an icon or a word |
 
-The values are `themes/default.json` and the generated `web/tokens/default-*.css`. Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it.
+Today's code still ships the old default (`bg` #fcfcfc and #18181a); step 10 moves it to these values. Muted is 0.30 of the way to the pole: `fg-muted` mixes `fg` 0.30 toward its contrast pole (white under dark ink, black under light), and `muted` mixes the ghost paint's ink 0.30 toward the ground under it.
 
 Surfaces stack in this order, each layer a step away from the one under it (darker in light, lighter in dark): window `bg`, then `panel`, then cards (`settings.card`), then `popover` and floating panels.
 
-Highlight: what is on, picked or in focus uses `primary`, which is the ink itself in the default look and the accent once one is picked in Appearance.
+Highlight: what is on, picked or in focus uses `primary`, which is the ink while the tint is the ink, and the tint or the person's accent once either is set.
 
-Contrast (WCAG 2, built in step 8): in all six theme variants (three looks, light and dark) and for every pickable accent at any tint, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of any of them. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone accent and status fills. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
+Contrast (WCAG 2, built in step 8): in light and dark, for every tint, accent and `neutral` the knobs allow, muted text, accent, success, warning and danger as text reach 4.5:1 on `bg`, and so does the text on a solid fill of any of them. The muted mix is 0.30, as above. Light variants darken their accent and status colors until near-white text on them reads at 4.5:1, which also makes them read as text. Text on a solid fill takes whichever of near-white or near-black gives more contrast, so dark variants put near-black labels on their mid-tone accent and status fills. `interface_theme`'s tests assert all of it. `fg-faint` stays under 4.5 on purpose: placeholders and disabled text only.
 
 ## Corners, depth, focus, motion
 
-- Corners: `radius-theme` is a theme knob people change (24 in default and macOS, 16 in Yaru; 25 at most). A control's radius is the theme radius capped at 45% of its height (`corner-fraction`). A corner inside another is concentric: inner radius = outer radius minus the inset between them. Rows draw at most smoothing 2.5.
-- Depth: `shadow-contact` (0 1 4 #00000033) for controls on a surface; `shadow-lifted` for cards that move; `shadow-float` for menus, popovers, dialogs and the window. Themes can turn outlines and shadows off, so never let a shadow alone separate two surfaces.
+- Corners: the `radius`, `control-radius` and `smoothing` knobs (Look); 12, 12 and 3 by default. A control's corner stops at 45% of its height. A corner inside another is concentric.
+- Depth: steps of fill separate surfaces; controls, panes and cards draw no shadow. `shadow-float` (y 10, blur 30, spread -6) for menus, popovers, dialogs and the window, `shadow-lifted` for cards that move, and `shadow-contact` (0 1 4 #00000033) only for the knob of a switch or slider. Never let a shadow alone separate two surfaces.
 - Focus: a 1.5px ring (`FOCUS_RING_WIDTH`) drawn outside the border box with its own adaptive radius (`foundation::focus::with_focus_ring`), from the keyboard only; see Focus and keys. Only fields change their fill or edge on focus.
 - Motion: appear 120ms, enter 200ms, turn 220ms, scaled by the animation speed setting (0.25 to 2). Respect reduced motion.
+
+## Look
+
+penna has one look, and every app and person adjusts it through a few knobs. The look is calm and flat: steps of fill carry the structure, so a dense screen holds few lines, and the only thing that floats is what sits over the content. Apps differ by their tint, their corners, their glass and their content (Tiles, Cards, display text), the way apps on one platform share their controls and differ in color and content. The values below are the look with the default knobs; `themes/default.json` and `web/tokens/default-*.css` carry them.
+
+How each kind draws, at rest and under the pointer:
+
+| Kind | Rest | Hover, pressed | Selected, current |
+|---|---|---|---|
+| Bar, panel | no fill; a panel takes `panel` | | |
+| Pane | the ground, no edge, no shadow | | ring |
+| Card | one step of fill above its ground, no edge, no shadow | | ring |
+| Floating (menus, popovers, tooltips, dialogs, toasts, palettes) | glass, or the `popover` fill when glass is off; `shadow-float`; no edge | | |
+| Button | a wash of the ink, no edge, no shadow; primary is a solid `primary` fill | a deeper wash | a deeper wash |
+| Quiet button, icon button, menu row | no fill | a wash | the highlight |
+| Item (rows, tabs, sidebar rows) | no fill | a wash | the highlight |
+| Field | a wash of the ink, no edge | a deeper wash | while typing, an edge in the ink |
+| Label (badge, keycap) | a soft wash in its tone, no edge | | |
+| Rule | a hairline in `divider` | | |
+
+- The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set.
+- Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
+- The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
+- Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
+
+Knobs an app sets, in its theme file:
+
+| Knob | Values | Default |
+|---|---|---|
+| `tint` | `ink`, or a color for light and one for dark | `ink` |
+| `neutral` | a hue (0 to 360) and an amount (0 to 1) that tint `bg`, `fg` and the surfaces above them | warm: hue 60, the amount that gives the values in Color |
+| `radius` | 0 to 25 | 12 |
+| `control-radius` | 0 to 25, or `full` for pills | `radius` |
+| `smoothing` | 2 (round arcs) to 5 (squircle) | 3 |
+| `glass` | `none`, `frosted`, `liquid`, or a material of its own | the platform's |
+| `face` | the interface face and the code face | the platform's |
+| `mode` | `follow`, `light` or `dark` | `follow` |
+
+Knobs a person sets, in Appearance, the same in every app:
+
+| Knob | Does |
+|---|---|
+| Mode | system, light or dark, unless the app locks it |
+| Accent | replaces the app's tint |
+| Text size | the root rem; everything scales with it |
+| Density | compact, regular or comfortable (Size) |
+| Increase contrast | hairline edges on every surface and control, and muted text closer to the ink |
+| Reduce transparency | glass draws as the `popover` fill |
+| Reduce motion | Motion |
+
+What follows the platform with no knob: the system face and code face, when scrollbars show, the window controls, how keys are spelled, and the default glass (`liquid` on macOS, `frosted` elsewhere).
+
+Everything else is the look and has no knob: each kind's fill, edge, shadow and shape, every state look, outline width, highlight strength, status colors, spacing, sizes, type and motion.
+
+Corners: `radius` rounds containers and `control-radius` rounds controls. A control's corner stops at 45% of its height (`corner-fraction`), so a 12 corner on a 28 control reads as a pill only when `control-radius` is `full`. A corner inside another is concentric: inner radius = outer radius minus the inset between them. `smoothing` is the corners' superellipse exponent; rows draw at most 2.5.
+
+Glass is only for floating surfaces, since it reads only with content behind it; never for controls, panes or cards. A material is a full glass definition (blur, tint, saturation, bezel, refraction, specular, rim) for light and for dark:
+
+- `frosted`: blur 20 and the `popover` fill at 70% over it, a faint light rim, no refraction. It draws the same natively and on the web.
+- `liquid`: blur 20, bezel 3, refraction 4, a specular rim lit from above (today's `glass` and `light-glass` in `themes/macos.json`). Where the renderer can't bend light, it draws as `frosted`.
+- A material of an app's own takes the same fields. The kit holds every material to two rules: text on it reaches 4.5:1, so its tint never drops below the opacity that gives that over the worst content, and it has a solid fallback, the `popover` fill.
+
+Presets: `macos` (tint from the system accent, `control-radius` `full`, `smoothing` 4, `glass` `liquid`) and `yaru` (tint orange, `radius` 8, `smoothing` 2, `glass` `none`) are knob values with names, nothing more.
+
+HTML: a theme file's knobs generate its tokens (`cargo run --example theme_css`), so the HTML twin follows the same look.
+
+Status: not built. The code ships three themes that restyle components role by role (default 7, macOS 39 and Yaru 22 of 56 roles) and no `neutral` or `smoothing` limits; step 10 replaces them. The candidate looks are on the `looks` branch (`web/looks.html`), where this look is `tones`.
 
 ## Focus and keys
 
@@ -1393,5 +1460,6 @@ Status: matches.
 | 7 | Control ladder: `control-xs`, `-lg`, `-xl`, `-touch`, rows on `control-md`, tab heights on the ladder | menu rows grow 2px, tabs move | built |
 | 8 | Color: contrast fixes across the six theme variants | flagged pairs darken or lighten | built |
 | 9 | Density setting | new option | built |
+| 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | planned |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.
