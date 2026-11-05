@@ -269,7 +269,7 @@ How the knobs are spelled and decided:
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. Left: the parity baselines still hold the old themes, and the storybook's HTML knob panel (`storybook/web/main.js`) still lists the old materials, colors and role editing, which the Rust side now ignores.
+Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash.
 
 ## Focus and keys
 

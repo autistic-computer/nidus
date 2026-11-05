@@ -26,6 +26,7 @@ Hairlines mean something: a rule, an outline variant, a field being typed in. In
   <figure data-verdict="do"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-check"></i><label class="penna-input" data-penna="field" style="width: 140px"><input placeholder="Host" aria-label="Host" /></label><button class="penna-button" data-penna="button"><span class="penna-label" data-penna-text>Connect</span></button></div><figcaption>Washes, no edges</figcaption></figure>
   <figure data-verdict="dont"><div class="docs-dodont-panel"><i class="docs-mark" data-icon="circle-x"></i><label class="penna-input" data-penna="field" style="width: 140px; box-shadow: inset 0 0 0 1px var(--penna-border)"><input placeholder="Host" aria-label="Host" /></label><button class="penna-button" data-penna="button" style="box-shadow: inset 0 0 0 1px var(--penna-border)"><span class="penna-label" data-penna-text>Connect</span></button></div><figcaption>Don't edge every control</figcaption></figure>
 </div>
+```
 
 ## Tint
 
