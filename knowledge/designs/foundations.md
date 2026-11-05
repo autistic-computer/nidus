@@ -1344,9 +1344,9 @@ Variants (`TileVariant`, `.variant()`):
 
 | Variant | Recipe | Paint | Use |
 |---|---|---|---|
-| Card (default) | `tile.card` | solid, one step above its ground, hairline outline, `shadow-contact` | a card for something you can place, in a dock under a well |
+| Card (default) | `tile.card` | solid, one step above its ground, no outline, no shadow | a card for something you can place, in a dock under a well |
 | Screen | `tile.screen` | as Card | a screen drawn to scale on a well |
-| Drop | `tile.drop` | a floating tint, hairline outline (`.edge(width)` sets its width), no shadow; deeper on hover and selected | where a dragged thing will land |
+| Drop | `tile.drop` | a floating tint, no outline (under Increase contrast a hairline, whose width `.edge(width)` sets), no shadow; deeper on hover and selected | where a dragged thing will land |
 | Veil | `tile.drop` at hover, no edge, on a glass ground | the hover tint | laid over panes while something is dragged |
 | Mini | `tile.mini` | no fill of its own (the caller's `.bg` and `.rounded` show), no glass | a pane inside a window's tile in the phone overview |
 
@@ -1363,21 +1363,18 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the variant's paint | |
-| hover | Card, Screen and Mini lift: `shadow-float` in place of `shadow-contact`; Drop one tint step deeper | the app sets it while the tile is dragged |
+| hover | Card, Screen and Mini lift: `shadow-float` under them; Drop one tint step deeper | the app sets it while the tile is dragged |
 | selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
 
 Behavior: the native tile paints a state; the app picks, drags and drops. A tile with a click handler is a tab stop announced as a button: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
 
-Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step from its ground with a contact shadow.
+Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step of fill from its ground, and casts a shadow only while dragged.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the selected ring in `::before` and the focus ring in `::after`; size and inset are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` draws the variants and states, the lift as `--penna-shadow-float`, the selected ring in `::before` and the focus ring in `::after`; size, inset, placement and a mini's fill and corners are the page's, as natively. `tile.js` runs a focusable tile on Space and Enter and keeps a click from focusing it. Picking and dragging are the page's, as natively the app's.
 
-Status: two gaps.
-
-- A tile being dragged (hover) draws like one at rest.
-- The HTML twin fixes each variant's size and padding and picks and drags on its own, where the native tile leaves both to the app.
+Status: matches.
 
 ### Tooltip
 
