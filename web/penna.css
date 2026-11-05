@@ -441,6 +441,12 @@ button[data-penna] {
   border-color: rgb(from var(--penna-accent) r g b / 0.184);
 }
 
+.penna-solid-ink[data-solid-ink="accent"] {
+  --penna-ink: var(--penna-on-accent);
+  --penna-muted: var(--penna-on-accent);
+  color: var(--penna-on-accent);
+}
+
 .penna-solid-ink {
   display: contents;
   font-size: inherit;
