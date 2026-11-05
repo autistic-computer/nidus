@@ -153,7 +153,7 @@ Icons: 12 beside `small` and `caption` (menu rows included), 14 beside `body`, 1
 
 Inside a line of text, keycaps and badges are as tall as the line of the text they sit in (`TextStyle::line_height`: 16 in `small`, 18 in `body`), and checkboxes are 14 at `xs` and `sm` and 16 from `md` up, never a control size. Like every length here, these are design pixels and grow with the interface font.
 
-Width: reading text stops at a measure of 640 (about 75 characters of `read-body`), natively and in HTML alike. A table column in reading text is 48 to 480 wide. Sidebars are 200 to 256 wide. These widths are layout geometry rather than tokens, in design pixels like everything else, so they grow with the interface font.
+Width: reading text stops at a measure of 640 (about 75 characters of `read-body`), natively and in HTML alike. A table column in reading text sizes to its content from 48 to 480. Sidebars are 200 to 256 wide. These widths are layout geometry rather than tokens, in design pixels like everything else, so they grow with the interface font.
 
 Density (built): one setting picks the default control and row height: compact 24, regular 28, comfortable 32. Text and gaps stay, and so do the other rungs. It is `Appearance::density` (Advanced, under UI zoom), and `Size::Medium.control_px()` follows it, so buttons, fields, selects, segmented controls and list, tree, menu and picker rows move together. The HTML reads `--penna-control-md`, which `:root[data-density]` changes (`?density=` on a page). `Size::rung()` measures `Size(px)` against the regular ladder, so a fixed-height control keeps its rung at any density.
 
@@ -1225,7 +1225,7 @@ Anatomy, top to bottom:
 - Lists: items touch, with no gap; markers `•`, `◦`, `▪` by depth, or `1.`; a nested list indents `space-16` (16). A task item's checkbox is as tall as the font, centered on the capitals in a box one line tall, `space-6` (6) before its text.
 - Quotes: a `space-4` (4) bar in the divider color at the start, `space-16` (16) inside it, text in `fg-muted`.
 - Code blocks: a `card.code` card, `inset-card` (12) all round, the code face at the reading size with the theme's syntax colors. With `code_block_actions` the top inset grows to 2 × `space-8` + `control-md` (44), and the actions sit `space-8` (8) from the top and sides, at the end.
-- Tables: hairline rules between rows and between columns, cells `space-4` (4) by `space-8` (8), columns sized to their content from 48 to 480 (Size, Width); a table wider than its container scrolls sideways in its own area; text `read-body` (`read-small` is planned).
+- Tables: hairline rules between rows and between columns, cells `space-4` (4) by `space-8` (8), columns sized to their content from 48 to 480 (Size, Width). By default the columns share the container's width in that proportion, none narrower than 64, and their text wraps. With `overflow_x` scroll on `TextViewStyle::table` (`data-scroll`) they keep their widths, a narrower table grows in proportion to fill its container, and a wider one scrolls sideways in its own area. Text `read-body` (`read-small` is planned).
 - Rule: a hairline in the divider color.
 
 Rhythm: blocks sit `space-12` (12) apart (`TextViewStyle::paragraph_gap`). A heading has `space-24` (24) above it at h1 and h2, `space-16` (16) at h3 to h6, and `space-8` (8) below. The first block has nothing above it and the last nothing below.
@@ -1244,9 +1244,9 @@ Content: markdown. Headings give structure, never emphasis; bold carries emphasi
 
 Placement: inside a pane or page that gives the inset, `inset-page` (32) around a document page.
 
-HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`, whose text `text.js` appends under the same veil; `data-text="inherit"` for the inherited kind, which takes its container's text style and drops the measure) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
+HTML: `.penna-md` (`data-selectable` to make it focusable and select all with ⌘A; `data-selected`; `data-streaming` with a `template[data-tail]`, whose blocks `text.js` appends under the same veil, one 220 fade on the native curve as for a first chunk; `data-text="inherit"` for the inherited kind, which takes its container's text style and drops the measure) holding plain `p`, `h1` to `h6`, `strong`, `em`, `s`, `a` and `code[data-penna="card.code"]`; quotes as `.md-quote > blockquote`; lists as `ul` or `ol` > `li` > `.md-item` > `.md-prefix` + `.md-body`, a task's box as `.md-box > .md-check[role="checkbox"][aria-checked]`; `hr`; code as `.md-code > pre[data-penna="card.code"] > code` with `.tk-*` runs, and `data-actions` and `.md-actions` for actions; tables as `.md-table` (`data-scroll`, with a `.md-scroll`) > `.md-figure[data-penna="card.figure"]` > `.md-row` > `.md-cell[data-align]`. `text.js` sizes table columns, rounds inline code and check corners, and places baselines as ala does.
 
-Status: three gaps. The quote bar (3) and the table's column limits (48, 480, 1200) are pixel literals (Rules 1). The streaming veil fades for up to 400ms, past the 220 Principles 5 allows, and the HTML twin has no veil. The HTML twin has no `text(None)`: `.penna-md` always sets `read-body` and the 640 measure.
+Status: matches.
 
 ### Tile
 
