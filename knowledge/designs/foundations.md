@@ -295,7 +295,7 @@ Kinds, by emphasis (`.emphasis()`), each in any tone (`.tone()`): neutral by def
 | Outline | `.emphasis(Emphasis::Outline)` | a quiet tag that says where something comes from (the settings provenance badge, a version) |
 | Ghost | `.emphasis(Emphasis::Ghost)` | ink only, no fill or edge |
 
-`.on(ground)` paints it for the ground it sits on. `.opaque()` fills it with that ground's own fill, so it reads over a picture or a message bubble.
+`.on(ground)` paints it for the ground it sits on. `.opaque()` flattens its fill onto that ground's fill, so it looks the same but hides what is under it: a picture, or the edge of a message bubble it overlaps.
 
 Anatomy, left to right:
 
@@ -318,9 +318,9 @@ Content: a count, or one to three words in sentence case ("3 failing", "Waiting"
 
 Placement: after the text it tags, `gap-related` (8) from it, or at the end of a row. Pick its size from the line it sits in.
 
-HTML: `.penna-badge` with `data-penna` (`badge`, or `badge.outline` for outline), `data-tone`, `data-size` (`xsmall`, `small`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` as on a chip) and `data-opaque` with `data-on` naming the ground; the label is a `span.badge-text` marked `data-penna-text`, the icon `<i data-icon>`.
+HTML: `.penna-badge` with `data-penna` (`badge`, or `badge.outline` for outline), `data-tone`, `data-size` (`xsmall`, `small`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label and icon wrapped in `.penna-solid-ink` as on a chip; `penna.css` holds these rules for both) and `data-opaque` with `data-on` naming the ground by its role (`data-on="card.bubble"`; the window without it): the tokens give each `data-on` that ground's fill as `--penna-ground`, and `badge.css` lays the badge's fill over it. The label is a `span.badge-text` marked `data-penna-text`, the icon `<i data-icon>`.
 
-Status: one gap. The HTML twin has no solid, ghost or opaque badge.
+Status: matches.
 
 ### Bar
 

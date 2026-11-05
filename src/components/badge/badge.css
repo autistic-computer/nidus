@@ -20,6 +20,14 @@
   line-height: var(--penna-text-micro-line);
 }
 
+.penna-badge[data-opaque]:not([data-emphasis="solid"]) {
+  background: linear-gradient(var(--penna-fill), var(--penna-fill)), var(--penna-ground, var(--penna-bg));
+}
+
+.penna-badge[data-opaque][data-emphasis="ghost"] {
+  background: var(--penna-ground, var(--penna-bg));
+}
+
 .penna-badge > .badge-text {
   display: inline-block;
   flex: none;
