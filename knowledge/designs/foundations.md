@@ -446,20 +446,20 @@ States (`.state(PaintState)`, `.selected(true)`):
 | rest | the look's paint | |
 | hover | marker: the accent ring | other looks keep their rest paint; lights on its own only with `.interactive(true)` |
 | pressed | marker: the accent ring | as hover |
-| focused | plain, bar, drag: the selected fill; marker and floating: a ring | |
+| focused | the look's rest paint and the focus ring, 1.5 outside | from the keyboard on a chip that takes focus, or set by the app |
 | selected | a stronger fill in its tone; marker: the accent ring | |
 | current | as selected; `.ring(color)` recolors the marker's ring | the marker of the pane in front |
 | disabled | faded fill and ink | |
 
-Behavior: read-only by default: the pointer passes through it and it is never in the focus order. `.interactive(true)` lights it on hover and press and announces it as a button; the caller adds the click.
+Behavior: read-only by default: the pointer passes through it and it is never in the focus order. `.interactive(true)` lights it on hover and press and announces it as a button; the caller adds the click. An interactive chip with a click handler is a tab stop: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it.
 
 Content: the label is the state ("Ready", "Paused") or the thing's own name ("ubuntu"), one or two words, sentence case unless it is a name. The detail adds one fact ("this Mac", "offline"). A status dot always sits beside a word that says the status (Rules 8).
 
 Placement: chips in a row sit `gap-related` (8) apart.
 
-HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive`, `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
+HTML: `.penna-chip` with `data-penna` (the look and emphasis: `chip`, `chip.outline`, `chip.bar`, `chip.floating`, `chip.marker`, `chip.drag`, or `badge.icon` with `data-look="icon-disc"`), `data-tone`, `data-size` (`xsmall` to `touch`; small when absent), `data-state` (`hover`, `active`, `focused`, `selected`, `current`, `disabled`), `data-emphasis` (`ghost`, or `solid` with `data-solid="<tone>"` and the label wrapped in `.penna-solid-ink` carrying the solid button's `data-penna="button" data-prominent`), `data-interactive` (with `role="button"` and `tabindex="0"` when it takes focus; `chip.js` runs it on Space and Enter and keeps a click from focusing it), `data-ring="<tone>"`, and `data-detail` when it holds a detail. Its parts: `i.penna-dot[data-tone]`, `<i data-icon>`, `.penna-chip-label` and `.penna-chip-detail` (which `chip.js` truncates), each text run marked `data-penna-text`.
 
-Status: two gaps. A plain, bar or drag chip shows focus only as its selected fill, with no focus ring, and an interactive chip takes no keyboard focus. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
+Status: one gap. Its icon is sized in plain pixels (`px`), so it doesn't grow with the interface font size the way the label does.
 
 ### Icon
 
@@ -643,17 +643,18 @@ States:
 | hover | the look's hover step | only at rest |
 | pressed | the look's active step, while held | only at rest |
 | selected | the look's selected fill | `.selected(true)`; no hover or press over it |
+| focused | the focus ring, 1.5 outside, over the row's own fill | `.focused(true)`, set by the app; a selected row keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | no hover, press or click |
 
-Behavior: a click runs `on_click` on release; `on_mouse_down(button, handler)` takes other buttons, such as a right press, and `on_mouse_enter` follows the pointer, as a picker's highlight does. A disabled row runs none of them. The row announces itself as a list item (`.role()` changes that, to a tree item or an option). It has no keys of its own: the app moves the selection and runs the picked row.
+Behavior: a click runs `on_click` on release; `on_mouse_down(button, handler)` takes other buttons, such as a right press, and `on_mouse_enter` follows the pointer, as a picker's highlight does. A disabled row runs none of them. The row announces itself as a list item (`.role()` changes that, to a tree item or an option). It has no keys of its own: the list the app lays out moves the selection and focus, marks the focused row `.focused(true)` and runs the picked row.
 
 Content: the label is the thing's name as people know it (a host, a session, a file), on one line. The detail is a short fact in a word or two: a count, a state. Status reads as a word, never as color alone.
 
 Placement: in a sidebar, a pane or a picker, full width, in a column of rows `space-2` apart with the row inset at the sides. One selected row shows which one is open.
 
-HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
+HTML: `.penna-list` is the column (rows `space-2` apart). A row is `.penna-list-item[data-penna]` (`menu-item`, `sidebar.row`, `menu-item.tint`) with `role="option"`, `aria-selected="true"` or `data-state="selected"`, `aria-disabled="true"` or `data-state="disabled"`, `data-state="focused"` (or keyboard focus) for the focus ring, and `--penna-list-row` for its height. Inside, `.penna-list-content` holds `i.penna-list-icon[data-icon]`, `.penna-list-label` and `.penna-list-detail`, each text run in `.penna-text[data-penna-text]`. No script.
 
-Status: one gap. A `ListItem` takes no focus and has no focused look, so a list has no keyboard path unless the app adds one.
+Status: matches.
 
 ### Menu
 
@@ -807,7 +808,7 @@ States:
 | pressed | the look's active step, while held | as hover; under a coarse pointer a fill row draws the press highlight instead |
 | selected | the look's selected fill | `PaintState::Selected` |
 | current | the same fill as selected | `PaintState::Current`, the open page or section |
-| focused | sidebar: the rest fill and the focus ring, 1.5 outside; every other look: its selected fill | the app sets it |
+| focused | the rest fill and the focus ring, 1.5 outside | the app sets it; `.focused(true)` adds the ring to any state, so a selected row keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | |
 
 `.interactive(false)` paints the state alone, with no hover or press.
@@ -818,9 +819,9 @@ Content: one line, the item's name; a short muted aside at the end.
 
 Placement: rows in an inset list sit `space-2` apart with the row inset at the sides, so their highlights never merge; a plain list's rows touch.
 
-HTML: `.penna-row[data-penna]` (the look's recipe) with `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and sizes the ring (`--penna-ring-r`).
+HTML: `.penna-row[data-penna]` (the look's recipe) with `data-state` (`hover`, `active`, `selected`, `current`, `focused`, `disabled`), `aria-selected`, `aria-disabled`, `data-tone`, and `data-still` for a row that is not interactive. It holds `<i data-icon>`, `.penna-row-label` and `.penna-row-aside`, each text run in `.penna-text[data-penna-text]`. A fill row is `.penna-row-fill[data-penna]` inside the caller's row, `data-round` for the 24 radius. `data-state="selected focused"` is a selected row with the ring. `.penna-item.penna-list-item` draws a list item with a Row's focus ring. `tab.js` marks keyboard focus and `kit.js` sizes the ring (`--penna-ring-r`).
 
-Status: two gaps. Only the sidebar look draws the focus ring; every other look shows focus with its selected fill, so focus and selection look the same. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
+Status: one gap. `.penna-row` fixes a 200 by 32 box, `small` text and a 14 icon that the native Row leaves to its caller, and a 14 icon beside `small` text breaks the pairing in Size.
 
 ### Scrollbar
 
@@ -1103,7 +1104,7 @@ Anatomy:
 
 - Container: the rung's height, `control-lg` 32 by default; the look's fill, outline and corners (its radius, capped at 45% of the height).
 - Inset, gap, icon and label are the caller's. The story and `tab.css` use `space-10` at the sides and `space-6` gaps, a 14 icon, a `small` label and an optional `caption` aside in muted ink; a title uses `space-8` and a `small` muted path.
-- Focus ring (tray): 1.5px, outside the container, with its own radius.
+- Focus ring: 1.5px, outside the container, with its own radius.
 
 Sizes: `.with_size()` (or `.xsmall()` to `.touch()`) moves only the height along the control ladder: 20, 24, 28 (follows density), 32 (the default), 40, 44. Text, inset and icons stay the caller's. Every tab in a bar has the same size (Rules 6).
 
@@ -1116,12 +1117,12 @@ States:
 | pressed | the look's active step, while held | as hover |
 | selected | the look's selected fill | the open tab; `aria-selected` |
 | current | the same fill as selected | |
-| focused | tray: the rest fill and the focus ring; window, page and title: their selected fill | the app sets it |
+| focused | the rest fill and the focus ring | the app sets it; `.focused(true)` adds the ring to any state, so the open tab keeps its selected fill |
 | disabled | the look's disabled paint, dimmed text | |
 
 `.interactive(false)` paints the state alone, with no hover or press.
 
-Behavior: a Tab paints the state the app gives it and announces itself as a tab with its id. The app switches on click (`on_click`, like any element) and marks the open tab selected. Natively a Tab takes no focus or keys of its own. In the HTML twin, `tab.js` moves focus inside a `[role="tablist"]`: Left and Right go to the previous or next tab with a `tabindex` and wrap, Home and End to the first and last; keyboard focus sets `data-state="focused"` and sizes the ring.
+Behavior: a Tab paints the state the app gives it and announces itself as a tab with its id. The app switches on click (`on_click`, like any element) and marks the open tab selected. Natively a Tab takes no focus or keys of its own: the bar the app lays out owns focus and the arrow keys and marks the focused tab. In the HTML twin, `tab.js` moves focus inside a `[role="tablist"]`: Left and Right go to the previous or next tab with a `tabindex` and wrap, Home and End to the first and last; keyboard focus sets `data-state="focused"`, and `kit.js` sizes the ring.
 
 Content: the label names what the tab shows, as people name it: a session, a page title, a task. Keep it short; a count or the program goes in the muted aside. No closing period.
 
@@ -1129,7 +1130,7 @@ Placement: tabs sit side by side in a bar, as wide as their content. One tab per
 
 HTML: `.penna-tab[role="tab"][data-penna]` (`tab.window`, `tab.page`, `tab.tray`, `button.title`) inside a `[role="tablist"]`, with `data-size` (`xsmall` to `touch`; large when absent), `data-state`, `aria-selected`, `aria-disabled`, `data-still` and `tabindex`. It holds `<i data-icon>`, `.penna-tab-label`, `.penna-tab-aside` or `.penna-tab-path`, each text run in `.penna-text[data-penna-text]`. A title is `.penna-tab.penna-title-tab` in a `.penna-pane-header[data-penna="bar.pane"]`.
 
-Status: four gaps. Equal-width tabs are not built: a tab is as wide as its content. Window, page and title tabs show focus with their selected fill, where only the tray look draws the focus ring. Left, Right, Home and End move between tabs only in the HTML twin; a native Tab takes no focus or keys of its own. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
+Status: two gaps. Equal-width tabs are not built: a tab is as wide as its content. The story and `tab.css` put 14 icons beside `small` labels, where Size pairs 12 with `small`.
 
 ### Text
 
@@ -1205,19 +1206,18 @@ States:
 | rest | the variant's paint | |
 | hover | Card, Screen and Mini as rest; Drop one tint step deeper | the app sets it while the tile is dragged |
 | selected | a 2px ring in `accent` (Card, Screen, Mini); Drop's selected tint | the one picked |
-| focused | as selected | set by the app; the tile tracks no focus |
+| focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
 
-Behavior: the native tile paints a state and does nothing else; the app picks, drags and drops. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
+Behavior: the native tile paints a state; the app picks, drags and drops. A tile with a click handler is a tab stop announced as a button: Space and Enter run it, and it shows the focus ring from the keyboard only, since a click never focuses it. `Tile::on(ground)` paints it on a ground, `Well::ground(cx)` on a well.
 
 Placement: on a well or in a dock, `gap-group` 16 apart in a row, or where the app arranges them. Drop and veil sit absolutely over the panes they cover. A tile rises one step from its ground with a contact shadow.
 
-HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone. `tile.css` sizes each variant (a screen 150 by 90, a card 132 by 64) and draws the selected ring in `::after`. `tile.js` makes tiles under `[data-tiles]` draggable (3px slop, `data-dragging`, a `penna-drop` event with the point) and, under `[data-pick]`, selects the one clicked and fires `penna-pick`.
+HTML: `.penna-tile` with `data-penna` (`tile.card`, `tile.screen`, `tile.drop`, `tile.mini`) and `data-variant` (`card`, `screen`, `drop`, `veil`, `mini`); `data-state` (`hover`, `selected`, `focused`, `disabled`), `data-tone` (`primary`, `danger`), `data-edge` on a drop zone, and `role="button"` with `tabindex="0"` on a tile that takes focus. `tile.css` sizes each variant (a screen 150 by 90, a card 132 by 64), draws the selected ring in `::before` and the focus ring in `::after`. `tile.js` makes tiles under `[data-tiles]` draggable (3px slop, `data-dragging`, a `penna-drop` event with the point), under `[data-pick]` selects the one clicked and fires `penna-pick`, runs a focusable tile on Space and Enter, and keeps a click from focusing it.
 
-Status: four gaps.
+Status: three gaps.
 
 - The selected ring is `accent`, not `primary`, so in the default look a picked tile is blue where every other highlight is the ink.
-- A tile takes no focus and has no key to pick it, natively or in HTML.
 - A tile being dragged (hover) draws like one at rest, where Depth gives things that move `shadow-lifted`.
 - The HTML twin fixes each variant's size and padding and picks and drags on its own, where the native tile leaves both to the app.
 
@@ -1274,17 +1274,17 @@ The indent and the guide's place are the caller's (`IndentGuides::new(depths, ac
 
 Sizes: one. Rows follow density; text stays `lead` and icons 14.
 
-States: a row's states are a list item's: rest, hover, pressed, selected and disabled. A selected row also lights its parent's guide.
+States: a row's states are a list item's: rest, hover, pressed, selected, focused and disabled. A selected row also lights its parent's guide.
 
-Behavior: the app owns the rows, the selection (`active_row`) and what a click does; the guides follow the depths and the active row of the rows in view. Natively a tree takes no keys of its own. In the HTML twin, `tree.js` selects and focuses a row on click, Up and Down move the selection and focus (stopping at the ends), only the selected row is in the tab order, and the guides redraw on every change. Neither folds a level open or closed.
+Behavior: the app owns the rows, the selection (`active_row`), focus and what a click does; the guides follow the depths and the active row of the rows in view. Natively a tree takes no keys of its own: the app moves the selection and marks the row the keyboard is on `.focused(true)`, which draws the focus ring. In the HTML twin, `tree.js` selects and focuses a row on click, Up and Down move the selection and focus (stopping at the ends), only the selected row is in the tab order, and the guides redraw on every change. Neither folds a level open or closed.
 
 Content: a row's label is the thing's own name ("lib.rs"), never its path: the depth already says where it is. One icon per kind of thing.
 
 Placement: in a sidebar or a side panel, full width, rows touching so the guides run unbroken.
 
-HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected` and `tabindex`, holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
+HTML: `.penna-tree[role="tree"]` with `--penna-tree-row` (`control-md`), `--penna-tree-indent` (16), `--penna-tree-inset` (`space-12`), `--penna-tree-offset` (20) and `--penna-tree-end` (4). Rows are `.penna-tree-row[data-penna="sidebar.row"][role="treeitem"]` with `data-depth` and `style="--depth: n"`, `aria-selected`, `tabindex` and `data-state="focused"` (keyboard focus draws the ring too), holding `.penna-tree-content` with `i.penna-tree-icon[data-icon]` and a `.penna-label[data-penna-text]`. `tree.js` adds a `.penna-tree-guide` per guide, `data-active` on the lit one.
 
-Status: one gap. Up and Down move the selection and focus only in the HTML twin; natively tree rows take no focus and no keys, and show no focused look.
+Status: one gap. A focused row runs the full width of its `uniform_list`, which clips the sides of its ring natively; the HTML tree doesn't clip, so the twin shows the whole ring.
 
 ### Well
 
