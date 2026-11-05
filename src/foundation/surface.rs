@@ -1254,7 +1254,8 @@ impl Theme {
                     length: BAR_LENGTH,
                 });
         let under = ground.fill.opaque().blend(fill_color);
-        let solid_fill = highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
+        let solid_fill =
+            highlight == Highlight::Accent || (surface.prominent && fill != Fill::Glass);
         let radius = self.shape_radius(surface, style.shape);
         Layer {
             fill: fill_color,
