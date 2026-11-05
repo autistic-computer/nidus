@@ -210,6 +210,7 @@ How each kind draws, at rest and under the pointer:
 | Rule | a hairline in `divider` | | |
 
 - The highlight on a selected row is a wash of the ink while the tint is the ink, and the tint's solid fill once a tint is set.
+- On that solid fill everything in the row takes the selected ink: label, muted text, icons, and a toned chip or badge, which draws as a wash of the selected ink in place of its tone. The word still says the status (Content). Natively the row hands its fill to its children as their ground (`.on(ground)`); in HTML a row with `data-state~="selected"` or `"current"` and a solid highlight sets the ground inside it.
 - Hairlines appear only where they mean something: rules, the outline variants (`button.outline`, `field.outline`, `badge.outline`, `chip.outline`), a field being typed in, and every surface and control under Increase contrast. Outlines are 1 wide.
 - The knob of a switch or a slider keeps `shadow-contact`, the one control shadow in the look, so a light knob reads on a light ground.
 - Variants (quiet, outline, solid, ghost) are drawn by the kit from their kind's style, so no knob can change one without the others.
@@ -267,9 +268,12 @@ How the knobs are spelled and decided:
 - Keyboard focus changes no fill but a field's; everything else shows the ring.
 - Rings on a selected pane, card or tile, and a row's bar mark, take the highlight color, not `accent`.
 - Panels (the sidebar and the inspector) take the `panel` fill; panes take their ground. Tooltips and pane chips cast `shadow-float` like every floating surface; drop zones cast none.
+- Glass is neutral: a floating surface with a tone (a solid or soft toned floating chip) draws its tone's own fill, opaque, under `shadow-float`, since a toned tint can't hold text at 4.5:1 over any backdrop. Only the neutral floating chip is glass.
+- A press replaces the hover look; nothing draws its pressed wash over its hover wash.
+- Muted, faint and tone ink are worked out for the ground under the text, natively and in HTML, where each ground scope (`data-ground`, `data-on`) carries the inks that differ from the window's.
 - Row inset (6), outline width (1) and highlight strength (0.8 of the wash) are fixed.
 
-Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash.
+Status: built (step 10). Theme files are knobs only, the kinds and the built-in role patches draw the table above, and `default`, `macos` and `yaru` are presets. The storybook's theme creator edits these knobs and exports a theme file, the docs Look page shows their range live, and the parity baselines hold the one look. Known gaps between native and HTML: a solid-toned floating chip draws its tone as a glass tint natively and opaque in HTML; glass over a stacked dialog blends what is under it a little differently on the two sides; sheet rows natively draw the press wash over the hover wash; HTML faint and tone ink are worked out for the window, not the ground under them; a toned chip on a selected row in a tinted look keeps its tone. Step 12 closes them.
 
 ## Focus and keys
 
@@ -1353,7 +1357,7 @@ States:
 | State | Look | Notes |
 |---|---|---|
 | rest | the variant's paint | |
-| hover | Card, Screen and Mini lift: `shadow-lifted` under them (Depth); Drop one tint step deeper | the app sets it while the tile is dragged |
+| hover | Card, Screen and Mini lift: one step of fill above rest and `shadow-lifted` under them (Depth), so the lift reads in dark too, where a shadow barely shows; Drop one tint step deeper | the app sets it while the tile is dragged |
 | selected | a 2px ring in the highlight color (Card, Screen, Mini); Drop's selected tint | the one picked |
 | focused | the variant's rest paint and the focus ring, 1.5 outside | from the keyboard on a tile that takes focus, or set by the app |
 | disabled | fill at half strength, faint label, no shadow | a thing that is away or can't be placed |
@@ -1467,5 +1471,6 @@ Status: matches.
 | 9 | Density setting | new option | built |
 | 10 | One look: the default theme becomes the look above, theme files shrink to knobs, `macos` and `yaru` become presets, role overrides go, and the kit draws variants from their kind | every screen: fewer edges and shadows, a warm ground, 12 corners | built |
 | 11 | Every component matches its section: bars and cards set their own size and inset, the HTML twins take their roles, hover and pressed on switches and segmented controls, a lifted tile while dragged, no free separator color, 14 icons when no size is given | bars move to the pane header height, unsized icons grow 1px beside `body` | built |
+| 12 | The Look's last native and HTML differences: toned floating chips opaque, presses replacing hovers, glass over stacked dialogs, label inks per ground in HTML, selected-row content in the selected ink, a dragged tile one fill step up | toned pane chips turn opaque, dragged tiles read in dark, chips on picked rows turn to the row's ink | step 12 |
 
 Each step lands in penna with its stories, scores parity, rebaselines only what the step meant to move, and is pulled into zz and nidus.
