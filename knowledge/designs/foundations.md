@@ -397,8 +397,8 @@ Kinds:
 |---|---|---|
 | Checkbox | `Checkbox::new(id).label(text).checked(on)` | an option that is on or off by itself |
 | Mixed checkbox | `.indeterminate(true)` | a checkbox over a set of checkboxes that are partly on |
-| Radio group | `RadioGroup::new(id, labels).selected(index)` | one of two to seven options; more go in a select |
-| Mark | `Check::checkbox(on)`, `Check::radio(on)` | the box alone, in a row, tile or task list that takes the press itself |
+| Radio group | `RadioGroup::new(id, labels).selected(index)` | one of two to seven options; more go in a select. `.selected(None)` while none is picked |
+| Mark | `Check::checkbox(on)`, `Check::radio(on)`, `.indeterminate(true)` for the minus | the box alone, in a row, tile or task list that takes the press itself |
 
 Anatomy, left to right:
 
@@ -409,7 +409,7 @@ Anatomy, left to right:
 
 A radio group stacks its radios `gap-related` 8 apart, or lays them in a row `gap-group` 16 apart with `.horizontal()`.
 
-Sizes: `md` by default; `xs` and `sm` beside `caption` and `small` text. From `lg` up it draws like `md`, since it sits in a line of text (Size). Under a coarse pointer the hit area grows to the touch target.
+Sizes: `md` by default; `xs` and `sm` beside `caption` and `small` text. From `lg` up it draws like `md`, since it sits in a line of text (Size). Under a coarse pointer the hit area grows to the touch target: 44 tall around the label's line, and 44 wide around the box.
 
 States:
 
@@ -420,19 +420,19 @@ States:
 | mixed | the tone's fill with the minus | a checkbox only |
 | hover | the box takes its paint's hover step | over the box or the label; not under a coarse pointer, not when disabled |
 | pressed | the box takes its paint's active step, while held | not under a coarse pointer |
-| focused | the focus ring, 1.5 outside the box, one ring width off it when filled | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
+| focused | the focus ring, 1.5 outside the box, one ring width off it when filled, in the tone's focus ink | from the keyboard only, never from a click; a radio group rings its picked radio, or its first while none is picked |
 | disabled | the paint's disabled step: fainter edge, fill and mark; the label in `fg-faint` | presses and keys are ignored, and it leaves the focus order |
 | error | `.tone(Tone::Danger)`: the edge, or the fill, in the danger tone | its Field shows the message with an icon (Field) |
 
-Behavior: a checkbox flips on release of a click or tap on its box or its label, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. A mixed checkbox turns on. A radio group is one tab stop: a click on a radio picks it; Up and Left pick the previous radio, Down and Right the next, Home and End the first and last, each through `on_select`, and they stop at the ends; Space and Enter pick the ringed radio while none is picked. A click never focuses either. The mark alone has no behavior: the row or tile that holds it takes the press, the focus and the keys, and sets `checked`.
+Behavior: a checkbox flips on release of a click or tap on its box or its label, and on Space or Enter while focused, and calls `on_click` with the new value; the caller sets `checked`. A mixed checkbox turns on. A radio group is one tab stop: a click on a radio picks it; Up and Left pick the previous radio, Down and Right the next, Home and End the first and last, each through `on_select`, and they stop at the ends; while none is picked they step from the first. Space and Enter pick the ringed radio while none is picked, and pass on to the form once one is, so Enter still confirms a dialog. A click never focuses either. The mark alone has no behavior: the row or tile that holds it takes the press, the focus and the keys, and sets `checked`.
 
 Content: the label names the option in sentence case with no closing period, phrased so that on means yes ("Restore sessions", not "Don't restore sessions"). A radio group's labels are short and parallel, and the Field around it names the set ("Start with").
 
 Placement: in a form, checkboxes stack one per line `gap-related` 8 apart; a checkbox that needs help or an error, and every radio group, sits in a Field. The mark sits before its label in a list or task row, or at the trailing end of a tile, in place of its key, once that tile is picked.
 
-HTML: the mark is `.penna-check` (in `penna.css`): `data-on` with an `<i data-icon="check">` inside, `data-mixed` with an `<i data-icon="minus">`, `data-kind="radio"` for a radio (its dot is drawn by the CSS), `data-size` (`xsmall`, `small`) for the 14 box, `data-tone`, and `data-disabled`. A checkbox is `label.penna-checkbox` with `aria-checked` (`true`, `false`, `mixed`), `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-check` and a `.penna-label`. A radio group is `.penna-radio-group` with `data-value` (the picked index), `data-orientation="horizontal"`, `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-radio` per option, each a `.penna-check[data-kind="radio"]` and a `.penna-label`. `check.js` sets the roles (`checkbox`, `radiogroup`, `radio`), makes each checkbox and each group one tab stop, answers the clicks and keys above, keeps `aria-checked` and the marks in step, and fires `change` with `{ checked }` or `{ index }`. `:focus-visible` or `data-state="focused"` draws the ring. Reading text's task list draws its own `.md-check` (`role="checkbox"`, `aria-checked`).
+HTML: the mark is `.penna-check` (in `check.css`, with the controls): `data-on` with an `<i data-icon="check">` inside, `data-mixed` with an `<i data-icon="minus">`, `data-kind="radio"` for a radio (its dot is drawn by the CSS), `data-size` (`xsmall`, `small`) for the 14 box, `data-tone` (`danger`, `warning`, `success`), and `data-disabled`. Its fills read the theme's `--penna-outline-hover` and `--penna-outline-pressed` (the neutral edge's steps) and `--penna-<tone>-hover`, `--penna-<tone>-pressed` and `--penna-on-<tone>` (a tone's solid steps and ink). A checkbox is `label.penna-checkbox` with `aria-checked` (`true`, `false`, `mixed`), `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-check` and a `.penna-label`. A radio group is `.penna-radio-group` with `data-value` (the picked index), `data-orientation="horizontal"`, `data-size`, `data-tone` and `aria-disabled="true"`, holding a `.penna-radio` per option, each a `.penna-check[data-kind="radio"]` and a `.penna-label`. `check.js` sets the roles (`checkbox`, `radiogroup`, `radio`), makes each checkbox and each group one tab stop, answers the clicks and keys above, keeps `aria-checked` and the marks in step, rounds each box and its ring, and fires `change` with `{ checked }` or `{ index }`. `:focus-visible` or `data-state="focused"` draws the ring. Reading text's task list draws its own `.md-check` (`role="checkbox"`, `aria-checked`).
 
-Status: not built yet. Today it is the mark only, with half the theme radius for a checkbox's corner, and its HTML twin has no radio, disabled state or tone and fills with `accent`.
+Status: matches.
 
 ### Chip
 
