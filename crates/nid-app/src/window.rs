@@ -235,6 +235,7 @@ impl Render for NidWindow {
         app_shell_surface(
             SharedString::from("Nidus"),
             cx.theme().background,
+            None,
             div(),
             Some(titlebar),
             content,
