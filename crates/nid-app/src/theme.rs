@@ -11,6 +11,6 @@ pub fn apply(mut window: Option<&mut Window>, cx: &mut App) {
         window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
-    interface_theme::default_theme().apply(Theme::global_mut(cx));
+    interface_theme::platform_theme().apply(Theme::global_mut(cx));
     cx.refresh_windows();
 }
