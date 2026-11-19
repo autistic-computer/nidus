@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use ropey::{ChunkCursor, Rope};
 use std::sync::Arc;
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     ops::{ControlFlow, Range},
 };
 use tree_sitter::{
@@ -916,10 +916,8 @@ pub(crate) fn unique_styles(
 
     intervals.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-    let mut significant_intervals: BTreeSet<usize> = BTreeSet::new();
-    for (range, _) in &styles {
-        significant_intervals.insert(range.end);
-    }
+    let mut significant_intervals: Vec<usize> = styles.iter().map(|(range, _)| range.end).collect();
+    significant_intervals.sort_unstable();
 
     let mut result: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
     let mut active_styles: Vec<usize> = Vec::new();
@@ -958,7 +956,7 @@ pub(crate) fn unique_styles(
         if let Some((last_range, last_style)) = merged.last_mut() {
             if last_range.end == range.start
                 && *last_style == style
-                && !significant_intervals.contains(&range.start)
+                && significant_intervals.binary_search(&range.start).is_err()
             {
                 last_range.end = range.end;
                 continue;
