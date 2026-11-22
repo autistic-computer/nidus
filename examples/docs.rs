@@ -328,6 +328,7 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     fs::copy(root.join("docs/sizes.js"), assets.join("sizes.js"))?;
     fs::copy(root.join("docs/phone.js"), assets.join("phone.js"))?;
     fs::copy(root.join("docs/look.js"), assets.join("look.js"))?;
+    fs::copy(root.join("docs/button.js"), assets.join("button.js"))?;
     fs::copy(root.join("docs/logo.svg"), assets.join("logo.svg"))?;
     Ok(())
 }
@@ -850,6 +851,9 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     if page.body.contains("data-docs-look") {
         html.push_str("<script src=\"assets/look.js\" defer></script>\n");
     }
+    if page.body.contains("data-docs-button") {
+        html.push_str("<script src=\"assets/button.js\" defer></script>\n");
+    }
     let storybook = if native {
         format!(" data-docs-storybook=\"{STORYBOOK}\"")
     } else {
@@ -1316,7 +1320,9 @@ impl Builder {
         }
         for look in code.value.split("data-look=\"").skip(1) {
             let name = &look[..look.find('"').unwrap_or(0)];
-            add_look(name)?;
+            if LOOKS.iter().any(|(known, _)| *known == name) {
+                add_look(name)?;
+            }
         }
         let body = match story_ref(code) {
             Some(reference) => {
