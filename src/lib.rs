@@ -6,22 +6,37 @@ pub mod blocks;
 pub mod components;
 pub mod foundation;
 
+pub use blocks::diff::{DiffHunk, DiffKind, DiffLayout, DiffLine, DiffStat, DiffView};
 pub use blocks::dock::Dock;
 pub use blocks::inspector::Inspector;
 pub use blocks::notice::Notice;
 pub use blocks::steps::Steps;
+pub use blocks::table::{ColumnAlign, SortDir, SortState, Table, TableColumn, TableRow};
 pub use blocks::title_bar::{
     MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WINDOW_CONTROLS_INSET,
     WINDOW_CONTROLS_SPAN, WindowControls, draws_window_controls, macos_traffic_light_clearance,
     window_controls_width,
 };
+pub use blocks::trace::{Trace, TraceStatus, TraceStep, TraceSummary};
 pub use components::bar::{Bar, BarLook};
+pub use components::breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbSeparator};
+pub use components::button_group::{ButtonGroup, ButtonGroupOrientation};
 pub use components::card::{Card, CardLook};
 pub use components::chip::{Chip, ChipLook, Dot};
+pub use components::combobox::{Combobox, ComboboxOption, ComboboxState};
+pub use components::data_list::{DataList, DataListItem, DataListLayout};
+pub use components::disclosure::Collapsible;
+pub use components::hover_card::{HOVER_CARD_CLOSE_DELAY, HOVER_CARD_OPEN_DELAY, HoverCard};
 pub use components::icon::{Assets, Icon, IconName};
+pub use components::input_group::InputGroup;
 pub use components::label::Label;
+pub use components::meter::{Meter, MeterThresholds};
 pub use components::panel::{Panel, PanelLook};
 pub use components::row::{Row, RowLook};
+pub use components::skeleton::{Skeleton, SkeletonShape};
+pub use components::snippet::Snippet;
+pub use components::split::{Split, SplitAxis, SplitState};
+pub use components::status_dot::StatusDot;
 pub use components::tab::{Tab, TabLook, TabStrip};
 pub use components::tile::{Tile, TileVariant};
 pub use components::well::Well;

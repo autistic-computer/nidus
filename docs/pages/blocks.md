@@ -2,11 +2,11 @@
 
 Higher-level app patterns in `src/blocks` composed from penna's components — chrome rails, overlays, editors, agent chat, settings, and compact phone layouts.
 
-```figure uses=appearance,badge,button,card,chat,chip,code_editor,color_picker,compact,dialog,dock,feedback,icon,input,inspector,kbd,label,list,notice,notification,palette,panel,progress,segmented,settings,sheet,sidebar,stack_menu,steps,switch,tile,title_bar,touch,which_key
+```figure uses=appearance,badge,button,card,chat,chip,code_editor,color_picker,compact,dialog,diff,dock,feedback,icon,input,inspector,kbd,label,list,notice,notification,palette,panel,progress,segmented,settings,sheet,sidebar,stack_menu,steps,switch,table,tile,title_bar,touch,trace,which_key
 <div class="docs-gal" data-docs-gallery>
   <div class="docs-gal-bar">
-    <label class="penna-input docs-gal-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Filter 21 blocks…" aria-label="Filter blocks" data-gal-search /></label>
-    <span class="docs-lk-mono" data-gal-count>21 of 21</span>
+    <label class="penna-input docs-gal-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Filter 24 blocks…" aria-label="Filter blocks" data-gal-search /></label>
+    <span class="docs-lk-mono" data-gal-count>24 of 24</span>
   </div>
   <div class="docs-gal-cats" role="group" aria-label="Block category">
     <button class="penna-chip" data-penna="chip" data-interactive data-state="selected" type="button" data-gal-cat="all"><span class="penna-chip-label" data-penna-text>All</span></button>
@@ -212,6 +212,32 @@ Higher-level app patterns in `src/blocks` composed from penna's components — c
         </div>
       </div>
       <div class="docs-gal-foot"><span class="docs-gal-name">Zoom card</span><span class="docs-gal-desc">Full-screen phone view expanded from a tile</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="diff.html" data-gal-item data-gal-cat="workspace" data-gal-terms="diff view stat unified split git code">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="penna-diff-stat"><span class="penna-diff-add">+42</span><span class="penna-diff-rem">−18</span><span class="penna-diff-pips"><i data-kind="add"></i><i data-kind="add"></i><i data-kind="add"></i><i data-kind="rem"></i><i data-kind="rem"></i></span></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Diff</span><span class="docs-gal-desc">Unified and split code diffs with five-block DiffStat</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="table.html" data-gal-item data-gal-cat="workspace" data-gal-terms="table grid sortable data columns rows">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-card" data-penna="card" data-ground style="gap: 4px">
+          <div class="docs-row"><span class="penna-type" data-type="caption" data-muted>Session</span><span class="docs-spacer"></span><span class="penna-type" data-type="caption" data-muted>RTT</span></div>
+          <div class="docs-row"><span class="penna-type" data-type="small" data-strong>work</span><span class="docs-spacer"></span><span class="docs-lk-mono">1.2 ms</span></div>
+        </div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Table</span><span class="docs-gal-desc">Density-aware sortable data table with row selection</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="trace.html" data-gal-item data-gal-cat="workspace" data-gal-terms="trace agent tool calls timeline execution">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-card" data-penna="card" data-ground style="gap: 4px">
+          <div class="docs-row"><i data-icon="circle-check" data-tone="success"></i><span class="docs-lk-mono">cargo test</span><span class="docs-spacer"></span><span class="penna-type" data-type="caption" data-muted>980 ms</span></div>
+        </div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Trace</span><span class="docs-gal-desc">Collapsible agent tool-call timeline with output wells</span></div>
     </a>
   </div>
 </div>

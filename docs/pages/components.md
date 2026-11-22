@@ -2,11 +2,11 @@
 
 Every primitive component in `src/components`, rendered live with the active Look, Mode, Density, and Glass tokens. Filter by name or category, or pick any card to open its full guide.
 
-```figure uses=badge,bar,button,card,chart,check,chip,field,icon,input,kbd,key_field,label,list,menu,panel,popover,progress,row,scroll,segmented,select,separator,slider,spinner,switch,tab,text,tile,tooltip,tree,well
+```figure uses=badge,bar,breadcrumb,button,button_group,card,chart,check,chip,combobox,data_list,disclosure,field,hover_card,icon,input,input_group,kbd,key_field,label,list,menu,meter,panel,popover,progress,row,scroll,segmented,select,separator,skeleton,slider,snippet,spinner,split,status_dot,switch,tab,text,tile,tooltip,tree,well
 <div class="docs-gal" data-docs-gallery>
   <div class="docs-gal-bar">
-    <label class="penna-input docs-gal-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Filter 32 components…" aria-label="Filter components" data-gal-search /></label>
-    <span class="docs-lk-mono" data-gal-count>32 of 32</span>
+    <label class="penna-input docs-gal-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Filter 44 components…" aria-label="Filter components" data-gal-search /></label>
+    <span class="docs-lk-mono" data-gal-count>44 of 44</span>
   </div>
   <div class="docs-gal-cats" role="group" aria-label="Component category">
     <button class="penna-chip" data-penna="chip" data-interactive data-state="selected" type="button" data-gal-cat="all"><span class="penna-chip-label" data-penna-text>All</span></button>
@@ -279,6 +279,94 @@ Every primitive component in `src/components`, rendered live with the active Loo
         <div class="docs-gal-mini-well" data-penna="well"><span class="penna-type" data-type="caption" data-muted>Recessed well</span></div>
       </div>
       <div class="docs-gal-foot"><span class="docs-gal-name">Well</span><span class="docs-gal-desc">Sunken container for previews and drop targets</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="breadcrumb.html" data-gal-item data-gal-cat="navigation" data-gal-terms="breadcrumb path trail navigation">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="penna-breadcrumb"><span class="penna-breadcrumb-item">penna</span><span class="penna-breadcrumb-sep">/</span><span class="penna-breadcrumb-item" aria-current="page">motion.rs</span></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Breadcrumb</span><span class="docs-gal-desc">Horizontal path trail for nested workspaces</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="button-group.html" data-gal-item data-gal-cat="actions" data-gal-terms="button group attached cluster toolbar">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="penna-button-group" data-penna="field"><span class="penna-button" data-penna="button.quiet" data-size="xsmall"><span class="penna-label">Left</span></span><span class="penna-button" data-penna="button.quiet" data-size="xsmall"><span class="penna-label">Right</span></span></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Button group</span><span class="docs-gal-desc">Attached action cluster sharing one container</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="combobox.html" data-gal-item data-gal-cat="inputs" data-gal-terms="combobox filter tokens multi select">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="docs-gal-fake-input" data-penna="field"><span class="penna-combobox-token">host:ubuntu</span><span class="docs-spacer"></span><i data-icon="chevron-down"></i></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Combobox</span><span class="docs-gal-desc">Filterable multi-token and searchable picker</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="data-list.html" data-gal-item data-gal-cat="display" data-gal-terms="data list metadata key value inspector">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-list" style="gap: 4px">
+          <div class="docs-row"><span class="penna-type" data-type="caption" data-muted>Host</span><span class="docs-spacer"></span><span class="docs-lk-mono">ubuntu</span></div>
+          <div class="docs-row"><span class="penna-type" data-type="caption" data-muted>RTT</span><span class="docs-spacer"></span><span class="docs-lk-mono">0.9 ms</span></div>
+        </div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Data list</span><span class="docs-gal-desc">Structured key–value metadata rows</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="disclosure.html" data-gal-item data-gal-cat="layout" data-gal-terms="disclosure collapsible expand chevron">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-row" data-penna="menu-item"><i data-icon="chevron-down"></i><span>Build env</span><span class="docs-spacer"></span><span class="penna-type" data-type="caption" data-muted>3 vars</span></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Disclosure</span><span class="docs-gal-desc">Collapsible section with animated chevron turn</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="hover-card.html" data-gal-item data-gal-cat="overlay" data-gal-terms="hover card preview tooltip floating">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-card" data-penna="popover" data-ground><span class="penna-type" data-type="small" data-strong>e5c2c7e · main</span><span class="penna-type" data-type="caption" data-muted>Delayed hover preview</span></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Hover card</span><span class="docs-gal-desc">Delayed rich floating preview on hover or focus</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="input-group.html" data-gal-item data-gal-cat="inputs" data-gal-terms="input group prefix suffix addon">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="docs-gal-fake-input" data-penna="field"><span class="docs-lk-mono">zz://</span><span>studio</span><span class="docs-spacer"></span><span class="docs-lk-mono">:7443</span></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Input group</span><span class="docs-gal-desc">Field joined with leading and trailing addons</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="meter.html" data-gal-item data-gal-cat="display" data-gal-terms="meter gauge quota threshold capacity">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="penna-meter" data-tone="warning" style="max-width: 176px"><div class="penna-meter-head"><span class="penna-meter-label">Context</span><span class="penna-meter-value">79%</span></div><div class="penna-meter-track"><div class="penna-meter-fill" style="--penna-value: 79%"></div></div></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Meter</span><span class="docs-gal-desc">Scalar capacity gauge with threshold tones</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="skeleton.html" data-gal-item data-gal-cat="display" data-gal-terms="skeleton shimmer loading placeholder">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-list" style="gap: 6px"><span class="penna-skeleton" style="width: 72%"></span><span class="penna-skeleton" style="width: 48%; height: 10px"></span></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Skeleton</span><span class="docs-gal-desc">Layout-preserving shimmer loading placeholders</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="snippet.html" data-gal-item data-gal-cat="actions" data-gal-terms="snippet copy command cli code">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="penna-snippet" data-penna="card.code" style="max-width: 196px"><span class="penna-snippet-prefix">$</span><span class="penna-snippet-code">cargo test</span><i data-icon="copy"></i></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Snippet</span><span class="docs-gal-desc">Copyable command and address strip</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="split.html" data-gal-item data-gal-cat="layout" data-gal-terms="split panes sash resize divider">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <div class="docs-gal-mini-panel" data-penna="panel" data-ground style="gap: 8px; height: 54px"><span class="penna-type" data-type="caption" data-muted>42%</span><span style="width: 2px; height: 34px; border-radius: 2px; background: var(--penna-accent)"></span><span class="penna-type" data-type="caption" data-muted>58%</span></div>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Split</span><span class="docs-gal-desc">Resizable two-pane container with 1:1 sash drag</span></div>
+    </a>
+
+    <a class="docs-gal-card penna-card" data-penna="card" data-ground href="status-dot.html" data-gal-item data-gal-cat="display" data-gal-terms="status dot online live pulse indicator">
+      <div class="docs-gal-stage" aria-hidden="true">
+        <span class="penna-status-dot" data-tone="success" data-pulse><span class="penna-status-dot-mark"></span><span>Online</span></span>
+        <span class="penna-status-dot" data-tone="warning"><span class="penna-status-dot-mark"></span><span>Sync</span></span>
+      </div>
+      <div class="docs-gal-foot"><span class="docs-gal-name">Status dot</span><span class="docs-gal-desc">Live semantic indicator with optional pulse</span></div>
     </a>
   </div>
 </div>
