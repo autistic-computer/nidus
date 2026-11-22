@@ -6,7 +6,8 @@
       "title": "Getting started",
       "pages": [
         "introduction",
-        "installation"
+        "installation",
+        "showcase"
       ]
     },
     {
@@ -18,6 +19,7 @@
         "typography",
         "spacing",
         "sizes",
+        "motion",
         "phone",
         "look"
       ]
@@ -25,6 +27,7 @@
     {
       "title": "Components",
       "pages": [
+        "components",
         "button",
         "badge",
         "bar",
@@ -62,6 +65,7 @@
     {
       "title": "Blocks",
       "pages": [
+        "blocks",
         "action-bar",
         "appearance",
         "chat",

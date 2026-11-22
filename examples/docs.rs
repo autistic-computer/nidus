@@ -21,7 +21,7 @@ use penna::{
 };
 use serde::{Deserialize, Serialize};
 
-const STYLES: [&str; 14] = [
+const STYLES: [&str; 15] = [
     "components/badge/badge.css",
     "components/button/button.css",
     "components/card/card.css",
@@ -36,6 +36,7 @@ const STYLES: [&str; 14] = [
     "blocks/docs/docs.css",
     "blocks/palette/palette.css",
     "blocks/sidebar/sidebar.css",
+    "blocks/which_key/which_key.css",
 ];
 
 const SCRIPTS: [&str; 7] = [
@@ -191,6 +192,38 @@ struct SearchEntry {
     headings: Vec<SearchHeading>,
 }
 
+#[derive(Serialize)]
+struct ParityStory {
+    story: String,
+    mean: f64,
+    min: f64,
+    max: f64,
+    checks: usize,
+    modes: usize,
+}
+
+#[derive(Serialize)]
+struct ParityReport {
+    overall_mean: f64,
+    total_checks: usize,
+    story_count: usize,
+    stories: Vec<ParityStory>,
+}
+
+#[derive(Deserialize)]
+struct SolarCatalog {
+    icons: Vec<SolarIcon>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct SolarIcon {
+    name: String,
+    variant: String,
+    group: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
 struct Page {
     slug: String,
     title: String,
@@ -199,6 +232,7 @@ struct Page {
     tables: Vec<Vec<Vec<String>>>,
     markdown: String,
     source_path: Option<String>,
+    parity: Option<(f64, usize)>,
     group: usize,
     body: String,
     styles: BTreeSet<String>,
@@ -242,6 +276,7 @@ fn main() -> io::Result<()> {
         scripts: RefCell::default(),
     };
 
+    let parity_report = load_parity(&builder.root)?;
     let mut pages = Vec::new();
     for (group, entry) in site.groups.iter().enumerate() {
         for slug in &entry.pages {
@@ -253,6 +288,7 @@ fn main() -> io::Result<()> {
             let headings = section_headings(&tree);
             let tables = extract_tables(&tree);
             let source_path = resolve_source_path(&builder.root, slug);
+            let parity = parity_for_slug(slug, &parity_report);
             builder.mounts.set(0);
             let body = builder.page(&tree)?;
             pages.push(Page {
@@ -263,6 +299,7 @@ fn main() -> io::Result<()> {
                 tables,
                 markdown: source,
                 source_path,
+                parity,
                 group,
                 body,
                 styles: builder.styles.take(),
@@ -277,6 +314,8 @@ fn main() -> io::Result<()> {
     let assets = out.join("assets");
     copy_assets(&builder.root, &assets)?;
     write_search_index(&site, &pages, &assets.join("search.json"))?;
+    write_parity_report(&parity_report, &assets.join("parity.json"))?;
+    let icons = write_icons_data(&builder.root, &assets.join("icons.json"))?;
     write_llms_files(&site, &pages, &out)?;
     fs::copy(
         builder.root.join("docs/favicon.svg"),
@@ -299,10 +338,137 @@ fn main() -> io::Result<()> {
         rendered.push(html);
     }
     if check {
-        check_docs(&builder.root, &site, &pages, &rendered, &assets)?;
+        check_docs(&builder.root, &site, &pages, &rendered, &assets, &icons)?;
     }
     println!("{}", out.join("index.html").display());
     Ok(())
+}
+
+fn load_parity(root: &Path) -> io::Result<ParityReport> {
+    let kit_dir = root.join("storybook/src/kit");
+    let mut stories = Vec::new();
+    let mut weighted_sum = 0.0_f64;
+    let mut total_checks = 0_usize;
+    if kit_dir.is_dir() {
+        for entry in fs::read_dir(&kit_dir)? {
+            let path = entry?.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let baseline = path.join("parity.baseline.json");
+            if !baseline.is_file() {
+                continue;
+            }
+            let Some(story) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let map: HashMap<String, f64> =
+                serde_json::from_str(&fs::read_to_string(&baseline)?).map_err(io::Error::other)?;
+            if map.is_empty() {
+                continue;
+            }
+            let mut sum = 0.0_f64;
+            let mut min = f64::INFINITY;
+            let mut max = f64::NEG_INFINITY;
+            let mut modes = HashSet::new();
+            for (key, value) in &map {
+                sum += *value;
+                min = min.min(*value);
+                max = max.max(*value);
+                if let Some((mode, _)) = key.split_once('/') {
+                    modes.insert(mode.to_owned());
+                }
+            }
+            let checks = map.len();
+            weighted_sum += sum;
+            total_checks += checks;
+            stories.push(ParityStory {
+                story: story.to_owned(),
+                mean: (sum / checks as f64 * 100.0).round() / 100.0,
+                min: (min * 100.0).round() / 100.0,
+                max: (max * 100.0).round() / 100.0,
+                checks,
+                modes: modes.len(),
+            });
+        }
+    }
+    stories.sort_by(|a, b| a.story.cmp(&b.story));
+    let overall_mean = if total_checks > 0 {
+        (weighted_sum / total_checks as f64 * 100.0).round() / 100.0
+    } else {
+        0.0
+    };
+    Ok(ParityReport {
+        overall_mean,
+        total_checks,
+        story_count: stories.len(),
+        stories,
+    })
+}
+
+fn parity_stories_for_slug(slug: &str) -> &'static [&'static str] {
+    match slug {
+        "appearance" => &["appearance"],
+        "button" => &["buttons"],
+        "chat" => &["chat"],
+        "check" => &["checks"],
+        "code-editor" => &["code_editor"],
+        "color-picker" => &["color_picker"],
+        "dialog" => &["dialogs"],
+        "dock" | "inspector" | "tile" => &["canvas"],
+        "empty-state" => &["feedback"],
+        "icon" => &["icons"],
+        "input" | "field" => &["inputs"],
+        "key-field" => &["key_field"],
+        "kbd" | "badge" | "chip" | "label" | "spinner" => &["display"],
+        "text" => &["markdown"],
+        "menu" => &["menus"],
+        "popover" | "tooltip" | "notification" => &["notifications"],
+        "palette" => &["palette"],
+        "panel" | "card" | "bar" | "separator" | "well" => &["panels"],
+        "row" | "list" => &["rows"],
+        "scroll" => &["scrollbars"],
+        "select" | "segmented" | "slider" | "switch" => &["selection"],
+        "settings" => &["settings"],
+        "sheet" => &["sheet"],
+        "sidebar" | "tab" | "tree" => &["navigation"],
+        "stack-menu" => &["stack_menu"],
+        "notice" | "progress" | "steps" => &["status"],
+        "title-bar" => &["title_bar"],
+        "which-key" => &["which_key"],
+        "zoom-card" => &["compact"],
+        "action-bar" | "phone" => &["phone"],
+        _ => &[],
+    }
+}
+
+fn parity_for_slug(slug: &str, report: &ParityReport) -> Option<(f64, usize)> {
+    let names = parity_stories_for_slug(slug);
+    if names.is_empty() {
+        return None;
+    }
+    let mut weighted = 0.0_f64;
+    let mut checks = 0_usize;
+    for story in &report.stories {
+        if names.contains(&story.story.as_str()) {
+            weighted += story.mean * story.checks as f64;
+            checks += story.checks;
+        }
+    }
+    (checks > 0).then(|| (weighted / checks as f64, checks))
+}
+
+fn write_parity_report(report: &ParityReport, path: &Path) -> io::Result<()> {
+    let json = serde_json::to_string(report).map_err(io::Error::other)?;
+    fs::write(path, json)
+}
+
+fn write_icons_data(root: &Path, path: &Path) -> io::Result<Vec<SolarIcon>> {
+    let raw = fs::read_to_string(root.join("src/components/icon/solar.json"))?;
+    let catalog: SolarCatalog = serde_json::from_str(&raw).map_err(io::Error::other)?;
+    let json = serde_json::to_string(&catalog.icons).map_err(io::Error::other)?;
+    fs::write(path, json)?;
+    Ok(catalog.icons)
 }
 
 fn resolve_source_path(root: &Path, slug: &str) -> Option<String> {
@@ -311,7 +477,9 @@ fn resolve_source_path(root: &Path, slug: &str) -> Option<String> {
         "empty-state" => Some("src/blocks/feedback"),
         "ui-block" => Some("src/blocks/a2ui"),
         "zoom-card" | "phone" => Some("src/blocks/compact"),
-        "color" | "typography" | "spacing" | "sizes" | "look" => Some("src/foundation"),
+        "color" | "typography" | "spacing" | "sizes" | "motion" | "look" => Some("src/foundation"),
+        "components" => Some("src/components"),
+        "blocks" => Some("src/blocks"),
         _ => None,
     };
     if let Some(path) = explicit {
@@ -391,7 +559,9 @@ fn write_llms_files(site: &Site, pages: &[Page], out: &Path) -> io::Result<()> {
             continue;
         }
         let _ = write!(components, "\n## {}\n", group.title);
-        for page in pages.iter().filter(|page| page.group == group_index) {
+        for page in pages.iter().filter(|page| {
+            page.group == group_index && page.slug != "components" && page.slug != "blocks"
+        }) {
             let _ = write!(components, "\n### {} ({}.md)\n", page.title, page.slug);
             if let Some(src) = &page.source_path {
                 let _ = writeln!(components, "Source: `{src}`");
@@ -456,6 +626,7 @@ fn check_docs(
     pages: &[Page],
     rendered: &[String],
     assets: &Path,
+    icons: &[SolarIcon],
 ) -> io::Result<()> {
     let slugs: HashSet<&str> = pages.iter().map(|page| page.slug.as_str()).collect();
     let mut issues = Vec::new();
@@ -520,6 +691,15 @@ fn check_docs(
                     ));
                 }
             }
+        }
+    }
+
+    for icon in icons {
+        if !known_icons.contains(icon.name.as_str()) {
+            issues.push(format!(
+                "solar.json icon `{}` missing from default-icons.css",
+                icon.name
+            ));
         }
     }
 
@@ -596,6 +776,10 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     fs::copy(root.join("docs/phone.js"), assets.join("phone.js"))?;
     fs::copy(root.join("docs/look.js"), assets.join("look.js"))?;
     fs::copy(root.join("docs/button.js"), assets.join("button.js"))?;
+    fs::copy(root.join("docs/showcase.js"), assets.join("showcase.js"))?;
+    fs::copy(root.join("docs/gallery.js"), assets.join("gallery.js"))?;
+    fs::copy(root.join("docs/motion.js"), assets.join("motion.js"))?;
+    fs::copy(root.join("docs/icons.js"), assets.join("icons.js"))?;
     fs::copy(root.join("docs/logo.svg"), assets.join("logo.svg"))?;
     Ok(())
 }
@@ -1122,6 +1306,18 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     if page.body.contains("data-docs-button") {
         html.push_str("<script src=\"assets/button.js\" defer></script>\n");
     }
+    if page.body.contains("data-docs-showcase") {
+        html.push_str("<script src=\"assets/showcase.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-gallery") {
+        html.push_str("<script src=\"assets/gallery.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-motion") {
+        html.push_str("<script src=\"assets/motion.js\" defer></script>\n");
+    }
+    if page.body.contains("data-docs-icons") {
+        html.push_str("<script src=\"assets/icons.js\" defer></script>\n");
+    }
     let storybook = if native {
         format!(" data-docs-storybook=\"{STORYBOOK}\"")
     } else {
@@ -1138,7 +1334,7 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
          <div class=\"docs-canvas\">\n{}\n\
          <main class=\"penna-docs-main\"><div class=\"docs-main-grid\"{has_toc}>\
          <article class=\"penna-docs-page\" data-page=\"{}\">\n{}{}{}</article>{}</div></main>\n\
-         </div>\n</div>\n{}\n</body>\n</html>\n",
+         </div>\n</div>\n{}\n{}\n</body>\n</html>\n",
         sidebar(site, pages, current, logo),
         pane_bar(site, pages, current, logo),
         escape(&page.slug),
@@ -1146,13 +1342,26 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
         page.body,
         pager(site, pages, current),
         toc,
-        search_palette()
+        search_palette(),
+        shortcuts_sheet()
     );
     html
 }
 
 fn page_meta(site: &Site, page: &Page) -> String {
     let md_href = format!("{}.md", escape(&page.slug));
+    let parity_badge = page.parity.map_or_else(String::new, |(mean, checks)| {
+        let tone = if mean >= 95.0 {
+            " data-tone=\"success\""
+        } else if mean < 85.0 {
+            " data-tone=\"warning\""
+        } else {
+            ""
+        };
+        format!(
+            "<a class=\"penna-badge docs-parity-badge\" data-penna=\"badge\"{tone} href=\"showcase.html#parity\" data-tooltip=\"GPU to HTML parity across {checks} baseline checks\"><span class=\"docs-parity-dot\" aria-hidden=\"true\"></span><span class=\"badge-text\" data-penna-text>{mean:.1}% parity</span></a>"
+        )
+    });
     let source_link = page.source_path.as_deref().map_or_else(String::new, |rel| {
         format!(
             "<a class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" href=\"{}/tree/main/{}\" target=\"_blank\" rel=\"noopener\"><i data-icon=\"git-branch\"></i><span class=\"penna-label\" data-penna-text>Source</span></a>",
@@ -1162,7 +1371,10 @@ fn page_meta(site: &Site, page: &Page) -> String {
     });
     format!(
         "<div class=\"docs-page-meta\">\
+         <div class=\"docs-meta-start\">\
          <span class=\"penna-docs-eyebrow-label\" data-penna-text>{}</span>\
+         {parity_badge}\
+         </div>\
          <div class=\"docs-page-tools\">\
          <button class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" type=\"button\" data-docs-copy-md=\"{md_href}\" aria-label=\"Copy page as Markdown\"><i data-icon=\"copy\"></i><span class=\"penna-label\" data-penna-text>Copy md</span></button>\
          <a class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" href=\"{md_href}\"><span class=\"penna-label\" data-penna-text>.md</span></a>\
@@ -1278,6 +1490,7 @@ fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
          <div class=\"docs-side-foot\">\
          <button class=\"penna-button docs-foot-mode\" data-penna=\"button.quiet\" data-size=\"small\" type=\"button\" aria-label=\"Light or dark\" data-docs-mode><i data-icon=\"sun\" data-docs-mode-icon=\"dark\"></i><i data-icon=\"moon\" data-docs-mode-icon=\"light\"></i><span class=\"penna-label\" data-penna-text data-docs-mode-icon=\"dark\">Light mode</span><span class=\"penna-label\" data-penna-text data-docs-mode-icon=\"light\">Dark mode</span></button>\
          <div class=\"docs-foot-actions\">\
+         <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Keyboard shortcuts\" data-tooltip=\"Shortcuts (?)\" data-docs-shortcuts-open><i data-icon=\"keyboard\"></i></button>\
          <div class=\"penna-popover docs-look-pop\" data-anchor=\"bottom\" data-docs-look>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Appearance\" aria-expanded=\"false\" aria-haspopup=\"dialog\" data-tooltip=\"Appearance\" data-docs-look-trigger><i data-icon=\"sliders\"></i></button>\
          <div class=\"penna-popover-panel docs-look-panel\" data-penna=\"popover\" data-ground role=\"dialog\" aria-label=\"Appearance\">\
@@ -1350,6 +1563,36 @@ fn search_palette() -> &'static str {
      <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"up\"></span><span class=\"penna-palette-glyphs\" data-kbd=\"down\"></span></span><span data-penna-text>navigate</span></span>\
      <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"enter\"></span></span><span data-penna-text>open</span></span>\
      <span class=\"penna-palette-hint\"><span class=\"penna-palette-keys\"><span class=\"penna-palette-glyphs\" data-kbd=\"escape\"></span></span><span data-penna-text>close</span></span>\
+     </div></div></div>"
+}
+
+fn shortcuts_sheet() -> &'static str {
+    "<div class=\"docs-shortcuts-backdrop\" data-docs-shortcuts hidden>\
+     <div class=\"penna-which-key docs-shortcuts-sheet\" data-penna=\"popover\" data-ground role=\"dialog\" aria-modal=\"true\" aria-label=\"Keyboard shortcuts\">\
+     <div class=\"penna-which-key-head\">\
+     <kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">?</kbd>\
+     <span class=\"penna-which-key-name\" data-penna-text>Keyboard shortcuts</span>\
+     <span class=\"penna-which-key-more\"><button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Close shortcuts\" data-docs-shortcuts-close><i data-icon=\"xmark\"></i></button></span>\
+     </div>\
+     <div class=\"penna-which-key-body docs-shortcuts-body\">\
+     <div class=\"penna-which-key-column\">\
+     <div class=\"penna-which-key-block\">\
+     <div class=\"penna-which-key-title\"><span data-penna-text>Navigation</span></div>\
+     <div class=\"penna-which-key-rows\">\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"cmd-k\" data-docs-shortcut-cmdk></kbd></span><span class=\"penna-which-key-label\">Command palette</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">/</kbd></span><span class=\"penna-which-key-label\">Quick search</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">[</kbd></span><span class=\"penna-which-key-label\">Toggle sidebar</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">?</kbd></span><span class=\"penna-which-key-label\">Show or hide shortcuts</span></div>\
+     </div></div></div>\
+     <div class=\"penna-which-key-column\">\
+     <div class=\"penna-which-key-block\">\
+     <div class=\"penna-which-key-title\"><span data-penna-text>Appearance &amp; Palette</span></div>\
+     <div class=\"penna-which-key-rows\">\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">d</kbd></span><span class=\"penna-which-key-label\">Toggle dark and light mode</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"up\"></kbd><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"down\"></kbd></span><span class=\"penna-which-key-label\">Move palette selection</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"enter\"></kbd></span><span class=\"penna-which-key-label\">Open selected result</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"escape\"></kbd></span><span class=\"penna-which-key-label\">Dismiss overlay</span></div>\
+     </div></div></div>\
      </div></div></div>"
 }
 

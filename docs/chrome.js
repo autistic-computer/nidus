@@ -39,6 +39,11 @@
   const input = backdrop?.querySelector(".docs-palette-input");
   const rowsHost = backdrop?.querySelector(".penna-palette-rows");
 
+  const shortcutsBackdrop = document.querySelector("[data-docs-shortcuts]");
+  const shortcutsSheet = shortcutsBackdrop?.querySelector(".docs-shortcuts-sheet");
+  const shortcutsTriggers = [...document.querySelectorAll("[data-docs-shortcuts-open]")];
+  const shortcutsClose = shortcutsBackdrop?.querySelector("[data-docs-shortcuts-close]");
+
   if (window.pennaKbd && !window.pennaKbd.mac) {
     searchTriggers.forEach((trigger) => {
       const kbd = trigger.querySelector("[data-kbd]");
@@ -47,6 +52,11 @@
         window.pennaKbd.fill(trigger);
       }
     });
+    const shortcutCmdK = shortcutsBackdrop?.querySelector("[data-docs-shortcut-cmdk]");
+    if (shortcutCmdK) {
+      shortcutCmdK.dataset.kbd = "ctrl-k";
+      window.pennaKbd.fill(shortcutsBackdrop);
+    }
   }
 
   function isSideCollapsed() {
@@ -421,6 +431,14 @@
       },
       {
         kind: "action",
+        title: "Keyboard shortcuts (?)",
+        detail: "Navigation, search and appearance keys",
+        icon: "keyboard",
+        keywords: "shortcuts keys hotkeys help cheat sheet ?",
+        run: () => openShortcuts(),
+      },
+      {
+        kind: "action",
         title: "Copy page as Markdown",
         detail: "Raw source for notes or agents",
         icon: "copy",
@@ -515,7 +533,7 @@
     const actions = commands();
     if (!query) {
       const currentSlug = document.querySelector(".penna-docs-page")?.dataset.page || "introduction";
-      const picks = ["introduction", "foundations", "look", "button", "popover", "palette", "chat"]
+      const picks = ["showcase", "components", "blocks", "motion", "look", "icon", "button"]
         .filter((slug) => slug !== currentSlug)
         .map((slug) => pages.find((page) => page.slug === slug))
         .filter(Boolean)
@@ -701,8 +719,39 @@
     }
   }
 
+  function openShortcuts() {
+    if (!shortcutsBackdrop) return;
+    closePalette();
+    setLookOpen(false);
+    if (side?.hasAttribute("data-open")) {
+      side.removeAttribute("data-open");
+      menuButtons.forEach((menu) => menu.setAttribute("aria-expanded", "false"));
+    }
+    lastFocused = document.activeElement;
+    shortcutsBackdrop.hidden = false;
+    window.pennaKbd?.fill(shortcutsBackdrop);
+    shortcutsClose?.focus();
+    if (shortcutsSheet) {
+      requestAnimationFrame(() => window.pennaKit?.settle?.(shortcutsSheet));
+    }
+  }
+
+  function closeShortcuts() {
+    if (!shortcutsBackdrop || shortcutsBackdrop.hidden) return;
+    shortcutsBackdrop.hidden = true;
+    if (lastFocused instanceof HTMLElement && lastFocused.isConnected) lastFocused.focus();
+    lastFocused = null;
+  }
+
+  shortcutsTriggers.forEach((trigger) => trigger.addEventListener("click", openShortcuts));
+  shortcutsClose?.addEventListener("click", closeShortcuts);
+  shortcutsBackdrop?.addEventListener("click", (event) => {
+    if (event.target === shortcutsBackdrop) closeShortcuts();
+  });
+
   function openPalette() {
     if (!backdrop || !input) return;
+    closeShortcuts();
     setLookOpen(false);
     if (side?.hasAttribute("data-open")) {
       side.removeAttribute("data-open");
@@ -766,6 +815,12 @@
         else openPalette();
         return;
       }
+      if (event.key === "Escape" && shortcutsBackdrop && !shortcutsBackdrop.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeShortcuts();
+        return;
+      }
       if (event.key === "Escape" && backdrop && !backdrop.hidden) {
         event.preventDefault();
         event.stopPropagation();
@@ -779,14 +834,28 @@
         lookTrigger?.focus();
         return;
       }
-      if (
-        event.key === "/" &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey &&
-        backdrop?.hidden &&
-        !(event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]'))
-      ) {
+      const inEditable =
+        event.target instanceof HTMLElement &&
+        event.target.closest('input, textarea, select, [contenteditable="true"]');
+      if (event.metaKey || event.ctrlKey || event.altKey || inEditable) return;
+      if (event.key === "?" && backdrop?.hidden) {
+        event.preventDefault();
+        if (shortcutsBackdrop && !shortcutsBackdrop.hidden) closeShortcuts();
+        else openShortcuts();
+        return;
+      }
+      if (event.key === "[" && backdrop?.hidden && shortcutsBackdrop?.hidden && !mobileMq.matches) {
+        event.preventDefault();
+        setSideCollapsed(!isSideCollapsed());
+        return;
+      }
+      if (key === "d" && !event.shiftKey && backdrop?.hidden && shortcutsBackdrop?.hidden) {
+        event.preventDefault();
+        pennaKit.choice.mode = pennaKit.choice.mode === "dark" ? "light" : "dark";
+        pennaKit.apply();
+        return;
+      }
+      if (event.key === "/" && backdrop?.hidden && shortcutsBackdrop?.hidden) {
         event.preventDefault();
         openPalette();
       }
