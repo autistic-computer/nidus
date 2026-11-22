@@ -1,4 +1,5 @@
 (() => {
+  const THEMES = ["default", "macos", "yaru"];
   const MODES = ["dark", "light"];
   const DENSITIES = ["compact", "regular", "comfortable"];
   const GROUP_ICONS = {
@@ -23,9 +24,14 @@
   const lookRoot = document.querySelector(".docs-look-pop[data-docs-look]");
   const lookTrigger = lookRoot?.querySelector("[data-docs-look-trigger]");
   const lookPanel = lookRoot?.querySelector(".docs-look-panel") ?? lookRoot?.panel;
+  const themeControl = lookPanel?.querySelector('[data-docs-opt="theme"]');
   const modeControl = lookPanel?.querySelector('[data-docs-opt="mode"]');
   const glassControl = lookPanel?.querySelector('[data-docs-opt="glass"]');
+  const motionControl = lookPanel?.querySelector('[data-docs-opt="motion"]');
   const densityControl = lookPanel?.querySelector('[data-docs-opt="density"]');
+  const copyMdButton = document.querySelector("[data-docs-copy-md]");
+  const mainScroll = document.querySelector(".penna-docs-main");
+  const tocNav = document.querySelector("[data-docs-toc]");
 
   const searchTriggers = [...document.querySelectorAll("[data-docs-search]")];
   const backdrop = document.querySelector("[data-docs-palette]");
@@ -171,15 +177,27 @@
     return document.documentElement.dataset.glass !== "none";
   }
 
+  function currentMotionOff() {
+    return document.documentElement.dataset.motion === "off";
+  }
+
   function syncAppearance() {
+    const themeIdx = Math.max(0, THEMES.indexOf(pennaKit.choice.theme));
     const modeIdx = Math.max(0, MODES.indexOf(pennaKit.choice.mode));
     const densityIdx = Math.max(0, DENSITIES.indexOf(currentDensity()));
+    if (themeControl) {
+      themeControl.dataset.value = String(themeIdx);
+      window.pennaSegmented?.set(themeControl, themeIdx);
+    }
     if (modeControl) {
       modeControl.dataset.value = String(modeIdx);
       window.pennaSegmented?.set(modeControl, modeIdx);
     }
     if (glassControl) {
       glassControl.setAttribute("aria-checked", String(currentGlass()));
+    }
+    if (motionControl) {
+      motionControl.setAttribute("aria-checked", String(currentMotionOff()));
     }
     if (densityControl) {
       densityControl.dataset.value = String(densityIdx);
@@ -206,6 +224,11 @@
     setLookOpen(!lookRoot?.hasAttribute("data-open"));
   });
 
+  themeControl?.addEventListener("change", (event) => {
+    const next = THEMES[event.detail.index];
+    if (next) pennaKit.setTheme(next);
+  });
+
   modeControl?.addEventListener("change", (event) => {
     const next = MODES[event.detail.index];
     if (!next || next === pennaKit.choice.mode) return;
@@ -217,11 +240,91 @@
     pennaKit.setGlass(Boolean(event.detail.checked));
   });
 
+  motionControl?.addEventListener("change", (event) => {
+    pennaKit.setMotion(Boolean(event.detail.checked));
+  });
+
   densityControl?.addEventListener("change", (event) => {
     const next = DENSITIES[event.detail.index];
     if (!next) return;
     pennaKit.setDensity(next);
   });
+
+  let mdCache = null;
+  let copyTimer = null;
+
+  async function copyPageMarkdown() {
+    const href = copyMdButton?.dataset.docsCopyMd;
+    if (!href) return;
+    try {
+      mdCache ??= await fetch(href).then((response) => (response.ok ? response.text() : ""));
+      if (!mdCache) return;
+      await navigator.clipboard.writeText(mdCache);
+      const label = copyMdButton.querySelector(".penna-label");
+      const icon = copyMdButton.querySelector("[data-icon]");
+      copyMdButton.setAttribute("data-copied", "");
+      if (label) label.textContent = "Copied";
+      if (icon) icon.dataset.icon = "check";
+      window.pennaKit?.ceilText?.(copyMdButton);
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        copyMdButton.removeAttribute("data-copied");
+        if (label) label.textContent = "Copy md";
+        if (icon) icon.dataset.icon = "copy";
+        window.pennaKit?.ceilText?.(copyMdButton);
+      }, 1600);
+    } catch {}
+  }
+
+  copyMdButton?.addEventListener("click", copyPageMarkdown);
+
+  if (tocNav && mainScroll) {
+    const tocLinks = [...tocNav.querySelectorAll(".docs-toc-link")];
+    const tocTargets = tocLinks
+      .map((link) => {
+        const id = link.getAttribute("href")?.slice(1);
+        const heading = id ? document.getElementById(id) : null;
+        return heading ? { link, heading } : null;
+      })
+      .filter(Boolean);
+
+    let tocRaf = 0;
+
+    function updateToc() {
+      tocRaf = 0;
+      if (!tocTargets.length) return;
+      const hostRect = mainScroll.getBoundingClientRect();
+      const atBottom = mainScroll.scrollTop + mainScroll.clientHeight >= mainScroll.scrollHeight - 8;
+      let active = tocTargets[0];
+      if (atBottom) {
+        active = tocTargets[tocTargets.length - 1];
+      } else {
+        for (const item of tocTargets) {
+          if (item.heading.getBoundingClientRect().top - hostRect.top <= 88) {
+            active = item;
+          } else {
+            break;
+          }
+        }
+      }
+      tocTargets.forEach((item) => {
+        if (item === active) item.link.setAttribute("aria-current", "location");
+        else item.link.removeAttribute("aria-current");
+      });
+    }
+
+    mainScroll.addEventListener(
+      "scroll",
+      () => {
+        if (!tocRaf) tocRaf = requestAnimationFrame(updateToc);
+      },
+      { passive: true },
+    );
+    window.addEventListener("resize", () => {
+      if (!tocRaf) tocRaf = requestAnimationFrame(updateToc);
+    });
+    updateToc();
+  }
 
   document.addEventListener("penna-theme", () => {
     syncAppearance();
@@ -254,6 +357,7 @@
   function commands() {
     const nextMode = pennaKit.choice.mode === "dark" ? "light" : "dark";
     const glassOn = currentGlass();
+    const motionOff = currentMotionOff();
     const collapsed = isSideCollapsed();
     return [
       {
@@ -266,6 +370,30 @@
           pennaKit.choice.mode = nextMode;
           pennaKit.apply();
         },
+      },
+      {
+        kind: "action",
+        title: "Look: default",
+        detail: "Neutral baseline theme",
+        icon: "palette",
+        keywords: "theme look default baseline",
+        run: () => pennaKit.setTheme("default"),
+      },
+      {
+        kind: "action",
+        title: "Look: macOS",
+        detail: "macOS corners, icons and glass",
+        icon: "palette",
+        keywords: "theme look macos apple",
+        run: () => pennaKit.setTheme("macos"),
+      },
+      {
+        kind: "action",
+        title: "Look: Yaru",
+        detail: "Linux Ubuntu theme baseline",
+        icon: "palette",
+        keywords: "theme look yaru linux ubuntu",
+        run: () => pennaKit.setTheme("yaru"),
       },
       {
         kind: "action",
@@ -282,6 +410,22 @@
         icon: "sparkle",
         keywords: "glass liquid none blur transparency",
         run: () => pennaKit.setGlass(!glassOn),
+      },
+      {
+        kind: "action",
+        title: motionOff ? "Enable motion" : "Reduce motion",
+        detail: motionOff ? "Restore UI transitions" : "Stop transitions and animations",
+        icon: "sliders",
+        keywords: "motion animation reduced accessibility",
+        run: () => pennaKit.setMotion(!motionOff),
+      },
+      {
+        kind: "action",
+        title: "Copy page as Markdown",
+        detail: "Raw source for notes or agents",
+        icon: "copy",
+        keywords: "markdown md copy llm agent raw",
+        run: () => copyPageMarkdown(),
       },
       {
         kind: "action",

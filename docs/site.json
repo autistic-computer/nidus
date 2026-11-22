@@ -63,11 +63,25 @@
       "title": "Blocks",
       "pages": [
         "action-bar",
+        "appearance",
         "chat",
+        "code-editor",
+        "color-picker",
+        "dialog",
+        "dock",
         "empty-state",
+        "inspector",
+        "notice",
+        "notification",
         "palette",
+        "settings",
         "sheet",
+        "sidebar",
+        "stack-menu",
+        "steps",
+        "title-bar",
         "ui-block",
+        "which-key",
         "zoom-card"
       ]
     }

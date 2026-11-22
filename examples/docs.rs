@@ -157,11 +157,23 @@ struct Parity {
     page: String,
 }
 
-fn story_pages_last(assets: BTreeSet<String>) -> impl Iterator<Item = String> {
-    let (pages, widgets): (Vec<_>, Vec<_>) = assets
-        .into_iter()
-        .partition(|asset| asset.starts_with("assets/kit/"));
-    widgets.into_iter().chain(pages)
+fn ordered_assets(assets: BTreeSet<String>) -> impl Iterator<Item = String> {
+    let mut other = Vec::new();
+    let mut components = Vec::new();
+    let mut blocks = Vec::new();
+    let mut kit = Vec::new();
+    for asset in assets {
+        if asset.starts_with("assets/src/components/") {
+            components.push(asset);
+        } else if asset.starts_with("assets/src/blocks/") {
+            blocks.push(asset);
+        } else if asset.starts_with("assets/kit/") {
+            kit.push(asset);
+        } else {
+            other.push(asset);
+        }
+    }
+    other.into_iter().chain(components).chain(blocks).chain(kit)
 }
 
 #[derive(Serialize)]
@@ -184,6 +196,9 @@ struct Page {
     title: String,
     summary: String,
     headings: Vec<SearchHeading>,
+    tables: Vec<Vec<Vec<String>>>,
+    markdown: String,
+    source_path: Option<String>,
     group: usize,
     body: String,
     styles: BTreeSet<String>,
@@ -206,9 +221,16 @@ struct StorySection {
 
 fn main() -> io::Result<()> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out = env::args()
-        .nth(1)
-        .map_or_else(|| root.join("target/docs"), PathBuf::from);
+    let mut check = false;
+    let mut out_arg = None;
+    for arg in env::args().skip(1) {
+        if arg == "--check" {
+            check = true;
+        } else if out_arg.is_none() {
+            out_arg = Some(PathBuf::from(arg));
+        }
+    }
+    let out = out_arg.unwrap_or_else(|| root.join("target/docs"));
     let site: Site = serde_json::from_str(&fs::read_to_string(root.join("docs/site.json"))?)
         .map_err(io::Error::other)?;
     let wasm = root.join("storybook/dist/wasm");
@@ -229,6 +251,8 @@ fn main() -> io::Result<()> {
             let title = first_heading(&tree).unwrap_or_else(|| title_from_slug(slug));
             let summary = first_summary(&tree);
             let headings = section_headings(&tree);
+            let tables = extract_tables(&tree);
+            let source_path = resolve_source_path(&builder.root, slug);
             builder.mounts.set(0);
             let body = builder.page(&tree)?;
             pages.push(Page {
@@ -236,6 +260,9 @@ fn main() -> io::Result<()> {
                 title,
                 summary,
                 headings,
+                tables,
+                markdown: source,
+                source_path,
                 group,
                 body,
                 styles: builder.styles.take(),
@@ -250,6 +277,7 @@ fn main() -> io::Result<()> {
     let assets = out.join("assets");
     copy_assets(&builder.root, &assets)?;
     write_search_index(&site, &pages, &assets.join("search.json"))?;
+    write_llms_files(&site, &pages, &out)?;
     fs::copy(
         builder.root.join("docs/favicon.svg"),
         out.join("favicon.svg"),
@@ -260,14 +288,253 @@ fn main() -> io::Result<()> {
     if builder.native {
         copy_dir(&wasm, &assets.join("storybook/wasm"))?;
     }
+    let mut rendered = Vec::with_capacity(pages.len());
     for (index, page) in pages.iter().enumerate() {
         let html = document(&site, &pages, index, &logo, builder.native);
         fs::write(out.join(file_name(&page.slug)), &html)?;
+        fs::write(out.join(format!("{}.md", page.slug)), &page.markdown)?;
         if index == 0 {
             fs::write(out.join("index.html"), &html)?;
         }
+        rendered.push(html);
+    }
+    if check {
+        check_docs(&builder.root, &site, &pages, &rendered, &assets)?;
     }
     println!("{}", out.join("index.html").display());
+    Ok(())
+}
+
+fn resolve_source_path(root: &Path, slug: &str) -> Option<String> {
+    let explicit = match slug {
+        "action-bar" | "stack-menu" => Some("src/blocks/touch"),
+        "empty-state" => Some("src/blocks/feedback"),
+        "ui-block" => Some("src/blocks/a2ui"),
+        "zoom-card" | "phone" => Some("src/blocks/compact"),
+        "color" | "typography" | "spacing" | "sizes" | "look" => Some("src/foundation"),
+        _ => None,
+    };
+    if let Some(path) = explicit {
+        return Some(path.to_owned());
+    }
+    let snake = slug.replace('-', "_");
+    for tier in ["components", "blocks"] {
+        for candidate in [slug, snake.as_str()] {
+            let rel = format!("src/{tier}/{candidate}");
+            if root.join(&rel).is_dir() {
+                return Some(rel);
+            }
+        }
+    }
+    None
+}
+
+fn extract_tables(tree: &Node) -> Vec<Vec<Vec<String>>> {
+    let Some(children) = tree.children() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for node in children {
+        if let Node::Table(table) = node {
+            let mut rows = Vec::new();
+            for row in &table.children {
+                let Node::TableRow(row) = row else { continue };
+                let cells = row
+                    .children
+                    .iter()
+                    .filter_map(|cell| match cell {
+                        Node::TableCell(cell) => Some(
+                            plain(&cell.children)
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        ),
+                        _ => None,
+                    })
+                    .collect();
+                rows.push(cells);
+            }
+            if !rows.is_empty() {
+                out.push(rows);
+            }
+        }
+    }
+    out
+}
+
+fn write_llms_files(site: &Site, pages: &[Page], out: &Path) -> io::Result<()> {
+    let mut index = String::from(
+        "# penna\n\n> Widget kit for ala (native GPU) and HTML/CSS twins, built for zz and nidus.\n\n\
+         ## Companion files\n\n\
+         - [Component and block API reference](llms-components.txt)\n\
+         - [Design tokens, surface roles, and look knobs](llms-tokens.txt)\n",
+    );
+    for (group_index, group) in site.groups.iter().enumerate() {
+        let _ = write!(index, "\n## {}\n\n", group.title);
+        for page in pages.iter().filter(|page| page.group == group_index) {
+            if page.summary.is_empty() {
+                let _ = writeln!(index, "- [{}]({}.md)", page.title, page.slug);
+            } else {
+                let _ = writeln!(
+                    index,
+                    "- [{}]({}.md): {}",
+                    page.title, page.slug, page.summary
+                );
+            }
+        }
+    }
+    fs::write(out.join("llms.txt"), index)?;
+
+    let mut components = String::from("# penna — Components & Blocks Reference\n");
+    for (group_index, group) in site.groups.iter().enumerate() {
+        if group.title != "Components" && group.title != "Blocks" {
+            continue;
+        }
+        let _ = write!(components, "\n## {}\n", group.title);
+        for page in pages.iter().filter(|page| page.group == group_index) {
+            let _ = write!(components, "\n### {} ({}.md)\n", page.title, page.slug);
+            if let Some(src) = &page.source_path {
+                let _ = writeln!(components, "Source: `{src}`");
+            }
+            if !page.summary.is_empty() {
+                let _ = writeln!(components, "{}", page.summary);
+            }
+            if !page.headings.is_empty() {
+                let names: Vec<&str> = page.headings.iter().map(|h| h.text.as_str()).collect();
+                let _ = writeln!(components, "Sections: {}", names.join(", "));
+            }
+            for table in &page.tables {
+                components.push('\n');
+                for (row_index, row) in table.iter().enumerate() {
+                    let _ = writeln!(components, "| {} |", row.join(" | "));
+                    if row_index == 0 {
+                        let sep = vec!["---"; row.len()].join(" | ");
+                        let _ = writeln!(components, "| {sep} |");
+                    }
+                }
+            }
+        }
+    }
+    fs::write(out.join("llms-components.txt"), components)?;
+
+    let mut tokens = String::from(
+        "# penna — Tokens, Surface Roles & Look Knobs\n\n\
+         ## Space Scale (rem-scaled)\n\
+         - Steps: S2 (2px), S4 (4px), S6 (6px), S8 (8px), S10 (10px), S12 (12px), S16 (16px), S24 (24px), S32 (32px), S40 (40px), S64 (64px)\n\
+         - Semantic gaps: GAP_TIGHT (4), GAP_RELATED (8), GAP_GROUP (16), GAP_SECTION (32)\n\
+         - Container insets: INSET_CHROME (6), INSET_CARD (12), INSET_PANE (16), INSET_PAGE (32)\n\n\
+         ## Typography (TextStyle)\n\
+         - Interface: micro (10/14), caption (11/16), small (12/16), body (13/18), lead (15/20), heading (17/22), title (21/26), display (26/32), mono (13/18)\n\
+         - Reading (640px measure): read-body (14/22), read-h1..read-h5\n\
+         - Phone touch: touch-small (15/20), touch-body (17/22), touch-title (34/40)\n\
+         - Weights: 400 (regular), 500 (medium), 600 (semibold)\n\n\
+         ## Control Ladder (Size) & Density\n\
+         - xs (20), sm (24), md (28), lg (32), xl (40), touch (44), touch-large (56)\n\
+         - Density moves only md and rows: compact (24), regular (28), comfortable (32)\n\n\
+         ## Look Knobs\n\
+         - Platform baselines: default, macos, yaru\n\
+         - Theme JSON knobs: tint, neutral, radius, control-radius, smoothing (2..5), glass (none | liquid), face, mode (dark | light), colors\n\
+         - Appearance knobs: text size, density, mono font, contrast (1..2x, no added borders), motion (off | default | fast), pointer\n\n\
+         ## Surface Roles (data-penna)\n",
+    );
+    for role in LOOK_ROLES {
+        let _ = writeln!(tokens, "- `{role}`");
+    }
+    tokens.push_str(
+        "\n## Core Rules\n\
+         - Primary buttons and selection use neutral ink; accent colors only small functional details (switch, slider, check, attention dot, links).\n\
+         - Prefer fills over borders; glass belongs strictly on surfaces floating over content or selected chrome items.\n\
+         - Pass `.on(ground)` in Rust and `data-ground` in HTML whenever a surface holds nested controls.\n\
+         - Never use raw pixel/color literals in app code; read tokens from Space, TextStyle, Size, and typed *Look enums.\n",
+    );
+    fs::write(out.join("llms-tokens.txt"), tokens)
+}
+
+fn check_docs(
+    root: &Path,
+    site: &Site,
+    pages: &[Page],
+    rendered: &[String],
+    assets: &Path,
+) -> io::Result<()> {
+    let slugs: HashSet<&str> = pages.iter().map(|page| page.slug.as_str()).collect();
+    let mut issues = Vec::new();
+
+    for entry in fs::read_dir(root.join("src/components"))? {
+        let path = entry?.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name == "plate" {
+            continue;
+        }
+        let slug = name.replace('_', "-");
+        if !slugs.contains(slug.as_str()) {
+            issues.push(format!(
+                "missing component docs page for src/components/{name}"
+            ));
+        }
+    }
+
+    let covered_blocks = ["docs", "compact", "touch", "feedback", "a2ui"];
+    for entry in fs::read_dir(root.join("src/blocks"))? {
+        let path = entry?.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if covered_blocks.contains(&name) || !path.join(format!("{name}.css")).exists() {
+            continue;
+        }
+        let slug = name.replace('_', "-");
+        if !slugs.contains(slug.as_str()) {
+            issues.push(format!("missing block docs page for src/blocks/{name}"));
+        }
+    }
+
+    let icons_css = fs::read_to_string(assets.join("web/tokens/default-icons.css"))?;
+    let mut known_icons = HashSet::new();
+    for part in icons_css.split("data-icon=\"").skip(1) {
+        if let Some(end) = part.find('"') {
+            known_icons.insert(part[..end].to_owned());
+        }
+    }
+    let mut checked_icons = HashSet::new();
+    for (page, html) in pages.iter().zip(rendered.iter()) {
+        for part in html.split("data-icon=\"").skip(1) {
+            if let Some(end) = part.find('"') {
+                let icon = &part[..end];
+                if icon.is_empty() {
+                    continue;
+                }
+                checked_icons.insert(icon.to_owned());
+                if !known_icons.contains(icon) {
+                    issues.push(format!(
+                        "{}.html references unknown icon `{icon}`",
+                        page.slug
+                    ));
+                }
+            }
+        }
+    }
+
+    if !issues.is_empty() {
+        return Err(io::Error::other(format!(
+            "docs check failed:\n- {}",
+            issues.join("\n- ")
+        )));
+    }
+    println!(
+        "docs check ok: {} pages across {} groups, {} distinct icons verified",
+        pages.len(),
+        site.groups.len(),
+        checked_icons.len()
+    );
     Ok(())
 }
 
@@ -807,7 +1074,7 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
         .map(|style| format!("assets/src/{style}"))
         .chain(page.styles.iter().cloned())
         .collect::<BTreeSet<_>>();
-    for style in story_pages_last(styles) {
+    for style in ordered_assets(styles) {
         let _ = writeln!(html, "<link rel=\"stylesheet\" href=\"{style}\" />");
     }
     html.push_str("<link rel=\"stylesheet\" href=\"assets/glass-off.css\" />\n");
@@ -821,7 +1088,7 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
         .map(|script| format!("assets/src/{script}"))
         .chain(page.scripts.iter().cloned())
         .collect::<BTreeSet<_>>();
-    for script in story_pages_last(scripts) {
+    for script in ordered_assets(scripts) {
         let _ = writeln!(html, "<script src=\"{script}\" defer></script>");
     }
     html.push_str("<script src=\"assets/chrome.js\" defer></script>\n");
@@ -860,31 +1127,79 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     } else {
         String::new()
     };
-    let eyebrow = if current > 0 {
-        format!(
-            "<div class=\"penna-docs-eyebrow\"><span data-penna-text>{}</span></div>\n",
-            escape(&site.groups[page.group].title)
-        )
-    } else {
-        String::new()
-    };
+    let meta_bar = page_meta(site, page);
+    let toc = page_toc(page);
+    let has_toc = if toc.is_empty() { "" } else { " data-has-toc" };
     let _ = write!(
         html,
         "</head>\n<body>\n<div class=\"penna-docs-layout docs-shell\"{storybook}>\n\
          <aside class=\"penna-docs-side\" data-penna=\"sidebar\" data-ground>{}</aside>\n\
          <div class=\"docs-side-scrim\" data-docs-scrim aria-hidden=\"true\"></div>\n\
          <div class=\"docs-canvas\">\n{}\n\
-         <main class=\"penna-docs-main\"><article class=\"penna-docs-page\" data-page=\"{}\">\n{}{}{}</article></main>\n\
+         <main class=\"penna-docs-main\"><div class=\"docs-main-grid\"{has_toc}>\
+         <article class=\"penna-docs-page\" data-page=\"{}\">\n{}{}{}</article>{}</div></main>\n\
          </div>\n</div>\n{}\n</body>\n</html>\n",
         sidebar(site, pages, current, logo),
         pane_bar(site, pages, current, logo),
         escape(&page.slug),
-        eyebrow,
+        meta_bar,
         page.body,
         pager(site, pages, current),
+        toc,
         search_palette()
     );
     html
+}
+
+fn page_meta(site: &Site, page: &Page) -> String {
+    let md_href = format!("{}.md", escape(&page.slug));
+    let source_link = page.source_path.as_deref().map_or_else(String::new, |rel| {
+        format!(
+            "<a class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" href=\"{}/tree/main/{}\" target=\"_blank\" rel=\"noopener\"><i data-icon=\"git-branch\"></i><span class=\"penna-label\" data-penna-text>Source</span></a>",
+            escape(&site.source),
+            escape(rel)
+        )
+    });
+    format!(
+        "<div class=\"docs-page-meta\">\
+         <span class=\"penna-docs-eyebrow-label\" data-penna-text>{}</span>\
+         <div class=\"docs-page-tools\">\
+         <button class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" type=\"button\" data-docs-copy-md=\"{md_href}\" aria-label=\"Copy page as Markdown\"><i data-icon=\"copy\"></i><span class=\"penna-label\" data-penna-text>Copy md</span></button>\
+         <a class=\"penna-button docs-meta-btn\" data-penna=\"button.quiet\" data-size=\"xsmall\" href=\"{md_href}\"><span class=\"penna-label\" data-penna-text>.md</span></a>\
+         {source_link}\
+         </div></div>\n",
+        escape(&site.groups[page.group].title)
+    )
+}
+
+fn page_toc(page: &Page) -> String {
+    if page.headings.len() < 2 {
+        return String::new();
+    }
+    let links =
+        page.headings
+            .iter()
+            .enumerate()
+            .fold(String::new(), |mut html, (index, heading)| {
+                let current = if index == 0 {
+                    " aria-current=\"location\""
+                } else {
+                    ""
+                };
+                let _ = write!(
+                    html,
+                    "<a class=\"docs-toc-link\" href=\"#{}\"{}>{}</a>",
+                    escape(&heading.id),
+                    current,
+                    escape(&heading.text)
+                );
+                html
+            });
+    format!(
+        "<aside class=\"docs-toc\" aria-label=\"On this page\">\
+         <div class=\"docs-toc-title\"><span data-penna-text>On this page</span></div>\
+         <nav class=\"docs-toc-list\" data-docs-toc>{links}</nav></aside>"
+    )
 }
 
 fn segments<'a>(labels: impl Iterator<Item = &'a str>, name: &str) -> String {
@@ -935,6 +1250,11 @@ fn group_icon(title: &str) -> &'static str {
 }
 
 fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
+    let theme_seg = segments_with(
+        ["Default", "macOS", "Yaru"].into_iter(),
+        "Look",
+        " data-size=\"small\" data-docs-opt=\"theme\"",
+    );
     let mode_seg = segments_with(
         ["Dark", "Light"].into_iter(),
         "Mode",
@@ -961,9 +1281,11 @@ fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
          <div class=\"penna-popover docs-look-pop\" data-anchor=\"bottom\" data-docs-look>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Appearance\" aria-expanded=\"false\" aria-haspopup=\"dialog\" data-tooltip=\"Appearance\" data-docs-look-trigger><i data-icon=\"sliders\"></i></button>\
          <div class=\"penna-popover-panel docs-look-panel\" data-penna=\"popover\" data-ground role=\"dialog\" aria-label=\"Appearance\">\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Look</span>{theme_seg}</div>\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Mode</span>{mode_seg}</div>\
-         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Glass</span><button class=\"penna-toggle\" data-size=\"small\" data-docs-opt=\"glass\" aria-checked=\"true\" aria-label=\"Liquid glass\" type=\"button\"></button></div>\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Density</span>{density_seg}</div>\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Glass</span><button class=\"penna-toggle\" data-size=\"small\" data-docs-opt=\"glass\" aria-checked=\"true\" aria-label=\"Liquid glass\" type=\"button\"></button></div>\
+         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Reduce motion</span><button class=\"penna-toggle\" data-size=\"small\" data-docs-opt=\"motion\" aria-checked=\"false\" aria-label=\"Reduce motion\" type=\"button\"></button></div>\
          <div class=\"docs-look-foot\"><a class=\"docs-look-more\" href=\"look.html\"><span data-penna-text>All look knobs</span><i data-icon=\"arrow-right\"></i></a></div>\
          </div></div>\
          <a class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" aria-label=\"Source\" data-tooltip=\"Source\" href=\"{}\" target=\"_blank\" rel=\"noopener\"><i data-icon=\"git-branch\"></i></a>\
