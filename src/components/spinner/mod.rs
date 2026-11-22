@@ -1,7 +1,7 @@
 use ala::{
-    Animation, AnimationExt as _, App, ElementId, Hsla, IntoElement, ParentElement as _,
-    RenderOnce, Role, StatefulInteractiveElement as _, Transformation, Window, div, percentage,
-    prelude::FluentBuilder as _,
+    Animation, AnimationExt as _, AnyElement, App, ElementId, Hsla, IntoElement,
+    ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, Styled as _,
+    Transformation, Window, div, percentage, prelude::FluentBuilder as _,
 };
 
 use crate::{AuthoredElement as _, Icon, IconName, Sizable, Size, foundation::motion::SPIN};
@@ -34,6 +34,29 @@ impl Spinner {
         self.color = Some(color);
         self
     }
+
+    #[must_use]
+    pub fn covering(self, loading: bool, child: impl IntoElement) -> AnyElement {
+        if !loading {
+            return child.into_any_element();
+        }
+        div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(div().opacity(0.0).child(child))
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(self),
+            )
+            .into_any_element()
+    }
 }
 
 impl Default for Spinner {
@@ -50,15 +73,20 @@ impl Sizable for Spinner {
 }
 
 impl RenderOnce for Spinner {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let turn = Icon::new(IconName::Loader)
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let icon = Icon::new(IconName::Loader)
             .with_size(self.size)
-            .when_some(self.color, ala::Styled::text_color)
-            .with_animation(
+            .when_some(self.color, ala::Styled::text_color);
+        let turn: AnyElement = if cx.reduce_motion() {
+            icon.into_any_element()
+        } else {
+            icon.with_animation(
                 "spinner-rotation",
                 Animation::new(SPIN).repeat().with_max_fps(30.0),
                 |this, delta| this.transform(Transformation::rotate(percentage(delta))),
-            );
+            )
+            .into_any_element()
+        };
         match self.id {
             Some(id) => div()
                 .author_id(id)

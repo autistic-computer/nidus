@@ -439,6 +439,14 @@
       },
       {
         kind: "action",
+        title: "Token inspector (F12)",
+        detail: "Inspect live surface role, ground, fill and radius",
+        icon: "layers",
+        keywords: "inspect inspector tokens f12 role ground debug hud",
+        run: () => window.pennaInspector?.toggle?.(),
+      },
+      {
+        kind: "action",
         title: "Copy page as Markdown",
         detail: "Raw source for notes or agents",
         icon: "copy",
@@ -813,6 +821,12 @@
         event.preventDefault();
         if (backdrop && !backdrop.hidden) closePalette();
         else openPalette();
+        return;
+      }
+      if (event.key === "Escape" && window.pennaInspector?.isOpen?.()) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.pennaInspector.close();
         return;
       }
       if (event.key === "Escape" && shortcutsBackdrop && !shortcutsBackdrop.hidden) {

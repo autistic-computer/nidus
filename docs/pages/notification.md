@@ -91,8 +91,8 @@ Pass `.content(...)` to embed a [Progress](progress.html) bar or trailing action
 </div>
 ```
 
-- **Deduplication:** pushing a notification with the same `.key(...)` (or the same unkeyed kind, title, and message) replaces the existing toast in place and resets its autohide timer.
-- **Dismissal:** hover reveals the close button; middle-click dismisses immediately; clicking an expanded 3-line message pauses autohide until collapsed.
+- **Deduplication & promises:** pushing a notification with the same `.key(...)` (or using `window.toast_promise(key, "Loading...", cx)` with `.resolve(...)` / `.reject(...)`) replaces the existing toast in place and resets its autohide timer.
+- **Pause & dismissal:** hovering a toast pauses its autohide countdown (and `.pause_when_inactive(true)` pauses while the window is unfocused, mirrored by `document.hidden` on `[data-autohide]` in HTML); hover reveals the close button; middle-click dismisses immediately; clicking an expanded 3-line message pauses autohide until collapsed.
 - **Stack limits:** `Theme::notification` controls placement (`Anchor::TopCenter`), margins, and `max_items` (default 10).
 
 ## API
@@ -102,7 +102,9 @@ Pass `.content(...)` to embed a [Progress](progress.html) bar or trailing action
 | `Notification::{info,success,warning,error}(msg)` | `.penna-toast[data-penna="toast"][data-ground]` | Floating toast surface |
 | `.title(...)` / `.message(...)` | `.penna-toast-title`, `.penna-toast-message` | Bold heading and 3-line clamped copy |
 | `.key(...)` | — | Deduplicate and replace in place |
-| `.autohide(bool)` / `.autohide_after(Duration)` | — | Auto-dismiss timer (default 5 s) |
+| `.autohide(bool)` / `.autohide_after(Duration)` | `[data-autohide]` | Auto-dismiss timer (default 5 s), paused on hover |
+| `.pause_when_inactive(bool)` | `document.hidden` | Pause autohide countdown while the window is unfocused |
+| `WindowExt::toast_promise(key, loading, cx)` | — | Loading toast handle (`ToastPromise::resolve` / `reject`) |
 | `.closable(bool)` | `.penna-toast-close > button` | Hover-revealed dismiss control |
 | `.content(f)` | `.penna-toast-actions` or embedded widgets | Actions or progress inside toast |
 | `WindowExt::push_notification` / `push_toast` | `.penna-toast-stack` | Stack host at window top center |

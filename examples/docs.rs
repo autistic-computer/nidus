@@ -604,7 +604,10 @@ fn write_llms_files(site: &Site, pages: &[Page], out: &Path) -> io::Result<()> {
          ## Look Knobs\n\
          - Platform baselines: default, macos, yaru\n\
          - Theme JSON knobs: tint, neutral, radius, control-radius, smoothing (2..5), glass (none | liquid), face, mode (dark | light), colors\n\
-         - Appearance knobs: text size, density, mono font, contrast (1..2x, no added borders), motion (off | default | fast), pointer\n\n\
+         - Appearance knobs: text size, density, mono font, contrast (1..2x, no added borders), motion (off | default | fast), pointer\n\
+         - Categorical data palette: `--penna-data-1` .. `--penna-data-8` (perceptual OKLCH, dark L=0.72, light L=0.56)\n\
+         - Window inactive chrome dim: `INACTIVE_WINDOW_OPACITY` (0.62) via `dim_when_inactive(window)`\n\
+         - Runtime inspection: `TokenSnapshot::capture(cx)` and NDJSON `handle_inspect_line(line, cx)` (plus F12 HUD on docs)\n\n\
          ## Surface Roles (data-penna)\n",
     );
     for role in LOOK_ROLES {
@@ -763,6 +766,7 @@ fn copy_assets(root: &Path, assets: &Path) -> io::Result<()> {
     )?;
     fs::copy(root.join("docs/site.css"), assets.join("site.css"))?;
     fs::copy(root.join("docs/chrome.js"), assets.join("chrome.js"))?;
+    fs::copy(root.join("docs/inspect.js"), assets.join("inspect.js"))?;
     fs::copy(root.join("docs/hero.js"), assets.join("hero.js"))?;
     fs::copy(root.join("docs/install.js"), assets.join("install.js"))?;
     fs::copy(root.join("docs/overview.js"), assets.join("overview.js"))?;
@@ -1276,6 +1280,7 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
         let _ = writeln!(html, "<script src=\"{script}\" defer></script>");
     }
     html.push_str("<script src=\"assets/chrome.js\" defer></script>\n");
+    html.push_str("<script src=\"assets/inspect.js\" defer></script>\n");
     if page.body.contains("data-docs-hero") {
         html.push_str("<script src=\"assets/hero.js\" defer></script>\n");
     }
@@ -1589,6 +1594,7 @@ fn shortcuts_sheet() -> &'static str {
      <div class=\"penna-which-key-title\"><span data-penna-text>Appearance &amp; Palette</span></div>\
      <div class=\"penna-which-key-rows\">\
      <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">d</kbd></span><span class=\"penna-which-key-label\">Toggle dark and light mode</span></div>\
+     <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\">F12</kbd></span><span class=\"penna-which-key-label\">Toggle token inspector</span></div>\
      <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"up\"></kbd><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"down\"></kbd></span><span class=\"penna-which-key-label\">Move palette selection</span></div>\
      <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"enter\"></kbd></span><span class=\"penna-which-key-label\">Open selected result</span></div>\
      <div class=\"penna-which-key-row\"><span class=\"penna-which-key-caps\"><kbd class=\"penna-kbd\" data-penna=\"keycap\" data-size=\"small\" data-kbd=\"escape\"></kbd></span><span class=\"penna-which-key-label\">Dismiss overlay</span></div>\

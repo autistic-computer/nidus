@@ -633,3 +633,9 @@ studio.activate(None, Some(window), cx);
 | | `.activate(mode, window, cx)` | Draws the app in it |
 
 The HTML twin reads the same knobs: `cargo run --example theme_css` writes its tokens.
+
+## Live token inspection
+
+Press `F12` (or `Alt+Shift+I`, or pick **Token inspector** from `⌘K`) on any docs page to open the live Token Inspector HUD. Hovering a surface highlights its bounds and prints its `data-penna` role, enclosing ground, computed `--penna-fill`, `--penna-ink`, radius, smoothing, glass, and tone; clicking pins the surface and copies the JSON snapshot.
+
+In Rust apps, `TokenSnapshot::capture(cx)` captures the active look, density, contrast, data palette, and drawn surface roles as JSON, and `handle_inspect_line(ndjson, cx)` processes NDJSON inspection and live look-switching commands (`snapshot`, `roles`, `set-mode`, `set-density`, `set-motion`, `set-contrast`). Secondary window chrome can dim when unfocused with `.dim_when_inactive(window)` (`INACTIVE_WINDOW_OPACITY`).
