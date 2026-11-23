@@ -2,11 +2,9 @@
   const root = document.querySelector("[data-docs-icons]");
   if (!root) return;
 
-  const THEMES = ["default", "macos", "yaru"];
   const SIZES = [14, 16, 20, 24];
 
   const searchInput = root.querySelector("[data-ic-search]");
-  const lookSeg = root.querySelector("[data-ic-look]");
   const sizeSeg = root.querySelector("[data-ic-size]");
   const fmtSeg = root.querySelector("[data-ic-copy-fmt]");
   const groupsHost = root.querySelector("[data-ic-groups]");
@@ -27,13 +25,6 @@
     return copyFormat === "html"
       ? `<i data-icon="${icon.name}"></i>`
       : `IconName::${icon.variant}`;
-  }
-
-  function syncLook() {
-    if (!lookSeg) return;
-    const idx = Math.max(0, THEMES.indexOf(pennaKit.choice.theme));
-    lookSeg.dataset.value = String(idx);
-    window.pennaSegmented?.set?.(lookSeg, idx);
   }
 
   function setDetail(icon, copied) {
@@ -139,11 +130,6 @@
 
   searchInput?.addEventListener("input", renderGrid);
 
-  lookSeg?.addEventListener("change", (event) => {
-    const next = THEMES[event.detail.index];
-    if (next) pennaKit.setTheme(next);
-  });
-
   sizeSeg?.addEventListener("change", (event) => {
     iconSize = SIZES[event.detail.index] || 16;
     renderGrid();
@@ -153,9 +139,6 @@
     copyFormat = event.detail.index === 1 ? "html" : "rust";
     if (allIcons.length) setDetail(allIcons.find((i) => i.name === previewIcon?.dataset.icon) || allIcons[0], false);
   });
-
-  document.addEventListener("penna-theme", syncLook);
-  syncLook();
 
   fetch("assets/icons.json")
     .then((res) => (res.ok ? res.json() : []))

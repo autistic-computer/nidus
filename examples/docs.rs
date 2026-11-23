@@ -602,7 +602,6 @@ fn write_llms_files(site: &Site, pages: &[Page], out: &Path) -> io::Result<()> {
          - xs (20), sm (24), md (28), lg (32), xl (40), touch (44), touch-large (56)\n\
          - Density moves only md and rows: compact (24), regular (28), comfortable (32)\n\n\
          ## Look Knobs\n\
-         - Platform baselines: default, macos, yaru\n\
          - Theme JSON knobs: tint, neutral, radius, control-radius, smoothing (2..5), glass (none | liquid), face, mode (dark | light), colors\n\
          - Appearance knobs: text size, density, mono font, contrast (1..2x, no added borders), motion (off | default | fast), pointer\n\
          - Categorical data palette: `--penna-data-1` .. `--penna-data-8` (perceptual OKLCH, dark L=0.72, light L=0.56)\n\
@@ -1268,7 +1267,7 @@ fn document(site: &Site, pages: &[Page], current: usize, logo: &str, native: boo
     html.push_str("<link rel=\"stylesheet\" href=\"assets/glass-off.css\" />\n");
     html.push_str("<link rel=\"stylesheet\" href=\"assets/site.css\" />\n");
     html.push_str(
-        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\" data-switcher=\"off\"></script>\n\
+        "<script src=\"assets/web/kit.js\" data-tokens=\"assets/web/tokens/\" data-theme=\"default\" data-switcher=\"off\"></script>\n\
          <script>try{if(localStorage.getItem(\"penna-docs-sidebar\")===\"collapsed\")document.documentElement.dataset.docsSidebar=\"collapsed\"}catch{}</script>\n",
     );
     let scripts = SCRIPTS
@@ -1467,11 +1466,6 @@ fn group_icon(title: &str) -> &'static str {
 }
 
 fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
-    let theme_seg = segments_with(
-        ["Default", "macOS", "Yaru"].into_iter(),
-        "Look",
-        " data-size=\"small\" data-docs-opt=\"theme\"",
-    );
     let mode_seg = segments_with(
         ["Dark", "Light"].into_iter(),
         "Mode",
@@ -1499,7 +1493,6 @@ fn sidebar(site: &Site, pages: &[Page], current: usize, logo: &str) -> String {
          <div class=\"penna-popover docs-look-pop\" data-anchor=\"bottom\" data-docs-look>\
          <button class=\"penna-button\" data-penna=\"button.quiet\" data-shape=\"icon\" data-size=\"small\" type=\"button\" aria-label=\"Appearance\" aria-expanded=\"false\" aria-haspopup=\"dialog\" data-tooltip=\"Appearance\" data-docs-look-trigger><i data-icon=\"sliders\"></i></button>\
          <div class=\"penna-popover-panel docs-look-panel\" data-penna=\"popover\" data-ground role=\"dialog\" aria-label=\"Appearance\">\
-         <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Look</span>{theme_seg}</div>\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Mode</span>{mode_seg}</div>\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Density</span>{density_seg}</div>\
          <div class=\"docs-look-row\"><span class=\"docs-look-label\" data-penna-text>Glass</span><button class=\"penna-toggle\" data-size=\"small\" data-docs-opt=\"glass\" aria-checked=\"true\" aria-label=\"Liquid glass\" type=\"button\"></button></div>\

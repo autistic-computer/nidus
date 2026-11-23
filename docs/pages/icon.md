@@ -4,21 +4,13 @@ A glyph from the kit's set beside a label, or alone on an icon button in a bar w
 
 ## Set
 
-107 glyphs in 8 groups on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes. Search by name, variant, or note, switch Look to compare platform packs live, and click any glyph to copy its Rust or HTML snippet.
+107 glyphs in 8 groups on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes. Search by name, variant, or note, preview sizes live, and click any glyph to copy its Rust or HTML snippet.
 
 ```figure uses=chip,icon,input,segmented
 <div class="docs-ic" data-docs-icons>
   <div class="docs-ic-bar">
     <label class="penna-input docs-ic-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Search 107 icons…" aria-label="Search icons" data-ic-search /></label>
     <div class="docs-ic-controls">
-      <div class="penna-segmented" data-penna="field" data-size="small" data-value="0" role="radiogroup" aria-label="Icon look pack" data-ic-look>
-        <div class="penna-segments" data-penna="button.quiet" data-state="current">
-          <span class="penna-segment-pill"></span>
-          <span class="penna-segment" role="radio" aria-checked="true"><span class="penna-label" data-penna-text>Default</span></span>
-          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>macOS</span></span>
-          <span class="penna-segment" role="radio" aria-checked="false"><span class="penna-label" data-penna-text>Yaru</span></span>
-        </div>
-      </div>
       <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Icon size" data-ic-size>
         <div class="penna-segments" data-penna="button.quiet" data-state="current">
           <span class="penna-segment-pill"></span>

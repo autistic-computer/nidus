@@ -1,7 +1,9 @@
 (() => {
-  const THEMES = ["default", "macos", "yaru"];
   const MODES = ["dark", "light"];
   const DENSITIES = ["compact", "regular", "comfortable"];
+  if (window.pennaKit && pennaKit.choice.theme !== "default" && !new URLSearchParams(location.search).has("theme")) {
+    pennaKit.setTheme("default");
+  }
   const GROUP_ICONS = {
     "Getting started": "sparkle",
     Foundations: "palette",
@@ -24,7 +26,6 @@
   const lookRoot = document.querySelector(".docs-look-pop[data-docs-look]");
   const lookTrigger = lookRoot?.querySelector("[data-docs-look-trigger]");
   const lookPanel = lookRoot?.querySelector(".docs-look-panel") ?? lookRoot?.panel;
-  const themeControl = lookPanel?.querySelector('[data-docs-opt="theme"]');
   const modeControl = lookPanel?.querySelector('[data-docs-opt="mode"]');
   const glassControl = lookPanel?.querySelector('[data-docs-opt="glass"]');
   const motionControl = lookPanel?.querySelector('[data-docs-opt="motion"]');
@@ -192,13 +193,8 @@
   }
 
   function syncAppearance() {
-    const themeIdx = Math.max(0, THEMES.indexOf(pennaKit.choice.theme));
     const modeIdx = Math.max(0, MODES.indexOf(pennaKit.choice.mode));
     const densityIdx = Math.max(0, DENSITIES.indexOf(currentDensity()));
-    if (themeControl) {
-      themeControl.dataset.value = String(themeIdx);
-      window.pennaSegmented?.set(themeControl, themeIdx);
-    }
     if (modeControl) {
       modeControl.dataset.value = String(modeIdx);
       window.pennaSegmented?.set(modeControl, modeIdx);
@@ -232,11 +228,6 @@
   lookTrigger?.addEventListener("click", (event) => {
     event.stopPropagation();
     setLookOpen(!lookRoot?.hasAttribute("data-open"));
-  });
-
-  themeControl?.addEventListener("change", (event) => {
-    const next = THEMES[event.detail.index];
-    if (next) pennaKit.setTheme(next);
   });
 
   modeControl?.addEventListener("change", (event) => {
@@ -380,30 +371,6 @@
           pennaKit.choice.mode = nextMode;
           pennaKit.apply();
         },
-      },
-      {
-        kind: "action",
-        title: "Look: default",
-        detail: "Neutral baseline theme",
-        icon: "palette",
-        keywords: "theme look default baseline",
-        run: () => pennaKit.setTheme("default"),
-      },
-      {
-        kind: "action",
-        title: "Look: macOS",
-        detail: "macOS corners, icons and glass",
-        icon: "palette",
-        keywords: "theme look macos apple",
-        run: () => pennaKit.setTheme("macos"),
-      },
-      {
-        kind: "action",
-        title: "Look: Yaru",
-        detail: "Linux Ubuntu theme baseline",
-        icon: "palette",
-        keywords: "theme look yaru linux ubuntu",
-        run: () => pennaKit.setTheme("yaru"),
       },
       {
         kind: "action",

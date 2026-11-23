@@ -91,7 +91,6 @@
   function envSnapshot() {
     const root = document.documentElement;
     return {
-      look: window.pennaKit?.choice?.theme || "default",
       mode: window.pennaKit?.choice?.mode || "dark",
       density: root.dataset.density || "regular",
       glass: root.dataset.glass === "none" ? "none" : "liquid",
@@ -125,7 +124,6 @@
     if (!envEl) return;
     envEl.replaceChildren();
     const pairs = [
-      ["Look", env.look],
       ["Mode", env.mode],
       ["Density", env.density],
       ["Glass", env.glass],
