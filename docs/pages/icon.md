@@ -4,12 +4,12 @@ A glyph from the kit's set beside a label, or alone on an icon button in a bar w
 
 ## Set
 
-107 glyphs in 8 groups on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes. Search by name, variant, or note, preview sizes live, and click any glyph to copy its Rust or HTML snippet.
+109 glyphs in 8 groups on a 24 grid with a 1.5 stroke and no fill. Corners follow half the theme radius and redraw when the theme changes. Search by name, variant, or note, preview sizes live, and click any glyph to copy its Rust or HTML snippet.
 
 ```figure uses=chip,icon,input,segmented
 <div class="docs-ic" data-docs-icons>
   <div class="docs-ic-bar">
-    <label class="penna-input docs-ic-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Search 107 icons…" aria-label="Search icons" data-ic-search /></label>
+    <label class="penna-input docs-ic-search" data-penna="field" data-size="small"><i data-icon="search"></i><input type="search" placeholder="Search 109 icons…" aria-label="Search icons" data-ic-search /></label>
     <div class="docs-ic-controls">
       <div class="penna-segmented" data-penna="field" data-size="small" data-value="1" role="radiogroup" aria-label="Icon size" data-ic-size>
         <div class="penna-segments" data-penna="button.quiet" data-state="current">
@@ -36,7 +36,7 @@ A glyph from the kit's set beside a label, or alone on an icon button in a bar w
       <span class="docs-ic-detail-code" data-ic-code>IconName::Bell</span>
       <span class="docs-ic-detail-note" data-ic-note>Click any tile below to copy to clipboard.</span>
     </div>
-    <span class="docs-lk-mono" data-ic-count>107 of 107</span>
+    <span class="docs-lk-mono" data-ic-count>109 of 109</span>
   </div>
   <div class="docs-ic-grid" data-ic-grid></div>
 </div>
@@ -73,7 +73,7 @@ Icons inherit the surrounding text color by default, so inside controls they fol
   <span class="docs-head">Size</span><span class="docs-head">px</span><span class="docs-head">Beside</span><span class="docs-head">Example</span>
   <span>xsmall, small</span><span><code>12</code></span><span><span><code>caption</code>, <code>small</code></span></span><span style="gap: var(--penna-space-4)"><i data-icon="eye" data-size="small"></i><span class="penna-type" data-type="small" data-penna-text>Show hidden files</span></span>
   <span>medium</span><span><code>14</code></span><span><code>body</code></span><span style="gap: var(--penna-space-6)"><i data-icon="panel-right" data-size="medium"></i><span class="penna-type" data-type="body" data-penna-text>Split right</span></span>
-  <span>large, xlarge, touch</span><span><code>16</code></span><span><span><code>lead</code>, <code>heading</code></span></span><span style="gap: var(--penna-space-8)"><i data-icon="server-plus" data-size="large"></i><span class="penna-type" data-type="lead" data-penna-text>Add host</span></span>
+  <span>large, xlarge, touch</span><span><code>16</code></span><span><span><code>lead</code>, <code>heading</code></span></span><span style="gap: var(--penna-space-8)"><i data-icon="monitor-plus" data-size="large"></i><span class="penna-type" data-type="lead" data-penna-text>Add host</span></span>
   <span>touch-large</span><span><code>20</code></span><span><code>touch-body</code></span><span style="gap: var(--penna-space-8)"><i data-icon="sliders" data-size="touch-large"></i><span class="penna-type" data-type="touch-body" data-penna-text>Chat options</span></span>
   <span>Size(px)</span><span><code>custom</code></span><span><code>title bar</code></span><span style="gap: var(--penna-space-6)"><i data-icon="app-window" data-size="6"></i><span class="penna-type" data-type="small" data-muted data-penna-text>24 px specimen</span></span>
 </div>
@@ -87,8 +87,8 @@ Pair an icon with a word wherever there is room. Alone, only on a square icon bu
 
 ```figure
 <div class="docs-dodont">
-  <figure data-verdict="do"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button" type="button"><i data-icon="server-plus"></i><span class="penna-label" data-penna-text>Add host</span></button><button class="penna-button" data-penna="button" type="button"><i data-icon="window-plus"></i><span class="penna-label" data-penna-text>New window</span></button></div><figcaption>Say what it does</figcaption></figure>
-  <figure data-verdict="dont"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="Add host"><i data-icon="server-plus"></i></button><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="New window"><i data-icon="window-plus"></i></button><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="Layers"><i data-icon="layers-plus"></i></button></div><figcaption>Don't make people guess</figcaption></figure>
+  <figure data-verdict="do"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-check"></i><button class="penna-button" data-penna="button" type="button"><i data-icon="monitor-plus"></i><span class="penna-label" data-penna-text>Add host</span></button><button class="penna-button" data-penna="button" type="button"><i data-icon="window-plus"></i><span class="penna-label" data-penna-text>New window</span></button></div><figcaption>Say what it does</figcaption></figure>
+  <figure data-verdict="dont"><div class="docs-dodont-panel" data-penna="panel" data-ground><i class="docs-mark" data-icon="circle-x"></i><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="Add host"><i data-icon="monitor-plus"></i></button><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="New window"><i data-icon="window-plus"></i></button><button class="penna-button" data-penna="button" data-shape="icon" type="button" aria-label="Layers"><i data-icon="layers-plus"></i></button></div><figcaption>Don't make people guess</figcaption></figure>
 </div>
 ```
 
