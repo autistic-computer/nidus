@@ -10,7 +10,7 @@
 ---<br>
 name: nidus<br>
 description: input sharing<br>
-status: beta<br>
+status: slopware<br>
 license: gpl-3.0-or-later<br>
 version: 0.7.0<br>
 ---
