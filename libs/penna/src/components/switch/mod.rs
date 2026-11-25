@@ -32,7 +32,7 @@ impl Metrics {
             Size::Small => (28., 16.),
             _ if coarse => (44., 26.),
             Size::Large => (40., 22.),
-            Size::XLarge | Size::Touch => (44., 26.),
+            Size::XLarge | Size::Touch | Size::TouchLarge => (44., 26.),
             _ => (36., 20.),
         };
         let inset = px(2.);
@@ -297,11 +297,13 @@ impl RenderOnce for Switch {
                     let toggle =
                         Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
                             cx.stop_propagation();
+                            cx.haptic(ala::Haptic::Light);
                             let () = toggle_state.update(cx, |this, _| *this = checked);
                             on_click(&!checked, window, cx);
                         });
                     let tap = Rc::clone(&toggle);
                     this.track_focus(&focus_handle.tab_stop(true))
+                        .click_cursor()
                         .on_mouse_down(MouseButton::Left, hold)
                         .on_click(move |event, window, cx| toggle(event, window, cx))
                         .when(coarse, |this| {

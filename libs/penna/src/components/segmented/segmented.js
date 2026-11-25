@@ -16,7 +16,9 @@ function placePill(control) {
   const target = segments[at];
   if (!pill || !target) return;
   segments.forEach((segment, index) => {
-    segment.setAttribute("aria-selected", String(index === at));
+    const selected = String(index === at);
+    segment.setAttribute("aria-selected", selected);
+    if (segment.getAttribute("role") === "radio") segment.setAttribute("aria-checked", selected);
   });
   pill.style.setProperty("--pill-x", `${target.offsetLeft}px`);
   pill.style.setProperty("--pill-w", `${target.offsetWidth}px`);
@@ -29,7 +31,7 @@ function placePill(control) {
     return;
   }
   const outer = (parseFloat(track.getPropertyValue("--penna-share")) || 0) * control.offsetHeight;
-  const roundness = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--penna-control-share")) || 0;
+  const roundness = parseFloat(track.getPropertyValue("--penna-control-share")) || 0;
   const radius = Math.max(Math.min(outer - border - 2, roundness * inner), 0);
   const k = parseFloat(track.getPropertyValue("--penna-k")) || 1;
   const [box, shape] = window.pennaKit?.apparentCorner(radius, inner / 2, k) ?? [radius, k];
@@ -95,8 +97,13 @@ function wireSegmented(control) {
   });
 }
 
-function settleSegmented() {
-  document.querySelectorAll(".penna-segmented").forEach((control) => {
+function set(control, index) {
+  control.dataset.value = String(index);
+  placePill(control);
+}
+
+function settleSegmented(root = document) {
+  root.querySelectorAll(".penna-segmented").forEach((control) => {
     control.toggleAttribute("data-still", true);
     wireSegmented(control);
     syncDisabled(control);
@@ -109,6 +116,8 @@ function settleSegmented() {
 }
 
 settleSegmented();
-document.fonts.ready.then(settleSegmented);
+document.fonts.ready.then(() => settleSegmented());
 document.addEventListener("load", (event) => event.target.id === "penna-tokens" && settleSegmented(), true);
+
+globalThis.pennaSegmented = { wire: settleSegmented, set };
 })();

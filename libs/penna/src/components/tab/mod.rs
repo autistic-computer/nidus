@@ -155,13 +155,11 @@ impl ala::Styled for TabStrip {
     }
 }
 
-fn strip_radius(tab: Pixels, tab_height: Pixels, inset: Pixels) -> Pixels {
+fn strip_radius(tab: Pixels, tab_height: Pixels) -> Pixels {
     if tab >= FULL_CORNER_RADIUS || tab >= tab_height / 2.0 {
         FULL_CORNER_RADIUS
-    } else if tab > px(0.0) {
-        tab + inset
     } else {
-        px(0.0)
+        tab.max(px(0.0))
     }
 }
 
@@ -178,16 +176,15 @@ impl RenderOnce for TabStrip {
         let tab = cx
             .theme()
             .layer(Surface::from(self.look).on(layer.ground), PaintState::Rest);
-        let inset = Space::S2.rems().to_pixels(window.rem_size());
-        let radius = strip_radius(row_radius(&tab, height), height, inset);
+        let radius = strip_radius(row_radius(&tab, height), height);
         let track = self.children.len() > 1;
         self.base
             .role(Role::TabList)
             .accessibility_id(author_name(&self.id))
             .flex()
             .items_center()
-            .gap(inset)
-            .p(inset)
+            .gap(Space::S2)
+            .h(height)
             .when(track, |strip| {
                 strip.layer(&Layer {
                     radius,

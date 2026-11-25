@@ -1,12 +1,12 @@
 #![allow(clippy::used_underscore_binding)]
 
-use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
+use std::{borrow::Cow, ops::Range, path::PathBuf, rc::Rc, sync::Arc};
 
 use ala::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
-    EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, Image, IntoElement,
-    KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
-    ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
+    EntityInputHandler, EventEmitter, FocusHandle, Focusable, HighlightStyle, Hsla, Image,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point,
+    Render, ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, Task, TextAlign,
     TextInputConfiguration, TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
     prelude::FluentBuilder as _, px,
 };
@@ -38,6 +38,7 @@ pub enum InputEvent {
     Focus,
     Blur,
     PasteImages(Vec<Arc<Image>>),
+    PastePaths(Vec<PathBuf>),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -76,6 +77,7 @@ pub struct InputState {
 
     text: SharedString,
     placeholder: SharedString,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
 
     selection: Range<usize>,
     selection_reversed: bool,
@@ -85,6 +87,7 @@ pub struct InputState {
     input_mode: TextInputMode,
     submit_on_enter: bool,
     enable_context_menu: bool,
+    paste_paths: bool,
     normal_mode: bool,
 
     pub(super) disabled: bool,
@@ -109,10 +112,10 @@ pub struct InputState {
 
     pub(super) last_layout: Option<LastLayout>,
     pub(super) scroll: Point<Pixels>,
-    pub(super) measured_rows: usize,
     pub(super) follow_cursor: bool,
     pub(super) reset_scroll: bool,
     pub(super) revealed_viewport: Option<ala::Size<Pixels>>,
+    pub(super) edit_menu_pending: bool,
 
     blink: Entity<BlinkCursor>,
     context_menu: Option<Entity<PopupMenu>>,
@@ -151,6 +154,7 @@ impl InputState {
             focus_handle,
             text: SharedString::default(),
             placeholder: SharedString::default(),
+            highlights: Vec::new(),
             selection: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -158,6 +162,7 @@ impl InputState {
             input_mode: TextInputMode::default(),
             submit_on_enter: false,
             enable_context_menu: false,
+            paste_paths: false,
             normal_mode: false,
             disabled: false,
             loading: false,
@@ -177,10 +182,10 @@ impl InputState {
             preferred_x: None,
             last_layout: None,
             scroll: Point::default(),
-            measured_rows: 1,
             follow_cursor: false,
             reset_scroll: false,
             revealed_viewport: None,
+            edit_menu_pending: false,
             blink,
             context_menu: None,
             context_menu_position: Point::default(),
@@ -197,7 +202,6 @@ impl InputState {
             min_rows,
             max_rows: max_rows.max(min_rows),
         };
-        self.measured_rows = min_rows;
         self
     }
 
@@ -216,6 +220,12 @@ impl InputState {
     #[must_use]
     pub fn context_menu(mut self, enable: bool) -> Self {
         self.enable_context_menu = enable;
+        self
+    }
+
+    #[must_use]
+    pub fn paste_paths(mut self, enable: bool) -> Self {
+        self.paste_paths = enable;
         self
     }
 
@@ -262,6 +272,16 @@ impl InputState {
 }
 
 impl InputState {
+    pub fn set_max_rows(&mut self, rows: usize, cx: &mut Context<Self>) {
+        if let InputMode::AutoGrow { min_rows, max_rows } = &mut self.mode {
+            let rows = rows.max(*min_rows);
+            if *max_rows != rows {
+                *max_rows = rows;
+                cx.notify();
+            }
+        }
+    }
+
     pub fn set_placeholder(
         &mut self,
         placeholder: impl Into<SharedString>,
@@ -300,6 +320,17 @@ impl InputState {
         self.reset_scroll = true;
         self.follow_cursor = false;
         cx.notify();
+    }
+
+    pub fn set_highlights(
+        &mut self,
+        highlights: Vec<(Range<usize>, HighlightStyle)>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.highlights != highlights {
+            self.highlights = highlights;
+            cx.notify();
+        }
     }
 
     pub fn set_normal_mode(&mut self, normal: bool, cx: &mut Context<Self>) {
@@ -389,6 +420,10 @@ impl InputState {
 
     pub(super) fn placeholder_text(&self) -> &SharedString {
         &self.placeholder
+    }
+
+    pub(super) fn highlights(&self) -> &[(Range<usize>, HighlightStyle)] {
+        &self.highlights
     }
 
     pub(super) fn selection(&self) -> Range<usize> {
@@ -1212,6 +1247,22 @@ impl InputState {
     }
 
     fn paste_item(&mut self, item: ClipboardItem, cx: &mut Context<Self>) {
+        if self.paste_paths {
+            let paths = item
+                .entries()
+                .iter()
+                .filter_map(|entry| match entry {
+                    ClipboardEntry::ExternalPaths(paths) => Some(paths.paths()),
+                    ClipboardEntry::String(_) | ClipboardEntry::Image(_) => None,
+                })
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>();
+            if !paths.is_empty() {
+                cx.emit(InputEvent::PastePaths(paths));
+                return;
+            }
+        }
         if let Some(text) = item.text() {
             let range = self.selection.clone();
             self.edit(range, &text, EditKind::Other, cx);
@@ -1339,6 +1390,28 @@ impl InputState {
         self.selecting = false;
     }
 
+    pub(super) fn on_long_press(
+        &mut self,
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(layout) = self.last_layout.as_ref() else {
+            return;
+        };
+        let offset = layout.offset_for_position(position);
+        self.focus_handle.focus(window, cx);
+        window.request_virtual_keyboard();
+        if !self.selection.contains(&offset) {
+            self.move_to(offset, cx);
+        }
+    }
+
+    pub(super) fn show_edit_menu(&mut self, cx: &mut Context<Self>) {
+        self.edit_menu_pending = true;
+        cx.notify();
+    }
+
     pub(super) fn on_scroll_wheel(
         &mut self,
         event: &ScrollWheelEvent,
@@ -1380,6 +1453,7 @@ impl InputState {
 
     fn on_blur(&mut self, _: &mut Window, cx: &mut Context<Self>) {
         self.selecting = false;
+        self.edit_menu_pending = false;
         self.history.break_group();
         if self.menu_focus_round_trip {
             return;
@@ -1837,8 +1911,17 @@ mod tests {
         item: ala::ClipboardItem,
         cx: &mut ala::TestAppContext,
     ) -> (String, Vec<InputEvent>) {
+        paste_into(item, false, cx)
+    }
+
+    fn paste_into(
+        item: ala::ClipboardItem,
+        takes_paths: bool,
+        cx: &mut ala::TestAppContext,
+    ) -> (String, Vec<InputEvent>) {
         cx.update(crate::init);
-        let (state, cx) = cx.add_window_view(InputState::new);
+        let (state, cx) =
+            cx.add_window_view(|window, cx| InputState::new(window, cx).paste_paths(takes_paths));
         let cx: &mut ala::VisualTestContext = cx;
         let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         cx.update(|_, cx| {
@@ -1984,6 +2067,47 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, InputEvent::PasteImages(_))),
             "a text paste is not an image paste"
+        );
+    }
+
+    fn copied_file() -> (std::path::PathBuf, ala::ClipboardItem) {
+        let path = std::path::PathBuf::from("/Users/me/Desktop/Screen Recording.mov");
+        let item = ala::ClipboardItem {
+            entries: vec![
+                ala::ClipboardEntry::ExternalPaths(ala::ExternalPaths(
+                    std::iter::once(path.clone()).collect(),
+                )),
+                ala::ClipboardEntry::String(ala::ClipboardString::new(
+                    "Screen Recording.mov".to_owned(),
+                )),
+            ],
+        };
+        (path, item)
+    }
+
+    #[ala::test]
+    fn copied_files_go_to_an_owner_that_takes_paths(cx: &mut ala::TestAppContext) {
+        let (path, item) = copied_file();
+        let (value, heard) = paste_into(item, true, cx);
+
+        assert_eq!(value, "");
+        let [InputEvent::PastePaths(paths)] = heard.as_slice() else {
+            panic!("the paths should reach the owner: {heard:?}");
+        };
+        assert_eq!(paths, &[path]);
+    }
+
+    #[ala::test]
+    fn copied_files_paste_their_name_when_the_owner_takes_no_paths(cx: &mut ala::TestAppContext) {
+        let (_, item) = copied_file();
+        let (value, heard) = paste_into(item, false, cx);
+
+        assert_eq!(value, "Screen Recording.mov");
+        assert!(
+            !heard
+                .iter()
+                .any(|event| matches!(event, InputEvent::PastePaths(_))),
+            "{heard:?}"
         );
     }
 }

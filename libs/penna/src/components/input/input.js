@@ -28,11 +28,9 @@
       else field.removeAttribute("data-state");
       return getComputedStyle(field).getPropertyValue("--penna-fill").trim();
     };
-    const rest = read(null);
     const hover = read("hover");
     if (saved === null) field.removeAttribute("data-state");
     else field.setAttribute("data-state", saved);
-    if (rest) field.style.setProperty("--input-rest-fill", rest);
     if (hover) field.style.setProperty("--input-hover-fill", hover);
   }
 
@@ -193,13 +191,15 @@
     });
   }
 
-  function wire() {
-    document.querySelectorAll(".penna-input > input[data-selection]").forEach((input) => {
+  function wire(root = document) {
+    root.querySelectorAll(".penna-input > input[data-selection]").forEach((input) => {
       const [start, end] = input.dataset.selection.split(",").map(Number);
       input.setSelectionRange(start, end);
       paintSelection(input);
     });
-    document.querySelectorAll(".penna-input > :is(input, textarea)").forEach((input) => {
+    root.querySelectorAll(".penna-input > :is(input, textarea)").forEach((input) => {
+      if (input.pennaWired) return;
+      input.pennaWired = true;
       const field = input.closest(".penna-number") ?? input.closest(".penna-input");
       input.addEventListener("focusin", () => focused(field, true));
       input.addEventListener("focusout", () => document.activeElement === input || focused(field, false));
@@ -228,11 +228,13 @@
         input.addEventListener("mousemove", (event) => event.buttons && caret());
       }
     });
-    document.querySelectorAll(".penna-input > textarea").forEach((area) => {
+    root.querySelectorAll(".penna-input > textarea").forEach((area) => {
       grow(area);
       area.addEventListener("input", () => grow(area));
     });
-    document.querySelectorAll(".penna-input-clear").forEach((button) => {
+    root.querySelectorAll(".penna-input-clear").forEach((button) => {
+      if (button.pennaWired) return;
+      button.pennaWired = true;
       const input = button.closest(".penna-input").querySelector("input");
       const slot = button.parentElement;
       const sync = () => {
@@ -249,7 +251,9 @@
         input.focus();
       });
     });
-    document.querySelectorAll(".penna-number").forEach((field) => {
+    root.querySelectorAll(".penna-number").forEach((field) => {
+      if (field.pennaWired) return;
+      field.pennaWired = true;
       const input = field.querySelector("input");
       input.addEventListener("beforeinput", (event) => {
         if (!event.data) return;
@@ -272,7 +276,7 @@
         });
       });
     });
-    document.querySelectorAll("input[autofocus]").forEach((input) => {
+    root.querySelectorAll("input[autofocus]").forEach((input) => {
       input.focus();
       focused(input.closest(".penna-number") ?? input.closest(".penna-input"), true);
       input.setSelectionRange(input.value.length, input.value.length);
@@ -290,6 +294,12 @@
 
   wire();
   settle();
+  globalThis.pennaInput = {
+    wire(root) {
+      grounds(root);
+      wire(root);
+    },
+  };
   document.fonts.ready.then(settle);
   document.addEventListener("load", (event) => event.target.id === "penna-tokens" && requestAnimationFrame(settle), true);
 })();

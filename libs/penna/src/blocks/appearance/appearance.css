@@ -89,7 +89,7 @@
 .appearance-rule {
   flex: none;
   height: 1px;
-  padding: 0 var(--penna-inset-card);
+  padding: 0 0 0 var(--penna-inset-card);
 }
 
 .appearance-rule > [data-penna] {
@@ -129,7 +129,7 @@
   border-radius: var(--appearance-swatch-r, 0px);
   corner-shape: superellipse(var(--appearance-swatch-k, var(--penna-window-k)));
   background: var(--appearance-swatch, var(--penna-accent));
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
 }
 
@@ -138,7 +138,17 @@
 }
 
 .appearance-ring .penna-color-picker:not([data-custom]) .penna-color-picker-swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--penna-border);
   background: transparent;
+  color: var(--penna-fg-muted);
+  --penna-icon-size: 10px;
+}
+
+.appearance-ring .penna-color-picker[data-custom] .penna-color-picker-swatch > [data-icon] {
+  display: none;
 }
 
 .appearance-slider-row {
@@ -157,7 +167,7 @@
   width: 180px;
   height: var(--penna-control-md);
   padding: 0 var(--penna-space-8);
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   outline: none;
   touch-action: none;
   user-select: none;

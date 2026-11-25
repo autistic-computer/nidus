@@ -3,6 +3,8 @@ pub mod glyphs;
 
 pub use assets::Assets;
 
+use std::sync::Arc;
+
 use ala::{
     AnyElement, App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled,
     Svg, Transformation, Window, font, prelude::FluentBuilder as _, svg,
@@ -13,6 +15,7 @@ use crate::{Sizable, Size, Theme, rems_from_px};
 #[derive(Clone, Default, IntoElement)]
 pub struct Icon {
     path: SharedString,
+    data: Option<Arc<[u8]>>,
     asset: bool,
     style: StyleRefinement,
     text_color: Option<Hsla>,
@@ -34,11 +37,19 @@ impl Icon {
     #[must_use]
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = path.into();
+        self.data = None;
         self.asset = false;
         self
     }
 
-    fn drawn_path(&self, cx: &App) -> SharedString {
+    pub(crate) fn with_svg_data(mut self, path: SharedString, data: Arc<[u8]>) -> Self {
+        self.path = path;
+        self.data = Some(data);
+        self.asset = true;
+        self
+    }
+
+    pub(crate) fn drawn_path(&self, cx: &App) -> SharedString {
         if self.asset {
             return self.path.clone();
         }
@@ -83,7 +94,11 @@ impl Sizable for Icon {
 
 impl RenderOnce for Icon {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let path = self.drawn_path(cx);
+        let path = if self.data.is_some() {
+            self.path
+        } else {
+            self.drawn_path(cx)
+        };
         let color = self.text_color.unwrap_or_else(|| window.text_style().color);
         let styled_size = self.style.size.width.is_some() || self.style.size.height.is_some();
         let size = self.size.or_else(|| (!styled_size).then_some(Size::Medium));
@@ -91,14 +106,19 @@ impl RenderOnce for Icon {
         let mut base = svg();
         *base.style() = self.style;
 
-        base.flex_shrink_0()
+        let base = base
+            .flex_shrink_0()
             .text_color(color)
             .when_some(size, |this, size| match size {
                 Size::Size(size) => this.size(size),
                 size => this.size(rems_from_px(size.icon_px())),
             })
-            .when_some(self.transformation, Svg::with_transformation)
-            .path(path)
+            .when_some(self.transformation, Svg::with_transformation);
+        if let Some(data) = self.data {
+            base.shared_data(path, data)
+        } else {
+            base.path(path)
+        }
     }
 }
 
@@ -130,9 +150,11 @@ pub enum IconName {
     Asterisk,
     AppWindow,
     Bell,
+    Bolt,
     Bot,
     Braces,
     Calendar,
+    Camera,
     CaseSensitive,
     Chat,
     ChatPlus,
@@ -146,20 +168,25 @@ pub enum IconName {
     CircleUser,
     CircleX,
     Clock,
+    Sliders,
     Xmark,
     Copy,
+    CornerDownRight,
     Cpu,
     Cup,
     Ellipsis,
     EllipsisVertical,
     ExternalLink,
+    Expand,
     Eye,
     File,
+    Image,
     Folder,
     GalleryVerticalEnd,
     GitBranch,
     Globe,
     GripVertical,
+    Hand,
     HardDrive,
     History,
     Inbox,
@@ -185,22 +212,31 @@ pub enum IconName {
     List,
     ListTree,
     Loader,
+    Map,
+    Menu,
     Minus,
+    MonitorPlus,
     Moon,
     Palette,
     PanelBottom,
     PanelLeft,
     PanelRight,
+    PanelTop,
     PanelsTopLeft,
     Pencil,
     PictureInPicture,
     Plus,
+    QrCode,
     Redo2,
+    Restart,
+    RingUp,
     RobotFace,
     Search,
     Server,
     ServerPlus,
     Settings,
+    ShieldOff,
+    Shrink,
     SiteControls,
     Sparkle,
     SquareTerminal,
@@ -230,9 +266,11 @@ impl IconName {
         Self::Asterisk,
         Self::AppWindow,
         Self::Bell,
+        Self::Bolt,
         Self::Bot,
         Self::Braces,
         Self::Calendar,
+        Self::Camera,
         Self::CaseSensitive,
         Self::Chat,
         Self::ChatPlus,
@@ -246,20 +284,25 @@ impl IconName {
         Self::CircleUser,
         Self::CircleX,
         Self::Clock,
+        Self::Sliders,
         Self::Xmark,
         Self::Copy,
+        Self::CornerDownRight,
         Self::Cpu,
         Self::Cup,
         Self::Ellipsis,
         Self::EllipsisVertical,
         Self::ExternalLink,
+        Self::Expand,
         Self::Eye,
         Self::File,
+        Self::Image,
         Self::Folder,
         Self::GalleryVerticalEnd,
         Self::GitBranch,
         Self::Globe,
         Self::GripVertical,
+        Self::Hand,
         Self::HardDrive,
         Self::History,
         Self::Inbox,
@@ -285,22 +328,31 @@ impl IconName {
         Self::List,
         Self::ListTree,
         Self::Loader,
+        Self::Map,
+        Self::Menu,
         Self::Minus,
+        Self::MonitorPlus,
         Self::Moon,
         Self::Palette,
         Self::PanelBottom,
         Self::PanelLeft,
         Self::PanelRight,
+        Self::PanelTop,
         Self::PanelsTopLeft,
         Self::Pencil,
         Self::PictureInPicture,
         Self::Plus,
+        Self::QrCode,
         Self::Redo2,
+        Self::Restart,
+        Self::RingUp,
         Self::RobotFace,
         Self::Search,
         Self::Server,
         Self::ServerPlus,
         Self::Settings,
+        Self::ShieldOff,
+        Self::Shrink,
         Self::SiteControls,
         Self::Sparkle,
         Self::SquareTerminal,
@@ -330,9 +382,11 @@ impl IconName {
             Self::Asterisk => "icons/asterisk.svg",
             Self::AppWindow => "icons/app-window.svg",
             Self::Bell => "icons/bell.svg",
+            Self::Bolt => "icons/bolt.svg",
             Self::Bot => "icons/bot.svg",
             Self::Braces => "icons/braces.svg",
             Self::Calendar => "icons/calendar.svg",
+            Self::Camera => "icons/camera.svg",
             Self::CaseSensitive => "icons/case-sensitive.svg",
             Self::Chat => "icons/chat.svg",
             Self::ChatPlus => "icons/chat-plus.svg",
@@ -346,20 +400,25 @@ impl IconName {
             Self::CircleUser => "icons/circle-user.svg",
             Self::CircleX => "icons/circle-x.svg",
             Self::Clock => "icons/clock.svg",
+            Self::Sliders => "icons/sliders.svg",
             Self::Xmark => "icons/xmark.svg",
             Self::Copy => "icons/copy.svg",
+            Self::CornerDownRight => "icons/corner-down-right.svg",
             Self::Cpu => "icons/cpu.svg",
             Self::Cup => "icons/cup.svg",
             Self::Ellipsis => "icons/ellipsis.svg",
             Self::EllipsisVertical => "icons/ellipsis-vertical.svg",
             Self::ExternalLink => "icons/external-link.svg",
+            Self::Expand => "icons/expand.svg",
             Self::Eye => "icons/eye.svg",
             Self::File => "icons/file.svg",
+            Self::Image => "icons/image.svg",
             Self::Folder => "icons/folder.svg",
             Self::GalleryVerticalEnd => "icons/gallery-vertical-end.svg",
             Self::GitBranch => "icons/git-branch.svg",
             Self::Globe => "icons/globe.svg",
             Self::GripVertical => "icons/grip-vertical.svg",
+            Self::Hand => "icons/hand.svg",
             Self::HardDrive => "icons/hard-drive.svg",
             Self::History => "icons/history.svg",
             Self::Inbox => "icons/inbox.svg",
@@ -385,22 +444,31 @@ impl IconName {
             Self::List => "icons/list.svg",
             Self::ListTree => "icons/list-tree.svg",
             Self::Loader => "icons/loader.svg",
+            Self::Map => "icons/map.svg",
+            Self::Menu => "icons/menu.svg",
             Self::Minus => "icons/minus.svg",
+            Self::MonitorPlus => "icons/monitor-plus.svg",
             Self::Moon => "icons/moon.svg",
             Self::Palette => "icons/palette.svg",
             Self::PanelBottom => "icons/panel-bottom.svg",
             Self::PanelLeft => "icons/panel-left.svg",
             Self::PanelRight => "icons/panel-right.svg",
+            Self::PanelTop => "icons/panel-top.svg",
             Self::PanelsTopLeft => "icons/panels-top-left.svg",
             Self::Pencil => "icons/pencil.svg",
             Self::PictureInPicture => "icons/picture-in-picture.svg",
             Self::Plus => "icons/plus.svg",
+            Self::QrCode => "icons/qr-code.svg",
             Self::Redo2 => "icons/redo-2.svg",
+            Self::Restart => "icons/restart.svg",
+            Self::RingUp => "icons/ring-up.svg",
             Self::RobotFace => "icons/robot-face.svg",
             Self::Search => "icons/search.svg",
             Self::Server => "icons/server.svg",
             Self::ServerPlus => "icons/server-plus.svg",
             Self::Settings => "icons/settings.svg",
+            Self::ShieldOff => "icons/shield-off.svg",
+            Self::Shrink => "icons/shrink.svg",
             Self::SiteControls => "icons/site-controls.svg",
             Self::Sparkle => "icons/sparkle.svg",
             Self::SquareTerminal => "icons/square-terminal.svg",

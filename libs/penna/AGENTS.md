@@ -10,7 +10,7 @@ upstream fix.
 
 penna is the only place UI chrome is defined: tokens, surface roles, the look with its knobs, and components.
 Read `knowledge/designs/foundations.md` before any UI work: it is the spec for every value, name
-and rule (space, type, sizes, color, layout) and the order of work bringing penna onto it. Read
+and rule (space, type, sizes, color, layout). Its component sections track implementation gaps. Read
 `knowledge/designs/kit.md` before adding a component or a role. Two rules from it:
 
 - A component is in the kit when the storybook shows every state of it and it has been looked at
@@ -29,13 +29,7 @@ and rule (space, type, sizes, color, layout) and the order of work bringing penn
 - `blocks/<name>/`: a piece of UI that owns the layout and state of several components.
   When a piece owns a layout of other penna components, put it here. Appearance is a block.
 
-Components: badge, bar, button, card, check, chip, field, icon, input, kbd, label, list, menu,
-panel, plate (crate-private), popover, row, scroll, segmented, select, separator, slider,
-spinner, switch, tab, text, tile, tooltip, tree, well.
-
-Blocks: appearance, chat, code_editor (editor feature), color_picker, compact, dialog, dock,
-docs, feedback, inspector, notice, notification, palette, picker, settings, sheet, shell, sidebar,
-steps, title_bar, touch, tray (tray feature), which_key.
+The module lists in `src/components/mod.rs` and `src/blocks/mod.rs` show the current catalog and feature gates.
 
 Public module paths follow the tiers: `penna::components::button`,
 `penna::blocks::settings`, `penna::blocks::appearance` and
@@ -156,7 +150,7 @@ How parity drives the pages:
   `pennaKit.focusRing(element)` for one without a role). `--penna-focus` doesn't inherit, so the ring reads it
   through `--penna-ring` set on the element. Link and text buttons have no role, so their ring takes the root
   `--penna-focus-neutral`. Only fields change their
-  fill or edge on focus, and only their rule also follows `:focus-within`.
+  fill on focus, and only their rule also follows `:focus-within`.
 - `kit.js` and a page's own script are classic scripts sharing one global scope, so a top-level function
   named like one of kit.js's (`settle`, `round`) replaces it and kit.js stops rounding corners.
 - `story.css` takes `data-columns="3"` for a grid that snaps its tracks to device pixels like ala does.

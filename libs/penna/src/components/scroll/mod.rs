@@ -4,9 +4,9 @@ mod fade;
 mod scrollable;
 mod scrollbar;
 
-pub use fade::{bottom_fade, top_fade};
+pub use fade::{bottom_fade, left_fade, right_fade, top_fade};
 pub use scrollable::{Scrollable, ScrollableElement};
 pub use scrollbar::{
     MIN_THUMB_SIZE, Scrollbar, ScrollbarAxis, ScrollbarHandle, ScrollbarShow, THUMB_INSET,
-    THUMB_WIDTH, WIDTH as GUTTER_WIDTH, theme_thumb_color, thumb_color, thumb_radius,
+    THUMB_WIDTH, WIDTH as GUTTER_WIDTH, fade_frame, theme_thumb_color, thumb_color, thumb_radius,
 };

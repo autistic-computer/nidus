@@ -6,7 +6,8 @@
       "title": "Getting started",
       "pages": [
         "introduction",
-        "installation"
+        "installation",
+        "showcase"
       ]
     },
     {
@@ -18,34 +19,52 @@
         "typography",
         "spacing",
         "sizes",
+        "motion",
+        "phone",
         "look"
       ]
     },
     {
       "title": "Components",
       "pages": [
+        "components",
         "button",
+        "button-group",
         "badge",
         "bar",
+        "breadcrumb",
         "card",
+        "chart",
         "check",
         "chip",
+        "combobox",
+        "data-list",
+        "disclosure",
         "field",
+        "hover-card",
         "icon",
         "input",
+        "input-group",
         "kbd",
+        "key-field",
         "label",
         "list",
         "menu",
+        "meter",
         "panel",
         "popover",
+        "progress",
         "row",
         "scroll",
         "segmented",
         "select",
         "separator",
+        "skeleton",
         "slider",
+        "snippet",
         "spinner",
+        "split",
+        "status-dot",
         "switch",
         "tab",
         "text",
@@ -58,8 +77,31 @@
     {
       "title": "Blocks",
       "pages": [
+        "blocks",
+        "action-bar",
+        "appearance",
         "chat",
-        "palette"
+        "code-editor",
+        "color-picker",
+        "dialog",
+        "diff",
+        "dock",
+        "empty-state",
+        "inspector",
+        "notice",
+        "notification",
+        "palette",
+        "settings",
+        "sheet",
+        "sidebar",
+        "stack-menu",
+        "steps",
+        "table",
+        "title-bar",
+        "trace",
+        "ui-block",
+        "which-key",
+        "zoom-card"
       ]
     }
   ]

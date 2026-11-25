@@ -23,11 +23,12 @@
   height: var(--penna-tree-row);
   margin: 0;
   padding: 0 var(--penna-tree-inset) 0 calc(var(--penna-tree-inset) + var(--penna-tree-indent) * var(--depth, 0));
+  overflow: hidden;
   font-size: var(--penna-text-lead-size);
   font-weight: var(--penna-text-lead-weight);
   line-height: var(--penna-text-lead-line);
   white-space: nowrap;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   user-select: none;
   outline: none;
 }
@@ -56,6 +57,13 @@
   gap: var(--penna-space-8);
   width: 100%;
   min-width: 0;
+  overflow: hidden;
+}
+
+.penna-tree-row > .penna-tree-content > .penna-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .penna-tree-icon {

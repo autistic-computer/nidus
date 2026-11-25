@@ -1,10 +1,10 @@
-use std::{ops::Range, rc::Rc};
+use std::{mem, ops::Range, rc::Rc};
 
 use ala::{
-    App, Bounds, ContentMask, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
-    GlobalElementId, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, Window,
-    WrappedLine, fill, point, px, relative, size,
+    App, AvailableSpace, Bounds, ContentMask, DispatchPhase, Element, ElementId,
+    ElementInputHandler, Entity, GlobalElementId, HighlightStyle, InspectorElementId, IntoElement,
+    LayoutId, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine, SharedString,
+    Size, Style, TextAlign, TextRun, Window, WrappedLine, fill, point, px, relative, size,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -76,6 +76,34 @@ fn line_left(align: TextAlign, viewport_width: Pixels, line_width: Pixels) -> Pi
     }
 }
 
+fn highlight_runs(
+    text: &str,
+    highlights: &[(Range<usize>, HighlightStyle)],
+    base: &ala::TextStyle,
+) -> Vec<TextRun> {
+    let mut runs = Vec::with_capacity(highlights.len() * 2 + 1);
+    let mut at = 0;
+    for (range, style) in highlights {
+        let end = range.end.min(text.len());
+        if range.start < at
+            || range.start >= end
+            || !text.is_char_boundary(range.start)
+            || !text.is_char_boundary(end)
+        {
+            continue;
+        }
+        if range.start > at {
+            runs.push(base.to_run(range.start - at));
+        }
+        runs.push(base.clone().highlight(*style).to_run(end - range.start));
+        at = end;
+    }
+    if at < text.len() || runs.is_empty() {
+        runs.push(base.to_run(text.len() - at));
+    }
+    runs
+}
+
 fn row_starts(line: &WrappedLine) -> Vec<usize> {
     let mut starts = Vec::with_capacity(line.wrap_boundaries().len() + 1);
     starts.push(0);
@@ -87,14 +115,6 @@ fn row_starts(line: &WrappedLine) -> Vec<usize> {
 }
 
 impl LastLayout {
-    fn rows(&self) -> usize {
-        self.lines
-            .iter()
-            .map(|line| line.wrap_boundaries().len() + 1)
-            .sum::<usize>()
-            .max(1)
-    }
-
     fn local_offset(&self, index: usize, offset: usize) -> usize {
         let local = match &self.mask {
             Some(mask) => mask.to_display(offset),
@@ -280,19 +300,44 @@ impl Element for TextElement {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let line_height = window.line_height();
-        let state = self.state.read(cx);
-
         let mut style = Style::default();
         style.size.width = relative(1.).into();
-        style.size.height = match state.mode() {
-            InputMode::SingleLine => line_height.into(),
-            InputMode::AutoGrow { min_rows, max_rows } => {
-                let rows = state.measured_rows.clamp(min_rows, max_rows.max(min_rows));
-                (line_height * rows as f32).into()
-            }
+        let InputMode::AutoGrow { min_rows, max_rows } = self.state.read(cx).mode() else {
+            style.size.height = line_height.into();
+            return (window.request_layout(style, [], cx), ());
         };
 
-        (window.request_layout(style, [], cx), ())
+        let state = self.state.clone();
+        let text_style = window.text_style();
+        let font_size = text_style.font_size.to_pixels(window.rem_size());
+        let layout_id =
+            window.request_measured_layout(style, move |known, available, window, cx| {
+                let width = known.width.or(match available.width {
+                    AvailableSpace::Definite(width) => Some(width),
+                    _ => None,
+                });
+                let state = state.read(cx);
+                let value = state.text();
+                let rows = if value.is_empty() {
+                    1
+                } else {
+                    let runs = highlight_runs(value, state.highlights(), &text_style);
+                    window
+                        .text_system()
+                        .shape_text(value.clone(), font_size, &runs, width, None)
+                        .map_or(1, |lines| {
+                            lines
+                                .iter()
+                                .map(|line| line.wrap_boundaries().len() + 1)
+                                .sum()
+                        })
+                };
+                size(
+                    width.unwrap_or_default(),
+                    line_height * rows.clamp(min_rows, max_rows) as f32,
+                )
+            });
+        (layout_id, ())
     }
 
     fn prepaint(
@@ -356,15 +401,20 @@ impl Element for TextElement {
             text_style.color
         };
         let color = if disabled { color.opacity(0.5) } else { color };
-        let run = TextRun {
+        let base = ala::TextStyle {
             color,
-            ..text_style.to_run(display_text.len())
+            ..text_style.clone()
+        };
+        let runs = if mask.is_some() || is_placeholder {
+            vec![base.to_run(display_text.len())]
+        } else {
+            highlight_runs(&display_text, state.highlights(), &base)
         };
 
         let wrap_width = mode.is_multi_line().then_some(bounds.size.width);
         let lines: Vec<WrappedLine> = window
             .text_system()
-            .shape_text(display_text, font_size, &[run], wrap_width, None)
+            .shape_text(display_text, font_size, &runs, wrap_width, None)
             .unwrap_or_default()
             .into_iter()
             .collect();
@@ -408,7 +458,6 @@ impl Element for TextElement {
         );
         layout.origin = bounds.origin + scroll;
 
-        let rows = if is_placeholder { 1 } else { layout.rows() };
         let selection_quads = layout
             .selection_quads(&selection)
             .into_iter()
@@ -440,16 +489,12 @@ impl Element for TextElement {
             size: size(caret_width, line_height),
         });
 
-        self.state.update(cx, |state, cx| {
+        self.state.update(cx, |state, _| {
             state.last_layout = Some(layout.clone());
             state.scroll = scroll;
             state.follow_cursor = false;
             state.reset_scroll = false;
             state.revealed_viewport = viewport;
-            if state.measured_rows != rows {
-                state.measured_rows = rows;
-                cx.notify();
-            }
         });
         if reveal {
             window.request_autoscroll(bounds.dilate(REVEAL_MARGIN));
@@ -480,6 +525,14 @@ impl Element for TextElement {
             ElementInputHandler::new(layout.bounds, self.state.clone()),
             cx,
         );
+        if window.visual_viewport_bounds() == window.target_visual_viewport_bounds()
+            && self
+                .state
+                .update(cx, |state, _| mem::take(&mut state.edit_menu_pending))
+        {
+            let caret = self.state.read(cx).selection().start;
+            window.show_edit_menu(layout.origin + layout.position_for_offset(caret));
+        }
 
         let caret_color = window.text_style().color;
         let selection_color = caret_color.wash();
@@ -489,6 +542,23 @@ impl Element for TextElement {
                 bounds: layout.bounds,
             }),
             |window| {
+                for ((line, top), left) in layout
+                    .lines
+                    .iter()
+                    .zip(layout.line_tops.iter())
+                    .zip(layout.line_lefts.iter())
+                {
+                    let origin = layout.origin + point(*left, *top);
+                    _ = line.paint_background(
+                        origin,
+                        layout.line_height,
+                        TextAlign::Left,
+                        None,
+                        window,
+                        cx,
+                    );
+                }
+
                 for quad in &prepaint.selection_quads {
                     window.paint_quad(fill(*quad, selection_color));
                 }
@@ -934,6 +1004,33 @@ mod tests {
         let (state, cx) = field_with("one\ntwo", SECRET, true, cx);
         assert_eq!(shaped(&state, cx), "one\ntwo");
         assert!(layout(&state, cx).mask.is_none());
+    }
+
+    #[ala::test]
+    fn an_auto_grow_field_grows_in_the_frame_that_adds_a_line(cx: &mut TestAppContext) {
+        let (state, cx) = field_with("one", PLAIN, true, cx);
+        let line = layout(&state, cx).line_height;
+        assert_close(layout(&state, cx).bounds.size.height, line, "one line");
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.insert("\ntwo\nthree", window, cx));
+            let _ = window.draw(cx);
+        });
+        let grown = layout(&state, cx);
+        assert_close(grown.bounds.size.height, line * 3., "three lines");
+        assert_eq!(grown.origin.y, grown.bounds.origin.y);
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.insert("\n4\n5\n6\n7", window, cx);
+            });
+            let _ = window.draw(cx);
+        });
+        assert_close(
+            layout(&state, cx).bounds.size.height,
+            line * 5.,
+            "capped at five",
+        );
     }
 
     fn normal_field<'a>(

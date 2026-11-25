@@ -11,7 +11,7 @@
   font-weight: var(--penna-text-small-weight);
   line-height: var(--penna-text-small-line);
   white-space: nowrap;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   user-select: none;
   outline: none;
   --penna-icon-size: 12px;
@@ -43,9 +43,7 @@
   align-items: center;
   gap: var(--penna-space-2);
   box-sizing: border-box;
-  padding: var(--penna-space-2);
-  --penna-around: var(--penna-space-2);
-  --penna-around-rows: var(--penna-control-lg);
+  padding: 0;
 }
 
 .penna-tab-strip[data-penna]:has(> :only-child) {
@@ -100,16 +98,16 @@
   top: 0.5px;
 }
 
-.penna-tab[data-penna][data-state~="focused"] {
+.penna-tab[data-penna]:is(:focus-visible, [data-state~="focused"]) {
   --penna-ring: var(--penna-focus);
 }
 
-.penna-tab[data-penna][data-state~="focused"]::after {
+.penna-tab[data-penna]:is(:focus-visible, [data-state~="focused"])::after {
   content: "";
   position: absolute;
   inset: var(--penna-ring-inset, -1.5px);
   border: 1.5px solid var(--penna-ring);
   border-radius: var(--penna-ring-r, 12px);
-  corner-shape: inherit;
+  corner-shape: superellipse(var(--penna-ring-k, 1));
   pointer-events: none;
 }

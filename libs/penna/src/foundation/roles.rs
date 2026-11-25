@@ -1,4 +1,4 @@
-use crate::{Fill, Highlight, Ink, Kind, Shadow, Shape, StylePatch, SurfaceRole};
+use crate::{Fill, Highlight, Ink, Kind, Shadow, Shape, StylePatch, SurfaceRole, Tone};
 
 const P: StylePatch = StylePatch::EMPTY;
 
@@ -28,11 +28,7 @@ pub const WINDOW_CONTROLS: SurfaceRole = SurfaceRole::under(
     "Window controls",
     "Minimize, maximize and close on Windows and Linux",
 )
-.with(
-    P.shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
+.with(P.hover(Highlight::Tint).selected(Highlight::None));
 pub const SIDEBAR: SurfaceRole = SurfaceRole::new(
     "sidebar",
     Kind::Panel,
@@ -172,7 +168,7 @@ pub const TAB_STRIP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.strip",
     "Tab strips",
-    "The track the window tabs sit in, in the title bar",
+    "The track window tabs and page tabs sit in",
 )
 .with(
     P.fill(Fill::Tint)
@@ -185,7 +181,7 @@ pub const TAB_PAGE: SurfaceRole = SurfaceRole::under(
     "Browser tabs",
     "Tabs in a browser pane",
 )
-.with(P.selected(Highlight::Glass));
+.with(P.ink(Ink::Rest).selected(Highlight::Glass));
 pub const TAB_TRAY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "tab.tray",
@@ -334,7 +330,7 @@ pub const TILE_MINI: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "tile.mini",
     "Panes in a window tile",
-    "The panes drawn where they split inside a window's tile in the phone overview, ringed on the one the window opens to",
+    "The panes drawn where they split inside a window's tile in the phone overview",
 )
 .with(P.fill(Fill::None).selected(Highlight::Ring));
 pub const BAR_PANE: SurfaceRole = SurfaceRole::new(
@@ -354,17 +350,30 @@ pub const CARD_BUBBLE: SurfaceRole = SurfaceRole::new(
     "card.bubble",
     Kind::Card,
     "Message bubbles",
-    "Your messages in an agent chat",
-);
+    "Your messages in an agent chat, washed in the accent",
+)
+.with(P.fill(Fill::Tint))
+.toned(Tone::Accent);
 pub const CARD_CODE: SurfaceRole = SurfaceRole::new(
     "card.code",
     Kind::Card,
     "Code",
-    "Code blocks, diagrams and inline code in messages",
+    "Code blocks and inline code in messages",
 );
-pub const CARD_FIGURE: SurfaceRole =
-    SurfaceRole::new("card.figure", Kind::Card, "Tables", "Tables in messages")
-        .with(P.fill(Fill::None));
+pub const CARD_FIGURE: SurfaceRole = SurfaceRole::new(
+    "card.figure",
+    Kind::Card,
+    "Figures",
+    "Tables and diagrams in messages",
+)
+.with(P.fill(Fill::None));
+pub const CARD_ACTIVITY: SurfaceRole = SurfaceRole::new(
+    "card.activity",
+    Kind::Card,
+    "Activity",
+    "Subagents, background tasks, plans and answered questions in an agent chat",
+)
+.with(P.fill(Fill::Tint).hover(Highlight::Tint));
 pub const CARD_IMAGE: SurfaceRole = SurfaceRole::new(
     "card.image",
     Kind::Card,
@@ -375,8 +384,9 @@ pub const FIELD_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "field.composer",
     "Composer",
-    "The field you write to an agent in",
-);
+    "The field you write to an agent in, and the questions and approvals it grows",
+)
+.with(P.fill(Fill::Glass).selected(Highlight::None));
 pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
     "field.address",
     Kind::Field,
@@ -387,7 +397,7 @@ pub const FIELD_ADDRESS: SurfaceRole = SurfaceRole::new(
 
 pub(crate) const RIMMED_PICKS: [SurfaceRole; 2] = [TAB_WINDOW, TAB_PAGE];
 
-pub const RECIPES: [SurfaceRole; 32] = [
+pub const RECIPES: [SurfaceRole; 33] = [
     TAB_WINDOW,
     TAB_STRIP,
     TAB_PAGE,
@@ -418,6 +428,7 @@ pub const RECIPES: [SurfaceRole; 32] = [
     CARD_CODE,
     CARD_FIGURE,
     CARD_IMAGE,
+    CARD_ACTIVITY,
     FIELD_COMPOSER,
     FIELD_ADDRESS,
 ];

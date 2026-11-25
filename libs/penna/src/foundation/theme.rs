@@ -10,7 +10,9 @@ use ala::{
 
 use crate::{BASE_UI_FONT_SIZE, TITLE_BAR_HEIGHT, foundation::highlighter::HighlightTheme};
 
-use super::{Colorize as _, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color};
+use super::{
+    Colorize as _, ShadowMaterial, Smoothing, Space, Surface, ThemeColor, color, glass::GlassLook,
+};
 
 pub const CHROME_GAP: f32 = Space::INSET_CHROME.design_px();
 
@@ -71,6 +73,7 @@ pub struct Theme {
     pub font_size: Pixels,
     pub mono_font_family: SharedString,
     pub mono_font_size: Pixels,
+    pub chat_font_family: Option<SharedString>,
     pub radius: Pixels,
     pub control_radius: Option<Pixels>,
     contrast: f32,
@@ -80,10 +83,12 @@ pub struct Theme {
     pub float_shadow: ShadowMaterial,
     pub row_inset: Pixels,
     pub glass: Option<GlassMaterial>,
+    pub glass_look: Option<GlassLook>,
     pub inspect: Option<SharedString>,
     pub inspect_strength: f32,
     pub pane_margin: Pixels,
-    pub window_opacity: f32,
+    window_opacity: f32,
+    backdrop: [f32; 2],
     pub transparent: Hsla,
     pub scrollbar_show: ScrollbarShow,
     pub notification: NotificationSettings,
@@ -99,6 +104,7 @@ pub const CORNER_SMOOTHING: f32 = 4.0;
 pub const DEFAULT_RADIUS: f32 = 12.0;
 pub const ADAPTIVE_CORNER_FRACTION: f32 = 0.45;
 pub const PANE_HEADER_CONTROL_HEIGHT: Pixels = px(22.0);
+const MAX_PANE_RADIUS: f32 = 16.0;
 pub const PANE_HEADER_HEIGHT: Pixels = px(22.0 + 2.0 * CHROME_GAP);
 const FLUSH_PANE_HEADER_HEIGHT: Pixels = px(40.0);
 
@@ -153,8 +159,16 @@ impl Theme {
         }
     }
 
+    pub fn phone_radius(&self) -> Pixels {
+        self.radius.max(px(0.0)) * 2.0
+    }
+
     pub fn inset_rows(&self) -> bool {
         self.row_inset > px(0.0)
+    }
+
+    pub fn row_gap(&self) -> Option<Space> {
+        self.inset_rows().then_some(Space::S2)
     }
 
     pub fn outlined(&self) -> bool {
@@ -170,11 +184,12 @@ impl Theme {
     }
 
     pub fn pane_radius(&self) -> Pixels {
-        if self.radius <= px(0.0) {
-            return px(0.0);
+        let share = super::interface_theme::corner_share(f32::from(self.radius));
+        let knee = MAX_PANE_RADIUS / super::interface_theme::MAX_CORNER_RADIUS;
+        if share <= knee {
+            return self.radius.max(px(0.0));
         }
-        self.radius
-            .min(self.control_corner(PANE_HEADER_CONTROL_HEIGHT) + px(CHROME_GAP))
+        px(MAX_PANE_RADIUS * (1.0 - (1.0 - share).powi(2) / (1.0 - knee)))
     }
 
     pub fn pane_header_height(&self) -> Pixels {
@@ -197,6 +212,29 @@ impl Theme {
         self.foreground.opacity(color::divider_weight())
     }
 
+    pub fn data_palette(&self) -> [Hsla; 8] {
+        const HUES: [f32; 8] = [255.0, 340.0, 75.0, 295.0, 152.0, 205.0, 35.0, 228.0];
+        let (l, c) = if self.mode.is_dark() {
+            (0.72, 0.16)
+        } else {
+            (0.56, 0.17)
+        };
+        HUES.map(|h| color::oklch(l, c, h))
+    }
+
+    pub fn data_color(&self, index: usize) -> Hsla {
+        let palette = self.data_palette();
+        palette[index % palette.len()]
+    }
+
+    pub fn border(&self) -> Hsla {
+        if self.window_opacity < 1.0 {
+            self.foreground.opacity(color::edge_weight())
+        } else {
+            self.colors.border()
+        }
+    }
+
     pub fn contrast(&self) -> f32 {
         self.contrast
     }
@@ -204,6 +242,25 @@ impl Theme {
     pub fn set_colors(&mut self, colors: ThemeColor) {
         color::set_muted_ceiling(colors.foreground, colors.background);
         self.colors = colors;
+        self.highlight_theme =
+            HighlightTheme::with_diff_inks(&self.highlight_theme, colors.success, colors.danger);
+        self.show_window();
+    }
+
+    pub fn window_opacity(&self) -> f32 {
+        self.window_opacity
+    }
+
+    pub fn set_window(&mut self, opacity: f32, backdrop: [f32; 2]) {
+        self.window_opacity = opacity;
+        self.backdrop = backdrop;
+        self.show_window();
+    }
+
+    fn show_window(&self) {
+        color::set_see_through(
+            (self.window_opacity < 1.0).then(|| (self.ground().fill, self.backdrop)),
+        );
     }
 
     pub fn set_contrast(&mut self, value: f32) {
@@ -252,16 +309,23 @@ impl Theme {
         let colors = *ThemeColor::for_mode(mode);
         let theme = cx.global_mut::<Theme>();
         theme.mode = mode;
-        theme.set_colors(colors);
         theme.highlight_theme = if mode.is_dark() {
             HighlightTheme::default_dark()
         } else {
             HighlightTheme::default_light()
         };
+        theme.set_colors(colors);
 
         if let Some(window) = window {
             window.refresh();
         }
+    }
+
+    #[must_use]
+    pub fn chat_font(&self) -> SharedString {
+        self.chat_font_family
+            .clone()
+            .unwrap_or_else(|| self.font_family.clone())
     }
 
     #[inline]
@@ -273,6 +337,18 @@ impl Theme {
     }
 }
 
+pub fn platform_mono_font_family() -> SharedString {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        "Menlo".into()
+    } else if cfg!(target_os = "windows") {
+        "Consolas".into()
+    } else if cfg!(target_family = "wasm") {
+        "CommitMono".into()
+    } else {
+        "DejaVu Sans Mono".into()
+    }
+}
+
 impl From<&ThemeColor> for Theme {
     fn from(colors: &ThemeColor) -> Self {
         Theme {
@@ -280,14 +356,9 @@ impl From<&ThemeColor> for Theme {
             transparent: Hsla::transparent_black(),
             font_family: ".SystemUIFont".into(),
             font_size: px(BASE_UI_FONT_SIZE),
-            mono_font_family: if cfg!(any(target_os = "macos", target_os = "ios")) {
-                "Menlo".into()
-            } else if cfg!(target_os = "windows") {
-                "Consolas".into()
-            } else {
-                "DejaVu Sans Mono".into()
-            },
+            mono_font_family: platform_mono_font_family(),
             mono_font_size: px(13.),
+            chat_font_family: None,
             radius: px(DEFAULT_RADIUS),
             control_radius: None,
             contrast: 1.0,
@@ -297,10 +368,12 @@ impl From<&ThemeColor> for Theme {
             float_shadow: ShadowMaterial::FLOAT,
             row_inset: px(6.0),
             glass: None,
+            glass_look: None,
             inspect: None,
             inspect_strength: 1.0,
             pane_margin: px(0.0),
             window_opacity: 1.0,
+            backdrop: [0.0, 1.0],
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             colors: *colors,
@@ -309,7 +382,20 @@ impl From<&ThemeColor> for Theme {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Hash)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    PartialOrd,
+    Eq,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum ThemeMode {
     #[default]
     Light,
@@ -363,8 +449,8 @@ mod tests {
     }
 
     #[test]
-    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_to_the_radius_up_to_its_buttons_plus_the_gap()
-     {
+    fn every_control_rounds_to_one_share_of_its_height_and_a_pane_eases_from_the_radius_to_sixteen()
+    {
         let theme = Theme::default();
         assert!((theme.control_roundness() - 0.31177).abs() < 1e-4);
         assert!((f32::from(theme.control_corner(px(28.0))) - 8.7295).abs() < 1e-3);
@@ -376,25 +462,24 @@ mod tests {
         assert!((f32::from(widest.control_corner(px(28.0))) - 12.6).abs() < 1e-4);
         for (radius, pane) in [
             (4.0, 4.0),
-            (8.41, 8.41),
-            (12.0, 12.0),
-            (16.0, 13.92),
-            (25.0, 15.9),
+            (10.24, 10.24),
+            (12.0, 11.8063),
+            (16.0, 14.2222),
+            (20.25, 15.5556),
+            (25.0, 16.0),
         ] {
-            let theme = Theme {
-                radius: px(radius),
-                ..Theme::default()
-            };
-            assert!(
-                (f32::from(theme.pane_radius()) - pane).abs() < 1e-3,
-                "{radius}"
-            );
+            for control_radius in [None, Some(ala::FULL_CORNER_RADIUS)] {
+                let theme = Theme {
+                    radius: px(radius),
+                    control_radius,
+                    ..Theme::default()
+                };
+                assert!(
+                    (f32::from(theme.pane_radius()) - pane).abs() < 1e-3,
+                    "{radius} {control_radius:?}"
+                );
+            }
         }
-        let capsules = Theme {
-            control_radius: Some(ala::FULL_CORNER_RADIUS),
-            ..Theme::default()
-        };
-        assert_eq!(capsules.pane_radius(), px(12.0));
         let square = Theme {
             radius: px(0.0),
             ..Theme::default()

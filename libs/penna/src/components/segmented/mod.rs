@@ -26,6 +26,9 @@ pub struct SegmentedControl {
     on: Option<Ground>,
     size: Size,
     disabled: bool,
+    full_width: bool,
+    dots: Vec<usize>,
+    dimmed: Vec<usize>,
     on_select: Option<SelectHandler>,
 }
 
@@ -50,6 +53,9 @@ impl SegmentedControl {
             on: None,
             size: Size::Medium,
             disabled: false,
+            full_width: false,
+            dots: Vec::new(),
+            dimmed: Vec::new(),
             on_select: None,
         }
     }
@@ -63,6 +69,24 @@ impl SegmentedControl {
     #[must_use]
     pub const fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
+        self
+    }
+
+    #[must_use]
+    pub const fn full_width(mut self) -> Self {
+        self.full_width = true;
+        self
+    }
+
+    #[must_use]
+    pub fn dots(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.dots = indices.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn dimmed(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.dimmed = indices.into_iter().collect();
         self
     }
 
@@ -107,6 +131,7 @@ impl RenderOnce for SegmentedControl {
         let border = layer.border_width.max(px(1.0));
         let size = self.size;
         let disabled = self.disabled;
+        let full_width = self.full_width;
         let height = rems_from_px(size.control_px()).to_pixels(window.rem_size());
         let inset = Space::S2.rems().to_pixels(window.rem_size());
         let inner = height - inset * 2.0 - border * 2.0;
@@ -188,6 +213,8 @@ impl RenderOnce for SegmentedControl {
 
         let skip = usize::from(pill.is_some());
         let measured = state.clone();
+        let dots = self.dots;
+        let dimmed = self.dimmed;
         let segments = self
             .segments
             .into_iter()
@@ -197,6 +224,9 @@ impl RenderOnce for SegmentedControl {
                 let click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>> =
                     on_select.clone().map(|on_select| {
                         Rc::new(move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+                            if index != selected {
+                                cx.haptic(ala::Haptic::Selection);
+                            }
                             on_select(index, window, cx);
                         }) as Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>
                     });
@@ -207,7 +237,13 @@ impl RenderOnce for SegmentedControl {
                     .aria_selected(index == selected)
                     .relative()
                     .flex()
-                    .flex_none()
+                    .map(|segment| {
+                        if full_width {
+                            segment.flex_1().flex_basis(px(0.))
+                        } else {
+                            segment.flex_none()
+                        }
+                    })
                     .items_center()
                     .justify_center()
                     .h(inner)
@@ -232,10 +268,24 @@ impl RenderOnce for SegmentedControl {
                             .active(move |style| style.bg(pressed_fill))
                         }
                     })
-                    .child(label)
+                    .map(|segment| {
+                        if dimmed.contains(&index) {
+                            segment.child(div().opacity(DIM).child(label))
+                        } else {
+                            segment.child(label)
+                        }
+                    })
+                    .when(dots.contains(&index), |segment| {
+                        segment.gap(Space::S6).child(crate::components::chip::dot(
+                            Tone::Accent,
+                            ground,
+                            cx,
+                        ))
+                    })
                     .when_some(click, |segment, click| {
                         let tap = Rc::clone(&click);
                         segment
+                            .when(!disabled, crate::StyledExt::click_cursor)
                             .on_click(move |event, window, cx| click(event, window, cx))
                             .when(coarse && slop > 0.0, |segment| {
                                 segment.child(
@@ -258,18 +308,23 @@ impl RenderOnce for SegmentedControl {
             } else {
                 PaintState::Rest
             },
-            true,
         );
-        let mut hover = field_layer(cx.theme(), track, PaintState::Hover, true);
+        let mut hover = field_layer(cx.theme(), track, PaintState::Hover);
         hover.border = chrome.border;
-        let mut held = field_layer(cx.theme(), track, PaintState::Active, true);
+        let mut held = field_layer(cx.theme(), track, PaintState::Active);
         held.border = chrome.border;
         let control = h_flex()
             .id(self.id)
-            .flex_none()
+            .map(|control| {
+                if full_width {
+                    control.w_full()
+                } else {
+                    control.flex_none()
+                }
+            })
             .p(Space::S2)
             .layer(&chrome)
-            .when(!disabled, |this| {
+            .when(!disabled && !focused, |this| {
                 this.hover(move |style| crate::foundation::restyle(style, &hover))
                     .active(move |style| crate::foundation::restyle(style, &held))
             })
@@ -298,6 +353,7 @@ impl RenderOnce for SegmentedControl {
             .child(
                 h_flex()
                     .relative()
+                    .when(full_width, ala::Styled::flex_1)
                     .children(pill)
                     .children(segments)
                     .on_children_prepainted(move |bounds, window, cx| {

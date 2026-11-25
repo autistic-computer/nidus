@@ -2,20 +2,22 @@ use std::rc::Rc;
 
 use crate::Space;
 use ala::{
-    Action, AnyTooltip, AnyView, App, AppContext as _, Context, ElementId, InteractiveElement,
-    IntoElement, ParentElement, Render, SharedString, StyleRefinement, Styled, Window, canvas, div,
-    point, prelude::FluentBuilder,
+    Action, AnyTooltip, AnyView, App, AppContext as _, AsKeystroke as _, Context, ElementId,
+    InteractiveElement, IntoElement, KeyContext, Keystroke, ParentElement, Render, SharedString,
+    StyleRefinement, Styled, Window, canvas, div, point, prelude::FluentBuilder,
 };
 
-use crate::Colorize as _;
 use crate::{
-    ActiveTheme as _, StyledExt as _, Surface, SurfaceRole, TextStyle, components::kbd::Kbd, h_flex,
+    ActiveTheme as _, Colorize as _, Sizable as _, StyledExt as _, Surface, SurfaceRole, TextStyle,
+    components::kbd::Kbd, h_flex, v_flex,
 };
 
 pub struct Tooltip {
     style: StyleRefinement,
     text: SharedString,
+    meta: Option<SharedString>,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
+    keys: Vec<Keystroke>,
 }
 
 impl Tooltip {
@@ -24,8 +26,27 @@ impl Tooltip {
         Self {
             style: StyleRefinement::default(),
             text: text.into(),
+            meta: None,
             action: None,
+            keys: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_meta(text: impl Into<SharedString>, meta: impl Into<SharedString>) -> Self {
+        Self::new(text).meta(meta)
+    }
+
+    #[must_use]
+    pub fn meta(mut self, meta: impl Into<SharedString>) -> Self {
+        self.meta = Some(meta.into());
+        self
+    }
+
+    #[must_use]
+    pub fn keys(mut self, keys: impl IntoIterator<Item = Keystroke>) -> Self {
+        self.keys = keys.into_iter().collect();
+        self
     }
 
     #[must_use]
@@ -50,32 +71,81 @@ impl Styled for Tooltip {
 
 impl Render for Tooltip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let key_binding = self.action.as_ref().and_then(|(action, context)| {
-            Kbd::binding_for_action(action.as_ref(), context.as_deref(), window)
-        });
+        let bound = self
+            .action
+            .as_ref()
+            .map(|(action, context)| bound_keys(action.as_ref(), context.as_deref(), window))
+            .unwrap_or_default();
+        let keys = if self.keys.is_empty() {
+            bound
+        } else {
+            self.keys.clone()
+        };
+        let surface = Surface::new(SurfaceRole::TOOLTIP);
+        let ground = cx.theme().ground_of(surface);
+        let muted = cx.theme().foreground.muted();
+        let header = h_flex()
+            .gap(Space::S12)
+            .justify_between()
+            .items_center()
+            .child(div().child(self.text.clone()))
+            .when(!keys.is_empty(), |this| {
+                this.child(
+                    h_flex()
+                        .flex_shrink_0()
+                        .gap(Space::GAP_TIGHT)
+                        .children(keys.into_iter().map(|key| Kbd::new(key).small().on(ground))),
+                )
+            });
+
+        if let Some(meta) = self.meta.clone() {
+            return div().child(
+                v_flex()
+                    .m(Space::S12)
+                    .px(Space::S10)
+                    .py(Space::S6)
+                    .gap(Space::S2)
+                    .max_w(ala::px(260.0))
+                    .font_family(cx.theme().font_family.clone())
+                    .type_style(TextStyle::Small, cx)
+                    .surface(surface, cx)
+                    .refine_style(&self.style)
+                    .child(header)
+                    .child(
+                        div()
+                            .type_style(TextStyle::Caption, cx)
+                            .text_color(muted)
+                            .child(meta),
+                    ),
+            );
+        }
 
         div().child(
-            h_flex()
+            header
                 .m(Space::S12)
-                .px(Space::S8)
-                .py(Space::S2)
-                .gap(Space::S12)
-                .justify_between()
+                .px(Space::S10)
+                .py(Space::S4)
                 .font_family(cx.theme().font_family.clone())
                 .type_style(TextStyle::Small, cx)
-                .surface(Surface::new(SurfaceRole::TOOLTIP), cx)
-                .refine_style(&self.style)
-                .child(div().child(self.text.clone()))
-                .when_some(key_binding, |this, kbd| {
-                    this.child(
-                        div()
-                            .flex_shrink_0()
-                            .text_color(cx.theme().foreground.muted())
-                            .child(kbd.text()),
-                    )
-                }),
+                .surface(surface, cx)
+                .refine_style(&self.style),
         )
     }
+}
+
+fn bound_keys(action: &dyn Action, context: Option<&str>, window: &Window) -> Vec<Keystroke> {
+    match context.and_then(|context| KeyContext::parse(context).ok()) {
+        Some(context) => window.highest_precedence_binding_for_action_in_context(action, context),
+        None => window.highest_precedence_binding_for_action(action),
+    }
+    .map(|binding| {
+        binding
+            .keystrokes()
+            .iter()
+            .map(|key| key.as_keystroke().clone())
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 #[derive(Default)]
@@ -88,6 +158,7 @@ pub(crate) fn with_focus_tooltip<E: ParentElement + InteractiveElement + Styled>
     id: &ElementId,
     focused: bool,
     text: Option<SharedString>,
+    keys: &[Keystroke],
     window: &mut Window,
     cx: &mut App,
 ) -> E {
@@ -121,7 +192,7 @@ pub(crate) fn with_focus_tooltip<E: ParentElement + InteractiveElement + Styled>
     if !shown {
         return this;
     }
-    let view = Tooltip::new(text).build(window, cx);
+    let view = Tooltip::new(text).keys(keys.to_vec()).build(window, cx);
     this.child(
         canvas(
             move |bounds, window, _| {

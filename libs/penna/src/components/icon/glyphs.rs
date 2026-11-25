@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_2, TAU};
 use std::fmt::Write as _;
 use std::sync::LazyLock;
@@ -20,8 +22,29 @@ fn icons() -> &'static [Value] {
     SET["icons"].as_array().map_or(&[], Vec::as_slice)
 }
 
+static BY_NAME: LazyLock<HashMap<&'static str, &'static Value>> = LazyLock::new(|| {
+    let mut by_name = HashMap::new();
+    for icon in icons() {
+        if let Some(name) = icon["name"].as_str() {
+            by_name.entry(name).or_insert(icon);
+        }
+    }
+    by_name
+});
+
+#[derive(Default)]
+struct DrawnPaths {
+    radius: f32,
+    smoothing: f32,
+    paths: HashMap<&'static str, SharedString>,
+}
+
+thread_local! {
+    static DRAWN_PATHS: RefCell<DrawnPaths> = RefCell::default();
+}
+
 fn icon(name: &str) -> Option<&'static Value> {
-    icons().iter().find(|icon| icon["name"] == name)
+    BY_NAME.get(name).copied()
 }
 
 pub fn names() -> impl Iterator<Item = &'static str> {
@@ -47,8 +70,24 @@ pub fn catalog() -> impl Iterator<Item = Glyph> {
 
 pub fn path(icon_path: &str, radius: f32, smoothing: f32) -> Option<SharedString> {
     let name = icon_path.strip_prefix("icons/")?.strip_suffix(".svg")?;
-    icon(name)?;
-    Some(format!("icons/{radius:.2}-{smoothing:.2}/{name}.svg").into())
+    DRAWN_PATHS.with_borrow_mut(|drawn| {
+        if drawn.radius.to_bits() != radius.to_bits()
+            || drawn.smoothing.to_bits() != smoothing.to_bits()
+        {
+            *drawn = DrawnPaths {
+                radius,
+                smoothing,
+                paths: HashMap::new(),
+            };
+        }
+        if let Some(path) = drawn.paths.get(name) {
+            return Some(path.clone());
+        }
+        let (name, _) = BY_NAME.get_key_value(name)?;
+        let path = SharedString::from(format!("icons/{radius:.2}-{smoothing:.2}/{name}.svg"));
+        drawn.paths.insert(name, path.clone());
+        Some(path)
+    })
 }
 
 pub fn svg(name: &str, radius: f32, smoothing: f32) -> Option<String> {
@@ -64,8 +103,23 @@ pub fn svg(name: &str, radius: f32, smoothing: f32) -> Option<String> {
     let mut out = format!(
         r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{stroke}" stroke-linecap="{cap}" stroke-linejoin="{join}">"#
     );
+    let mut body = String::new();
+    let mut cuts = String::new();
     for part in icon["parts"].as_array()? {
-        out.push_str(&draw(part.as_array()?, radius, smoothing)?);
+        let part = part.as_array()?;
+        if part.first()?.as_str()? == "cut" {
+            cuts.push_str(&draw(part.get(1)?.as_array()?, radius, smoothing)?);
+        } else {
+            body.push_str(&draw(part, radius, smoothing)?);
+        }
+    }
+    if cuts.is_empty() {
+        out.push_str(&body);
+    } else {
+        let _ = write!(
+            out,
+            r#"<mask id="cut-{name}" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="white" stroke="none"/><g stroke="black">{cuts}</g></mask><g mask="url(#cut-{name})">{body}</g>"#
+        );
     }
     out.push_str("</svg>");
     Some(out)
@@ -198,14 +252,6 @@ fn draw(part: &[Value], radius: f32, smoothing: f32) -> Option<String> {
             format!(
                 r#"{} fill="currentColor" stroke="none"/>"#,
                 inner.strip_suffix("/>")?
-            )
-        }
-        "fade" => {
-            let inner = draw(args.get(1)?.as_array()?, radius, smoothing)?;
-            format!(
-                r#"{} opacity="{}"/>"#,
-                inner.strip_suffix("/>")?,
-                num(n(0)?)
             )
         }
         "d" => stroke(args.first()?.as_str()?.to_owned()),

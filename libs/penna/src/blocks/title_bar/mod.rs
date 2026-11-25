@@ -1,16 +1,21 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, ClickEvent, Decorations, DefiniteLength, Div, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Point, RenderOnce, Stateful,
-    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
-    WindowControlArea, div, point, prelude::FluentBuilder as _, px,
+    AnyElement, App, Bounds, ClickEvent, Context, Decorations, DefiniteLength, Div,
+    FULL_CORNER_RADIUS, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, Point,
+    RenderOnce, Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, TitlebarOptions, Window, WindowControlArea, WindowControlHoverStyle, div,
+    flat::{self, Align, BoxStyle, BoxStyleId, Extent, Flat, Flow, Ui},
+    point,
+    prelude::FluentBuilder as _,
+    px,
 };
 use smallvec::SmallVec;
 
 use crate::{
-    ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer, PaintState,
-    RuleLook, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
+    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, InteractiveElementExt as _, Layer,
+    PaintState, RuleLook, Smoothing, StyledExt as _, Surface, SurfaceRole, Tone,
+    foundation::restyle, h_flex,
 };
 use crate::{Space, TextStyle, UiZoom};
 
@@ -37,13 +42,53 @@ pub fn draws_window_controls(window: &Window) -> bool {
             && matches!(window.window_decorations(), Decorations::Client { .. }))
 }
 
+const WINDOW_CONTROL_SIZE_PX: f32 = 24.0;
+const WINDOW_CONTROL_GAP_PX: f32 = 8.0;
+pub const WINDOW_CONTROL_SIZE: Pixels = px(WINDOW_CONTROL_SIZE_PX);
+pub const WINDOW_CONTROL_GAP: Pixels = px(WINDOW_CONTROL_GAP_PX);
+pub const WINDOW_CONTROLS_SPAN: Pixels =
+    px(WINDOW_CONTROL_SIZE_PX * 3.0 + WINDOW_CONTROL_GAP_PX * 2.0);
+pub const WINDOW_CONTROLS_INSET: Pixels = px(crate::CHROME_GAP);
+
 #[must_use]
 pub fn window_controls_width(window: &Window) -> Pixels {
     if draws_window_controls(window) {
-        px(f32::from(CONTROL_ICON_WIDTH) * 3.0)
+        WINDOW_CONTROLS_SPAN
     } else {
         px(0.0)
     }
+}
+
+fn window_control_size(cx: &App) -> Pixels {
+    if cfg!(target_os = "linux")
+        && let Some(icons) = cx.window_control_icons()
+    {
+        return icons
+            .style
+            .button_size
+            .clamp(MIN_SYSTEM_CONTROL_SIZE, WINDOW_CONTROL_SIZE);
+    }
+    WINDOW_CONTROL_SIZE
+}
+
+#[must_use]
+pub fn window_controls_span(cx: &App) -> Pixels {
+    if cfg!(target_os = "linux")
+        && let Some(icons) = cx.window_control_icons()
+    {
+        let button_size = icons
+            .style
+            .button_size
+            .clamp(MIN_SYSTEM_CONTROL_SIZE, WINDOW_CONTROL_SIZE);
+        return button_size * 3.0 + icons.style.gap * 2.0;
+    }
+    WINDOW_CONTROLS_SPAN
+}
+
+#[must_use]
+pub fn window_controls_inset_in(height: Pixels, cx: &App) -> Pixels {
+    let margin = (height - window_control_size(cx)) / 2.0;
+    margin.max(WINDOW_CONTROLS_INSET)
 }
 
 #[cfg(target_os = "macos")]
@@ -120,14 +165,83 @@ impl ParentElement for TitleBar {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
-#[cfg(target_os = "windows")]
-const CONTROL_ICON_WIDTH: Pixels = px(46.);
+const MIN_SYSTEM_CONTROL_SIZE: Pixels = px(14.0);
+
+#[derive(Clone, PartialEq, Eq)]
+struct ControlGlyph {
+    path: SharedString,
+    data: Option<Arc<[u8]>>,
+}
+
+struct ResolvedControls {
+    glyphs: [ControlGlyph; 4],
+    button_size: Pixels,
+    icon_size: Pixels,
+    gap: Pixels,
+    hover: Option<WindowControlHoverStyle>,
+}
+
+fn resolved_controls(window: &Window, cx: &App) -> ResolvedControls {
+    if cfg!(target_os = "linux")
+        && let Some(icons) = cx.window_control_icons()
+    {
+        let button_size = icons
+            .style
+            .button_size
+            .clamp(MIN_SYSTEM_CONTROL_SIZE, WINDOW_CONTROL_SIZE);
+        let icon_size = crate::rems_from_px(f32::from(icons.style.icon_size))
+            .to_pixels(window.rem_size())
+            .min(button_size);
+        return ResolvedControls {
+            glyphs: [
+                ControlGlyph {
+                    path: icons.minimize.key,
+                    data: Some(icons.minimize.svg),
+                },
+                ControlGlyph {
+                    path: icons.maximize.key,
+                    data: Some(icons.maximize.svg),
+                },
+                ControlGlyph {
+                    path: icons.restore.key,
+                    data: Some(icons.restore.svg),
+                },
+                ControlGlyph {
+                    path: icons.close.key,
+                    data: Some(icons.close.svg),
+                },
+            ],
+            button_size,
+            icon_size,
+            gap: icons.style.gap,
+            hover: Some(icons.style.hover),
+        };
+    }
+    let built_in = |icon: ControlIcon| ControlGlyph {
+        path: Icon::new(icon.icon()).drawn_path(cx),
+        data: None,
+    };
+    ResolvedControls {
+        glyphs: [
+            built_in(ControlIcon::minimize()),
+            built_in(ControlIcon::maximize()),
+            built_in(ControlIcon::restore()),
+            built_in(ControlIcon::close(None)),
+        ],
+        button_size: WINDOW_CONTROL_SIZE,
+        icon_size: crate::rems_from_px(crate::Size::Large.icon_px()).to_pixels(window.rem_size()),
+        gap: WINDOW_CONTROL_GAP,
+        hover: None,
+    }
+}
 
 #[derive(IntoElement)]
 struct WindowControl {
     icon: ControlIcon,
+    glyph: ControlGlyph,
+    button_size: Pixels,
+    icon_size: Pixels,
+    hover: Option<WindowControlHoverStyle>,
     role: SurfaceRole,
 }
 
@@ -189,42 +303,118 @@ impl ControlIcon {
     }
 }
 
-impl WindowControl {
-    fn layer(&self, state: PaintState, cx: &App) -> Layer {
-        let theme = cx.theme();
-        match state {
-            PaintState::Hover | PaintState::Active if self.icon.is_close() => theme.layer(
-                Surface::new(self.role).tone(Tone::Danger).prominent(true),
+fn control_layer(
+    icon: &ControlIcon,
+    role: SurfaceRole,
+    state: PaintState,
+    hover: Option<WindowControlHoverStyle>,
+    cx: &App,
+) -> Layer {
+    let theme = cx.theme();
+    let Some(style) = hover else {
+        return match state {
+            PaintState::Hover | PaintState::Active if icon.is_close() => theme.layer(
+                Surface::new(role).tone(Tone::Danger).prominent(true),
                 if state == PaintState::Hover {
                     PaintState::Rest
                 } else {
                     PaintState::Active
                 },
             ),
-            state => theme.layer(Surface::new(self.role), state),
+            state => theme.layer(Surface::new(role), state),
+        };
+    };
+
+    let rest = theme.layer(Surface::new(role), PaintState::Rest);
+    let mut layer = match (style, icon.is_close(), state) {
+        (WindowControlHoverStyle::Yaru, true, PaintState::Hover | PaintState::Active) => theme
+            .layer(
+                Surface::new(role).tone(Tone::Danger).prominent(true),
+                if state == PaintState::Hover {
+                    PaintState::Rest
+                } else {
+                    PaintState::Active
+                },
+            ),
+        _ => theme.layer(Surface::new(role), state),
+    };
+
+    layer.radius = FULL_CORNER_RADIUS;
+    layer.share = None;
+    layer.smoothing = Smoothing::CIRCLE.exponent();
+    layer.border_width = px(0.0);
+    layer.border = theme.transparent;
+    layer.glass = None;
+    layer.shadow.clear();
+    layer.mark = None;
+
+    if let WindowControlHoverStyle::Breeze { negative } = style {
+        let fg = theme
+            .layer(Surface::new(role), PaintState::Hover)
+            .text
+            .opaque();
+        let bg = rest.ground.fill.opaque();
+        let danger = negative.unwrap_or(theme.danger);
+        match (icon.is_close(), state) {
+            (_, PaintState::Rest) => {
+                layer.fill = theme.transparent;
+                layer.text = rest.text;
+            }
+            (false, PaintState::Hover) => {
+                layer.fill = fg;
+                layer.text = bg;
+            }
+            (false, PaintState::Active) => {
+                layer.fill = fg.mix_oklab(bg, 0.35);
+                layer.text = bg;
+            }
+            (true, PaintState::Hover) => {
+                layer.fill = if theme.is_dark() {
+                    danger.mix_oklab(fg, 0.55)
+                } else {
+                    danger
+                };
+                layer.text = bg;
+            }
+            (true, PaintState::Active) => {
+                layer.fill = if theme.is_dark() {
+                    danger.mix_oklab(bg, 0.5)
+                } else {
+                    danger.mix_oklab(fg, 0.7)
+                };
+                layer.text = bg;
+            }
+            _ => {}
         }
     }
+
+    layer
 }
 
 impl RenderOnce for WindowControl {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_linux = cfg!(target_os = "linux");
         let is_windows = cfg!(target_os = "windows");
-        let hover = self.layer(PaintState::Hover, cx);
-        let active = self.layer(PaintState::Active, cx);
-        let rest = self.layer(PaintState::Rest, cx);
+        let hover = control_layer(&self.icon, self.role, PaintState::Hover, self.hover, cx);
+        let active = control_layer(&self.icon, self.role, PaintState::Active, self.hover, cx);
+        let rest = control_layer(&self.icon, self.role, PaintState::Rest, self.hover, cx);
         let icon = self.icon.clone();
         let on_close_window = match &self.icon {
             ControlIcon::Close { on_close_window } => on_close_window.clone(),
             _ => None,
         };
         let control = self.icon;
+        let glyph = match self.glyph.data {
+            Some(data) => Icon::empty()
+                .with_svg_data(self.glyph.path, data)
+                .size(self.icon_size),
+            None => Icon::new(control.icon()).size(self.icon_size),
+        };
 
         div()
             .id(control.id())
             .flex()
-            .w(CONTROL_ICON_WIDTH)
-            .h_full()
+            .size(self.button_size)
             .flex_shrink_0()
             .justify_center()
             .content_center()
@@ -236,26 +426,27 @@ impl RenderOnce for WindowControl {
                 this.window_control_area(control.window_control_area())
             })
             .when(is_linux, |this| {
-                this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                    window.prevent_default();
-                    cx.stop_propagation();
-                })
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    match icon {
-                        ControlIcon::Minimize => window.minimize_window(),
-                        ControlIcon::Restore | ControlIcon::Maximize => window.zoom_window(),
-                        ControlIcon::Close { .. } => {
-                            if let Some(f) = on_close_window.clone() {
-                                f(&ClickEvent::default(), window, cx);
-                            } else {
-                                window.remove_window();
+                this.click_cursor()
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        match icon {
+                            ControlIcon::Minimize => window.minimize_window(),
+                            ControlIcon::Restore | ControlIcon::Maximize => window.zoom_window(),
+                            ControlIcon::Close { .. } => {
+                                if let Some(f) = on_close_window.clone() {
+                                    f(&ClickEvent::default(), window, cx);
+                                } else {
+                                    window.remove_window();
+                                }
                             }
                         }
-                    }
-                })
+                    })
             })
-            .child(Icon::new(control.icon()).medium())
+            .child(glyph)
     }
 }
 
@@ -283,25 +474,239 @@ impl WindowControls {
 }
 
 impl RenderOnce for WindowControls {
-    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         if !draws_window_controls(window) {
-            return div().id("window-controls");
+            return div().id("window-controls").into_any_element();
         }
 
         let role = crate::foundation::roles::WINDOW_CONTROLS;
-        let control = move |icon| WindowControl { icon, role };
-        h_flex()
-            .id("window-controls")
-            .items_center()
-            .flex_shrink_0()
-            .h_full()
-            .child(control(ControlIcon::minimize()))
-            .child(control(if window.is_maximized() {
-                ControlIcon::restore()
+        if cfg!(target_os = "linux")
+            && let Some(look) = ControlsLook::plain(role, window, cx)
+        {
+            return flat_controls(look, self.on_close_window, window, cx);
+        }
+        tree_controls(role, self.on_close_window, window, cx)
+    }
+}
+
+fn tree_controls(
+    role: SurfaceRole,
+    close: Option<CloseHandler>,
+    window: &Window,
+    cx: &App,
+) -> AnyElement {
+    let resolved = resolved_controls(window, cx);
+    let [minimize, maximize, restore, close_glyph] = resolved.glyphs;
+    let button_size = resolved.button_size;
+    let icon_size = resolved.icon_size;
+    let hover = resolved.hover;
+    let control = move |icon, glyph| WindowControl {
+        icon,
+        glyph,
+        button_size,
+        icon_size,
+        hover,
+        role,
+    };
+    let (middle_icon, middle_glyph) = if window.is_maximized() {
+        (ControlIcon::restore(), restore)
+    } else {
+        (ControlIcon::maximize(), maximize)
+    };
+    h_flex()
+        .id("window-controls")
+        .occlude()
+        .items_center()
+        .gap(resolved.gap)
+        .flex_shrink_0()
+        .h_full()
+        .child(control(ControlIcon::minimize(), minimize))
+        .child(control(middle_icon, middle_glyph))
+        .child(control(ControlIcon::close(close), close_glyph))
+        .into_any_element()
+}
+
+fn flat_controls(
+    look: ControlsLook,
+    close: Option<CloseHandler>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let span = look.span();
+    let controls = window.use_keyed_state("window-controls", cx, |window, _| FlatControls {
+        ui: Ui::new(window),
+        look: None,
+        styles: Vec::new(),
+        row: None,
+        close: None,
+    });
+    controls.update(cx, |controls, _| {
+        controls.close = close;
+        controls.restyle(look, window);
+    });
+    flat::surface("window-controls", &controls)
+        .occlude()
+        .flex_shrink_0()
+        .w(span)
+        .h_full()
+        .into_any_element()
+}
+
+const CONTROL_STATES: usize = 3;
+
+#[derive(Clone, PartialEq)]
+struct ControlsLook {
+    layers: [Layer; 5],
+    icons: [ControlGlyph; 4],
+    button_size: Pixels,
+    icon_size: Pixels,
+    gap: Pixels,
+    scale_factor: f32,
+}
+
+impl ControlsLook {
+    fn plain(role: SurfaceRole, window: &Window, cx: &App) -> Option<Self> {
+        let resolved = resolved_controls(window, cx);
+        let layer =
+            |icon: ControlIcon, state| control_layer(&icon, role, state, resolved.hover, cx);
+        let layers = [
+            layer(ControlIcon::minimize(), PaintState::Rest),
+            layer(ControlIcon::minimize(), PaintState::Hover),
+            layer(ControlIcon::minimize(), PaintState::Active),
+            layer(ControlIcon::close(None), PaintState::Hover),
+            layer(ControlIcon::close(None), PaintState::Active),
+        ];
+        let plain = layers
+            .iter()
+            .all(|layer| layer.glass.is_none() && layer.shadow.is_empty() && layer.mark.is_none());
+        plain.then(|| Self {
+            layers,
+            icons: resolved.glyphs,
+            button_size: resolved.button_size,
+            icon_size: resolved.icon_size,
+            gap: resolved.gap,
+            scale_factor: window.scale_factor(),
+        })
+    }
+
+    fn span(&self) -> Pixels {
+        self.button_size * 3.0 + self.gap * 2.0
+    }
+
+    fn layer(&self, close: bool, state: usize) -> &Layer {
+        match (close, state) {
+            (_, 0) => &self.layers[0],
+            (false, state) => &self.layers[state],
+            (true, state) => &self.layers[state + 2],
+        }
+    }
+}
+
+struct FlatControls {
+    ui: Ui,
+    look: Option<ControlsLook>,
+    styles: Vec<BoxStyleId>,
+    row: Option<BoxStyleId>,
+    close: Option<CloseHandler>,
+}
+
+impl FlatControls {
+    fn restyle(&mut self, look: ControlsLook, window: &Window) {
+        if self.look.as_ref() == Some(&look) {
+            return;
+        }
+        self.ui = Ui::new(window);
+        self.row = Some(self.ui.box_style(BoxStyle {
+            flow: Flow::Row,
+            width: Extent::Grow,
+            height: Extent::Grow,
+            gap: look.gap,
+            align: Align::Center,
+            ..BoxStyle::default()
+        }));
+        self.styles.clear();
+        let rest = look.layer(false, 0).clone();
+        for close in [false, true] {
+            for state in 0..CONTROL_STATES {
+                let layer = look.layer(close, state);
+                self.styles.push(self.ui.box_style(BoxStyle {
+                    flow: Flow::Row,
+                    width: Extent::Fixed(look.button_size),
+                    height: Extent::Fixed(look.button_size),
+                    align: Align::Center,
+                    justify: Align::Center,
+                    fill: Some(layer.fill),
+                    border: rest.border_width,
+                    border_color: layer.border,
+                    radius: rest.radius,
+                    corner_share: rest.share,
+                    corner_smoothing: Some(rest.smoothing),
+                    ..BoxStyle::default()
+                }));
+            }
+        }
+        self.look = Some(look);
+    }
+}
+
+impl Flat for FlatControls {
+    fn ui(&mut self) -> &mut Ui {
+        &mut self.ui
+    }
+
+    fn build(&mut self, bounds: Bounds<Pixels>, window: &mut Window, _: &mut Context<Self>) {
+        let (Some(look), Some(row)) = (&self.look, self.row) else {
+            return;
+        };
+        let ui = &mut self.ui;
+        let hovered = ui.hovered();
+        let pressed = ui.pressed();
+        ui.begin();
+        ui.open(row);
+        let middle = if window.is_maximized() {
+            (2, "Restore")
+        } else {
+            (1, "Maximize")
+        };
+        for (key, (icon, name)) in [(0, "Minimize"), middle, (3, "Close")]
+            .into_iter()
+            .enumerate()
+        {
+            let key = key as u64;
+            let close = icon == 3;
+            let state = if pressed == Some(key) {
+                2
             } else {
-                ControlIcon::maximize()
-            }))
-            .child(control(ControlIcon::close(self.on_close_window)))
+                usize::from(hovered == Some(key))
+            };
+            let style = self.styles[usize::from(close) * CONTROL_STATES + state];
+            let control = ui.open(style);
+            ui.target(control, key, crate::PointerCursor::style());
+            ui.describe(control, key, Role::Button, &SharedString::new_static(name));
+            let glyph = &look.icons[icon];
+            let color = look.layer(close, state).text;
+            match &glyph.data {
+                Some(data) => ui.icon_data(&glyph.path, Arc::clone(data), look.icon_size, color),
+                None => ui.icon(&glyph.path, look.icon_size, color),
+            };
+            ui.close();
+        }
+        ui.close();
+        ui.layout(bounds.size);
+    }
+
+    fn clicked(&mut self, click: flat::Click, window: &mut Window, cx: &mut Context<Self>) {
+        if click.button != MouseButton::Left {
+            return;
+        }
+        match click.key {
+            0 => window.minimize_window(),
+            1 => window.zoom_window(),
+            _ => match self.close.clone() {
+                Some(close) => close(&ClickEvent::default(), window, cx),
+                None => window.remove_window(),
+            },
+        }
     }
 }
 
@@ -345,6 +750,8 @@ impl RenderOnce for TitleBar {
         let is_macos = cfg!(target_os = "macos");
         let is_fullscreen = window.is_fullscreen();
 
+        let title_bar_height = cx.theme().title_bar_height();
+
         div().flex_shrink_0().child(
             div()
                 .id("title-bar")
@@ -352,7 +759,7 @@ impl RenderOnce for TitleBar {
                 .flex_row()
                 .items_center()
                 .justify_between()
-                .h(cx.theme().title_bar_height())
+                .h(title_bar_height)
                 .pl(title_bar_left_padding(cx))
                 .rule(RuleLook::Plain, Edge::Bottom, cx)
                 .bg(cx.theme().background)
@@ -394,9 +801,101 @@ impl RenderOnce for TitleBar {
                         })
                         .children(self.children),
                 )
-                .child(WindowControls {
-                    on_close_window: self.on_close_window,
-                }),
+                .child(
+                    div()
+                        .h_full()
+                        .pr(window_controls_inset_in(title_bar_height, cx))
+                        .child(WindowControls {
+                            on_close_window: self.on_close_window,
+                        }),
+                ),
         )
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use std::cell::Cell;
+
+    use ala::{Modifiers, Render, TestAppContext, VisualTestContext};
+
+    use super::*;
+
+    struct Host {
+        flat: bool,
+        closed: Rc<Cell<usize>>,
+    }
+
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let role = crate::foundation::roles::WINDOW_CONTROLS;
+            let closed = self.closed.clone();
+            let close: CloseHandler = Rc::new(move |_, _, _| closed.set(closed.get() + 1));
+            let controls = if self.flat {
+                let look = ControlsLook::plain(role, window, cx).expect("the look is plain");
+                flat_controls(look, Some(close), window, cx)
+            } else {
+                tree_controls(role, Some(close), window, cx)
+            };
+            div().flex().w_full().h(px(41.0)).child(controls)
+        }
+    }
+
+    fn drawn(cx: &mut VisualTestContext) -> Vec<String> {
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            window.draw(cx).clear(cx);
+            let scene = window.rendered_scene();
+            let quads = scene.quads.iter().map(|quad| {
+                format!(
+                    "quad {:?} {:?} {:?} {:?} {:?} {}",
+                    quad.bounds,
+                    quad.background,
+                    quad.border_color,
+                    quad.corner_radii,
+                    quad.border_widths,
+                    quad.corner_smoothing
+                )
+            });
+            let sprites = scene.monochrome_sprites.iter().map(|sprite| {
+                format!(
+                    "sprite {:?} {:?} {:?}",
+                    sprite.bounds, sprite.color, sprite.tile.bounds
+                )
+            });
+            let mut drawn = quads.chain(sprites).collect::<Vec<_>>();
+            drawn.sort();
+            drawn
+        })
+    }
+
+    fn states(flat: bool, cx: &mut TestAppContext) -> (Vec<Vec<String>>, usize) {
+        let closed = Rc::new(Cell::new(0));
+        let (_, cx) = cx.add_window_view(|_, _| Host {
+            flat,
+            closed: closed.clone(),
+        });
+        let close = point(WINDOW_CONTROLS_SPAN - WINDOW_CONTROL_SIZE / 2.0, px(20.0));
+        let mut states = vec![drawn(cx)];
+        cx.simulate_mouse_move(close, None, Modifiers::none());
+        states.push(drawn(cx));
+        cx.simulate_mouse_down(close, MouseButton::Left, Modifiers::none());
+        states.push(drawn(cx));
+        cx.simulate_mouse_up(close, MouseButton::Left, Modifiers::none());
+        cx.simulate_mouse_move(point(px(11.0), px(20.0)), None, Modifiers::none());
+        states.push(drawn(cx));
+        (states, closed.get())
+    }
+
+    #[ala::test]
+    fn flat_controls_draw_and_close_like_the_element_tree(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (tree, tree_closed) = states(false, cx);
+        let (flat, flat_closed) = states(true, cx);
+        assert_eq!(tree.iter().map(Vec::len).collect::<Vec<_>>(), [0, 1, 1, 1]);
+        assert_ne!(tree[0], tree[1]);
+        assert_ne!(tree[1], tree[2]);
+        assert_eq!(flat, tree);
+        assert_eq!((tree_closed, flat_closed), (1, 1));
     }
 }

@@ -16,7 +16,7 @@
   line-height: var(--penna-text-body-line);
   white-space: nowrap;
   text-decoration: none;
-  cursor: default;
+  cursor: var(--penna-click-cursor);
   appearance: none;
   outline: none;
   user-select: none;
@@ -74,6 +74,16 @@
   font-weight: var(--penna-text-touch-body-weight);
   line-height: var(--penna-text-touch-body-line);
   --penna-icon-size: 16px;
+}
+
+.penna-button[data-size="touch-large"] {
+  height: var(--penna-control-touch-lg);
+  padding: 0 var(--penna-space-16);
+  gap: var(--penna-space-8);
+  font-size: var(--penna-text-touch-body-size);
+  font-weight: var(--penna-text-touch-body-weight);
+  line-height: var(--penna-text-touch-body-line);
+  --penna-icon-size: 20px;
 }
 
 .penna-button[data-compact] {
@@ -137,6 +147,11 @@
   height: var(--penna-control-touch);
 }
 
+.penna-button[data-shape="icon"][data-size="touch-large"] {
+  width: var(--penna-control-touch-lg);
+  height: var(--penna-control-touch-lg);
+}
+
 .penna-button[data-shape="compact-icon"] {
   width: 24px;
   height: 24px;
@@ -160,7 +175,7 @@
 }
 
 .penna-button[data-variant="link"] {
-  cursor: pointer;
+  cursor: var(--penna-click-cursor);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;

@@ -2,19 +2,20 @@ use std::sync::Arc;
 
 use ala::{
     AnyElement, App, AppContext as _, Context, Entity, Hsla, IntoElement, ParentElement as _,
-    Render, ScrollHandle, Styled as _, Window, div, prelude::*, px, white,
+    Render, Styled as _, Window, div, prelude::*, px, white,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, StyledExt as _, TextStyle,
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, TextStyle, Tone,
     blocks::compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
-        PillMenuLook, PillPlacement, bento_add_tile, bento_grid, bento_tile, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pill_menu, folding_title_bar, pill_glass_over,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, StripItem, StripMark,
+        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
+        compact_floating_pill, compact_hud, folding_title_bar, pill_glass_over, pill_strip,
+        split_pill_bounds,
     },
     blocks::settings::large_title,
     blocks::touch::{
-        ArrowPad, KeyRow, KeyRowKey, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList, page_dots,
+        ArrowPad, KeyRow, KeyRowKey, PageDot, StackChip, StackClose, StackGroup, StackKey,
+        StackKeyTap, StackLook, StackMenu, StickyModifier, WhichKeyList, page_dots,
     },
     blocks::which_key::WhichKeyRow,
     v_flex,
@@ -35,6 +36,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(pills, cx),
         },
         Section {
+            id: "machine-strip",
+            name: "Strip",
+            summary: "pill_strip: the pill holds every page it swipes through as a mark, the one on screen stretched into a capsule with its name over its second line. A machine's mark is a bare glyph; a pane's is a 32 face, and a word leading its line takes its tone. Two short names keep the other's name; a row wider than the pill cuts the next mark in half under a fade. A position between two pages trades the capsule's width, its text gone by the middle.",
+            build: |_, cx| stateless(strips, cx),
+        },
+        Section {
             id: "page-dots",
             name: "Page dots",
             summary: "page_dots: one group per window, one dot per page. The current page is the wide dot; a page asking for attention is amber.",
@@ -43,8 +50,8 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "compact_pill_menu rises out of the pill: the page dims, the pill turns into a close button and the actions stack above it in groups. Items can be quiet, danger or primary.",
-            build: |_, cx| stateless(menus, cx),
+            summary: "The pill's StackMenu, tapped: the page dims, the pill turns into the close and the chips rise above it in groups, nearest first. Chips can be quiet or danger.",
+            build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
             id: "hud",
@@ -55,13 +62,13 @@ pub const STORY: Story = Story {
         Section {
             id: "keys",
             name: "Keys",
-            summary: "PopoverKey at rest and armed, a popover key with nothing behind it, and the ArrowPad at rest.",
+            summary: "StackKey at rest and armed, a stack key with nothing behind it, and the ArrowPad at rest.",
             build: |_, cx| cx.new(Keys::new).into(),
         },
         Section {
             id: "key-row",
             name: "Key row",
-            summary: "KeyRow over the soft keyboard: plain keys and the arrow pad in a pill that scrolls sideways when it does not fit.",
+            summary: "KeyRow over the soft keyboard: a 56 pill whose 48 keys share it evenly, 4 in from its edge, then the arrow pad and done as 56 discs, 8 apart and 16 from the end. A latched key shows the strip capsule's wash.",
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
@@ -88,7 +95,6 @@ pub const STORY: Story = Story {
 const PHONE_WIDTH: f32 = 390.0;
 const GRID: f32 = PHONE_WIDTH - BENTO_INSET * 2.0;
 const MENU_HEIGHT: f32 = 560.0;
-const MENU_TOP: f32 = 12.0;
 const NARROW_WIDTH: f32 = 220.0;
 const SCROLLED: f32 = 72.0;
 
@@ -157,9 +163,16 @@ fn pill(
             } else {
                 IconName::SquareTerminal
             },
+            face: None,
             title: title.to_owned().into(),
+            word: ala::SharedString::default(),
             meta: meta.to_owned().into(),
-            warning,
+            tone: if warning {
+                penna::Tone::Warning
+            } else {
+                penna::Tone::Neutral
+            },
+            up: false,
         },
         page_dots(&groups(), cx),
         &placement,
@@ -212,6 +225,145 @@ fn pills(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+const MACHINES: [(IconName, &str, &str); 6] = [
+    (IconName::Laptop, "zzios-zebrilus", "phone"),
+    (IconName::Cpu, "xps", "zz"),
+    (IconName::HardDrive, "win-desktop", "games"),
+    (IconName::Cpu, "alienware", "nidus"),
+    (IconName::Laptop, "macbook", "zebrilus"),
+    (IconName::Server, "nas", "Not connected"),
+];
+
+const PANES: [(IconName, &str, &str, &str, Tone); 5] = [
+    (
+        IconName::Chat,
+        "Pill strip",
+        "",
+        "Running cargo test",
+        Tone::Neutral,
+    ),
+    (
+        IconName::Terminal,
+        "bash",
+        "",
+        "zebrilus · main",
+        Tone::Neutral,
+    ),
+    (
+        IconName::File,
+        "tile.rs",
+        "",
+        "zebrilus · main",
+        Tone::Neutral,
+    ),
+    (
+        IconName::Chat,
+        "Review",
+        "Needs approval",
+        "",
+        Tone::Warning,
+    ),
+    (
+        IconName::Globe,
+        "localhost:8090",
+        "",
+        "127.0.0.1",
+        Tone::Neutral,
+    ),
+];
+
+fn face(icon: IconName, cx: &App) -> AnyElement {
+    let theme = cx.theme();
+    div()
+        .size_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(9.0))
+        .bg(theme.surface(Elevation::Panel).fill)
+        .text_color(theme.foreground)
+        .child(Icon::new(icon).size(px(20.0)))
+        .into_any_element()
+}
+
+fn strip(
+    id: &'static str,
+    picks: &[usize],
+    position: f32,
+    window: &Window,
+    cx: &App,
+) -> impl IntoElement {
+    let items = picks
+        .iter()
+        .map(|&index| {
+            let (mark, name, line) = &MACHINES[index];
+            StripItem::new(StripMark::Glyph(mark.clone()), *name, *line)
+        })
+        .collect();
+    strip_of(id, items, position, window, cx)
+}
+
+fn pane_strip(id: &'static str, position: f32, window: &Window, cx: &App) -> impl IntoElement {
+    let items = PANES
+        .iter()
+        .map(|(icon, name, word, line, tone)| {
+            StripItem::new(StripMark::Face(face(icon.clone(), cx)), *name, *line).word(*word, *tone)
+        })
+        .collect();
+    strip_of(id, items, position, window, cx)
+}
+
+fn strip_of(
+    id: &'static str,
+    items: Vec<StripItem>,
+    position: f32,
+    window: &Window,
+    cx: &App,
+) -> impl IntoElement {
+    let placement = placement();
+    let width = split_pill_bounds(px(PHONE_WIDTH), &placement, false, false)
+        .size
+        .width;
+    let pill = pill_strip(
+        id,
+        items,
+        position,
+        width,
+        &placement,
+        |_, _, _| {},
+        window,
+        cx,
+    );
+    phone(compact_floating_bar(pill, &placement, cx), cx)
+}
+
+fn strips(window: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    states()
+        .columns(2)
+        .state("one machine", strip("strip-one", &[0], 0.0, window, cx))
+        .state(
+            "two short names",
+            strip("strip-two", &[1, 4], 0.0, window, cx),
+        )
+        .state("three", strip("strip-three", &[0, 1, 2], 1.0, window, cx))
+        .state(
+            "six, scrolled",
+            strip("strip-six", &[0, 1, 2, 3, 4, 5], 3.0, window, cx),
+        )
+        .state(
+            "mid-swipe",
+            strip("strip-swipe", &[0, 1, 2, 3, 4, 5], 2.45, window, cx),
+        )
+        .state(
+            "not connected",
+            strip("strip-off", &[1, 5], 1.0, window, cx),
+        )
+        .state("panes", pane_strip("strip-panes", 1.0, window, cx))
+        .state("a pane waiting", pane_strip("strip-wait", 3.0, window, cx))
+        .into_any_element()
+}
+
 fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     states()
@@ -244,66 +396,101 @@ fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn menu(items: Vec<Vec<PillMenuItem>>, cx: &App) -> impl IntoElement {
-    let placement = placement();
-    let top = px(MENU_HEIGHT) - placement.zone() + placement.pill_top();
-    let close = ala::Bounds::new(
-        ala::point(placement.inset, top),
-        ala::size(
-            px(PHONE_WIDTH) - placement.inset * 2.0,
-            px(COMPACT_PILL_HEIGHT),
-        ),
-    );
-    phone(
-        div()
-            .relative()
-            .h(px(MENU_HEIGHT))
-            .child(page_lines(cx))
-            .child(compact_pill_menu(
-                items,
-                close,
-                px(MENU_TOP),
-                PillMenuAlign::Center,
-                1.0,
-                |_, _, _| {},
-                |_, _| {},
-                cx,
-            )),
-        cx,
-    )
+fn menu(groups: Vec<StackGroup>, cx: &mut App) -> Entity<StackMenu> {
+    cx.new(|cx| {
+        let mut menu = StackMenu::new(StackClose::Disc, cx);
+        menu.set_groups(groups, cx);
+        menu.open(cx);
+        menu
+    })
 }
 
-fn menus(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    let page = vec![
-        vec![
-            PillMenuItem::new("all-keys", "All keys", IconName::Keyboard).look(PillMenuLook::Quiet),
-            PillMenuItem::new("close-page", "Close page", IconName::Xmark)
-                .look(PillMenuLook::Danger),
-        ],
-        vec![
-            PillMenuItem::new("rename", "Rename", IconName::Pencil),
-            PillMenuItem::new("new-window", "New window", IconName::AppWindow),
-            PillMenuItem::new("new-page", "New page", IconName::Plus),
-            PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
-            PillMenuItem::new("preview", "Preview", IconName::Eye).look(PillMenuLook::Primary),
-        ],
-    ];
-    let home = vec![
-        vec![
-            PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet),
-        ],
-        vec![
-            PillMenuItem::new("new-folder", "New folder", IconName::Folder),
-            PillMenuItem::new("new-file", "New file", IconName::File),
-            PillMenuItem::new("search", "Search", IconName::Search),
-        ],
-    ];
-    states()
-        .columns(2)
-        .state("on a page", menu(page, cx))
-        .state("on the home page", menu(home, cx))
-        .into_any_element()
+struct Menus {
+    page: Entity<StackMenu>,
+    home: Entity<StackMenu>,
+}
+
+impl Menus {
+    fn new(cx: &mut Context<Self>) -> Self {
+        let page = menu(
+            vec![
+                StackGroup::new([
+                    StackChip::new("overview", "Overview", IconName::LayoutDashboard),
+                    StackChip::new("new-page", "New page", IconName::Plus),
+                    StackChip::new("new-window", "New window", IconName::AppWindow),
+                    StackChip::new("rename", "Rename", IconName::Pencil),
+                ]),
+                StackGroup::new([
+                    StackChip::new("close-page", "Close page", IconName::Xmark)
+                        .look(StackLook::Danger),
+                    StackChip::new("all-keys", "All keys", IconName::Keyboard)
+                        .look(StackLook::Quiet),
+                ]),
+            ],
+            cx,
+        );
+        let home = menu(
+            vec![
+                StackGroup::new([
+                    StackChip::new("search", "Search", IconName::Search),
+                    StackChip::new("new-file", "New file", IconName::File),
+                    StackChip::new("new-folder", "New folder", IconName::Folder),
+                ]),
+                StackGroup::new([StackChip::new("settings", "Settings", IconName::Settings)
+                    .look(StackLook::Quiet)]),
+            ],
+            cx,
+        );
+        cx.observe(&page, |_, _, cx| cx.notify()).detach();
+        cx.observe(&home, |_, _, cx| cx.notify()).detach();
+        Self { page, home }
+    }
+
+    fn phone(id: &'static str, menu: &Entity<StackMenu>, cx: &App) -> impl IntoElement {
+        let placement = placement();
+        let pill = compact_floating_pill(
+            id,
+            PillLabel {
+                icon: IconName::SquareTerminal,
+                face: None,
+                title: "make test".into(),
+                word: ala::SharedString::default(),
+                meta: "work · build".into(),
+                tone: penna::Tone::Neutral,
+                up: false,
+            },
+            page_dots(&groups(), cx),
+            &placement,
+            cx,
+        )
+        .opacity(1.0 - menu.read(cx).close_shown())
+        .child(menu.read(cx).track_anchor());
+        phone(
+            div()
+                .relative()
+                .h(px(MENU_HEIGHT))
+                .child(page_lines(cx))
+                .child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom_0()
+                        .child(compact_floating_bar(pill, &placement, cx)),
+                )
+                .child(menu.clone()),
+            cx,
+        )
+    }
+}
+
+impl Render for Menus {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        states()
+            .columns(2)
+            .state("on a page", Self::phone("menu-page", &self.page, cx))
+            .state("on the home page", Self::phone("menu-home", &self.home, cx))
+    }
 }
 
 fn hud(text: &'static str, cx: &App) -> impl IntoElement {
@@ -330,23 +517,28 @@ fn huds(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 struct Keys {
-    rest: Entity<PopoverKey>,
-    armed: Entity<PopoverKey>,
-    plain: Entity<PopoverKey>,
+    rest: Entity<StackKey>,
+    armed: Entity<StackKey>,
+    plain: Entity<StackKey>,
     arrows: Entity<ArrowPad>,
 }
 
 impl Keys {
     fn new(cx: &mut Context<Self>) -> Self {
-        let popover = |cx: &mut Context<Self>, armed: bool| {
-            let key = cx.new(|cx| PopoverKey::new("ctrl", PopoverKeyTap::Press, cx));
+        let stacked = |cx: &mut Context<Self>, armed: bool| {
+            let key = cx.new(|cx| {
+                StackKey::new("ctrl", StackKeyTap::Open, cx).groups(
+                    vec![StackGroup::new([StackChip::text("ctrl-c", "Interrupt")])],
+                    cx,
+                )
+            });
             key.update(cx, |key, cx| key.set_armed(armed, cx));
             key
         };
         Self {
-            rest: popover(cx, false),
-            armed: popover(cx, true),
-            plain: cx.new(|cx| PopoverKey::new("menu", PopoverKeyTap::Open, cx)),
+            rest: stacked(cx, false),
+            armed: stacked(cx, true),
+            plain: cx.new(|cx| StackKey::new("menu", StackKeyTap::Open, cx)),
             arrows: cx.new(ArrowPad::new),
         }
     }
@@ -357,6 +549,7 @@ impl Render for Keys {
         let slot = |id: &'static str, child: AnyElement| {
             div()
                 .id(id)
+                .w(px(64.0))
                 .p(px(8.0))
                 .rounded(cx.theme().radius)
                 .bg(cx.theme().surface(Elevation::Panel).fill)
@@ -365,11 +558,11 @@ impl Render for Keys {
         states()
             .columns(4)
             .state(
-                "popover key, rest",
+                "stack key, rest",
                 row().child(slot("key-rest", self.rest.clone().into_any_element())),
             )
             .state(
-                "popover key, armed",
+                "stack key, armed",
                 row().child(slot("key-armed", self.armed.clone().into_any_element())),
             )
             .state(
@@ -384,30 +577,30 @@ impl Render for Keys {
 }
 
 struct KeyRows {
-    rows: [(Entity<ArrowPad>, ScrollHandle); 3],
+    rows: [Entity<ArrowPad>; 2],
 }
 
 impl KeyRows {
     fn new(cx: &mut Context<Self>) -> Self {
-        let rows = std::array::from_fn(|_| (cx.new(ArrowPad::new), ScrollHandle::new()));
-        rows[2].1.set_offset(ala::point(px(-1000.0), px(0.0)));
-        Self { rows }
+        Self {
+            rows: std::array::from_fn(|_| cx.new(ArrowPad::new)),
+        }
     }
 
     fn row(&self, index: usize) -> KeyRow {
-        let (arrows, scroll) = &self.rows[index];
         KeyRow::new(vec![
-            KeyRowKey::tab(),
             KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
-            KeyRowKey::text("/"),
-            KeyRowKey::text("-"),
-            KeyRowKey::text("~"),
-            KeyRowKey::Arrows(arrows.clone()),
-            KeyRowKey::Hide,
+            KeyRowKey::Modifier(StickyModifier::Control),
+            KeyRowKey::Modifier(StickyModifier::Alt),
+            KeyRowKey::Modifier(StickyModifier::Command),
+            KeyRowKey::tab(),
         ])
-        .track_scroll(scroll)
+        .discs(vec![
+            KeyRowKey::Arrows(self.rows[index].clone()),
+            KeyRowKey::Done,
+        ])
         .on_key(|_, _, _| {})
-        .on_hide(|_, _| {})
+        .on_done(|_, _| {})
     }
 }
 
@@ -420,12 +613,8 @@ impl Render for KeyRows {
                 phone(div().id("key-row-wide").child(self.row(0)), cx),
             )
             .state(
-                "narrow: more keys ahead",
+                "narrow",
                 phone(div().id("key-row-narrow").child(self.row(1)), cx).w(px(NARROW_WIDTH)),
-            )
-            .state(
-                "narrow, scrolled to the end",
-                phone(div().id("key-row-end").child(self.row(2)), cx).w(px(NARROW_WIDTH)),
             )
     }
 }
@@ -460,33 +649,21 @@ const TILES: [(&str, &str, u8, u8); 4] = [
 
 fn bento(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    let muted = cx.theme().foreground.muted();
     let mut tiles = TILES
         .iter()
         .enumerate()
         .map(|(index, (title, detail, columns, rows))| {
             (
                 BentoSpan::new(usize::from(*columns), usize::from(*rows)),
-                bento_tile(("bento-tile", index), ("bento-tile-press", index), cx)
-                    .child(
-                        v_flex()
-                            .p(px(12.0))
-                            .gap(px(2.0))
-                            .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
-                            .child(
-                                div()
-                                    .type_style(TextStyle::Body, cx)
-                                    .text_color(muted)
-                                    .child(*detail),
-                            ),
-                    )
+                PhoneTile::new(("bento-tile", index), *title)
+                    .foot(*detail)
                     .into_any_element(),
             )
         })
         .collect::<Vec<_>>();
     tiles.push((
         BentoSpan::new(4, 1),
-        bento_add_tile("bento-add", "Add folder", cx).into_any_element(),
+        PhoneTile::add("bento-add", "Add folder").into_any_element(),
     ));
     let placement = placement();
     let bar = compact_floating_bar(div().flex_1(), &placement, cx).child(compact_floating_group(

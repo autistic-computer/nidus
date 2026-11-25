@@ -5,7 +5,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     Colorize as _, Elevation, ShadowMaterial, Smoothing, Theme, ThemeColor, ThemeMode,
-    foundation::{color::contrast_ratio, theme::DEFAULT_RADIUS, theme_color},
+    foundation::{
+        color::contrast_ratio,
+        glass::GlassLook,
+        theme::DEFAULT_RADIUS,
+        theme_color,
+        tuning::{MaterialTuning, read_glass_tuning},
+    },
 };
 
 pub const DEFAULT_THEME: &str = "default";
@@ -23,13 +29,13 @@ const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("purple", "#8549d1", "#a366f7"),
     ("pink", "#c02a82", "#e648a0"),
     ("red", "#cc252d", "#f44647"),
-    ("orange", "#ad4f00", "#de6700"),
-    ("yellow", "#876400", "#af8200"),
-    ("green", "#007b2c", "#009f3b"),
+    ("orange", "#ad4f00", "#da6500"),
+    ("yellow", "#876400", "#ac8000"),
+    ("green", "#007b2c", "#009c3a"),
     ("graphite", "#6a6a6a", "#868686"),
 ];
 
-const TEXT_ON_GLASS: f32 = 4.5;
+pub(super) const TEXT_ON_GLASS: f32 = 4.5;
 
 pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     let value = value.trim();
@@ -385,13 +391,14 @@ pub fn tint_floor(fill: Hsla, text: Hsla) -> f32 {
             a: 1.0,
         })
     };
+    let floor = read_glass_tuning(|tuning| tuning.text_floor);
     let (mut low, mut high) = (0.0_f32, 1.0_f32);
-    if contrast_ratio(text, over(high)) < TEXT_ON_GLASS {
+    if contrast_ratio(text, over(high)) < floor {
         return high;
     }
     for _ in 0..24 {
         let middle = (low + high) / 2.0;
-        if contrast_ratio(text, over(middle)) >= TEXT_ON_GLASS {
+        if contrast_ratio(text, over(middle)) >= floor {
             high = middle;
         } else {
             low = middle;
@@ -518,6 +525,20 @@ impl InterfaceTheme {
         )
     }
 
+    pub fn glass_look(&self, mode: ThemeMode) -> Option<GlassLook> {
+        let look = GlassLook::of(mode);
+        match self.glass.as_ref().unwrap_or(&Glass::Liquid) {
+            Glass::None => None,
+            Glass::Liquid => Some(look),
+            Glass::Material(_) => Some(GlassLook {
+                floating: MaterialTuning::NONE,
+                rim: MaterialTuning::NONE,
+                selection: MaterialTuning::NONE,
+                ..look
+            }),
+        }
+    }
+
     pub fn apply(&self, theme: &mut Theme) {
         let mode = theme.mode;
         theme.set_colors(self.colors(mode));
@@ -534,9 +555,13 @@ impl InterfaceTheme {
             .unwrap_or_else(|| ala::Font::default().family);
         let popover = theme.surface(Elevation::Popover).fill;
         let text = theme.foreground;
+        theme.glass_look = self.glass_look(mode);
+        let floating = theme
+            .glass_look
+            .map_or(MaterialTuning::NONE, |look| look.floating);
         theme.glass = self
             .glass(mode)
-            .map(|material| holding_text(material, popover, text));
+            .map(|material| holding_text(floating.apply(material), popover, text));
     }
 
     pub fn activate(&self, mode: Option<ThemeMode>, window: Option<&mut Window>, cx: &mut App) {
@@ -724,11 +749,13 @@ pub struct Appearance {
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
-    pub reduce_transparency: bool,
     pub ui_font_family: String,
+    pub mono_font_family: String,
+    pub chat_font_family: String,
     pub zoom: f32,
     pub motion: crate::foundation::motion::Motion,
     pub density: crate::Density,
+    pub pointer: crate::PointerCursor,
 }
 
 impl Default for Appearance {
@@ -737,11 +764,13 @@ impl Default for Appearance {
             mode: None,
             overrides: ThemeOverrides::default(),
             contrast: 1.0,
-            reduce_transparency: false,
             ui_font_family: String::new(),
+            mono_font_family: String::new(),
+            chat_font_family: String::new(),
             zoom: 1.0,
             motion: crate::foundation::motion::Motion::Default,
             density: crate::Density::Regular,
+            pointer: crate::PointerCursor::Hand,
         }
     }
 }
@@ -758,11 +787,13 @@ pub enum AppearanceChange {
     Import(Box<InterfaceTheme>),
     ResetLook,
     Contrast(f32),
-    ReduceTransparency(bool),
     UiFont(String),
+    MonoFont(String),
+    ChatFont(String),
     Zoom(f32),
     Motion(crate::foundation::motion::Motion),
     Density(crate::Density),
+    Pointer(crate::PointerCursor),
 }
 
 impl Appearance {
@@ -824,6 +855,14 @@ impl Appearance {
         }
     }
 
+    pub fn mono_font(&self) -> &str {
+        &self.mono_font_family
+    }
+
+    pub fn chat_font(&self) -> &str {
+        &self.chat_font_family
+    }
+
     pub fn import(&mut self, theme: &InterfaceTheme) {
         self.overrides = ThemeOverrides::from_theme(theme);
         self.ui_font_family = theme.face.as_deref().unwrap_or("").to_owned();
@@ -832,6 +871,8 @@ impl Appearance {
     pub fn reset_look(&mut self) {
         self.overrides = ThemeOverrides::default();
         self.ui_font_family.clear();
+        self.mono_font_family.clear();
+        self.chat_font_family.clear();
     }
 
     pub fn change(&mut self, change: AppearanceChange) {
@@ -848,32 +889,51 @@ impl Appearance {
             AppearanceChange::Import(theme) => self.import(&theme),
             AppearanceChange::ResetLook => self.reset_look(),
             AppearanceChange::Contrast(contrast) => self.contrast = contrast,
-            AppearanceChange::ReduceTransparency(reduce) => self.reduce_transparency = reduce,
             AppearanceChange::UiFont(family) => self.ui_font_family = family,
+            AppearanceChange::MonoFont(family) => self.mono_font_family = family,
+            AppearanceChange::ChatFont(family) => self.chat_font_family = family,
             AppearanceChange::Zoom(zoom) => self.zoom = zoom,
             AppearanceChange::Motion(motion) => self.motion = motion,
             AppearanceChange::Density(density) => self.density = density,
+            AppearanceChange::Pointer(pointer) => self.pointer = pointer,
         }
     }
 
-    pub fn apply(&self, mut window: Option<&mut Window>, cx: &mut App) {
+    pub fn apply(&self, window: Option<&mut Window>, cx: &mut App) {
+        self.apply_theme(&self.shown_theme(), window, cx);
+    }
+
+    pub fn apply_theme(
+        &self,
+        theme: &InterfaceTheme,
+        mut window: Option<&mut Window>,
+        cx: &mut App,
+    ) {
         cx.set_reduce_motion(self.motion.reduced());
         cx.set_animation_speed(self.motion.speed());
-        self.shown_theme()
-            .activate(self.theme_mode(), window.as_deref_mut(), cx);
+        theme.activate(self.theme_mode(), window.as_deref_mut(), cx);
         let font = self.ui_font();
         let family = if !font.is_empty() && cx.text_system().has_font(font) {
             SharedString::from(font.to_owned())
         } else {
             ala::Font::default().family
         };
+        let mono = self.mono_font();
+        let mono = if !mono.is_empty() && cx.text_system().has_font(mono) {
+            SharedString::from(mono.to_owned())
+        } else {
+            crate::foundation::platform_mono_font_family()
+        };
+        let chat = self.chat_font();
+        let chat = (!chat.is_empty() && cx.text_system().has_font(chat))
+            .then(|| SharedString::from(chat.to_owned()));
         let theme = Theme::global_mut(cx);
         theme.font_family = family;
+        theme.mono_font_family = mono;
+        theme.chat_font_family = chat;
         theme.set_contrast(self.contrast);
-        if self.reduce_transparency {
-            theme.glass = None;
-        }
         self.density.set();
+        self.pointer.set();
         cx.set_global(crate::UiZoom(self.zoom));
         if let Some(window) = window {
             window.set_zoom(self.zoom);
@@ -992,6 +1052,21 @@ mod tests {
     #[test]
     fn every_accent_reads_in_every_theme_at_any_neutral() {
         assert_eq!(ACCENT_COLORS.map(|(name, ..)| name), ACCENTS);
+        for mode in [ThemeMode::Light, ThemeMode::Dark] {
+            for accent in ACCENTS {
+                let theme = InterfaceTheme {
+                    tint: Tint::named(accent).expect("named accent"),
+                    ..InterfaceTheme::default()
+                };
+                let drawn = kit(&theme, mode);
+                let mark = drawn.paint(Tone::Accent, Emphasis::Solid).text;
+                assert_eq!(
+                    crate::to_hex(mark),
+                    "#ebebeb",
+                    "{accent} {mode:?} mark should be near-white"
+                );
+            }
+        }
         for (id, builtin) in builtin_themes() {
             assert!(!builtin.name.is_empty(), "{id} has no name");
             assert_reads(id, builtin);
@@ -1016,8 +1091,8 @@ mod tests {
     #[test]
     fn glass_holds_text_at_four_and_a_half_over_any_backdrop() {
         for (glass, mode, floor, alpha) in [
-            (Glass::Liquid, ThemeMode::Light, 0.596, 0.6),
-            (Glass::Liquid, ThemeMode::Dark, 0.705, 0.705),
+            (Glass::Liquid, ThemeMode::Light, 0.596, 0.8),
+            (Glass::Liquid, ThemeMode::Dark, 0.705, 0.75),
         ] {
             let theme = InterfaceTheme {
                 glass: Some(glass.clone()),
@@ -1122,7 +1197,7 @@ mod tests {
             serde_json::from_str::<Appearance>("{}").unwrap(),
             Appearance::default()
         );
-        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"reduce_transparency":true,"ui_font_family":"Inter","zoom":1.25,"motion":"fast","density":"comfortable","sidebar":true}"#;
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"controls":"pill","glass":"none","contrast":1.5,"frost":0.75,"ui_font_family":"Inter","mono_font_family":"Lilex","chat_font_family":"Georgia","zoom":1.25,"motion":"fast","density":"comfortable","pointer":"arrow","sidebar":true}"#;
         let appearance = serde_json::from_str::<Appearance>(source).unwrap();
         assert_eq!(
             appearance,
@@ -1137,11 +1212,13 @@ mod tests {
                     glass: Some(Glass::None),
                 },
                 contrast: 1.5,
-                reduce_transparency: true,
                 ui_font_family: "Inter".into(),
+                mono_font_family: "Lilex".into(),
+                chat_font_family: "Georgia".into(),
                 zoom: 1.25,
                 motion: crate::foundation::motion::Motion::Fast,
                 density: crate::Density::Comfortable,
+                pointer: crate::PointerCursor::Arrow,
             }
         );
         let written = serde_json::to_value(&appearance).unwrap();
@@ -1155,6 +1232,8 @@ mod tests {
     fn a_persons_knobs_sit_over_the_platform_look_and_a_theme_file_sets_them_all() {
         let mut appearance = Appearance {
             ui_font_family: "Inter".into(),
+            mono_font_family: "Berkeley Mono".into(),
+            chat_font_family: "Georgia".into(),
             ..Appearance::default()
         };
         assert_eq!(appearance.shown_theme(), *platform_theme());
@@ -1193,14 +1272,18 @@ mod tests {
         assert_eq!(appearance.accent(), "orange");
         assert_eq!(appearance.controls(), Controls::Rounded);
         assert_eq!(appearance.ui_font(), "Lilex");
+        assert_eq!(appearance.mono_font(), "Berkeley Mono");
+        assert_eq!(appearance.chat_font(), "Georgia");
 
         appearance.change(AppearanceChange::ResetLook);
         assert_eq!(appearance.overrides, ThemeOverrides::default());
+        assert_eq!(appearance.mono_font(), "");
+        assert_eq!(appearance.chat_font(), "");
         assert_eq!(appearance.shown_theme(), *platform_theme());
     }
 
     #[ala::test]
-    fn applying_an_appearance_shows_its_theme_contrast_transparency_zoom_and_density(
+    fn applying_an_appearance_shows_its_theme_contrast_zoom_and_density(
         cx: &mut ala::TestAppContext,
     ) {
         let appearance = Appearance {
@@ -1211,7 +1294,6 @@ mod tests {
                 ..ThemeOverrides::default()
             },
             contrast: 1.5,
-            reduce_transparency: true,
             zoom: 1.25,
             motion: crate::foundation::motion::Motion::Off,
             density: crate::Density::Compact,
@@ -1226,12 +1308,14 @@ mod tests {
             assert_eq!(theme.radius, px(5.0));
             assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
             assert_eq!(theme.contrast(), 1.5);
-            assert_eq!(theme.glass, None);
+            let glass = theme.glass.expect("liquid glass");
+            assert_eq!(glass.blur, px(30.0));
+            assert_eq!(glass.tint.a, 0.75);
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
             assert_eq!(
                 crate::Size::LADDER.map(|size| size.control_px()),
-                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0]
+                [20.0, 24.0, 24.0, 32.0, 40.0, 44.0, 56.0]
             );
             crate::Density::Regular.set();
             Theme::global_mut(cx).set_contrast(1.0);
@@ -1278,7 +1362,7 @@ mod tests {
     }
 
     #[test]
-    fn brought_colors_draw_exactly_and_the_rest_moves_until_it_reads() {
+    fn brought_colors_move_only_until_they_read() {
         let source = r##"{"tint":"#458588","colors":{"dark":{"bg":"#282828","fg":"#a89984","danger":"#cc241d"}}}"##;
         let theme = parse_theme(source).unwrap();
         assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
@@ -1295,13 +1379,17 @@ mod tests {
         assert_eq!(
             drawn,
             [
-                "#282828", "#a89984", "#9a8c79", "#58989b", "#3fbf74", "#f95546"
+                "#282828", "#c0b19b", "#998c7b", "#58989b", "#3fbf74", "#f95546"
             ]
         );
-        for (color, from) in [(dark.accent, "#458588"), (dark.danger, "#cc241d")] {
+        for (color, from, floor) in [
+            (dark.foreground, "#a89984", 7.0),
+            (dark.accent, "#458588", 4.5),
+            (dark.danger, "#cc241d", 4.5),
+        ] {
             let ratio = contrast_ratio(color, dark.background);
             assert!(
-                (4.5..4.52).contains(&ratio),
+                (floor..floor + 0.03).contains(&ratio),
                 "{} is {ratio:.3}:1",
                 crate::to_hex(color)
             );

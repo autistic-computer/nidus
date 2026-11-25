@@ -1,27 +1,35 @@
 use ala::{
-    App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, Hsla, IntoElement, MouseButton,
-    ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, div, prelude::*, px,
+    AnyElement, App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, HighlightStyle,
+    Hsla, IntoElement, MouseButton, ParentElement as _, Pixels, Rgba, SharedString, Stateful,
+    Styled as _, StyledText, div, point, prelude::*, px, size,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Kind, Layer, PaintState,
     Shape, Space, StyledExt as _, Surface, Tone,
-    components::button::{Button, ButtonVariants as _},
+    components::button::{Button, ButtonRounded, ButtonVariants as _},
     foundation::roles,
     rems_from_px,
 };
 
-pub const COMPACT_NAV_BAR_HEIGHT: f32 = 44.0;
 pub const COMPACT_PILL_HEIGHT: f32 = 56.0;
 
-const BUTTON: f32 = 44.0;
-const BUTTON_ICON: f32 = 20.0;
+pub(super) const BUTTON: f32 = 44.0;
+pub(super) const BUTTON_ICON: f32 = 20.0;
 const TILE_INSET: Space = Space::S8;
 const PILL_GAP: Space = Space::GAP_RELATED;
 const PILL_INSET: f32 = 8.0;
 const PILL_INSET_MIN: f32 = 16.0;
 const PILL_INSET_MAX: f32 = 20.0;
+const UP_REACH: f32 = 4.0;
+const UP_GLYPH: f32 = 18.0;
 const INK_CONTRAST: f32 = 4.5;
+const HANDLE_WIDTH: f32 = 28.0;
+const HANDLE_HEIGHT: f32 = 4.0;
+const HANDLE_INK: f32 = 0.34;
+const HANDLE_TARGET: f32 = 44.0;
+const HANDLE_TARGET_HEIGHT: f32 = 22.0;
+const HANDLE_REACH: f32 = 8.0;
 const TINT_MAX: f32 = 0.95;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -84,6 +92,40 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
         .font_family(theme.font_family.clone())
         .text_color(theme.foreground)
         .child(pill)
+}
+
+#[must_use]
+pub fn pill_handle_bounds(pill: Bounds<Pixels>) -> Bounds<Pixels> {
+    Bounds::new(
+        point(
+            pill.center().x - px(HANDLE_TARGET / 2.0),
+            pill.top() - px(HANDLE_REACH),
+        ),
+        size(px(HANDLE_TARGET), px(HANDLE_TARGET_HEIGHT)),
+    )
+}
+
+pub fn pill_handle(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
+    div()
+        .id(id)
+        .debug_selector(|| "compact-bar-handle".to_owned())
+        .click_cursor()
+        .relative()
+        .w(px(HANDLE_TARGET))
+        .h(px(HANDLE_TARGET_HEIGHT))
+        .role(ala::Role::Button)
+        .aria_label(SharedString::new_static("Up"))
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(
+            div()
+                .absolute()
+                .top(px(HANDLE_REACH - HANDLE_HEIGHT / 2.0))
+                .left(px((HANDLE_TARGET - HANDLE_WIDTH) / 2.0))
+                .w(px(HANDLE_WIDTH))
+                .h(px(HANDLE_HEIGHT))
+                .rounded(px(HANDLE_HEIGHT / 2.0))
+                .bg(cx.theme().foreground.opacity(HANDLE_INK)),
+        )
 }
 
 pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
@@ -181,17 +223,43 @@ pub fn compact_floating_group(
     placement: &PillPlacement,
     cx: &App,
 ) -> Div {
-    let layer = floating_layer(placement, cx);
+    let theme = cx.theme();
+    let floating = floating_layer(placement, cx);
+    let (radius, share, smoothing) = if theme.pill_controls() {
+        (
+            FULL_CORNER_RADIUS,
+            None,
+            crate::Smoothing::CIRCLE.exponent(),
+        )
+    } else {
+        (
+            theme.control_corner(px(COMPACT_PILL_HEIGHT)),
+            Some(theme.control_roundness()),
+            floating.smoothing,
+        )
+    };
+    let inset = px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0);
+    let layer = Layer {
+        radius,
+        share,
+        smoothing,
+        ..floating
+    };
     let ground = layer.ground;
+    let inner = crate::blocks::touch::concentric(radius, inset);
     div()
         .debug_selector(|| "compact-bar-group".to_owned())
         .flex()
         .flex_none()
         .items_center()
         .h(px(COMPACT_PILL_HEIGHT))
-        .px(px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0))
+        .px(inset)
         .layer(&layer)
-        .children(buttons.into_iter().map(|button| button.on(ground)))
+        .children(
+            buttons
+                .into_iter()
+                .map(|button| button.on(ground).rounded(ButtonRounded::Size(inner))),
+        )
 }
 
 pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
@@ -204,22 +272,143 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
-pub fn compact_nav_bar(cx: &App) -> Div {
-    div()
+pub fn compact_disc_button(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: &'static str,
+    cx: &App,
+) -> Button {
+    crate::blocks::sheet::disc_on(id, icon, label, cx.theme().ground(), cx)
+}
+
+pub const BAR_DISC: f32 = COMPACT_PILL_HEIGHT;
+pub const BAR_GAP: f32 = PILL_GAP.design_px();
+const DISC_GLYPH: f32 = 22.0;
+
+pub fn compact_bar_disc(
+    id: impl Into<ElementId>,
+    icon: IconName,
+    label: &'static str,
+    placement: &PillPlacement,
+    cx: &App,
+) -> Stateful<Div> {
+    let theme = cx.theme();
+    let floating = floating_layer(placement, cx);
+    let (radius, share, smoothing) = if theme.pill_controls() {
+        (
+            FULL_CORNER_RADIUS,
+            None,
+            crate::Smoothing::CIRCLE.exponent(),
+        )
+    } else {
+        (
+            theme.control_corner(px(BAR_DISC)),
+            Some(theme.control_roundness()),
+            floating.smoothing,
+        )
+    };
+    let layer = Layer {
+        radius,
+        share,
+        smoothing,
+        ..floating
+    };
+    let pressed = theme
+        .layer(Surface::new(roles::PHONE_PILL), PaintState::Active)
+        .fill;
+    let id = id.into();
+    let press: ElementId = (id.clone(), "press").into();
+    let disc = div()
+        .id(id)
+        .click_cursor()
+        .relative()
         .flex()
         .flex_none()
         .items_center()
-        .gap(Space::S4)
-        .h(rems_from_px(COMPACT_NAV_BAR_HEIGHT))
-        .px(Space::S8)
-        .surface(Surface::new(roles::PHONE_BAR), cx)
+        .justify_center()
+        .size(rems_from_px(BAR_DISC))
+        .role(ala::Role::Button)
+        .aria_label(SharedString::new_static(label))
+        .layer(&layer)
+        .text_color(floating.text);
+    disc.on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(crate::blocks::touch::press_highlight(
+            press, pressed, radius,
+        ))
+        .child(Icon::new(icon).size(rems_from_px(DISC_GLYPH)))
+}
+
+pub const PILL_TILE: f32 = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
+
+fn pill_tile_corner(pill: Pixels, backing: Pixels, cx: &App) -> Pixels {
+    if cx.theme().style(roles::PHONE_PILL_ICON).shape == Shape::Round {
+        crate::blocks::touch::concentric(pill, px(TILE_INSET.design_px()))
+    } else {
+        backing
+    }
+}
+
+#[must_use]
+pub fn pill_tile_radius(placement: &PillPlacement, cx: &App) -> Pixels {
+    let pill = floating_layer(placement, cx);
+    let backing = cx.theme().layer(
+        Surface::new(roles::PHONE_PILL_ICON).on(pill.ground),
+        PaintState::Rest,
+    );
+    pill_tile_corner(pill.radius, backing.radius, cx)
 }
 
 pub struct PillLabel {
     pub icon: IconName,
+    pub face: Option<AnyElement>,
     pub title: SharedString,
+    pub word: SharedString,
     pub meta: SharedString,
-    pub warning: bool,
+    pub tone: Tone,
+    pub up: bool,
+}
+
+pub fn pill_up_disc(
+    id: impl Into<ElementId>,
+    armed: bool,
+    placement: &PillPlacement,
+    cx: &App,
+) -> Stateful<Div> {
+    let pill = floating_layer(placement, cx);
+    let backing = cx.theme().layer(
+        Surface::new(roles::PHONE_PILL_ICON).on(pill.ground),
+        PaintState::Rest,
+    );
+    let radius = pill_tile_corner(pill.radius, backing.radius, cx);
+    let disc = div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(rems_from_px(PILL_TILE));
+    let disc = if armed {
+        disc.rounded(radius)
+            .bg(pill.text)
+            .text_color(cx.theme().background)
+    } else {
+        disc.layer(&Layer { radius, ..backing })
+            .text_color(pill.text)
+    };
+    div()
+        .id(id)
+        .debug_selector(|| "compact-bar-pill-up".to_owned())
+        .click_cursor()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .right_0()
+        .w(px(PILL_TILE + TILE_INSET.design_px() + UP_REACH))
+        .flex()
+        .items_center()
+        .justify_end()
+        .pr(TILE_INSET)
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+        .child(disc.child(Icon::new(IconName::ChevronUp).size(rems_from_px(UP_GLYPH))))
 }
 
 pub fn compact_floating_pill(
@@ -238,6 +427,7 @@ pub fn compact_floating_pill(
     div()
         .id(id)
         .debug_selector(|| "compact-bar-pill".to_owned())
+        .click_cursor()
         .relative()
         .flex()
         .flex_1()
@@ -268,16 +458,15 @@ pub fn compact_pill_label(
 fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) -> Div {
     let PillLabel {
         icon,
+        face,
         title,
+        word,
         meta,
-        warning,
+        tone,
+        up,
     } = label;
     let theme = cx.theme();
-    let tone = if warning {
-        Tone::Warning
-    } else {
-        Tone::Neutral
-    };
+    let toned = tone != Tone::Neutral;
     let badge = theme.paint_on(pill.ground, tone, Emphasis::Soft);
     let backing = theme.layer(
         Surface::new(roles::PHONE_PILL_ICON)
@@ -285,28 +474,41 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
             .on(pill.ground),
         PaintState::Rest,
     );
-    let meta_color = if warning {
+    let muted = theme
+        .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
+        .muted_at(PaintState::Rest);
+    let meta_color = if toned && word.is_empty() {
         badge.text
     } else {
-        theme
-            .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest)
+        muted
     };
-    let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET.design_px();
-    let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
-        crate::blocks::touch::concentric(pill.radius, px(TILE_INSET.design_px()))
-    } else {
-        backing.radius
-    };
+    let lead = word.len();
+    let meta = StyledText::new(SharedString::from(format!("{word}{meta}"))).with_highlights(
+        (toned && lead > 0).then(|| {
+            (
+                0..lead,
+                HighlightStyle {
+                    color: Some(badge.text),
+                    ..HighlightStyle::default()
+                },
+            )
+        }),
+    );
+    let tile = PILL_TILE;
+    let tile_radius = pill_tile_corner(pill.radius, backing.radius, cx);
     div()
         .flex()
         .flex_1()
         .items_center()
         .min_w_0()
         .pl(TILE_INSET)
-        .pr(Space::S12)
+        .pr(if up {
+            px(TILE_INSET.design_px() + PILL_TILE + Space::S10.design_px())
+        } else {
+            px(Space::S12.design_px())
+        })
         .gap(Space::S10)
-        .child(
+        .child(face.unwrap_or_else(|| {
             div()
                 .flex()
                 .flex_none()
@@ -317,13 +519,14 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
                     radius: tile_radius,
                     ..backing
                 })
-                .text_color(if warning {
+                .text_color(if toned {
                     badge.text
                 } else {
                     badge.muted_at(PaintState::Rest)
                 })
-                .child(Icon::new(icon).size(rems_from_px((tile / 2.0).max(16.0)))),
-        )
+                .child(Icon::new(icon).size(rems_from_px((tile / 2.0).max(16.0))))
+                .into_any_element()
+        }))
         .child(
             div()
                 .flex()

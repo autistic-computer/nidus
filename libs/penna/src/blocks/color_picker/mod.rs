@@ -447,6 +447,7 @@ impl ColorPicker {
     fn hex_row(
         state: &Entity<ColorPickerState>,
         author: Option<&SharedString>,
+        size: Size,
         cx: &App,
     ) -> impl IntoElement {
         let hex = state.read(cx).hex.clone();
@@ -458,6 +459,7 @@ impl ColorPicker {
                     .when_some(author, |input, author| {
                         input.id(SharedString::from(format!("{author}-hex")))
                     })
+                    .with_size(size)
                     .flex_1()
                     .min_w_0(),
             )
@@ -470,6 +472,7 @@ impl ColorPicker {
                 .ghost()
                 .flat()
                 .compact()
+                .with_size(size)
                 .icon(crate::IconName::Undo2)
                 .tooltip("Clear the override")
                 .on_click(move |_, window, cx| Self::clear(&state, window, cx)),
@@ -481,6 +484,7 @@ impl ColorPicker {
         author: Option<&SharedString>,
         inherited: Hsla,
         field_height: f32,
+        size: Size,
         cx: &App,
     ) -> impl IntoElement {
         let hsv = state.read(cx).shown(inherited);
@@ -488,7 +492,7 @@ impl ColorPicker {
             .gap(Space::S8)
             .child(Self::field(state, author, hsv, px(field_height), cx))
             .child(Self::hue(state, author, hsv, cx))
-            .child(Self::hex_row(state, author, cx))
+            .child(Self::hex_row(state, author, size, cx))
     }
 
     fn trigger(&self, shown: Hsla, coarse: bool, cx: &App) -> Button {
@@ -497,12 +501,23 @@ impl ColorPicker {
             None => ("penna-color-picker", self.state.entity_id()).into(),
         };
         let swatch = |size: Pixels| {
+            let unset = shown.a <= 0.0;
             div()
                 .size(size)
                 .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
                 .rounded(cx.theme().swatch_radius())
                 .bg(shown)
-                .surface_edge(cx)
+                .when(unset, |this| {
+                    this.border_1().border_color(cx.theme().border()).child(
+                        crate::Icon::new(crate::IconName::Plus)
+                            .size(px(10.0))
+                            .text_color(cx.theme().foreground.muted()),
+                    )
+                })
+                .when(!unset, |this| this.surface_edge(cx))
         };
         let button = match self.swatch {
             Some(size) => Button::new(id.clone())
@@ -568,13 +583,12 @@ impl ColorPicker {
                     .px(size.input_px())
                     .gap(Space::S10)
                     .justify_between()
-                    .cursor_pointer(),
+                    .when(!self.disabled, crate::StyledExt::click_cursor),
                 size,
                 cx,
             ),
             Surface::new(Kind::Field.role()),
             state,
-            true,
             true,
             cx,
         )
@@ -606,7 +620,7 @@ impl ColorPicker {
             bottom_sheet(
                 ("penna-color-picker-sheet", id),
                 self.label.clone().unwrap_or_else(|| "Color".into()),
-                [sheet_close("penna-color-picker-sheet-close")
+                [sheet_close("penna-color-picker-sheet-close", cx)
                     .on_click(move |_, _, cx| close_sheet(("penna-color-picker-sheet", id), cx))
                     .into_any_element()],
                 div()
@@ -618,6 +632,7 @@ impl ColorPicker {
                         self.author.as_ref(),
                         self.inherited,
                         SHEET_FIELD_HEIGHT,
+                        Size::Touch,
                         cx,
                     )),
                 sheet_inset(window),
@@ -694,6 +709,7 @@ impl RenderOnce for ColorPicker {
                         author.as_ref(),
                         inherited,
                         FIELD_HEIGHT,
+                        Size::Medium,
                         cx,
                     ))
             })

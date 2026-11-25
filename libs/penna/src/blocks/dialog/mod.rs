@@ -410,10 +410,12 @@ impl RenderOnce for Dialog {
             .children(self.props.close_button.then(|| {
                 let on_cancel = on_cancel.clone();
                 let on_close = on_close.clone();
+                let slop = crate::blocks::touch::control_slop(crate::Size::Medium);
                 Button::new("close")
                     .absolute()
                     .top(Space::S12)
                     .right(Space::S12)
+                    .hit_slop(slop, slop)
                     .ghost()
                     .icon(IconName::Xmark)
                     .on_click(move |_, window, cx| {
@@ -505,6 +507,7 @@ pub struct AlertDialog {
     icon: Option<AnyElement>,
     title: Option<AnyElement>,
     description: Option<AnyElement>,
+    action: Option<AnyElement>,
     button_props: DialogButtonProps,
 }
 
@@ -516,6 +519,7 @@ impl AlertDialog {
             icon: None,
             title: None,
             description: None,
+            action: None,
             button_props: DialogButtonProps::default(),
         }
     }
@@ -535,6 +539,12 @@ impl AlertDialog {
     #[must_use]
     pub fn description(mut self, description: impl IntoElement) -> Self {
         self.description = Some(description.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn action(mut self, action: impl IntoElement) -> Self {
+        self.action = Some(action.into_any_element());
         self
     }
 
@@ -601,6 +611,7 @@ impl AlertDialog {
             .footer(
                 dialog_footer(cx)
                     .when(props.show_cancel, |this| this.child(props.render_cancel()))
+                    .when_some(self.action, ParentElement::child)
                     .child(props.render_ok()),
             )
     }

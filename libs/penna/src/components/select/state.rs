@@ -2,21 +2,22 @@ use crate::Space;
 use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, DismissEvent, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, Length, MouseButton,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled as _, Subscription, Window, anchored, canvas, deferred, div,
-    prelude::FluentBuilder as _, px,
+    ParentElement as _, Pixels, Render, SharedString, StyleRefinement, Styled as _, Subscription,
+    Window, anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, IndexPath, Kind, PaintState,
     Sizable as _, Size, StyledExt as _, Surface, Tone,
     blocks::sheet::{
-        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_option,
+        bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_groups, sheet_inset,
     },
+    blocks::touch::{TouchGroup, TouchRow, TouchTrailing},
     components::input::{
         Input, InputEvent, InputState, field_chrome_on, field_paint_on, field_text, trailing_size,
     },
-    components::menu::{PopupMenu, PopupMenuItem},
+    components::menu::{MenuScope, PopupMenu, PopupMenuItem},
+    components::segmented::SegmentedControl,
     h_flex,
 };
 
@@ -37,6 +38,9 @@ pub(super) struct SelectOptions {
     pub(super) placeholder: Option<SharedString>,
     pub(super) title: Option<SharedString>,
     pub(super) menu_max_h: Option<Length>,
+    pub(super) searchable: Option<bool>,
+    pub(super) search_placeholder: Option<SharedString>,
+    pub(super) scopes: Vec<MenuScope>,
     pub(super) disabled: bool,
     pub(super) tone: Tone,
     pub(super) on: Option<Ground>,
@@ -52,6 +56,7 @@ pub struct SelectState<D: SelectDelegate> {
     selected: Option<D::Item>,
     menu: Option<Entity<PopupMenu>>,
     sheet: bool,
+    scope: usize,
     search: Option<(Entity<InputState>, Subscription)>,
     trigger_bounds: Bounds<Pixels>,
     options: SelectOptions,
@@ -76,6 +81,7 @@ impl<D: SelectDelegate> SelectState<D> {
             selected,
             menu: None,
             sheet: false,
+            scope: 0,
             search: None,
             trigger_bounds: Bounds::default(),
             options: SelectOptions::default(),
@@ -134,6 +140,25 @@ impl<D: SelectDelegate> SelectState<D> {
         }
     }
 
+    fn opening_scope(&self) -> usize {
+        self.selected
+            .as_ref()
+            .and_then(|item| {
+                let title = item.title();
+                self.options
+                    .scopes
+                    .iter()
+                    .position(|scope| scope.keeps(&title))
+            })
+            .unwrap_or(0)
+    }
+
+    fn searchable(&self) -> bool {
+        self.options
+            .searchable
+            .unwrap_or(self.delegate.items_count() > SEARCH_FROM)
+    }
+
     fn open_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.menu.is_some() || self.sheet || self.options.disabled {
             return;
@@ -148,8 +173,29 @@ impl<D: SelectDelegate> SelectState<D> {
             .as_ref()
             .and_then(|item| self.delegate.position(item.value()));
         let state = cx.entity().downgrade();
+        let search = self.searchable().then(|| {
+            self.options
+                .search_placeholder
+                .clone()
+                .unwrap_or_else(|| SharedString::new_static("Search"))
+        });
+        let scope = self.opening_scope();
+        let selected_index = selected_index.filter(|_| {
+            let title = self.selected.as_ref().map(SelectItem::title);
+            self.options
+                .scopes
+                .get(scope)
+                .zip(title)
+                .is_none_or(|(scope, title)| scope.keeps(&title))
+        });
         let menu = PopupMenu::build(window, cx, |menu, window, cx| {
             let mut menu = menu.scrollable(true).min_w(self.trigger_bounds.size.width);
+            if let Some(placeholder) = search {
+                menu = menu.search(placeholder, window, cx);
+            }
+            if !self.options.scopes.is_empty() {
+                menu = menu.scopes(self.options.scopes.clone(), scope);
+            }
             if let Some(Length::Definite(height)) = self.options.menu_max_h {
                 menu = menu.max_h(
                     height.to_pixels(window.viewport_size().height.into(), window.rem_size()),
@@ -198,11 +244,16 @@ impl<D: SelectDelegate> SelectState<D> {
     }
 
     fn open_sheet(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.delegate.items_count() > SEARCH_FROM {
+        if self.searchable() {
             if let Some((search, _)) = &self.search {
                 search.update(cx, |search, cx| search.set_value("", window, cx));
             } else {
-                let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search"));
+                let placeholder = self
+                    .options
+                    .search_placeholder
+                    .clone()
+                    .unwrap_or_else(|| SharedString::new_static("Search"));
+                let search = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
                 let subscription = cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
                         cx.notify();
@@ -211,6 +262,7 @@ impl<D: SelectDelegate> SelectState<D> {
                 self.search = Some((search, subscription));
             }
         }
+        self.scope = self.opening_scope();
         self.sheet = true;
         cx.notify();
     }
@@ -324,13 +376,12 @@ impl<D: SelectDelegate> SelectState<D> {
                     .px(size.input_px())
                     .gap(size.icon_gap())
                     .justify_between()
-                    .when(!disabled, ala::Styled::cursor_pointer),
+                    .when(!disabled, crate::StyledExt::click_cursor),
                 size,
                 cx,
             ),
             surface,
             state,
-            true,
             true,
             cx,
         )
@@ -386,6 +437,7 @@ impl<D: SelectDelegate> SelectState<D> {
             .map(|(search, _)| search.read(cx).value().to_lowercase())
             .unwrap_or_default();
         let selected = self.selected.as_ref().map(|item| item.value().clone());
+        let scope = self.options.scopes.get(self.scope);
         let rows = (0..self.delegate.items_count())
             .filter_map(|ix| {
                 let item = self.delegate.item(ix)?;
@@ -393,17 +445,17 @@ impl<D: SelectDelegate> SelectState<D> {
                 if !query.is_empty() && !title.to_lowercase().contains(&query) {
                     return None;
                 }
-                Some(
-                    sheet_option(
-                        ("select-option", ix),
-                        title,
-                        selected.as_ref() == Some(item.value()),
-                        cx,
-                    )
-                    .debug_selector(move || format!("select-option-{ix}"))
-                    .when_some(item.font_family(), ala::Styled::font_family)
-                    .on_click(cx.listener(move |this, _, window, cx| this.commit(ix, window, cx))),
-                )
+                if scope.is_some_and(|scope| !scope.keeps(&title)) {
+                    return None;
+                }
+                let row = TouchRow::new(("select-option", ix), title)
+                    .when_some(item.font_family(), TouchRow::face)
+                    .on_click(cx.listener(move |this, _, window, cx| this.commit(ix, window, cx)));
+                Some(if selected.as_ref() == Some(item.value()) {
+                    row.trailing(TouchTrailing::Check)
+                } else {
+                    row
+                })
             })
             .collect::<Vec<_>>();
         let title = self
@@ -412,11 +464,12 @@ impl<D: SelectDelegate> SelectState<D> {
             .clone()
             .or_else(|| self.options.placeholder.clone())
             .unwrap_or_else(|| SharedString::new_static("Select"));
+        let controls = self.search.is_some() || !self.options.scopes.is_empty();
         let dismiss = cx.entity().downgrade();
         let sheet = bottom_sheet(
             ("select-sheet", cx.entity_id()),
             title,
-            [sheet_close("select-sheet-close")
+            [sheet_close("select-sheet-close", cx)
                 .on_click(cx.listener(|_, _, _, cx| {
                     close_sheet(("select-sheet", cx.entity_id()), cx);
                 }))
@@ -424,14 +477,42 @@ impl<D: SelectDelegate> SelectState<D> {
             div()
                 .flex()
                 .flex_col()
-                .pb(Space::S8)
-                .children(self.search.as_ref().map(|(search, _)| {
+                .child(
                     div()
-                        .px(Space::S16)
-                        .pb(Space::S8)
-                        .child(Input::new(search).cleanable(true))
+                        .flex()
+                        .flex_col()
+                        .gap(Space::S8)
+                        .when(controls, |this| this.px(Space::S16).pb(Space::GAP_GROUP))
+                        .children(self.search.as_ref().map(|(search, _)| {
+                            Input::new(search).cleanable(true).with_size(Size::Touch)
+                        }))
+                        .when(!self.options.scopes.is_empty(), |this| {
+                            this.child(
+                                div().child(
+                                    SegmentedControl::new(
+                                        "select-scopes",
+                                        self.options.scopes.iter().map(MenuScope::label),
+                                    )
+                                    .selected(self.scope)
+                                    .full_width()
+                                    .with_size(Size::Touch)
+                                    .on_select({
+                                        let state = cx.entity().downgrade();
+                                        move |scope, _, cx| {
+                                            _ = state.update(cx, |state, cx| {
+                                                state.scope = scope;
+                                                cx.notify();
+                                            });
+                                        }
+                                    }),
+                                ),
+                            )
+                        }),
+                )
+                .child(sheet_groups().when(!rows.is_empty(), |groups| {
+                    groups.child(TouchGroup::new().ruled().rows(rows))
                 }))
-                .child(div().flex().flex_col().list_inset(cx).children(rows)),
+                .into_any_element(),
             sheet_inset(window),
             move |_, cx| {
                 _ = dismiss.update(cx, Self::close_menu);
@@ -494,10 +575,12 @@ mod tests {
     use ala::{AppContext as _, TestAppContext};
 
     use super::{IndexPath, SelectState};
+    use crate::components::menu::MenuScope;
 
     struct Preview {
         state: ala::Entity<SelectState<Vec<String>>>,
         disabled: bool,
+        scopes: Vec<MenuScope>,
     }
 
     impl ala::Render for Preview {
@@ -507,10 +590,11 @@ mod tests {
             _: &mut ala::Context<Self>,
         ) -> impl ala::IntoElement {
             use ala::{ParentElement as _, Styled as _};
-            ala::div()
-                .flex()
-                .w(ala::px(200.0))
-                .child(super::super::Select::new(&self.state).disabled(self.disabled))
+            ala::div().flex().w(ala::px(200.0)).child(
+                super::super::Select::new(&self.state)
+                    .disabled(self.disabled)
+                    .scopes(self.scopes.clone()),
+            )
         }
     }
 
@@ -532,6 +616,7 @@ mod tests {
                 )
             }),
             disabled: false,
+            scopes: Vec::new(),
         });
         let state = preview.read_with(cx, |preview, _| preview.state.clone());
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -601,6 +686,159 @@ mod tests {
     }
 
     #[ala::test]
+    fn a_long_select_filters_its_menu_as_you_type(cx: &mut TestAppContext) {
+        use ala::Focusable as _;
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let fonts = [
+            "Andale Mono",
+            "Arial",
+            "Berkeley Mono",
+            "Courier New",
+            "Fira Code",
+            "Georgia",
+            "Helvetica",
+            "Inter",
+            "Menlo",
+            "Monaco",
+            "PT Mono",
+            "Times",
+            "Verdana",
+        ];
+        let (preview, cx) = cx.add_window_view(|window, cx| Preview {
+            state: cx.new(|cx| {
+                SelectState::new(
+                    fonts.iter().map(|font| (*font).to_owned()).collect(),
+                    Some(IndexPath::new(6)),
+                    window,
+                    cx,
+                )
+            }),
+            disabled: false,
+            scopes: Vec::new(),
+        });
+        let state = preview.read_with(cx, |preview, _| preview.state.clone());
+        let draw = |cx: &mut ala::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
+        let picked = |cx: &mut ala::VisualTestContext| {
+            state.read_with(cx, |state, _| state.selected_value().cloned())
+        };
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("mono");
+        draw(cx);
+        cx.simulate_keystrokes("enter");
+        assert_eq!(picked(cx), Some("Andale Mono".into()));
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("MONO");
+        cx.simulate_keystrokes("down down down enter");
+        assert_eq!(picked(cx), Some("Andale Mono".into()));
+
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
+        draw(cx);
+        cx.simulate_input("mono");
+        cx.simulate_keystrokes("down enter");
+        assert_eq!(picked(cx), Some("Berkeley Mono".into()));
+
+        cx.update(|window, cx| state.focus_handle(cx).focus(window, cx));
+        cx.simulate_keystrokes("down");
+        draw(cx);
+        cx.simulate_input("zz");
+        draw(cx);
+        assert!(cx.debug_bounds("menu-no-matches").is_some());
+        cx.simulate_keystrokes("enter");
+        assert!(state.read_with(cx, |state, _| state.menu.is_some()));
+        cx.simulate_keystrokes("escape");
+        assert!(state.read_with(cx, |state, _| state.menu.is_none()));
+        assert_eq!(picked(cx), Some("Berkeley Mono".into()));
+        cx.update(|window, cx| assert!(state.focus_handle(cx).is_focused(window)));
+    }
+
+    #[ala::test]
+    fn a_scoped_select_opens_on_the_scope_holding_its_pick_and_tab_switches(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let fonts = [
+            "Andale Mono",
+            "Arial",
+            "Berkeley Mono",
+            "Courier New",
+            "Fira Code",
+            "Georgia",
+            "Helvetica",
+            "Inter",
+            "Menlo",
+            "Monaco",
+            "PT Mono",
+            "Times",
+            "Verdana",
+        ];
+        let monospaced = [
+            "Andale Mono",
+            "Berkeley Mono",
+            "Courier New",
+            "Fira Code",
+            "Menlo",
+            "Monaco",
+            "PT Mono",
+        ];
+        let (preview, cx) = cx.add_window_view(|window, cx| Preview {
+            state: cx.new(|cx| {
+                SelectState::new(
+                    fonts.iter().map(|font| (*font).to_owned()).collect(),
+                    Some(IndexPath::new(6)),
+                    window,
+                    cx,
+                )
+            }),
+            disabled: false,
+            scopes: vec![
+                MenuScope::new("Monospaced", move |font| monospaced.contains(&font)),
+                MenuScope::all("All Fonts"),
+            ],
+        });
+        let state = preview.read_with(cx, |preview, _| preview.state.clone());
+        let draw = |cx: &mut ala::VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        };
+        draw(cx);
+        let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
+        let pick = |keys: &str, cx: &mut ala::VisualTestContext| {
+            cx.simulate_click(bounds.center(), ala::Modifiers::default());
+            draw(cx);
+            for key in keys.split(' ') {
+                cx.simulate_keystrokes(key);
+                draw(cx);
+            }
+            cx.simulate_keystrokes("enter");
+            state.read_with(cx, |state, _| state.selected_value().cloned())
+        };
+
+        assert_eq!(pick("up", cx), Some("Georgia".into()));
+        assert_eq!(pick("tab down", cx), Some("Berkeley Mono".into()));
+        assert_eq!(pick("up", cx), Some("Andale Mono".into()));
+        assert_eq!(pick("shift-tab t i m", cx), Some("Times".into()));
+    }
+
+    #[ala::test]
     fn space_opens_a_focused_select(cx: &mut TestAppContext) {
         use ala::Focusable as _;
         cx.update(|cx| {
@@ -617,6 +855,7 @@ mod tests {
                 )
             }),
             disabled: false,
+            scopes: Vec::new(),
         });
         let state = preview.read_with(cx, |preview, _| preview.state.clone());
         cx.run_until_parked();
@@ -652,6 +891,7 @@ mod tests {
                 )
             }),
             disabled: false,
+            scopes: Vec::new(),
         });
         let state = preview.read_with(cx, |preview, _| preview.state.clone());
         cx.run_until_parked();
@@ -669,7 +909,7 @@ mod tests {
             let quads = window.painted_quads();
             let selected = quads
                 .iter()
-                .find(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
+                .rfind(|quad| quad.background == ala::solid_background(crate::picked_menu_fill(cx)))
                 .expect("selected font row");
             assert!(
                 selected.bounds.size.width.0
@@ -712,6 +952,7 @@ mod tests {
                 )
             }),
             disabled: false,
+            scopes: Vec::new(),
         });
         let state = preview.read_with(cx, |preview, _| preview.state.clone());
         let draw = |cx: &mut ala::VisualTestContext| {

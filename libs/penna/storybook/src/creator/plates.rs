@@ -16,7 +16,7 @@ use penna::{
     RuleLook, Space, StyledExt as _, Surface, TextStyle, Tone,
     blocks::color_picker::{ColorPicker, ColorPickerState},
     blocks::compact::{
-        BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_add_tile, bento_grid, bento_tile,
+        BENTO_INSET, BentoSpan, PhoneTile, PillLabel, PillPlacement, bento_grid,
         compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
         compact_hud,
     },
@@ -30,15 +30,12 @@ use penna::{
         SETTINGS_PAGE_PADDING, SettingEntry, SettingsStack, large_title, settings_card_ground,
         settings_navigation_button, settings_page_content,
     },
-    blocks::sheet::{bottom_sheet, sheet_row},
+    blocks::sheet::{bottom_sheet, sheet_close, sheet_row},
     blocks::shell::{app_shell_surface, app_titlebar_strip},
     blocks::sidebar::{
         chrome_button, sidebar_footer, sidebar_heading, sidebar_panel, sidebar_titlebar,
     },
-    blocks::touch::{
-        ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
-        page_dots,
-    },
+    blocks::touch::{ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, page_dots},
     blocks::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
@@ -890,9 +887,12 @@ impl Phone {
             "creator-phone-pill",
             PillLabel {
                 icon: IconName::SquareTerminal,
+                face: None,
                 title: "make test".into(),
+                word: ala::SharedString::default(),
                 meta: "work · build".into(),
-                warning: false,
+                tone: penna::Tone::Neutral,
+                up: false,
             },
             page_dots(&groups(), cx),
             &placement,
@@ -925,8 +925,7 @@ impl Phone {
                     .py(px(8.0))
                     .items_start()
                     .justify_end()
-                    .type_style_mono(TextStyle::Small, cx)
-                    .child(arrow_pad_bubble(Some(ArrowDirection::Up), cx)),
+                    .type_style_mono(TextStyle::Small, cx),
             )
             .child(
                 div()
@@ -974,7 +973,7 @@ impl Phone {
         let sheet = bottom_sheet(
             "creator-windows-sheet",
             "Windows",
-            [compact_bar_button("creator-windows-close", IconName::Xmark).into_any_element()],
+            [sheet_close("creator-windows-close", cx).into_any_element()],
             v_flex()
                 .list_inset(cx)
                 .pb(px(8.0))
@@ -1021,33 +1020,21 @@ impl Phone {
         };
         let column = (viewport - 2.0 * crate::host::PADDING - GAP * (columns - 1.0)) / columns;
         let grid = (column.min(PHONE_WIDTH) - 2.0 - BENTO_INSET * 2.0).max(0.0);
-        let muted = cx.theme().foreground.muted();
         let mut cells = LIBRARY
             .iter()
             .enumerate()
             .map(|(index, (title, detail, span))| {
                 (
                     *span,
-                    bento_tile(("creator-tile", index), ("creator-tile-press", index), cx)
-                        .child(
-                            v_flex()
-                                .p(px(12.0))
-                                .gap(px(2.0))
-                                .child(div().type_style(TextStyle::TouchSmall, cx).child(*title))
-                                .child(
-                                    div()
-                                        .type_style(TextStyle::Body, cx)
-                                        .text_color(muted)
-                                        .child(*detail),
-                                ),
-                        )
+                    PhoneTile::new(("creator-tile", index), *title)
+                        .foot(*detail)
                         .into_any_element(),
                 )
             })
             .collect::<Vec<_>>();
         cells.push((
             BentoSpan::new(4, 1),
-            bento_add_tile("creator-add", "Add folder", cx).into_any_element(),
+            PhoneTile::add("creator-add", "Add folder").into_any_element(),
         ));
         let placement = placement();
         let bar =

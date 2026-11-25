@@ -1,14 +1,13 @@
-use std::time::Duration;
-
 use ala::{
-    Animation, AnimationExt as _, App, ElementId, Hsla, IntoElement, ParentElement as _,
-    RenderOnce, Role, StatefulInteractiveElement as _, Transformation, Window, div, ease_in_out,
-    percentage, prelude::FluentBuilder as _,
+    AnyElement, App, ElementId, Hsla, IntoElement, ParentElement as _, RenderOnce, Role,
+    StatefulInteractiveElement as _, Styled as _, Transformation, Window, div, percentage,
+    prelude::FluentBuilder as _,
 };
 
-use crate::{AuthoredElement as _, Icon, IconName, Sizable, Size};
-
-const ROTATION_PERIOD: Duration = Duration::from_millis(800);
+use crate::{
+    AuthoredElement as _, Icon, IconName, Sizable, Size,
+    foundation::{motion::SPIN, pulse::pulse_phase},
+};
 
 #[derive(IntoElement)]
 pub struct Spinner {
@@ -38,6 +37,29 @@ impl Spinner {
         self.color = Some(color);
         self
     }
+
+    #[must_use]
+    pub fn covering(self, loading: bool, child: impl IntoElement) -> AnyElement {
+        if !loading {
+            return child.into_any_element();
+        }
+        div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(div().opacity(0.0).child(child))
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(self),
+            )
+            .into_any_element()
+    }
 }
 
 impl Default for Spinner {
@@ -54,18 +76,12 @@ impl Sizable for Spinner {
 }
 
 impl RenderOnce for Spinner {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let phase = pulse_phase(SPIN, window.current_view(), cx);
         let turn = Icon::new(IconName::Loader)
             .with_size(self.size)
             .when_some(self.color, ala::Styled::text_color)
-            .with_animation(
-                "spinner-rotation",
-                Animation::new(ROTATION_PERIOD)
-                    .repeat()
-                    .with_easing(ease_in_out)
-                    .with_max_fps(30.0),
-                |this, delta| this.transform(Transformation::rotate(percentage(delta))),
-            );
+            .transform(Transformation::rotate(percentage(phase)));
         match self.id {
             Some(id) => div()
                 .author_id(id)

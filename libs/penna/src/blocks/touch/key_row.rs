@@ -2,35 +2,32 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, Div, ElementId, Entity, IntoElement, Keystroke, Modifiers, MouseButton,
-    ParentElement as _, RenderOnce, ScrollHandle, SharedString, Stateful, Styled, Window, canvas,
-    div, linear_color_stop, linear_gradient, point, prelude::*, px,
+    ParentElement as _, RenderOnce, SharedString, Stateful, Styled, Window, div, prelude::*, px,
 };
 
 use super::{
     arrow_pad::ArrowPad,
     concentric,
-    popover_key::PopoverKey,
+    stack_key::StackKey,
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Layer, PaintState, Shape, Space, StyledExt as _,
-    Surface, Theme, Tone, components::kbd::Kbd, foundation::roles, rems_from_px,
+    ActiveTheme as _, Icon, IconName, Kind, Layer, PaintState, Shape, Space, StyledExt as _,
+    Surface, Theme, components::kbd::Kbd, foundation::roles, rems_from_px,
 };
 
 pub const KEY_ROW_HEIGHT: f32 = KEY_PILL_HEIGHT + 2.0 * KEY_ROW_MARGIN_Y;
 pub const KEY_PILL_HEIGHT: f32 = KEY_SIZE + 2.0 * PILL_PADDING;
-pub const KEY_ROW_MARGIN_X: f32 = Space::S8.design_px();
-pub const KEY_ROW_MARGIN_Y: f32 = Space::S4.design_px();
-pub(super) const KEY_SIZE: f32 = 40.0;
-pub(super) const KEY_ICON: f32 = 18.0;
+pub const KEY_ROW_MARGIN_X: f32 = Space::S16.design_px();
+pub const KEY_ROW_MARGIN_Y: f32 = Space::S8.design_px();
+pub const KEY_DISC: f32 = KEY_PILL_HEIGHT;
+pub const KEY_DISC_GAP: f32 = Space::GAP_RELATED.design_px();
+pub(super) const KEY_SIZE: f32 = 48.0;
+pub(super) const KEY_ICON: f32 = 20.0;
+pub(super) const DISC_ICON: f32 = 22.0;
 const KEY_MARK: f32 = 14.0;
 const PILL_PADDING: f32 = Space::S4.design_px();
 const KEY_GAP: f32 = Space::S2.design_px();
-const LEAD_GAP: f32 = Space::GAP_RELATED.design_px();
-const MORE_WIDTH: f32 = 44.0;
-const MORE_ICON: f32 = 14.0;
-const MORE_STOP: f32 = 0.55;
-const EDGE_SLACK: f32 = 1.0;
 const KEY_GROUP: &str = "key-row-key";
 pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_SIZE) / 2.0);
 pub(super) const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
@@ -78,19 +75,39 @@ pub(super) fn key_glyph(label: SharedString, icon: Option<IconName>) -> AnyEleme
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum KeyLook {
     Rest,
-    Latched,
-    Inverted,
+    On,
+}
+
+#[must_use]
+pub fn key_pill_layer(theme: &Theme) -> Layer {
+    let floating = theme.layer(Surface::new(Kind::Floating.role()), PaintState::Rest);
+    let radius = if theme.pill_controls() {
+        ala::FULL_CORNER_RADIUS
+    } else {
+        theme.control_corner(px(KEY_PILL_HEIGHT))
+    };
+    Layer {
+        radius,
+        share: None,
+        ..floating
+    }
+}
+
+fn disc_layer(theme: &Theme) -> Layer {
+    Layer {
+        radius: ala::FULL_CORNER_RADIUS,
+        ..key_pill_layer(theme)
+    }
 }
 
 pub(super) fn key_look(look: KeyLook, theme: &Theme) -> (Surface, PaintState) {
-    let ground = theme
-        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
-        .ground;
-    let key = Surface::new(roles::PHONE_KEY).on(ground);
+    let ground = key_pill_layer(theme).ground;
     match look {
-        KeyLook::Rest => (key, PaintState::Rest),
-        KeyLook::Latched => (key, PaintState::Current),
-        KeyLook::Inverted => (key.prominent(true), PaintState::Rest),
+        KeyLook::Rest => (Surface::new(roles::PHONE_KEY).on(ground), PaintState::Rest),
+        KeyLook::On => (
+            Surface::new(roles::PHONE_PILL_ICON).on(ground),
+            PaintState::Rest,
+        ),
     }
 }
 
@@ -99,11 +116,9 @@ pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> L
     if theme.style(roles::PHONE_KEY).shape != Shape::Round {
         return layer;
     }
-    let pill = theme
-        .layer(Surface::new(roles::PHONE_PILL), PaintState::Rest)
-        .radius;
     Layer {
-        radius: concentric(pill, ala::px(PILL_PADDING)),
+        radius: concentric(key_pill_layer(theme).radius, px(PILL_PADDING)),
+        share: None,
         ..layer
     }
 }
@@ -111,26 +126,21 @@ pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> L
 pub(super) fn key_surface<E: Styled>(element: E, look: KeyLook, cx: &App) -> E {
     let theme = cx.theme();
     let (surface, state) = key_look(look, theme);
-    let element = element
+    element
         .h(rems_from_px(KEY_SIZE))
-        .layer(&key_layer(surface, state, theme));
-    if look == KeyLook::Inverted {
-        element.font_weight(crate::TextStyle::TouchSmall.strong_weight())
-    } else {
-        element
-    }
+        .layer(&key_layer(surface, state, theme))
 }
 
 #[derive(Clone)]
 pub enum KeyRowKey {
-    Hide,
+    Done,
     Key {
         label: SharedString,
         icon: Option<IconName>,
         keystroke: Keystroke,
     },
     Modifier(StickyModifier),
-    Popover(Entity<PopoverKey>),
+    Stack(Entity<StackKey>),
     Arrows(Entity<ArrowPad>),
 }
 
@@ -183,10 +193,9 @@ type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct KeyRow {
     keys: Vec<KeyRowKey>,
-    lead: Option<KeyRowKey>,
-    scroll: Option<ScrollHandle>,
+    discs: Vec<KeyRowKey>,
     on_key: Option<KeyHandler>,
-    on_hide: Option<Handler>,
+    on_done: Option<Handler>,
     bare: bool,
 }
 
@@ -194,37 +203,22 @@ impl KeyRow {
     pub fn new(keys: Vec<KeyRowKey>) -> Self {
         Self {
             keys,
-            lead: None,
-            scroll: None,
+            discs: Vec::new(),
             on_key: None,
-            on_hide: None,
+            on_done: None,
             bare: false,
         }
     }
 
     #[must_use]
-    pub fn lead(mut self, key: KeyRowKey) -> Self {
-        self.lead = Some(key);
+    pub fn discs(mut self, keys: Vec<KeyRowKey>) -> Self {
+        self.discs = keys;
         self
-    }
-
-    pub fn lead_room(&self) -> f32 {
-        if self.lead.is_some() {
-            KEY_PILL_HEIGHT + LEAD_GAP
-        } else {
-            0.0
-        }
     }
 
     #[must_use]
     pub fn bare(mut self) -> Self {
         self.bare = true;
-        self
-    }
-
-    #[must_use]
-    pub fn track_scroll(mut self, scroll: &ScrollHandle) -> Self {
-        self.scroll = Some(scroll.clone());
         self
     }
 
@@ -235,9 +229,17 @@ impl KeyRow {
     }
 
     #[must_use]
-    pub fn on_hide(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        self.on_hide = Some(Rc::new(f));
+    pub fn on_done(mut self, f: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_done = Some(Rc::new(f));
         self
+    }
+
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "a key row holds a couple of discs"
+    )]
+    pub fn pill_end(&self) -> f32 {
+        self.discs.len() as f32 * (KEY_DISC + KEY_DISC_GAP)
     }
 
     fn slot(id: impl Into<ElementId>) -> Stateful<Div> {
@@ -245,28 +247,28 @@ impl KeyRow {
             .id(id)
             .flex()
             .flex_1()
-            .flex_shrink_0()
-            .min_w(rems_from_px(KEY_SIZE + KEY_GAP))
+            .min_w_0()
             .items_center()
-            .justify_center()
+            .px(rems_from_px(KEY_GAP / 2.0))
             .h_full()
     }
 
     fn cap(index: usize, look: KeyLook, content: impl IntoElement, cx: &App) -> Stateful<Div> {
         let selector = format!("key-row-key-{index}");
         let theme = cx.theme();
-        let pressed = key_layer(key_look(look, theme).0, PaintState::Active, theme);
+        let (surface, state) = key_look(KeyLook::On, theme);
+        let pressed = key_layer(surface, state, theme);
         Self::slot(ElementId::named_usize("key-row-key", index))
             .group(KEY_GROUP)
+            .click_cursor()
             .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .child(
                 key_surface(div().id("cap"), look, cx)
                     .debug_selector(move || selector)
                     .flex()
-                    .flex_none()
+                    .flex_1()
                     .items_center()
                     .justify_center()
-                    .w(rems_from_px(KEY_SIZE))
                     .whitespace_nowrap()
                     .relative()
                     .child(crate::blocks::touch::instant_press_highlight(
@@ -278,22 +280,27 @@ impl KeyRow {
             )
     }
 
-    fn key(&self, index: usize, key: KeyRowKey, sticky: StickyModifiers, cx: &App) -> AnyElement {
+    fn key(
+        &self,
+        index: usize,
+        key: KeyRowKey,
+        sticky: StickyModifiers,
+        cx: &App,
+    ) -> Stateful<Div> {
         match key {
-            KeyRowKey::Hide => {
-                let on_hide = self.on_hide.clone();
+            KeyRowKey::Done => {
+                let on_done = self.on_done.clone();
                 Self::cap(
                     index,
                     KeyLook::Rest,
-                    Icon::new(IconName::ChevronDown).size(rems_from_px(16.0)),
+                    Icon::new(IconName::Check).size(rems_from_px(DISC_ICON)),
                     cx,
                 )
                 .on_click(move |_, window, cx| {
-                    if let Some(on_hide) = &on_hide {
-                        on_hide(window, cx);
+                    if let Some(on_done) = &on_done {
+                        on_done(window, cx);
                     }
                 })
-                .into_any_element()
             }
             KeyRowKey::Key {
                 label,
@@ -301,25 +308,27 @@ impl KeyRow {
                 keystroke,
             } => {
                 let on_key = self.on_key.clone();
-                Self::cap(index, KeyLook::Rest, key_glyph(label, icon), cx)
-                    .on_click(move |_, window, cx| {
+                Self::cap(index, KeyLook::Rest, key_glyph(label, icon), cx).on_click(
+                    move |_, window, cx| {
+                        cx.haptic(ala::Haptic::Light);
                         let keystroke = StickyModifiers::apply(&keystroke, cx);
                         window.refresh();
                         if let Some(on_key) = &on_key {
                             on_key(&keystroke, window, cx);
                         }
-                    })
-                    .into_any_element()
+                    },
+                )
             }
             KeyRowKey::Modifier(modifier) => {
-                let look = if sticky.is_latched(modifier) {
-                    KeyLook::Latched
-                } else {
-                    KeyLook::Rest
-                };
                 let label = match modifier {
                     StickyModifier::Control => "ctrl",
                     StickyModifier::Alt => "alt",
+                    StickyModifier::Command => "cmd",
+                };
+                let look = if sticky.is_latched(modifier) {
+                    KeyLook::On
+                } else {
+                    KeyLook::Rest
                 };
                 Self::cap(
                     index,
@@ -331,14 +340,11 @@ impl KeyRow {
                     StickyModifiers::toggle(modifier, cx);
                     window.refresh();
                 })
-                .into_any_element()
             }
-            KeyRowKey::Popover(key) => Self::slot(ElementId::named_usize("key-row-slot", index))
-                .child(key)
-                .into_any_element(),
+            KeyRowKey::Stack(key) => Self::slot(ElementId::named_usize("key-row-slot", index))
+                .child(div().flex_1().child(key)),
             KeyRowKey::Arrows(pad) => Self::slot(ElementId::named_usize("key-row-slot", index))
-                .child(pad)
-                .into_any_element(),
+                .child(div().flex_1().child(pad)),
         }
     }
 }
@@ -346,74 +352,42 @@ impl KeyRow {
 impl RenderOnce for KeyRow {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let sticky = StickyModifiers::get(cx);
-        let keys: Vec<AnyElement> = self
+        let count = self.keys.len();
+        let keys: Vec<Stateful<Div>> = self
             .keys
             .iter()
             .cloned()
             .enumerate()
             .map(|(index, key)| self.key(index, key, sticky, cx))
             .collect();
-        let lead = self
-            .lead
-            .clone()
-            .map(|key| self.key(self.keys.len(), key, sticky, cx));
-        let start = KEY_ROW_MARGIN_X + self.lead_room();
+        let end = self.pill_end();
         let theme = cx.theme();
-        let pill = theme.layer(Surface::new(roles::PHONE_PILL), PaintState::Rest);
-        let shade = pill.ground.fill;
-        let chevron = theme
-            .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
-            .muted_at(PaintState::Rest);
-        let (more_back, more_ahead) = self.scroll.as_ref().map_or((false, false), edges);
-        let more = |ahead: bool, scroll: ScrollHandle| {
-            let (id, angle, icon) = if ahead {
-                ("key-row-more-ahead", 90.0, IconName::ChevronRight)
-            } else {
-                ("key-row-more-back", 270.0, IconName::ChevronLeft)
-            };
-            div()
-                .id(id)
-                .debug_selector(move || id.to_owned())
-                .absolute()
-                .top(rems_from_px(KEY_ROW_MARGIN_Y))
-                .bottom(rems_from_px(KEY_ROW_MARGIN_Y))
-                .w(rems_from_px(MORE_WIDTH))
-                .map(|fade| {
-                    if ahead {
-                        fade.right(rems_from_px(KEY_ROW_MARGIN_X))
-                            .rounded_tr(pill.radius)
-                            .rounded_br(pill.radius)
-                            .justify_end()
-                            .pr(Space::S10)
-                    } else {
-                        fade.left(rems_from_px(start))
-                            .rounded_tl(pill.radius)
-                            .rounded_bl(pill.radius)
-                            .justify_start()
-                            .pl(Space::S10)
-                    }
-                })
-                .flex()
-                .items_center()
-                .bg(linear_gradient(
-                    angle,
-                    linear_color_stop(shade.alpha(0.0), 0.0),
-                    linear_color_stop(shade, MORE_STOP),
-                ))
-                .text_color(chevron)
-                .block_mouse_except_scroll()
-                .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-                .on_click(move |_, window, _| {
-                    let x = if ahead {
-                        -scroll.max_offset().x
-                    } else {
-                        px(0.0)
-                    };
-                    scroll.set_offset(point(x, scroll.offset().y));
-                    window.refresh();
-                })
-                .child(Icon::new(icon).size(rems_from_px(MORE_ICON)))
-        };
+        let pill = key_pill_layer(theme);
+        let disc = disc_layer(theme);
+        let discs: Vec<Div> = self
+            .discs
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(at, key)| {
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "a key row holds a couple of discs"
+                )]
+                let right = KEY_ROW_MARGIN_X
+                    + (self.discs.len() - 1 - at) as f32 * (KEY_DISC + KEY_DISC_GAP);
+                div()
+                    .debug_selector(move || format!("key-row-disc-{at}"))
+                    .absolute()
+                    .top(rems_from_px(KEY_ROW_MARGIN_Y))
+                    .right(rems_from_px(right))
+                    .size(rems_from_px(KEY_DISC))
+                    .flex()
+                    .px(rems_from_px(PILL_PADDING - KEY_GAP / 2.0))
+                    .layer(&disc)
+                    .child(self.key(count + at, key, sticky, cx))
+            })
+            .collect();
         div()
             .debug_selector(|| "key-row".to_owned())
             .relative()
@@ -422,158 +396,101 @@ impl RenderOnce for KeyRow {
             .h(rems_from_px(KEY_ROW_HEIGHT))
             .font_family(theme.font_family.clone())
             .type_style(crate::TextStyle::TouchSmall, cx)
-            .when_some(lead, |row, lead| {
-                row.child(
-                    div()
-                        .debug_selector(|| "key-row-lead".to_owned())
-                        .absolute()
-                        .top(rems_from_px(KEY_ROW_MARGIN_Y))
-                        .left(rems_from_px(KEY_ROW_MARGIN_X))
-                        .size(rems_from_px(KEY_PILL_HEIGHT))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .layer(&pill)
-                        .child(lead),
-                )
-            })
             .when(!self.bare, |row| {
                 row.child(
                     div()
+                        .debug_selector(|| "key-row-pill".to_owned())
                         .absolute()
                         .top(rems_from_px(KEY_ROW_MARGIN_Y))
                         .bottom(rems_from_px(KEY_ROW_MARGIN_Y))
-                        .left(rems_from_px(start))
-                        .right(rems_from_px(KEY_ROW_MARGIN_X))
+                        .left(rems_from_px(KEY_ROW_MARGIN_X))
+                        .right(rems_from_px(KEY_ROW_MARGIN_X + end))
                         .layer(&pill),
                 )
             })
             .child(
                 div()
-                    .id("key-row")
                     .absolute()
                     .top_0()
                     .bottom_0()
-                    .left(rems_from_px(start + PILL_PADDING))
-                    .right(rems_from_px(KEY_ROW_MARGIN_X + PILL_PADDING))
+                    .left(rems_from_px(
+                        KEY_ROW_MARGIN_X + PILL_PADDING - KEY_GAP / 2.0,
+                    ))
+                    .right(rems_from_px(
+                        KEY_ROW_MARGIN_X + end + PILL_PADDING - KEY_GAP / 2.0,
+                    ))
                     .flex()
-                    .items_center()
-                    .overflow_x_scroll()
-                    .restrict_scroll_to_axis()
-                    .when_some(
-                        self.scroll.as_ref(),
-                        StatefulInteractiveElement::track_scroll,
-                    )
                     .children(keys),
             )
-            .when_some(self.scroll.clone(), |row, scroll| {
-                let watch = scroll.clone();
-                row.when(more_back, |row| row.child(more(false, scroll.clone())))
-                    .when(more_ahead, |row| row.child(more(true, scroll)))
-                    .child(
-                        canvas(
-                            move |_, window, _| {
-                                if edges(&watch) != (more_back, more_ahead) {
-                                    window.refresh();
-                                }
-                            },
-                            |_, (), _, _| {},
-                        )
-                        .absolute()
-                        .size_0(),
-                    )
-            })
+            .children(discs)
     }
-}
-
-fn edges(scroll: &ScrollHandle) -> (bool, bool) {
-    let offset = scroll.offset().x;
-    let end = -scroll.max_offset().x;
-    (
-        offset < px(-EDGE_SLACK),
-        scroll.max_offset().x > px(EDGE_SLACK) && offset > end + px(EDGE_SLACK),
-    )
 }
 
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use ala::{Context, Render, Subscription, TestAppContext, VisualTestContext};
+    use ala::{Context, Render, TestAppContext, VisualTestContext};
 
     use super::*;
-    use crate::blocks::touch::{PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
+    use crate::blocks::touch::{StackChip, StackGroup, StackKeyTap};
 
     struct Keys {
         arrows: Entity<ArrowPad>,
-        control: Entity<PopoverKey>,
-        alt: Entity<PopoverKey>,
-        lead: Entity<PopoverKey>,
-        scroll: ScrollHandle,
+        control: Entity<StackKey>,
+        lead: Entity<StackKey>,
     }
 
     impl Keys {
         fn new(cx: &mut App) -> Self {
-            let scroll = ScrollHandle::new();
-            let latch = |modifier: StickyModifier, label: &'static str, item, cx: &mut App| {
-                cx.new(|cx| {
-                    PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
-                        .icon(modifier.icon())
-                        .items(vec![PopoverKeyItem::new(item, item)])
-                        .columns(2)
-                        .scrolls(scroll.clone())
-                })
-            };
             Self {
                 arrows: cx.new(ArrowPad::new),
-                control: latch(StickyModifier::Control, "ctrl", "ctrl-c", cx),
-                alt: latch(StickyModifier::Alt, "alt", "alt-b", cx),
-                lead: cx.new(|cx| PopoverKey::new("lead", PopoverKeyTap::Press, cx)),
-                scroll,
+                control: cx.new(|cx| {
+                    StackKey::new("ctrl", StackKeyTap::Latch(StickyModifier::Control), cx)
+                        .icon(StickyModifier::Control.icon())
+                        .groups(
+                            vec![StackGroup::new([StackChip::text("ctrl-c", "Interrupt")])],
+                            cx,
+                        )
+                }),
+                lead: cx.new(|cx| StackKey::new("lead", StackKeyTap::Open, cx)),
             }
         }
 
-        fn row(&self) -> Vec<KeyRowKey> {
-            vec![
-                KeyRowKey::Popover(self.control.clone()),
-                KeyRowKey::Popover(self.alt.clone()),
-                KeyRowKey::tab(),
+        fn row(&self) -> KeyRow {
+            KeyRow::new(vec![
+                KeyRowKey::Stack(self.lead.clone()),
                 KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
+                KeyRowKey::Stack(self.control.clone()),
                 KeyRowKey::text("/"),
                 KeyRowKey::text("@"),
+            ])
+            .discs(vec![
                 KeyRowKey::Arrows(self.arrows.clone()),
-                KeyRowKey::Hide,
-            ]
+                KeyRowKey::Done,
+            ])
         }
     }
 
     struct Host {
         keys: Keys,
         sent: Rc<RefCell<Vec<String>>>,
-        width: Option<ala::Pixels>,
-        _press: Subscription,
+        width: ala::Pixels,
     }
 
     impl Render for Host {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let sent = Rc::clone(&self.sent);
-            let hide = Rc::clone(&self.sent);
+            let done = Rc::clone(&self.sent);
             div().size_full().child(
-                div()
-                    .absolute()
-                    .bottom_0()
-                    .left_0()
-                    .when_some(self.width, Styled::w)
-                    .when(self.width.is_none(), Styled::right_0)
-                    .child(
-                        KeyRow::new(self.keys.row())
-                            .lead(KeyRowKey::Popover(self.keys.lead.clone()))
-                            .track_scroll(&self.keys.scroll)
-                            .on_key(move |keystroke, _, _| {
-                                sent.borrow_mut().push(keystroke.unparse());
-                            })
-                            .on_hide(move |_, _| hide.borrow_mut().push("hide".into())),
-                    ),
+                div().absolute().bottom_0().left_0().w(self.width).child(
+                    self.keys
+                        .row()
+                        .on_key(move |keystroke, _, _| {
+                            sent.borrow_mut().push(keystroke.unparse());
+                        })
+                        .on_done(move |_, _| done.borrow_mut().push("done".into())),
+                ),
             )
         }
     }
@@ -586,30 +503,13 @@ mod tests {
     }
 
     fn host(cx: &mut TestAppContext) -> (ala::Entity<Host>, &mut VisualTestContext) {
-        host_with_width(cx, None)
-    }
-
-    fn host_with_width(
-        cx: &mut TestAppContext,
-        width: Option<ala::Pixels>,
-    ) -> (ala::Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
-        let (host, cx) = cx.add_window_view(move |_, cx| {
-            let keys = Keys::new(cx);
-            let sent: Rc<RefCell<Vec<String>>> = Rc::default();
-            let pressed = Rc::clone(&sent);
-            let press = cx.subscribe(&keys.lead, move |_, _, event: &PopoverKeyEvent, _| {
-                if *event == PopoverKeyEvent::Press {
-                    pressed.borrow_mut().push("lead".into());
-                }
-            });
-            Host {
-                keys,
-                sent,
-                width,
-                _press: press,
-            }
+        let (host, cx) = cx.add_window_view(|_, cx| Host {
+            keys: Keys::new(cx),
+            sent: Rc::default(),
+            width: ala::px(393.0),
         });
+        redraw(cx);
         redraw(cx);
         (host, cx)
     }
@@ -623,135 +523,64 @@ mod tests {
     #[ala::test]
     fn keys_send_through_the_sticky_latch(cx: &mut TestAppContext) {
         let (host, cx) = host(cx);
-        assert!(cx.debug_bounds("arrow-pad").is_some());
-
-        tap(cx, "key-row-key-3");
-        tap(cx, "popover-key-ctrl");
+        tap(cx, "key-row-key-1");
+        tap(cx, "stack-key-ctrl");
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).control));
-        tap(cx, "key-row-key-4");
+        tap(cx, "key-row-key-3");
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
-        tap(cx, "key-row-key-5");
-        tap(cx, "key-row-key-7");
-        tap(cx, "popover-key-lead");
+        tap(cx, "key-row-key-4");
+        tap(cx, "key-row-key-6");
+        tap(cx, "stack-key-lead");
         let sent = host.read_with(cx, |host, _| host.sent.borrow().clone());
-        assert_eq!(sent, ["escape", "ctrl-/", "@", "hide", "lead"]);
-        assert!(cx.debug_bounds("popover-key-card").is_none());
+        assert_eq!(sent, ["escape", "ctrl-/", "@", "done"]);
+    }
+
+    #[ala::test]
+    fn the_keys_share_the_pill_and_the_discs_close_the_row(cx: &mut TestAppContext) {
+        let (_, cx) = host(cx);
+        let px = ala::px;
+        let row = cx.debug_bounds("key-row").expect("row");
+        let pill = cx.debug_bounds("key-row-pill").expect("pill");
+        let lead = cx.debug_bounds("stack-key-lead").expect("lead");
+        assert_eq!(lead.center().y, pill.center().y);
+        let esc = cx.debug_bounds("key-row-key-1").expect("esc");
+        let at = cx.debug_bounds("key-row-key-4").expect("at");
+        let arrows = cx.debug_bounds("key-row-disc-0").expect("arrows disc");
+        let pad = cx.debug_bounds("arrow-pad").expect("arrow pad");
+        let done = cx.debug_bounds("key-row-disc-1").expect("done disc");
+        assert_eq!(row.size.height, px(72.0));
+        assert_eq!(pill.left(), px(16.0));
+        assert_eq!(pill.size.height, px(56.0));
+        assert_eq!(pill.bottom(), row.bottom() - px(8.0));
+        assert_eq!(pill.right(), px(393.0 - 16.0 - 2.0 * 56.0 - 2.0 * 8.0));
+        assert_eq!(lead.left() - pill.left(), px(4.0));
+        assert_eq!(pill.right() - at.right(), px(4.0));
+        assert_eq!(esc.left() - lead.right(), px(2.0));
+        assert_eq!(lead.size, esc.size);
+        assert_eq!(esc.size.height, px(48.0));
+        assert!((esc.size.width - px((249.0 - 16.0 - 8.0 - 8.0) / 5.0)).abs() <= px(0.1));
+        assert_eq!(arrows.left() - pill.right(), px(8.0));
+        assert_eq!(done.right(), px(393.0 - 16.0));
+        assert_eq!(done.left() - arrows.right(), px(8.0));
+        assert_eq!(arrows.size, ala::size(px(56.0), px(56.0)));
+        assert_eq!(pad.origin - arrows.origin, ala::point(px(4.0), px(4.0)));
+        assert_eq!(pad.size, ala::size(px(48.0), px(48.0)));
     }
 
     #[ala::test]
     fn keys_take_taps_off_the_cap(cx: &mut TestAppContext) {
         let (host, cx) = host(cx);
         let row = cx.debug_bounds("key-row").expect("row");
-        let esc = cx.debug_bounds("key-row-key-3").expect("esc");
-        assert_eq!(row.size.height, ala::px(KEY_ROW_HEIGHT));
-        assert_eq!(esc.size.height, ala::px(KEY_SIZE));
+        let esc = cx.debug_bounds("key-row-key-1").expect("esc");
         for at in [
             ala::point(esc.center().x, row.top() + ala::px(1.0)),
             ala::point(esc.center().x, row.bottom() - ala::px(1.0)),
             ala::point(esc.right() + ala::px(KEY_SLOP.0 - 0.5), esc.center().y),
-            ala::point(
-                esc.left() - ala::px(KEY_SLOP.0 - 0.5),
-                row.top() + ala::px(1.0),
-            ),
         ] {
             cx.simulate_click(at, Modifiers::none());
             redraw(cx);
         }
         let sent = host.read_with(cx, |host, _| host.sent.borrow().clone());
-        assert_eq!(sent, ["escape", "escape", "escape", "escape"]);
-
-        let ctrl = cx.debug_bounds("popover-key-ctrl").expect("ctrl");
-        let above = ala::point(ctrl.center().x, row.top() + ala::px(1.0));
-        for phase in [ala::TouchPhase::Started, ala::TouchPhase::Ended] {
-            cx.simulate_event(ala::TouchDragEvent {
-                phase,
-                start_position: above,
-                position: above,
-            });
-            redraw(cx);
-        }
-        assert!(cx.update(|_, cx| StickyModifiers::get(cx).control));
-    }
-
-    #[ala::test]
-    fn keys_share_one_width_in_the_set_order(cx: &mut TestAppContext) {
-        let (_, cx) = host(cx);
-        let keys = [
-            "popover-key-lead",
-            "popover-key-ctrl",
-            "popover-key-alt",
-            "key-row-key-2",
-            "key-row-key-3",
-            "key-row-key-4",
-            "key-row-key-5",
-            "arrow-pad",
-            "key-row-key-7",
-        ]
-        .map(|selector| cx.debug_bounds(selector).expect(selector));
-        for key in &keys {
-            assert_eq!(key.size.width, ala::px(KEY_SIZE));
-        }
-        for pair in keys.windows(2) {
-            assert!(pair[0].right() < pair[1].left());
-        }
-    }
-
-    #[ala::test]
-    fn a_sideways_drag_on_a_card_key_scrolls_the_row(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
-        let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        assert!(scroll.max_offset().x > ala::px(0.0));
-        let alt = cx.debug_bounds("popover-key-alt").expect("alt").center();
-        let drag = |phase, x: f32, cx: &mut VisualTestContext| {
-            cx.simulate_event(ala::TouchDragEvent {
-                phase,
-                start_position: alt,
-                position: ala::point(alt.x + ala::px(x), alt.y),
-            });
-            redraw(cx);
-        };
-        drag(ala::TouchPhase::Started, 0.0, cx);
-        drag(ala::TouchPhase::Moved, -20.0, cx);
-        drag(ala::TouchPhase::Moved, -60.0, cx);
-        drag(ala::TouchPhase::Ended, -60.0, cx);
-        assert_eq!(scroll.offset().x, ala::px(-40.0));
-        assert!(cx.debug_bounds("popover-key-item-alt-b").is_none());
-        assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
-    }
-
-    #[ala::test]
-    fn the_lead_key_stays_put_while_the_row_scrolls(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
-        let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        let lead = cx.debug_bounds("popover-key-lead").expect("lead");
-        scroll.set_offset(ala::point(-scroll.max_offset().x, ala::px(0.0)));
-        redraw(cx);
-        assert_eq!(cx.debug_bounds("popover-key-lead"), Some(lead));
-        let ctrl = cx.debug_bounds("popover-key-ctrl");
-        assert!(ctrl.is_none_or(|ctrl| ctrl.right() <= lead.right()));
-    }
-
-    #[ala::test]
-    fn a_fade_and_chevron_mark_the_side_with_more_keys(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
-        redraw(cx);
-        assert!(cx.debug_bounds("key-row-more-ahead").is_some());
-        assert!(cx.debug_bounds("key-row-more-back").is_none());
-
-        tap(cx, "key-row-more-ahead");
-        redraw(cx);
-        let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        assert_eq!(scroll.offset().x, -scroll.max_offset().x);
-        assert!(host.read_with(cx, |host, _| host.sent.borrow().is_empty()));
-        assert!(cx.debug_bounds("key-row-more-ahead").is_none());
-        assert!(cx.debug_bounds("key-row-more-back").is_some());
-    }
-
-    #[ala::test]
-    fn a_row_that_fits_has_no_fades(cx: &mut TestAppContext) {
-        let (_, cx) = host(cx);
-        redraw(cx);
-        assert!(cx.debug_bounds("key-row-more-ahead").is_none());
-        assert!(cx.debug_bounds("key-row-more-back").is_none());
+        assert_eq!(sent, ["escape", "escape", "escape"]);
     }
 }

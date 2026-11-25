@@ -11,6 +11,26 @@
     return span;
   }
 
+  function keys(spelled) {
+    const run = document.createElement("span");
+    run.className = "penna-tooltip-key";
+    run.append(
+      ...spelled
+        .trim()
+        .split(/\s+/)
+        .map((stroke) => {
+          const cap = document.createElement("kbd");
+          cap.className = "penna-kbd";
+          cap.setAttribute("data-penna", "keycap");
+          cap.dataset.size = "small";
+          cap.dataset.kbd = stroke;
+          return cap;
+        }),
+    );
+    globalThis.pennaKbd?.fill(run);
+    return run;
+  }
+
   function tipFor(target) {
     const framed = target.closest("section[data-section]");
     const host = framed ? (target.closest("[data-tooltip-host]") ?? target.parentElement) : document.body;
@@ -21,13 +41,14 @@
       tip = document.createElement("div");
       tip.className = "penna-tooltip";
       tip.setAttribute("data-penna", "tooltip");
+      tip.setAttribute("data-ground", "");
       tip.setAttribute("data-floating", "");
       tip.setAttribute("role", "tooltip");
       tip.toggleAttribute("data-fixed", !framed);
       host.append(tip);
     }
     const key = target.dataset.tooltipKey;
-    tip.replaceChildren(run(label), ...(key ? [run(globalThis.pennaKbd?.text(key) ?? key, "penna-tooltip-key")] : []));
+    tip.replaceChildren(run(label), ...(key ? [keys(key)] : []));
     return tip;
   }
 
@@ -57,8 +78,10 @@
   let timer;
   let shown;
   let press;
+  let pending;
 
   function show(tip, x, y) {
+    pending = undefined;
     tip.setAttribute("data-open", "");
     window.pennaKit?.ceilText(tip);
     place(tip, x, y);
@@ -67,6 +90,7 @@
 
   function hide(target) {
     clearTimeout(timer);
+    pending = undefined;
     shown?.removeAttribute("data-open");
     if (target) tipFor(target)?.removeAttribute("data-open");
     shown = undefined;
@@ -79,8 +103,17 @@
     const tip = tipFor(target);
     if (!tip) return;
     hide();
-    const { clientX: x, clientY: y } = event;
-    timer = setTimeout(() => show(tip, x, y), DELAY);
+    pending = { target, tip, x: event.clientX, y: event.clientY };
+    timer = setTimeout(() => {
+      if (pending) show(pending.tip, pending.x, pending.y);
+    }, DELAY);
+  });
+
+  document.addEventListener("pointermove", (event) => {
+    if (pending && pending.target.contains(event.target)) {
+      pending.x = event.clientX;
+      pending.y = event.clientY;
+    }
   });
 
   document.addEventListener("pointerout", (event) => {

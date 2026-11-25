@@ -8,10 +8,17 @@ use crate::Space;
 use ala::{
     App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS, Hsla,
     InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
-    StyleRefinement, Styled, div, px,
+    StyleRefinement, Styled, Window, div, px,
 };
 
 use super::rems_from_px;
+
+pub const INACTIVE_WINDOW_OPACITY: f32 = 0.62;
+
+#[must_use]
+pub const fn window_chrome_opacity(active: bool) -> f32 {
+    if active { 1.0 } else { INACTIVE_WINDOW_OPACITY }
+}
 
 #[inline(always)]
 pub fn h_flex() -> Div {
@@ -102,10 +109,9 @@ pub trait StyledExt: Styled + Sized {
 
     fn list_inset(self, cx: &App) -> Self {
         let this = self.px(cx.theme().row_inset);
-        if cx.theme().inset_rows() {
-            this.gap_y(Space::S2)
-        } else {
-            this
+        match cx.theme().row_gap() {
+            Some(gap) => this.gap_y(gap),
+            None => this,
         }
     }
 
@@ -150,6 +156,18 @@ pub trait StyledExt: Styled + Sized {
 
     fn rule(self, look: RuleLook, edge: Edge, cx: &App) -> Self {
         self.rule_on(look.role(), edge, cx)
+    }
+
+    fn click_cursor(self) -> Self {
+        self.cursor(PointerCursor::style())
+    }
+
+    fn dim_when_inactive(self, window: &Window) -> Self {
+        if window.is_window_active() {
+            self
+        } else {
+            self.opacity(INACTIVE_WINDOW_OPACITY)
+        }
     }
 
     font_weight!(font_thin, THIN);
@@ -341,6 +359,32 @@ impl Density {
 
 thread_local! {
     static DENSITY: Cell<Density> = const { Cell::new(Density::Regular) };
+    static POINTER_CURSOR: Cell<PointerCursor> = const { Cell::new(PointerCursor::Hand) };
+}
+
+#[derive(Clone, Default, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PointerCursor {
+    #[default]
+    Hand,
+    Arrow,
+}
+
+impl PointerCursor {
+    pub fn get() -> Self {
+        POINTER_CURSOR.get()
+    }
+
+    pub fn set(self) {
+        POINTER_CURSOR.set(self);
+    }
+
+    pub fn style() -> ala::CursorStyle {
+        match Self::get() {
+            Self::Hand => ala::CursorStyle::PointingHand,
+            Self::Arrow => ala::CursorStyle::Arrow,
+        }
+    }
 }
 
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
@@ -353,16 +397,18 @@ pub enum Size {
     Large,
     XLarge,
     Touch,
+    TouchLarge,
 }
 
 impl Size {
-    pub const LADDER: [Self; 6] = [
+    pub const LADDER: [Self; 7] = [
         Self::XSmall,
         Self::Small,
         Self::Medium,
         Self::Large,
         Self::XLarge,
         Self::Touch,
+        Self::TouchLarge,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -372,6 +418,7 @@ impl Size {
             Size::Large => "lg",
             Size::XLarge => "xl",
             Size::Touch => "touch",
+            Size::TouchLarge => "touch-lg",
             _ => "md",
         }
     }
@@ -410,6 +457,7 @@ impl Size {
             Size::Large => 32.,
             Size::XLarge => 40.,
             Size::Touch => 44.,
+            Size::TouchLarge => 56.,
         }
     }
 
@@ -418,7 +466,7 @@ impl Size {
             Size::XSmall => TextStyle::Caption,
             Size::Small => TextStyle::Small,
             Size::XLarge => TextStyle::Lead,
-            Size::Touch => TextStyle::TouchBody,
+            Size::Touch | Size::TouchLarge => TextStyle::TouchBody,
             _ => TextStyle::Body,
         }
     }
@@ -426,7 +474,7 @@ impl Size {
     pub fn inset(&self) -> Space {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S8,
-            Size::Large | Size::XLarge | Size::Touch => Space::S16,
+            Size::Large | Size::XLarge | Size::Touch | Size::TouchLarge => Space::S16,
             _ => Space::S12,
         }
     }
@@ -435,7 +483,7 @@ impl Size {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S6,
             Size::Large => Space::S10,
-            Size::XLarge | Size::Touch => Space::S12,
+            Size::XLarge | Size::Touch | Size::TouchLarge => Space::S12,
             _ => Space::S8,
         }
     }
@@ -444,6 +492,7 @@ impl Size {
         match self.rung() {
             Size::XSmall | Size::Small => 12.,
             Size::Large | Size::XLarge | Size::Touch => 16.,
+            Size::TouchLarge => 20.,
             _ => 14.,
         }
     }
@@ -451,7 +500,7 @@ impl Size {
     pub fn icon_gap(&self) -> Space {
         match self.rung() {
             Size::XSmall | Size::Small => Space::S4,
-            Size::XLarge | Size::Touch => Space::S8,
+            Size::XLarge | Size::Touch | Size::TouchLarge => Space::S8,
             _ => Space::S6,
         }
     }
@@ -524,5 +573,10 @@ pub trait Sizable: Sized {
     #[inline(always)]
     fn touch(self) -> Self {
         self.with_size(Size::Touch)
+    }
+
+    #[inline(always)]
+    fn touch_large(self) -> Self {
+        self.with_size(Size::TouchLarge)
     }
 }

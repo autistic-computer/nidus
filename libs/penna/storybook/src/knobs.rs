@@ -21,7 +21,6 @@ pub struct Knobs {
     pub contrast: f32,
     pub tint_hue: Option<f32>,
     pub tint: Option<f32>,
-    pub reduce_transparency: bool,
     pub zoom: f32,
     pub motion: Motion,
     pub backdrop: Backdrop,
@@ -118,7 +117,6 @@ impl Knobs {
             contrast: 1.0,
             tint_hue: None,
             tint: None,
-            reduce_transparency: false,
             zoom: 1.0,
             motion: Motion::Default,
             backdrop: Backdrop::Plain,
@@ -245,7 +243,6 @@ impl Knobs {
                 "contrast" => knobs.contrast = number(key, value)?,
                 "tint-hue" => knobs.tint_hue = Some(number(key, value)?),
                 "tint" => knobs.tint = Some(number(key, value)?),
-                "reduce-transparency" => knobs.reduce_transparency = flag(value),
                 "zoom" => knobs.zoom = number(key, value)?,
                 "motion" => {
                     knobs.motion = match value {
@@ -330,7 +327,6 @@ impl Knobs {
     pub fn appearance(&self) -> Appearance {
         let mut appearance = Appearance {
             contrast: self.contrast,
-            reduce_transparency: self.reduce_transparency,
             zoom: self.zoom,
             motion: self.motion,
             ..Appearance::default()
@@ -351,9 +347,6 @@ impl Knobs {
             theme.font_family = UI_FONT.into();
         }
         theme.set_contrast(self.contrast);
-        if self.reduce_transparency {
-            theme.glass = None;
-        }
         cx.set_global(UiZoom(self.zoom));
         (catalog().apply)(self, cx);
         let zoom = self.zoom;
@@ -510,7 +503,7 @@ mod tests {
     #[test]
     fn the_person_knobs_make_an_appearance() {
         let knobs = Knobs::parse(
-            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&accent=pink&reduce-transparency=1&zoom=1.25&motion=fast",
+            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&accent=pink&glass=liquid&zoom=1.25&motion=fast",
         )
         .unwrap();
         let appearance = knobs.appearance();
@@ -528,7 +521,6 @@ mod tests {
             penna::foundation::interface_theme::Controls::Pill
         );
         assert_eq!(appearance.glass(), Glass::Liquid);
-        assert!(appearance.reduce_transparency);
         assert_eq!(appearance.motion, Motion::Fast);
         assert_eq!(
             knobs.neutral(),

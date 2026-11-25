@@ -1,8 +1,10 @@
 use crate::story::Story;
 
+mod a2ui;
 mod appearance;
 mod buttons;
 mod canvas;
+mod charts;
 mod chat;
 mod checks;
 #[cfg(feature = "editor")]
@@ -15,6 +17,7 @@ mod docs;
 mod feedback;
 mod icons;
 mod inputs;
+mod key_field;
 pub(crate) mod layout;
 mod markdown;
 pub mod menus;
@@ -22,11 +25,15 @@ mod navigation;
 mod notifications;
 mod palette;
 mod panels;
+mod phone;
+mod phone_chat;
+mod phone_tiles;
 mod rows;
 mod scrollbars;
 mod selection;
 mod settings;
 mod sheet;
+mod stack_menu;
 mod status;
 mod support;
 mod title_bar;
@@ -35,6 +42,7 @@ pub mod which_key;
 pub const STORIES: &[Story] = &[
     buttons::STORY,
     inputs::STORY,
+    key_field::STORY,
     selection::STORY,
     checks::STORY,
     display::STORY,
@@ -48,6 +56,10 @@ pub const STORIES: &[Story] = &[
     rows::STORY,
     notifications::STORY,
     sheet::STORY,
+    phone::STORY,
+    phone_tiles::STORY,
+    phone_chat::STORY,
+    stack_menu::STORY,
     scrollbars::STORY,
     markdown::STORY,
     #[cfg(feature = "editor")]
@@ -61,5 +73,7 @@ pub const STORIES: &[Story] = &[
     which_key::STORY,
     compact::STORY,
     chat::STORY,
+    a2ui::STORY,
+    charts::STORY,
     docs::STORY,
 ];

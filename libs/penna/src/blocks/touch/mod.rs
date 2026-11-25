@@ -7,28 +7,49 @@ use crate::{Size, rems_from_px};
 
 mod arrow_pad;
 mod dots;
+mod find;
 mod key_press;
 mod key_row;
 mod lift;
+mod mark;
 mod pager;
-mod popover_key;
 mod press;
+mod row;
+mod screen;
+mod stack;
+mod stack_gesture;
+mod stack_key;
 mod sticky;
 mod swipe_back;
 mod which_key_list;
 
-pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
-pub use dots::{PageDot, page_dots, page_dots_in};
+pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, resolve_direction};
+pub use dots::{PageDot, page_dots, page_dots_in, page_strip};
+pub use find::{PhoneFind, phone_field_at_rest, phone_suggestions};
 pub use key_row::{
-    KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
+    KEY_DISC, KEY_DISC_GAP, KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y,
+    KeyRow, KeyRowKey, key_pill_layer,
 };
 pub use lift::{Lift, LiftEvent, LiftResponse};
+pub use mark::{MARK_DOT, MARK_SPINNER, StatusMark};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
-pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
 pub(crate) use press::over_hover;
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };
+pub(crate) use row::touch_card_surface;
+pub(crate) use row::{Nest, touch_row_frame};
+pub use row::{
+    TOUCH_DETAIL_ROW_HEIGHT, TOUCH_HEADER_HEIGHT, TOUCH_ROW_HEIGHT, TouchGroup, TouchHeader,
+    TouchInk, TouchRow, TouchTrailing, touch_card, touch_card_ground,
+};
+pub use screen::{ACTION_BAR_BOTTOM, ACTION_BAR_KEYBOARD, EMPTY_GLYPH, PhoneEmpty, action_bar};
+pub use stack::{
+    STACK_CHIP_HEIGHT, STACK_HOLD, StackChip, StackClose, StackGroup, StackLook, StackMenu,
+    StackMenuEvent, middle_line,
+};
+pub use stack_gesture::{StackGesture, StackSlide, StackTarget, StackTouch};
+pub use stack_key::{StackKey, StackKeyTap};
 pub use sticky::{StickyModifier, StickyModifiers};
 pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
 pub use which_key_list::WhichKeyList;
@@ -64,6 +85,52 @@ impl CoarsePointer {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TouchScreen(pub bool);
+
+impl Global for TouchScreen {}
+
+impl TouchScreen {
+    #[must_use]
+    pub fn get(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|touch| touch.0)
+    }
+
+    pub fn set(touch: bool, cx: &mut App) {
+        if Self::get(cx) != touch {
+            cx.set_global(Self(touch));
+        }
+    }
+}
+
+#[must_use]
+pub fn touch_targets(cx: &App) -> bool {
+    CoarsePointer::get(cx) || TouchScreen::get(cx)
+}
+
+#[must_use]
+pub fn hover_reveals(cx: &App) -> bool {
+    !touch_targets(cx)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PhoneScreen(pub bool);
+
+impl Global for PhoneScreen {}
+
+impl PhoneScreen {
+    #[must_use]
+    pub fn get(cx: &App) -> bool {
+        cx.try_global::<Self>().is_some_and(|phone| phone.0)
+    }
+
+    pub fn set(phone: bool, cx: &mut App) {
+        if Self::get(cx) != phone {
+            cx.set_global(Self(phone));
+        }
+    }
+}
+
 pub fn touch_scale(child: impl IntoElement, cx: &App) -> AnyElement {
     if CoarsePointer::get(cx) {
         TouchScale {
@@ -74,6 +141,14 @@ pub fn touch_scale(child: impl IntoElement, cx: &App) -> AnyElement {
     } else {
         child.into_any_element()
     }
+}
+
+pub(crate) fn at_rem(child: impl IntoElement, rem_size: Pixels) -> AnyElement {
+    TouchScale {
+        child: child.into_any_element(),
+        rem_size: Some(rem_size),
+    }
+    .into_any_element()
 }
 
 struct TouchScale {
@@ -149,7 +224,7 @@ impl Element for TouchScale {
 pub fn control_slop(size: Size) -> f32 {
     match size {
         Size::Size(_) => 0.0,
-        size => (TOUCH_TARGET - size.control_px()) / 2.0,
+        size => ((TOUCH_TARGET - size.control_px()) / 2.0).max(0.0),
     }
 }
 
@@ -260,6 +335,15 @@ mod tests {
         assert_eq!(clicks.get(), [4, 1, 1]);
         tap(cx, point(first.center().x, first.top() - px(12.0)));
         assert_eq!(clicks.get(), [4, 1, 2]);
+
+        cx.update(|window, cx| {
+            CoarsePointer::set(false, cx);
+            TouchScreen::set(true, cx);
+            window.refresh();
+            _ = window.draw(cx);
+        });
+        tap(cx, point(first.center().x, first.top() - px(8.0)));
+        assert_eq!(clicks.get(), [5, 1, 2]);
     }
 
     #[test]

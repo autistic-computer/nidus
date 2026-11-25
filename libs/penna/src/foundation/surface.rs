@@ -384,6 +384,7 @@ pub struct SurfaceRole {
     pub(crate) patch: StylePatch,
     pub(crate) row: bool,
     pub(crate) capsule: Option<bool>,
+    pub(crate) tone: Tone,
 }
 
 impl SurfaceRole {
@@ -402,6 +403,7 @@ impl SurfaceRole {
             patch: StylePatch::EMPTY,
             row: false,
             capsule: None,
+            tone: Tone::Neutral,
         }
     }
 
@@ -420,6 +422,10 @@ impl SurfaceRole {
 
     pub(crate) const fn with(self, patch: StylePatch) -> Self {
         Self { patch, ..self }
+    }
+
+    pub(crate) const fn toned(self, tone: Tone) -> Self {
+        Self { tone, ..self }
     }
 
     pub(crate) const fn rows(self) -> Self {
@@ -794,6 +800,18 @@ impl ShadowMaterial {
         spread: -6.0,
         strength: 0.8,
     };
+    pub const SELECTION: Self = Self {
+        y: 2.0,
+        blur: 6.0,
+        spread: 0.0,
+        strength: 0.0,
+    };
+    pub const PANE: Self = Self {
+        y: 3.0,
+        blur: 14.0,
+        spread: 0.0,
+        strength: 0.0,
+    };
 }
 
 impl Default for ShadowMaterial {
@@ -829,6 +847,10 @@ pub fn drawn_roles() -> BTreeSet<&'static str> {
     DRAWN.with_borrow_mut(|drawn| drawn.take().unwrap_or_default())
 }
 
+pub fn peek_drawn_roles() -> BTreeSet<&'static str> {
+    DRAWN.with_borrow(|drawn| drawn.clone().unwrap_or_default())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Surface {
     pub(crate) role: SurfaceRole,
@@ -841,7 +863,7 @@ impl Surface {
     pub const fn new(role: SurfaceRole) -> Self {
         Self {
             role,
-            tone: Tone::Neutral,
+            tone: role.tone,
             prominent: false,
             ground: None,
         }
@@ -890,8 +912,7 @@ impl Layer {
         if self.ground.solid {
             return self.text;
         }
-        self.text
-            .mix_oklab(self.ground.fill, 1.0 - super::color::muted_weight())
+        super::color::ink_on(self.text, self.ground.fill, super::color::muted_weight())
     }
 }
 
@@ -974,7 +995,32 @@ impl Theme {
     }
 
     pub fn float_shadows(&self) -> Vec<BoxShadow> {
-        let material = self.float_shadow;
+        self.shadows_from(self.float_shadow)
+    }
+
+    pub fn glass_float_shadows(&self) -> Vec<BoxShadow> {
+        self.shadows_from(
+            self.glass_look
+                .map_or(self.float_shadow, |look| look.float_shadow),
+        )
+    }
+
+    pub fn selection_shadows(&self) -> Vec<BoxShadow> {
+        self.glass_look
+            .map_or_else(Vec::new, |look| self.shadows_from(look.selection_shadow))
+    }
+
+    pub fn pane_shadows(&self) -> Vec<BoxShadow> {
+        self.glass_look
+            .map_or_else(Vec::new, |look| self.shadows_from(look.pane_shadow))
+    }
+
+    fn selection_material(&self, material: GlassMaterial) -> GlassMaterial {
+        self.glass_look
+            .map_or(material, |look| look.selection.apply(material))
+    }
+
+    fn shadows_from(&self, material: ShadowMaterial) -> Vec<BoxShadow> {
         if material.strength <= 0.0 {
             return Vec::new();
         }
@@ -1070,6 +1116,7 @@ impl Theme {
             match fill {
                 Fill::None => self.paint_on(ground, tone, Emphasis::Ghost),
                 Fill::Tint => soft,
+                Fill::Solid if see_through => soft,
                 Fill::Solid => soft.opaque(),
                 Fill::Glass => super::Paint {
                     fill: glass_fill,
@@ -1090,12 +1137,17 @@ impl Theme {
                 Fill::Solid | Fill::Glass if see_through => base.washed(step + level),
                 Fill::Solid | Fill::Glass => rest.blend(base.washed(level)),
             };
+            let ink = if kind == Kind::Card {
+                Tone::Neutral
+            } else {
+                tone
+            };
             super::Paint {
                 fill: rest,
                 hover: over(1),
                 active: over(2),
                 current: over(2),
-                ..self.paint_on(ground, tone, Emphasis::Ghost)
+                ..self.paint_on(ground, ink, Emphasis::Ghost)
             }
         };
         let paint = if surface.prominent {
@@ -1126,7 +1178,9 @@ impl Theme {
             highlight => highlight,
         };
         if highlight == Highlight::Glass {
-            glass = self.drawn_glass();
+            glass = self
+                .drawn_glass()
+                .map(|material| self.selection_material(material));
         }
         let washed = |paint: &super::Paint| match state {
             PaintState::Hover => paint.hover,
@@ -1230,6 +1284,8 @@ impl Theme {
             Vec::new()
         } else if floating && glass.is_none() && style.shadow == Shadow::Float {
             self.tight_float_shadows()
+        } else if glass.is_some() && style.shadow == Shadow::Float {
+            self.glass_float_shadows()
         } else {
             self.shadows_of(style.shadow)
         };
@@ -1250,6 +1306,9 @@ impl Theme {
                 inset: true,
             }),
             _ => {}
+        }
+        if highlight == Highlight::Glass && state != PaintState::Disabled {
+            shadow.extend(self.selection_shadows());
         }
         if shadow.iter().any(|shadow| !shadow.inset)
             && glass.is_none()
@@ -1276,7 +1335,7 @@ impl Theme {
         let glass = glass.map(|material| {
             if pane {
                 let tint = if see_through {
-                    self.transparent
+                    self.content_plate()
                 } else {
                     ground.fill
                 };
@@ -1297,9 +1356,14 @@ impl Theme {
             } else {
                 tint
             };
-            material
+            let material = material
                 .tint(tint.alpha(material.tint.a))
-                .fallback(fallback)
+                .fallback(fallback);
+            if highlight == Highlight::Glass {
+                self.selection_material(material)
+            } else {
+                material
+            }
         });
         let mark =
             (highlight == Highlight::Bar && surface.role.row && state != PaintState::Disabled)
@@ -1331,8 +1395,7 @@ impl Theme {
             radius
         };
         let descends = |id: &str| surface.role.lineage().any(|node| node.id == id);
-        let icon_tile =
-            descends(super::roles::TILE_STACK.id) || descends(super::roles::TILE_MINI.id);
+        let icon_tile = descends(super::roles::TILE_STACK.id);
         let thumbnail = descends(SurfaceRole::TILE.id);
         let controlled = !tall
             && (icon_tile
@@ -1711,8 +1774,11 @@ mod tests {
     fn a_see_through_window_stays_see_through_under_panels_and_gapped_panes() {
         let mut theme = theme();
         theme.glass = Some(liquid());
+        theme.glass_look = Some(crate::foundation::glass::GlassLook::of(
+            crate::ThemeMode::Dark,
+        ));
         theme.pane_margin = px(8.0);
-        theme.window_opacity = 0.93;
+        theme.set_window(0.93, [0.0, 1.0]);
         let window = theme.ground();
         assert_eq!(window.fill, theme.background.alpha(0.93));
         let panel = theme.layer(
@@ -1726,8 +1792,23 @@ mod tests {
             PaintState::Rest,
         );
         assert_eq!(card.fill, theme.background.opaque().washed(1));
+        let send = theme.layer(
+            Surface::new(super::super::roles::BUTTON_SEND).on(window),
+            PaintState::Rest,
+        );
+        assert_eq!(send.fill, theme.background.opaque().washed(1));
         let pane = theme.layer(Surface::new(Kind::Pane.role()).on(window), PaintState::Rest);
-        assert_eq!(pane.glass.expect("a gapped pane is glass").tint.a, 0.0);
+        assert_eq!(
+            pane.glass.expect("a gapped pane is glass").tint,
+            theme.background.alpha(0.57)
+        );
+        let content = theme.content_ground();
+        assert_eq!(crate::to_hex(content.fill), "#1a1a19f7");
+        let card = theme.layer(
+            Surface::new(super::super::roles::SETTINGS_CARD).on(content),
+            PaintState::Rest,
+        );
+        assert_eq!(card.fill, theme.background.opaque().washed(1));
     }
 
     #[test]

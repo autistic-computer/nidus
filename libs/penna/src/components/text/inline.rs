@@ -27,9 +27,9 @@ use super::{
 };
 use crate::Colorize as _;
 
-const CODE_FILL_PAD_X: f32 = 1.0;
-const CODE_FILL_PAD_Y: f32 = 1.0;
-const CODE_FILL_RADIUS_MAX: f32 = 6.0;
+const CODE_FILL_PAD_X: f32 = 4.0;
+const CODE_FILL_PAD_Y: f32 = 1.5;
+const CODE_FILL_RADIUS_MAX: f32 = 4.0;
 
 fn selectable_line_bounds(
     lines: &[Arc<WrappedLineLayout>],
@@ -548,7 +548,7 @@ impl Element for Inline {
 
         let mouse_position = window.mouse_position();
         if let Some(_) = Self::link_for_position(&text_layout, &self.links, mouse_position) {
-            window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
+            window.set_cursor_style(crate::PointerCursor::style(), &hitbox);
         }
 
         if let Some(selection) = &state.selection {
@@ -973,7 +973,11 @@ mod tests {
         assert!(is_openable("file:///home/u/project"));
         assert!(is_openable("mailto:user@example.com"));
         assert!(is_openable("zed://file/main.rs"));
-        assert!(is_openable("./relative/path.md"));
+
+        assert!(!is_openable("./relative/path.md"));
+        assert!(!is_openable("/Users/u/evidence.png"));
+        assert!(!is_openable("C:\\src\\main.rs"));
+        assert!(!is_openable("#section"));
     }
 
     #[test]

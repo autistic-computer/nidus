@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, FULL_CORNER_RADIUS, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
-    Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    Interactivity, IntoElement, Keystroke, MouseButton, ParentElement, Pixels, RenderOnce, Role,
+    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 
@@ -13,7 +13,7 @@ use crate::{
     IconName, Kind, Layer, PaintState, Selectable, Sizable, Size, Smoothing, StyledExt as _,
     Surface, SurfaceRole, Tone,
     components::tooltip::Tooltip,
-    components::{input::trailing_size, spinner::Spinner},
+    components::{input::trailing_size, popover::PopoverTrigger, spinner::Spinner},
     foundation::roles,
     h_flex, rems_from_px,
 };
@@ -236,6 +236,7 @@ pub struct Button {
     children: Vec<AnyElement>,
     disabled: bool,
     selected: bool,
+    opened: bool,
     variant: ButtonVariant,
     surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
@@ -246,6 +247,7 @@ pub struct Button {
     size: Size,
     compact: bool,
     tooltip: Option<SharedString>,
+    tooltip_keys: Vec<Keystroke>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     loading: bool,
@@ -273,6 +275,7 @@ impl Button {
             label: None,
             disabled: false,
             selected: false,
+            opened: false,
             variant: ButtonVariant::default(),
             surface_role: None,
             on: None,
@@ -280,6 +283,7 @@ impl Button {
             rounded: ButtonRounded::Medium,
             size: Size::Medium,
             tooltip: None,
+            tooltip_keys: Vec::new(),
             on_click: None,
             on_hover: None,
             loading: false,
@@ -338,6 +342,12 @@ impl Button {
 
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    #[must_use]
+    pub fn tooltip_keys(mut self, keys: impl IntoIterator<Item = Keystroke>) -> Self {
+        self.tooltip_keys = keys.into_iter().collect();
         self
     }
 
@@ -450,6 +460,14 @@ impl Selectable for Button {
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+}
+
+impl PopoverTrigger for Button {
+    fn opened(mut self, open: bool) -> Self {
+        self.selected |= open;
+        self.opened = open;
+        self
     }
 }
 
@@ -577,7 +595,9 @@ impl RenderOnce for Button {
             }
         };
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let slop = self.hit_slop.filter(|_| coarse);
+        let slop = self
+            .hit_slop
+            .filter(|_| crate::blocks::touch::touch_targets(cx));
         let press = (coarse && clickable)
             .then(|| crate::blocks::touch::press_feedback(self.id.clone(), window, cx));
         let pressed = press.as_ref().map_or(0.0, |press| press.amount);
@@ -613,6 +633,7 @@ impl RenderOnce for Button {
             }
         });
 
+        let tip = self.tooltip.clone().filter(|_| !self.opened);
         let element = self
             .base
             .role(if self.variant.is_link() {
@@ -633,12 +654,17 @@ impl RenderOnce for Button {
                         .tab_stop(self.tab_stop),
                 )
             })
-            .cursor_default()
+            .map(|this| {
+                if is_disabled {
+                    this.cursor_default()
+                } else {
+                    this.click_cursor()
+                }
+            })
             .flex()
             .flex_shrink_0()
             .items_center()
             .justify_center()
-            .when(self.variant.is_link(), |this| this.cursor_pointer())
             .when(!variant.no_padding(), |this| {
                 let height = self.size.control_h();
                 if icon_only {
@@ -766,14 +792,20 @@ impl RenderOnce for Button {
                     .border_color(rest.border.opacity(0.8))
                     .text_color(rest.text.opacity(0.8))
             })
-            .when_some(self.tooltip.clone(), |this, tooltip| {
-                this.tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
+            .when_some(tip.clone(), |this, tooltip| {
+                let keys = self.tooltip_keys.clone();
+                this.tooltip(move |window, cx| {
+                    Tooltip::new(tooltip.clone())
+                        .keys(keys.clone())
+                        .build(window, cx)
+                })
             });
         let element = crate::components::tooltip::with_focus_tooltip(
             element,
             &self.id,
             is_focused,
-            self.tooltip,
+            tip,
+            &self.tooltip_keys,
             window,
             cx,
         );

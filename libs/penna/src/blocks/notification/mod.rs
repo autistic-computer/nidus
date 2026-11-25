@@ -8,7 +8,7 @@ use ala::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, AppContext as _, ClickEvent, Context,
     DismissEvent, ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, prelude::FluentBuilder as _, px,
+    Subscription, Task, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::blocks::dialog::DEFAULT_WIDTH;
@@ -20,11 +20,13 @@ use crate::{
 };
 
 const AUTOHIDE_DELAY: Duration = Duration::from_secs(5);
+const MESSAGE_LINES: usize = 3;
+const MESSAGE_ROWS: f32 = 3.0;
 const DISMISS_ANIMATION: Duration = Duration::from_millis(150);
 const SLIDE_ANIMATION: Duration = Duration::from_millis(250);
 const SLIDE_DISTANCE: f32 = 45.;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NotificationType {
     Info,
     Success,
@@ -33,6 +35,15 @@ enum NotificationType {
 }
 
 impl NotificationType {
+    fn haptic(self) -> Option<ala::Haptic> {
+        match self {
+            Self::Info => None,
+            Self::Success => Some(ala::Haptic::Success),
+            Self::Warning => Some(ala::Haptic::Warning),
+            Self::Error => Some(ala::Haptic::Error),
+        }
+    }
+
     fn icon(self, cx: &App) -> Icon {
         match self {
             Self::Info => Icon::new(IconName::Info).text_color(cx.theme().foreground),
@@ -50,11 +61,15 @@ pub struct Notification {
     type_: Option<NotificationType>,
     key: Option<SharedString>,
     title: Option<SharedString>,
-    message: Option<SharedString>,
+    pub(crate) message: Option<SharedString>,
     content_builder: Option<ContentBuilder>,
     autohide: Option<Duration>,
     width: Pixels,
+    closable: bool,
     closing: bool,
+    expanded: bool,
+    hovered: bool,
+    pause_when_inactive: bool,
 }
 
 impl Notification {
@@ -68,7 +83,11 @@ impl Notification {
             content_builder: None,
             autohide: Some(AUTOHIDE_DELAY),
             width: DEFAULT_WIDTH,
+            closable: true,
             closing: false,
+            expanded: false,
+            hovered: false,
+            pause_when_inactive: false,
         }
     }
 
@@ -125,6 +144,12 @@ impl Notification {
     }
 
     #[must_use]
+    pub fn closable(mut self, closable: bool) -> Self {
+        self.closable = closable;
+        self
+    }
+
+    #[must_use]
     pub fn width(mut self, width: Pixels) -> Self {
         self.width = width;
         self
@@ -137,12 +162,27 @@ impl Notification {
     }
 
     #[must_use]
+    pub fn pause_when_inactive(mut self, pause: bool) -> Self {
+        self.pause_when_inactive = pause;
+        self
+    }
+
+    #[must_use]
     pub fn content(
         mut self,
         content: impl Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement + 'static,
     ) -> Self {
         self.content_builder = Some(Rc::new(content));
         self
+    }
+
+    fn repeats(&self, other: &Self) -> bool {
+        self.key.is_none()
+            && self.content_builder.is_none()
+            && other.content_builder.is_none()
+            && self.type_ == other.type_
+            && self.title == other.title
+            && self.message == other.message
     }
 
     fn with_type(mut self, type_: NotificationType) -> Self {
@@ -191,6 +231,7 @@ impl Render for Notification {
             TextStyle::Small
         };
         let closing = self.closing;
+        let expanded = self.expanded;
         let placement = cx.theme().notification.placement;
 
         h_flex()
@@ -198,6 +239,9 @@ impl Render for Notification {
             .group("")
             .occlude()
             .relative()
+            .on_hover(cx.listener(|this, hovered, _, _| {
+                this.hovered = *hovered;
+            }))
             .w(self.width)
             .max_w((window.fully_visible_bounds().size.width - px(32.)).max(px(1.)))
             .items_center()
@@ -237,31 +281,49 @@ impl Render for Notification {
                             .when_some(self.message.clone(), |this, message| {
                                 this.child(
                                     div()
+                                        .id("message")
                                         .type_style(TextStyle::Small, cx)
+                                        .when(!expanded, |this| {
+                                            this.max_h(
+                                                TextStyle::Small.line_height() * MESSAGE_ROWS,
+                                            )
+                                            .line_clamp(MESSAGE_LINES)
+                                            .text_ellipsis()
+                                        })
                                         .debug_selector(|| "notification-message".to_owned())
-                                        .child(message),
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.expanded = !this.expanded;
+                                            cx.notify();
+                                        }))
+                                        .child(if expanded {
+                                            message
+                                        } else {
+                                            first_lines(&message)
+                                        }),
                                 )
                             })
                             .when_some(content, |this, content| this.child(content)),
                     ),
             )
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .self_center()
-                    .invisible()
-                    .group_hover("", |this| this.visible())
-                    .child(
-                        Button::new("close")
-                            .icon(IconName::Xmark)
-                            .ghost()
-                            .small()
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                cx.stop_propagation();
-                                this.dismiss(window, cx);
-                            })),
-                    ),
-            )
+            .when(self.closable, |this| {
+                this.child(
+                    div()
+                        .flex_shrink_0()
+                        .self_center()
+                        .invisible()
+                        .group_hover("", |this| this.visible())
+                        .child(
+                            Button::new("close")
+                                .icon(IconName::Xmark)
+                                .ghost()
+                                .small()
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    cx.stop_propagation();
+                                    this.dismiss(window, cx);
+                                })),
+                        ),
+                )
+            })
             .on_aux_click(cx.listener(|this, event: &ClickEvent, window, cx| {
                 if event.is_middle_click() {
                     this.dismiss(window, cx);
@@ -273,6 +335,15 @@ impl Render for Notification {
                 move |this, delta| slide(this, placement, closing, delta),
             )
     }
+}
+
+fn first_lines(message: &SharedString) -> SharedString {
+    let mut lines = message.lines();
+    let shown = lines.by_ref().take(MESSAGE_LINES).collect::<Vec<_>>();
+    if lines.next().is_none() {
+        return message.clone();
+    }
+    format!("{}…", shown.join("\n")).into()
 }
 
 fn slide<E: Styled + IntoElement>(this: E, placement: Anchor, closing: bool, delta: f32) -> E {
@@ -307,6 +378,7 @@ fn slide<E: Styled + IntoElement>(this: E, placement: Anchor, closing: bool, del
 struct Entry {
     view: Entity<Notification>,
     _dismissed: Subscription,
+    _autohide: Option<Task<()>>,
 }
 
 pub(crate) struct NotificationList {
@@ -326,7 +398,13 @@ impl NotificationList {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let autohide = notification.autohide;
+        if let Some(index) = self.showing(&notification, cx) {
+            self.swap(index, notification, window, cx);
+            return;
+        }
+        if let Some(haptic) = notification.type_.and_then(NotificationType::haptic) {
+            cx.haptic(haptic);
+        }
         let view = cx.new(|_| notification);
         let id = view.entity_id();
 
@@ -334,20 +412,53 @@ impl NotificationList {
             list.entries.retain(|entry| entry.view.entity_id() != id);
             cx.notify();
         });
+        let autohide = autohide(&view, window, cx);
 
         self.entries.push(Entry {
-            view: view.clone(),
+            view,
             _dismissed: dismissed,
+            _autohide: autohide,
         });
+        cx.notify();
+    }
 
-        if let Some(delay) = autohide {
-            cx.spawn_in(window, async move |_, cx| {
-                cx.background_executor().timer(delay).await;
-                let _ = view.update_in(cx, |note, window, cx| note.dismiss(window, cx));
-            })
-            .detach();
-        }
+    pub(crate) fn replace(
+        &mut self,
+        notification: Notification,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(index) = self.showing(&notification, cx) else {
+            return false;
+        };
+        self.swap(index, notification, window, cx);
+        true
+    }
 
+    fn showing(&self, notification: &Notification, cx: &App) -> Option<usize> {
+        self.entries.iter().position(|entry| {
+            let note = entry.view.read(cx);
+            !note.closing
+                && match &notification.key {
+                    Some(key) => note.key.as_ref() == Some(key),
+                    None => note.repeats(notification),
+                }
+        })
+    }
+
+    fn swap(
+        &mut self,
+        index: usize,
+        notification: Notification,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = self.entries[index].view.clone();
+        view.update(cx, |note, cx| {
+            *note = notification;
+            cx.notify();
+        });
+        self.entries[index]._autohide = autohide(&view, window, cx);
         cx.notify();
     }
 
@@ -380,6 +491,37 @@ impl NotificationList {
             .map(|entry| entry.view.clone())
             .collect()
     }
+}
+
+fn autohide(
+    view: &Entity<Notification>,
+    window: &mut Window,
+    cx: &mut Context<NotificationList>,
+) -> Option<Task<()>> {
+    let delay = view.read(cx).autohide?;
+    let view = view.clone();
+    Some(cx.spawn_in(window, async move |_, cx| {
+        let mut remaining = delay;
+        let tick = Duration::from_millis(100);
+        while !remaining.is_zero() {
+            let step = remaining.min(tick);
+            cx.background_executor().timer(step).await;
+            let state = view.update_in(cx, |note, window, _| {
+                let inactive = note.pause_when_inactive && !window.is_window_active();
+                (note.closing, note.hovered || note.expanded || inactive)
+            });
+            match state {
+                Ok((true, _)) | Err(_) => return,
+                Ok((false, true)) => continue,
+                Ok((false, false)) => remaining = remaining.saturating_sub(step),
+            }
+        }
+        let _ = view.update_in(cx, |note, window, cx| {
+            if !note.expanded && !note.hovered {
+                note.dismiss(window, cx);
+            }
+        });
+    }))
 }
 
 impl Render for NotificationList {
@@ -447,6 +589,44 @@ mod tests {
             cx.debug_bounds(first_line)
                 .unwrap_or_else(|| panic!("the toast draws its {first_line}")),
         )
+    }
+
+    #[ala::test]
+    fn a_long_message_shows_three_lines_until_clicked(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let lines = |count: usize| vec!["line"; count].join("\n");
+        let height = |text: String, cx: &mut TestAppContext| {
+            let (_, cx) = cx.add_window_view(|_, _| Notification::info(text));
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+            cx.debug_bounds("notification-message")
+                .expect("the toast draws its message")
+                .size
+                .height
+        };
+        let one = height(lines(1), cx);
+        assert_eq!(height(lines(3), cx), one * 3.0);
+        assert_eq!(height(lines(9), cx), one * 3.0);
+        assert_eq!(height("word ".repeat(400), cx), one * 3.0);
+
+        let (_, cx) = cx.add_window_view(|_, _| Notification::info(lines(9)));
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let message = cx
+            .debug_bounds("notification-message")
+            .expect("the toast draws its message");
+        cx.simulate_click(message.center(), ala::Modifiers::none());
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let expanded = cx
+            .debug_bounds("notification-message")
+            .expect("the toast draws its message");
+        assert_eq!(expanded.size.height, one * 9.0);
     }
 
     #[ala::test]

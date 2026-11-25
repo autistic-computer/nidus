@@ -3,28 +3,37 @@ use std::rc::Rc;
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Context, DispatchPhase, Div, ElementId, Global,
     HitboxBehavior, IntoElement, MouseButton, ParentElement as _, Pixels, Point, RenderOnce,
-    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TouchPhase, Window, anchored,
-    canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
+    ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TextRun, TouchPhase, Window,
+    anchored, canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
 };
 use web_time::{Duration, Instant};
 
 use crate::foundation::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Ground, Icon, IconName, Layer, PaintState, Space, StyledExt as _,
-    Surface, SurfaceRole, Tone,
-    components::button::Button,
-    foundation::roles,
-    foundation::{InteractiveSurfaceExt as _, muted_on, row_corners, row_radius},
-    h_flex,
+    ActiveTheme as _, Disableable as _, Emphasis, Ground, Icon, IconName, Layer, PaintState,
+    Sizable as _, Size, Space, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    components::button::{Button, ButtonVariant, ButtonVariants as _},
+    foundation::{SURFACE_ENTER_DURATION, muted_on, roles},
 };
 
 const ENTER: Duration = Duration::from_millis(240);
 const GRABBER_WIDTH: f32 = 36.0;
 const GRABBER_HEIGHT: f32 = 5.0;
-const HEADER_HEIGHT: f32 = 60.0;
-const CLOSE: f32 = 36.0;
-const OPTION_HEIGHT: f32 = 52.0;
-const DETAIL_HEIGHT: f32 = 64.0;
+const HEADER_HEIGHT: f32 = 44.0;
+const HEADER_SIDE: f32 = 60.0;
+const CLOSE: f32 = crate::blocks::touch::TOUCH_TARGET;
+const DISC_GLYPH: f32 = 20.0;
+const CONTENT_EDGE: f32 = 16.0;
+const MODAL_PAD: f32 = 20.0;
+const MODAL_GUTTER: f32 = 64.0;
+const MODAL_MAX_WIDTH: f32 = 340.0;
+const MODAL_TITLE: f32 = CLOSE;
+const MODAL_TOP: f32 = 12.0;
+const MODAL_TITLE_SIDE: f32 = 44.0;
+const MODAL_CONTROL: f32 = 48.0;
+const MODAL_RISE: f32 = 6.0;
+const MODAL_SCRIM_LIGHT: f32 = 0.28;
+const OPTION_HEIGHT: f32 = crate::blocks::touch::TOUCH_ROW_HEIGHT;
 const TILE: f32 = 40.0;
 const TILE_ROW_HEIGHT: f32 = 56.0;
 const MAX_HEIGHT: f32 = 0.85;
@@ -33,8 +42,43 @@ const RISE: f32 = 0.3;
 const FLING_HEIGHTS: f32 = 2.0;
 const COMMIT_FRACTION: f32 = 0.48;
 const SHADOW_ROOM: f32 = 32.0;
+const PAGE_TURN: Duration = ENTER;
+const PAGE_SHIFT: f32 = 0.3;
+const PAGE_OUT: f32 = 0.35;
 
 type Dismiss = Rc<dyn Fn(&mut Window, &mut App)>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PageTurn {
+    since: Instant,
+    from: usize,
+    to: usize,
+}
+
+impl PageTurn {
+    #[must_use]
+    pub fn new(from: usize, to: usize, cx: &App) -> Self {
+        Self {
+            since: cx.background_executor().now(),
+            from,
+            to,
+        }
+    }
+
+    fn progress(&self, now: Instant) -> f32 {
+        let elapsed = ala::animation_time(now.saturating_duration_since(self.since));
+        (elapsed.as_secs_f32() / PAGE_TURN.as_secs_f32()).clamp(0.0, 1.0)
+    }
+
+    #[must_use]
+    pub fn running(&self, cx: &App) -> bool {
+        self.progress(cx.background_executor().now()) < 1.0
+    }
+
+    const fn inward(&self) -> bool {
+        self.to > self.from
+    }
+}
 
 #[derive(Default)]
 struct ClosingSheets(Vec<ElementId>);
@@ -72,8 +116,12 @@ pub struct BottomSheet {
     bottom_inset: Pixels,
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
-    heading: Option<AnyElement>,
+    back: Option<AnyElement>,
+    detail: Option<SharedString>,
     full: Option<Pixels>,
+    cut_middle: bool,
+    modal: bool,
+    turn: Option<(Box<BottomSheet>, PageTurn)>,
 }
 
 pub fn bottom_sheet(
@@ -92,8 +140,12 @@ pub fn bottom_sheet(
         bottom_inset,
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
-        heading: None,
+        back: None,
+        detail: None,
         full: None,
+        cut_middle: false,
+        modal: false,
+        turn: None,
     }
 }
 
@@ -105,8 +157,26 @@ impl BottomSheet {
     }
 
     #[must_use]
-    pub fn heading(mut self, heading: impl IntoElement) -> Self {
-        self.heading = Some(heading.into_any_element());
+    pub fn back(mut self, back: impl IntoElement) -> Self {
+        self.back = Some(back.into_any_element());
+        self
+    }
+
+    #[must_use]
+    pub fn modal(mut self) -> Self {
+        self.modal = true;
+        self
+    }
+
+    #[must_use]
+    pub fn detail(mut self, detail: impl Into<SharedString>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    #[must_use]
+    pub fn cut_middle(mut self) -> Self {
+        self.cut_middle = true;
         self
     }
 
@@ -115,11 +185,23 @@ impl BottomSheet {
         self.full = Some(top);
         self
     }
+
+    #[must_use]
+    pub fn turned_from(mut self, left: BottomSheet, turn: PageTurn) -> Self {
+        self.turn = Some((Box::new(left), turn));
+        self
+    }
 }
 
 #[must_use]
 pub fn sheet_ground(cx: &App) -> Ground {
     cx.theme().ground_of(Surface::new(SurfaceRole::DRAWER))
+}
+
+#[must_use]
+pub fn sheet_group_ground(cx: &App) -> Ground {
+    cx.theme()
+        .ground_of(Surface::new(roles::SETTINGS_CARD).on(sheet_ground(cx)))
 }
 
 #[must_use]
@@ -142,43 +224,269 @@ pub fn floating_sheet(sheet: impl IntoElement, window: &Window) -> AnyElement {
     .into_any_element()
 }
 
-pub fn sheet_close(id: impl Into<ElementId>) -> Button {
-    Button::new(id)
-        .compact()
-        .tab_stop(false)
-        .size(px(CLOSE))
-        .rounded_full()
-        .child(Icon::new(IconName::Xmark).size(px(16.0)))
+pub fn sheet_close(id: impl Into<ElementId>, cx: &App) -> Button {
+    disc_button(id, IconName::Xmark, "Close", cx)
 }
 
-pub fn sheet_option(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    checked: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    option_row(
-        id,
-        Surface::new(SurfaceRole::MENU_ITEM),
-        Lead::Check(checked),
-        label.into(),
-        cx,
-    )
+pub fn sheet_back(id: impl Into<ElementId>, cx: &App) -> Button {
+    disc_button(id, IconName::ChevronLeft, "Back", cx)
 }
 
-pub fn sheet_action(
+fn disc_button(id: impl Into<ElementId>, icon: IconName, label: &'static str, cx: &App) -> Button {
+    disc_on(id, icon, label, sheet_ground(cx), cx)
+}
+
+pub(crate) fn disc_on(
     id: impl Into<ElementId>,
     icon: IconName,
-    label: impl Into<SharedString>,
+    label: &'static str,
+    ground: Ground,
     cx: &App,
-) -> Stateful<Div> {
-    option_row(
-        id,
-        Surface::new(SurfaceRole::MENU_ITEM),
-        Lead::Tile(Box::new(Icon::new(icon))),
-        label.into(),
-        cx,
-    )
+) -> Button {
+    let paint = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Soft);
+    Button::new(id)
+        .text()
+        .tab_stop(false)
+        .w(px(CLOSE))
+        .h(px(CLOSE))
+        .tooltip(label)
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .justify_center()
+                .size(px(CLOSE))
+                .rounded_full()
+                .bg(paint.fill)
+                .child(
+                    Icon::new(icon)
+                        .size(px(DISC_GLYPH))
+                        .text_color(muted_on(ground, cx)),
+                ),
+        )
+}
+
+#[must_use]
+pub fn sheet_groups() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap(Space::GAP_GROUP)
+        .px(Space::S8)
+}
+
+#[must_use]
+pub fn modal_groups() -> Div {
+    sheet_groups().gap(Space::S8).pb(Space::S8)
+}
+
+#[must_use]
+pub fn modal_detail(cx: &App) -> Div {
+    let rem = cx.theme().font_size;
+    let slack = (px(MODAL_TITLE) - TextStyle::TouchBody.line_height().to_pixels(rem)) / 2.0;
+    div()
+        .mt(Space::S4.rems().to_pixels(rem) - slack - Space::S16.rems().to_pixels(rem))
+        .w_full()
+        .text_center()
+        .type_style(TextStyle::TouchSmall, cx)
+        .text_color(muted_on(sheet_ground(cx), cx))
+}
+
+#[must_use]
+pub fn modal_body() -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap(Space::S16)
+        .px(px(MODAL_PAD))
+        .pb(px(MODAL_PAD))
+}
+
+pub fn sheet_note(text: impl Into<SharedString>, cx: &App) -> Div {
+    div()
+        .mt(-Space::S8.rems())
+        .px(Space::S16)
+        .pb(Space::S4)
+        .type_style(TextStyle::TouchSmall, cx)
+        .text_color(muted_on(sheet_ground(cx), cx))
+        .child(text.into())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModalTone {
+    Danger,
+    Accent,
+}
+
+type ModalHandler = Rc<dyn Fn(&mut Window, &mut App)>;
+
+pub struct ModalAction {
+    id: ElementId,
+    label: SharedString,
+    tone: ModalTone,
+    disabled: bool,
+    on_click: ModalHandler,
+}
+
+impl ModalAction {
+    pub fn new(
+        id: impl Into<ElementId>,
+        label: impl Into<SharedString>,
+        tone: ModalTone,
+        on_click: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            tone,
+            disabled: false,
+            on_click: Rc::new(on_click),
+        }
+    }
+}
+
+impl crate::Disableable for ModalAction {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+}
+
+const CANCEL: &str = "Cancel";
+
+fn label_width(text: &str, window: &Window, cx: &App) -> Pixels {
+    let style = TextStyle::TouchBody;
+    let mut font = ala::font(cx.theme().font_family.clone());
+    font.weight = style.strong_weight();
+    let run = TextRun {
+        len: text.len(),
+        font,
+        color: ala::black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    };
+    window
+        .text_system()
+        .shape_line(
+            SharedString::from(text.to_owned()),
+            style.size().to_pixels(window.rem_size()),
+            &[run],
+            None,
+        )
+        .width
+}
+
+fn card_width(room: Pixels) -> Pixels {
+    (room - px(MODAL_GUTTER))
+        .min(px(MODAL_MAX_WIDTH))
+        .max(px(0.0))
+}
+
+fn modal_width(window: &Window) -> Pixels {
+    card_width(window.viewport_size().width)
+}
+
+#[must_use]
+pub fn modal_buttons_stack(labels: [Pixels; 2], room: Pixels) -> bool {
+    let each = (room - px(Space::S8.design_px())) / 2.0 - px(MODAL_CONTROL) / 5.0 * 2.0;
+    labels.into_iter().any(|label| label > each)
+}
+
+pub fn modal_buttons(
+    sheet: impl Into<ElementId>,
+    action: ModalAction,
+    window: &Window,
+    cx: &App,
+) -> Div {
+    modal_buttons_labelled(sheet, CANCEL, action, window, cx)
+}
+
+pub fn modal_buttons_labelled(
+    sheet: impl Into<ElementId>,
+    cancel_label: impl Into<SharedString>,
+    action: ModalAction,
+    window: &Window,
+    cx: &App,
+) -> Div {
+    let sheet = sheet.into();
+    let cancel_label = cancel_label.into();
+    let ground = sheet_ground(cx);
+    let size = Size::Size(px(MODAL_CONTROL));
+    let room = modal_width(window) - px(MODAL_PAD * 2.0);
+    let stack = modal_buttons_stack(
+        [
+            label_width(&cancel_label, window, cx),
+            label_width(&action.label, window, cx),
+        ],
+        room,
+    );
+    let cancelled = sheet.clone();
+    let cancel = Button::new("modal-cancel")
+        .label(cancel_label)
+        .with_size(size)
+        .w_full()
+        .on(ground)
+        .on_click(move |_, _, cx| close_sheet(cancelled.clone(), cx));
+    let tone = match action.tone {
+        ModalTone::Danger => Tone::Danger,
+        ModalTone::Accent => Tone::Accent,
+    };
+    let on_click = action.on_click;
+    let act = Button::new(action.id)
+        .with_variant(ButtonVariant::Paint(tone, Emphasis::Solid))
+        .label(action.label)
+        .with_size(size)
+        .w_full()
+        .on(ground)
+        .disabled(action.disabled)
+        .on_click(move |_, window, cx| {
+            on_click(window, cx);
+            close_sheet(sheet.clone(), cx);
+        });
+    if stack {
+        div()
+            .flex()
+            .flex_col()
+            .w_full()
+            .gap(Space::S8)
+            .child(act)
+            .child(cancel)
+    } else {
+        div()
+            .flex()
+            .w_full()
+            .gap(Space::S8)
+            .child(div().flex_1().min_w_0().child(cancel))
+            .child(div().flex_1().min_w_0().child(act))
+    }
+}
+
+#[must_use]
+pub fn modal_scrim(cx: &App) -> ala::Hsla {
+    let theme = cx.theme();
+    if theme.mode.is_dark() {
+        theme.scrim
+    } else {
+        theme.foreground.opacity(MODAL_SCRIM_LIGHT)
+    }
+}
+
+fn title_text(title: SharedString, cut_middle: bool, style: TextStyle) -> AnyElement {
+    if cut_middle {
+        crate::blocks::touch::middle_line(title, style).into_any_element()
+    } else {
+        div()
+            .min_w_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .text_ellipsis()
+            .child(title)
+            .into_any_element()
+    }
 }
 
 pub fn sheet_row(
@@ -196,48 +504,8 @@ pub fn sheet_row(
     )
 }
 
-pub fn sheet_detail_row(
-    id: impl Into<ElementId>,
-    slot: Option<Icon>,
-    label: impl Into<SharedString>,
-    detail: impl IntoElement,
-    cx: &App,
-) -> Stateful<Div> {
-    let surface = Surface::new(roles::PHONE_ROW);
-    let layer = cx.theme().layer(surface, PaintState::Rest);
-    let muted = muted_on(layer.ground, cx);
-    row_shell(id, surface, px(DETAIL_HEIGHT), cx)
-        .children(slot.map(|icon| icon_tile(icon, TILE, &layer, cx)))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(Space::S2)
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .type_style(crate::TextStyle::TouchBody, cx)
-                        .child(label.into()),
-                )
-                .child(
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .type_style(crate::TextStyle::TouchSmall, cx)
-                        .text_color(muted)
-                        .child(detail),
-                ),
-        )
-}
-
 enum Lead {
     Empty,
-    Check(bool),
     Tile(Box<Icon>),
 }
 
@@ -256,14 +524,6 @@ fn option_row(
     };
     let lead = match lead {
         Lead::Empty => None,
-        Lead::Check(checked) => Some(
-            div()
-                .flex()
-                .flex_none()
-                .w(px(20.0))
-                .children(checked.then(|| Icon::new(IconName::Check).size(px(18.0))))
-                .into_any_element(),
-        ),
         Lead::Tile(icon) => Some(icon_tile(*icon, TILE, &layer, cx).into_any_element()),
     };
     row_shell(id, surface, px(height), cx).children(lead).child(
@@ -284,32 +544,12 @@ fn row_shell(
     height: Pixels,
     cx: &App,
 ) -> Stateful<Div> {
-    let id = id.into();
     let theme = cx.theme();
-    let layer = theme.layer(surface, PaintState::Rest);
-    let pressed = crate::blocks::touch::over_hover(
-        theme.layer(surface, PaintState::Hover).fill,
-        theme.layer(surface, PaintState::Active).fill,
-    );
-    row_corners(
-        h_flex()
-            .id(id.clone())
-            .flex_none()
-            .h(height)
-            .surface_hover(surface, PaintState::Rest, cx),
-        &layer,
-        height,
-    )
-    .relative()
-    .w_full()
-    .gap(Space::S12)
-    .px(Space::S12)
-    .cursor_pointer()
-    .child(crate::blocks::touch::instant_press_highlight(
-        id,
-        pressed,
-        crate::blocks::touch::PressCorners::Row(row_radius(&layer, height), layer.smoothing),
-    ))
+    let nest = crate::blocks::touch::Nest {
+        outer: theme.phone_radius(),
+        inset: theme.row_inset,
+    };
+    crate::blocks::touch::touch_row_frame(id, surface, height, Some(nest), PaintState::Rest, cx)
 }
 
 fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
@@ -334,6 +574,18 @@ enum Gesture {
     Sheet(Point<Pixels>),
 }
 
+#[derive(Clone, Copy)]
+enum Measure {
+    Body,
+    Page,
+}
+
+struct Turning {
+    since: Instant,
+    from_height: Pixels,
+    left_offset: Pixels,
+}
+
 struct SheetState {
     dismissal: Dismissal,
     scroll: ScrollHandle,
@@ -341,9 +593,63 @@ struct SheetState {
     height: f32,
     extent: f32,
     gesture: Gesture,
+    body: Pixels,
+    natural: Option<Pixels>,
+    turning: Option<Turning>,
+    offsets: Vec<Point<Pixels>>,
+    leaving: bool,
 }
 
 impl SheetState {
+    fn turn(&mut self, turn: Option<PageTurn>) {
+        let Some(turn) = turn else {
+            self.turning = None;
+            return;
+        };
+        if self
+            .turning
+            .as_ref()
+            .is_some_and(|turning| turning.since == turn.since)
+        {
+            return;
+        }
+        let offset = self.scroll.offset();
+        if self.offsets.len() <= turn.from {
+            self.offsets.resize(turn.from + 1, Point::default());
+        }
+        self.offsets[turn.from] = offset;
+        let restore = if turn.inward() {
+            Point::default()
+        } else {
+            self.offsets.get(turn.to).copied().unwrap_or_default()
+        };
+        self.scroll.set_offset(restore);
+        self.natural = None;
+        self.turning = Some(Turning {
+            since: turn.since,
+            from_height: self.body,
+            left_offset: offset.y,
+        });
+    }
+
+    fn body_limits(&self, eased: f32) -> (Option<Pixels>, Option<Pixels>) {
+        let Some(turning) = &self.turning else {
+            return (None, None);
+        };
+        let from = turning.from_height;
+        match self.natural {
+            None => (Some(from), Some(from)),
+            Some(to) => {
+                let height = from + (to - from) * eased;
+                if to >= from {
+                    (None, Some(height))
+                } else {
+                    (Some(height), None)
+                }
+            }
+        }
+    }
+
     fn content(&self) -> &ScrollHandle {
         self.content_scroll.as_ref().unwrap_or(&self.scroll)
     }
@@ -433,6 +739,213 @@ impl SheetState {
 
 impl RenderOnce for BottomSheet {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let rem = cx.theme().font_size;
+        let sheet = if self.modal {
+            self.render_modal(window, cx)
+        } else {
+            self.render_sheet(window, cx)
+        };
+        crate::blocks::touch::at_rem(sheet, rem)
+    }
+}
+
+struct ModalState {
+    since: Instant,
+    leaving: bool,
+    dismissed: bool,
+    bounds: Rc<std::cell::Cell<Option<ala::Bounds<Pixels>>>>,
+}
+
+impl BottomSheet {
+    fn render_modal(self, window: &mut Window, cx: &mut App) -> AnyElement {
+        let id = self.id.clone();
+        let now = cx.background_executor().now();
+        let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| {
+            take_close(&id, cx);
+            ModalState {
+                since: cx.background_executor().now(),
+                leaving: false,
+                dismissed: false,
+                bounds: Rc::default(),
+            }
+        });
+        let closing = take_close(&self.id, cx);
+        let reduce_motion = cx.reduce_motion();
+        if closing && !state.read(cx).leaving {
+            window.dismiss_virtual_keyboard();
+        }
+        let (shown, moving, dismiss) = state.update(cx, |state, _| {
+            if closing && !state.leaving {
+                state.leaving = true;
+                state.since = now;
+            }
+            let elapsed = now.saturating_duration_since(state.since).as_secs_f32()
+                / SURFACE_ENTER_DURATION.as_secs_f32();
+            let done = elapsed >= 1.0;
+            let eased = ease_out_quint()(elapsed.clamp(0.0, 1.0));
+            let shown = if state.leaving { 1.0 - eased } else { eased };
+            let dismiss = state.leaving && done && !state.dismissed;
+            if dismiss {
+                state.dismissed = true;
+            }
+            (shown, !done, dismiss)
+        });
+        if moving {
+            window.request_animation_frame();
+        }
+        if dismiss {
+            let on_dismiss = Rc::clone(&self.on_dismiss);
+            window.defer(cx, move |window, cx| on_dismiss(window, cx));
+        }
+        let theme = cx.theme();
+        let measured = Rc::clone(&state.read(cx).bounds);
+        let visible = window.fully_visible_bounds();
+        let visual = window.visual_viewport_bounds();
+        let (pad_top, pad_bottom, pad_left, pad_right) =
+            measured
+                .get()
+                .map_or((px(0.0), px(0.0), px(0.0), px(0.0)), |own| {
+                    (
+                        (visible.top().max(visual.top()) - own.top()).max(px(0.0)),
+                        (own.bottom() - visible.bottom().min(visual.bottom())).max(px(0.0)),
+                        (visible.left() - own.left()).max(px(0.0)),
+                        (own.right() - visible.right()).max(px(0.0)),
+                    )
+                });
+        let drawer = Surface::new(SurfaceRole::DRAWER);
+        let ground = theme.ground_of(drawer);
+        let rise = if reduce_motion {
+            px(0.0)
+        } else {
+            px(MODAL_RISE * (1.0 - shown))
+        };
+        let x = !self.actions.is_empty();
+        let title_style = TextStyle::TouchBody;
+        let slot = px(MODAL_TOP - MODAL_PAD);
+        let rem = theme.font_size;
+        let title_slack = (px(MODAL_TITLE) - title_style.line_height().to_pixels(rem)) / 2.0;
+        let head = div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .min_h(px(MODAL_TITLE))
+            .when(x, |head| head.px(px(MODAL_TITLE_SIDE)))
+            .type_style(title_style, cx)
+            .font_semibold()
+            .text_color(theme.foreground)
+            .child(title_text(self.title, self.cut_middle, title_style))
+            .when(x, |head| {
+                head.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .right(slot)
+                        .flex()
+                        .children(self.actions),
+                )
+            });
+        let heading = div()
+            .flex()
+            .flex_col()
+            .px(px(MODAL_PAD))
+            .child(head)
+            .children(self.detail.map(|detail| {
+                div()
+                    .mt(Space::S4.rems().to_pixels(rem) - title_slack)
+                    .w_full()
+                    .text_center()
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .text_color(muted_on(ground, cx))
+                    .child(detail)
+            }));
+        let corner = theme.phone_radius();
+        let card = div()
+            .id("modal-card")
+            .debug_selector(|| "modal-card".to_owned())
+            .relative()
+            .flex()
+            .flex_col()
+            .w(measured
+                .get()
+                .map_or_else(|| modal_width(window), |own| card_width(own.size.width)))
+            .pt(px(MODAL_TOP))
+            .surface(drawer, cx)
+            .rounded(corner)
+            .occlude()
+            .font_family(theme.font_family.clone())
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(heading)
+            .child(div().flex_none().h(Space::S16))
+            .child(self.content);
+        let backdrop = div()
+            .absolute()
+            .inset_0()
+            .rounded(corner)
+            .bg(theme.background)
+            .child(div().absolute().inset_0().rounded(corner).bg(theme.scrim));
+        let card = div()
+            .relative()
+            .top(rise)
+            .opacity(shown)
+            .child(backdrop)
+            .child(card);
+        let leave = state.clone();
+        let scrim = div()
+            .id("modal-scrim")
+            .debug_selector(|| "modal-scrim".to_owned())
+            .absolute()
+            .inset_0()
+            .bg(modal_scrim(cx))
+            .opacity(shown)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
+            .on_click(move |_, _, cx| {
+                let now = cx.background_executor().now();
+                leave.update(cx, |state, cx| {
+                    if !state.leaving {
+                        state.leaving = true;
+                        state.since = now;
+                        cx.notify();
+                    }
+                });
+            });
+        div()
+            .id(self.id)
+            .absolute()
+            .inset_0()
+            .occlude()
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
+            .child(
+                canvas(
+                    move |bounds, window, _| {
+                        if measured.get() != Some(bounds) {
+                            measured.set(Some(bounds));
+                            window.refresh();
+                        }
+                    },
+                    |_, (), _, _| {},
+                )
+                .absolute()
+                .inset_0(),
+            )
+            .child(scrim)
+            .child(
+                div()
+                    .absolute()
+                    .top(pad_top)
+                    .bottom(pad_bottom)
+                    .left(pad_left)
+                    .right(pad_right)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(card),
+            )
+            .into_any_element()
+    }
+
+    fn render_sheet(self, window: &mut Window, cx: &mut App) -> AnyElement {
         let id = self.id.clone();
         let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| {
             take_close(&id, cx);
@@ -443,22 +956,47 @@ impl RenderOnce for BottomSheet {
                 height: 0.0,
                 extent: 0.0,
                 gesture: Gesture::Idle,
+                body: px(0.0),
+                natural: None,
+                turning: None,
+                offsets: Vec::new(),
+                leaving: false,
             }
         });
         let now = cx.background_executor().now();
         let content_scroll = self.content_scroll;
         let reduce_motion = cx.reduce_motion();
         let closing = take_close(&self.id, cx);
+        let full = self.full;
+        let (left, turn) = match self.turn {
+            Some((left, turn)) if full.is_none() && turn.progress(now) < 1.0 => {
+                (Some(*left), Some(turn))
+            }
+            _ => (None, None),
+        };
+        let progress = turn.map_or(1.0, |turn| turn.progress(now));
+        let eased = ease_out_quint()(progress);
+        let leaving = 1.0 - (progress / PAGE_OUT).min(1.0);
+        let arriving = ((progress - PAGE_OUT) / (1.0 - PAGE_OUT)).clamp(0.0, 1.0);
         let tick = state.update(cx, |state, _| {
+            state.turn(turn);
             state.content_scroll = content_scroll;
             if closing {
                 state.dismissal.leave(state.extent, now);
             }
+            state.dismissal.retarget(state.extent);
             if reduce_motion {
                 state.dismissal.finish();
             }
-            state.dismissal.tick(now)
+            let leaving = state.dismissal.leaving();
+            let started = leaving && !state.leaving;
+            state.leaving = leaving;
+            (state.dismissal.tick(now), started)
         });
+        let (tick, started) = tick;
+        if started {
+            window.dismiss_virtual_keyboard();
+        }
         match tick {
             Tick::Moving => window.request_animation_frame(),
             Tick::Dismissed => {
@@ -467,19 +1005,52 @@ impl RenderOnce for BottomSheet {
             }
             Tick::Still => {}
         }
-        let (offset, fade, scroll) = {
+        let (offset, fade, scroll, (low, high), left_offset) = {
             let state = state.read(cx);
             (
                 px(state.dismissal.offset()),
                 1.0 - state.dismissal.progress(),
                 state.scroll.clone(),
+                if reduce_motion {
+                    (None, None)
+                } else {
+                    state.body_limits(eased)
+                },
+                state
+                    .turning
+                    .as_ref()
+                    .map_or(px(0.0), |turning| turning.left_offset),
             )
+        };
+        let turning = turn.is_some();
+        if turning {
+            window.request_animation_frame();
+        }
+        let shift = if reduce_motion { 0.0 } else { PAGE_SHIFT };
+        let sign = if turn.is_some_and(|turn| turn.inward()) {
+            1.0
+        } else {
+            -1.0
+        };
+        let measured = state.clone();
+        let measure = move |what: Measure| {
+            let state = measured.clone();
+            canvas(
+                move |bounds, _, cx| {
+                    state.update(cx, |state, _| match what {
+                        Measure::Body => state.body = bounds.size.height,
+                        Measure::Page => state.natural = Some(bounds.size.height),
+                    });
+                },
+                |_, (), _, _| {},
+            )
+            .absolute()
+            .inset_0()
         };
         let theme = cx.theme();
         let enter = ENTER;
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
-        let full = self.full;
         let sheet = Surface::new(SurfaceRole::DRAWER);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
@@ -492,7 +1063,65 @@ impl RenderOnce for BottomSheet {
                 PaintState::Rest,
             )
         };
-        let header = Surface::new(roles::PHONE_BAR).on(ground);
+        let slot = px(CONTENT_EDGE);
+        let title_style = TextStyle::TouchSmall;
+        let title_slot = |title: SharedString, cut_middle: bool, shown: f32| {
+            div()
+                .absolute()
+                .inset_0()
+                .px(px(HEADER_SIDE))
+                .flex()
+                .items_center()
+                .justify_center()
+                .type_style(title_style, cx)
+                .font_semibold()
+                .text_color(theme.foreground)
+                .when(shown < 1.0, |slot| slot.opacity(shown))
+                .child(title_text(title, cut_middle, title_style))
+        };
+        let back_slot = |back: AnyElement, shown: f32| {
+            div()
+                .absolute()
+                .top_0()
+                .left(slot)
+                .h(px(HEADER_HEIGHT))
+                .flex()
+                .items_center()
+                .when(shown < 1.0, |slot| slot.opacity(shown))
+                .child(back)
+        };
+        let (left_title, left_back, left_content) = match left {
+            Some(left) => (
+                Some((left.title, left.cut_middle)),
+                left.back,
+                Some(left.content),
+            ),
+            None => (None, None, None),
+        };
+        let back_shown = if left_back.is_some() { 1.0 } else { arriving };
+        let left_back = left_back
+            .filter(|_| self.back.is_none())
+            .map(|back| back_slot(back, leaving).child(div().absolute().inset_0().occlude()));
+        let header = div()
+            .debug_selector(|| "bottom-sheet-header".to_owned())
+            .relative()
+            .flex_none()
+            .h(px(HEADER_HEIGHT))
+            .mb(Space::S16)
+            .children(left_title.map(|(title, cut_middle)| title_slot(title, cut_middle, leaving)))
+            .child(title_slot(self.title, self.cut_middle, arriving))
+            .children(left_back)
+            .children(self.back.map(|back| back_slot(back, back_shown)))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .right(slot)
+                    .h(px(HEADER_HEIGHT))
+                    .flex()
+                    .items_center()
+                    .children(self.actions),
+            );
         let close = state.clone();
         let scrim = div()
             .id("bottom-sheet-scrim")
@@ -559,6 +1188,7 @@ impl RenderOnce for BottomSheet {
             .flex_col()
             .occlude()
             .surface(sheet, cx)
+            .rounded(theme.phone_radius())
             .font_family(theme.font_family.clone())
             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_click(|_, _, cx| cx.stop_propagation())
@@ -577,28 +1207,7 @@ impl RenderOnce for BottomSheet {
                             .layer(&grabber),
                     ),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(Space::GAP_RELATED)
-                    .h(px(HEADER_HEIGHT))
-                    .px(Space::INSET_PANE)
-                    .surface(header, cx)
-                    .child(self.heading.unwrap_or_else(|| {
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .type_style(crate::TextStyle::Display, cx)
-                            .child(self.title)
-                            .into_any_element()
-                    }))
-                    .children(self.actions),
-            )
+            .child(header)
             .child(match full {
                 Some(_) => div()
                     .id("bottom-sheet-content")
@@ -608,19 +1217,51 @@ impl RenderOnce for BottomSheet {
                     .min_h_0()
                     .child(self.content),
                 None => div()
-                    .id("bottom-sheet-content")
+                    .id("bottom-sheet-body")
+                    .relative()
                     .flex()
                     .flex_col()
                     .min_h_0()
-                    .overflow_y_scroll()
-                    .track_scroll(&scroll)
-                    .child(
+                    .mb(Space::S8)
+                    .overflow_hidden()
+                    .when_some(low, Styled::min_h)
+                    .when_some(high, Styled::max_h)
+                    .child(measure(Measure::Body))
+                    .children(left_content.map(|content| {
                         div()
+                            .debug_selector(|| "bottom-sheet-leaving".to_owned())
+                            .absolute()
+                            .top(left_offset)
+                            .left(relative(-sign * shift * eased))
+                            .w_full()
+                            .opacity(leaving)
                             .flex()
                             .flex_col()
-                            .flex_none()
-                            .w_full()
-                            .child(self.content),
+                            .child(content)
+                            .child(div().absolute().inset_0().occlude())
+                    }))
+                    .child(
+                        div()
+                            .id("bottom-sheet-content")
+                            .flex()
+                            .flex_col()
+                            .min_h_0()
+                            .overflow_y_scroll()
+                            .track_scroll(&scroll)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .flex_none()
+                                    .w_full()
+                                    .when(turning, |page| {
+                                        page.relative()
+                                            .left(relative(sign * shift * (1.0 - eased)))
+                                            .opacity(arriving)
+                                    })
+                                    .child(measure(Measure::Page))
+                                    .child(self.content),
+                            ),
                     ),
             })
             .with_animation(
@@ -651,6 +1292,7 @@ impl RenderOnce for BottomSheet {
                     .bottom(rest - offset)
                     .child(panel),
             )
+            .into_any_element()
     }
 }
 
@@ -899,5 +1541,126 @@ mod tests {
         settle(cx);
         assert_eq!(panel(cx).top(), rest.top());
         assert_eq!(dismissed.get(), 0);
+    }
+
+    struct ModalHost {
+        dismissed: Rc<Cell<usize>>,
+    }
+
+    impl Render for ModalHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let dismissed = Rc::clone(&self.dismissed);
+            div().size_full().child(
+                bottom_sheet(
+                    "modal",
+                    "Close this pane?",
+                    Vec::new(),
+                    modal_body().child(div().h(px(48.0))),
+                    px(0.0),
+                    move |_, _| dismissed.set(dismissed.get() + 1),
+                )
+                .modal(),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn a_tap_on_the_modal_scrim_cancels_and_a_tap_on_its_card_does_not(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let dismissed = Rc::new(Cell::new(0));
+        let count = Rc::clone(&dismissed);
+        let (_, cx) = cx.add_window_view(move |_, _| ModalHost { dismissed: count });
+        settle(cx);
+        let card = cx.debug_bounds("modal-card").expect("card");
+        let scrim = cx.debug_bounds("modal-scrim").expect("scrim");
+        assert_eq!(card.center().x, scrim.center().x);
+
+        cx.simulate_click(card.center(), Modifiers::none());
+        settle(cx);
+        assert_eq!(dismissed.get(), 0);
+
+        cx.simulate_click(
+            point(scrim.left() + px(4.0), scrim.top() + px(4.0)),
+            Modifiers::none(),
+        );
+        settle(cx);
+        assert_eq!(dismissed.get(), 1);
+    }
+
+    struct Pages {
+        page: f32,
+        left: Option<(f32, PageTurn)>,
+    }
+
+    fn page(body: f32) -> impl IntoElement {
+        div().h(px(body)).w_full()
+    }
+
+    impl Render for Pages {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let sheet = bottom_sheet(
+                "sheet",
+                "Page",
+                Vec::new(),
+                page(self.page),
+                px(20.0),
+                |_, _| {},
+            );
+            div().size_full().child(match self.left {
+                Some((left, turn)) => sheet.turned_from(
+                    bottom_sheet("sheet", "Left", Vec::new(), page(left), px(20.0), |_, _| {}),
+                    turn,
+                ),
+                None => sheet,
+            })
+        }
+    }
+
+    #[ala::test]
+    fn back_during_a_turn_in_lands_on_the_first_page_alone(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (pages, cx) = cx.add_window_view(|_, _| Pages {
+            page: 120.0,
+            left: None,
+        });
+        settle(cx);
+        let first = panel(cx).size.height;
+
+        let turn =
+            |from, to, cx: &mut VisualTestContext| cx.update(|_, cx| PageTurn::new(from, to, cx));
+        let inward = turn(0, 1, cx);
+        cx.update(|_, cx| {
+            pages.update(cx, |pages, cx| {
+                *pages = Pages {
+                    page: 300.0,
+                    left: Some((120.0, inward)),
+                };
+                cx.notify();
+            });
+        });
+        redraw(cx);
+        cx.executor().advance_clock(Duration::from_millis(40));
+        redraw(cx);
+        redraw(cx);
+        let mid = panel(cx).size.height;
+        assert!(mid > first && mid < first + px(180.0));
+        assert!(cx.debug_bounds("bottom-sheet-leaving").is_some());
+
+        let back = turn(1, 0, cx);
+        cx.update(|_, cx| {
+            pages.update(cx, |pages, cx| {
+                *pages = Pages {
+                    page: 120.0,
+                    left: Some((300.0, back)),
+                };
+                cx.notify();
+            });
+        });
+        settle(cx);
+        assert_eq!(panel(cx).size.height, first);
+        assert!(cx.debug_bounds("bottom-sheet-leaving").is_none());
     }
 }

@@ -191,7 +191,11 @@ impl Element for TextView {
             state.text_view_style = self.text_view_style.clone();
 
             if let Some(text) = self.text.clone() {
-                state.set_text(text.as_str(), cx);
+                if self.streaming {
+                    state.synchronize_markdown(text.as_str(), true, cx);
+                } else {
+                    state.set_text(text.as_str(), cx);
+                }
             }
         });
 
@@ -505,6 +509,40 @@ mod tests {
              but ended {} short of the top-level one",
             top_level.right() - nested.right()
         );
+    }
+
+    #[ala::test]
+    fn an_inline_link_from_the_hook_opens_on_click(cx: &mut TestAppContext) {
+        struct LinkedRoot;
+
+        impl Render for LinkedRoot {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let extensions = crate::components::text::MarkdownExtensions::default()
+                    .inline_links(|text, _| {
+                        text.find("@pane")
+                            .map(|at| crate::components::text::InlineLink {
+                                range: at..at + 5,
+                                label: "pane one two three four five".to_owned(),
+                                url: "https://example.com/pane".to_owned(),
+                            })
+                            .into_iter()
+                            .collect()
+                    });
+                div().w(px(400.)).child(
+                    TextView::markdown("linked", "@pane")
+                        .selectable(true)
+                        .markdown_extensions(extensions),
+                )
+            }
+        }
+
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| LinkedRoot);
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.simulate_click(point(px(60.), px(8.)), Modifiers::default());
+
+        assert_eq!(cx.opened_url().as_deref(), Some("https://example.com/pane"));
     }
 
     #[ala::test]

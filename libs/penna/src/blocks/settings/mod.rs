@@ -8,6 +8,7 @@ use crate::{
     ActiveTheme as _, AuthoredElement as _, Colorize as _, Disableable as _, Emphasis, Ground,
     IconName, Layer, PaintState, RULE_WIDTH, RuleLook, Sizable as _, Space, StyledExt as _,
     Surface,
+    blocks::compact::COMPACT_TITLE_BAR_HEIGHT,
     blocks::sidebar::{sidebar_gap, sidebar_row},
     components::badge::Badge,
     components::button::{Button, ButtonVariants as _},
@@ -164,25 +165,45 @@ impl SettingsFold {
 }
 
 pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
+const LARGE_TITLE_MARK: f32 = 28.0;
+const LARGE_TITLE_BEARING: f32 = 1.0;
 
 pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    large_title_row(None, title.into(), cx)
+}
+
+pub fn large_title_lead(mark: IconName, title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    large_title_row(Some(mark), title.into(), cx)
+}
+
+fn large_title_row(mark: Option<IconName>, title: SharedString, cx: &App) -> ala::Div {
+    let style = crate::TextStyle::TouchTitle;
     div()
         .debug_selector(|| "large-title".to_owned())
         .flex()
         .flex_none()
         .items_end()
+        .gap(Space::S8)
         .h(px(LARGE_TITLE_HEIGHT))
         .px(Space::S16)
         .pb(Space::S4)
-        .type_style(crate::TextStyle::TouchTitle, cx)
+        .type_style(style, cx)
         .text_color(cx.theme().foreground)
+        .children(mark.map(|mark| {
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .h(style.line_height())
+                .child(Icon::new(mark).size(px(LARGE_TITLE_MARK)))
+        }))
         .child(
             div()
                 .min_w_0()
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
-                .child(title.into()),
+                .child(title),
         )
 }
 
@@ -206,26 +227,47 @@ pub struct SettingsTitleBar {
 }
 
 impl RenderOnce for SettingsTitleBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::blocks::compact::compact_nav_bar(cx)
-            .relative()
-            .child(
-                crate::blocks::compact::folding_title_bar(
-                    self.title,
-                    self.fold.scrolled(),
-                    px(0.0),
-                    cx,
-                )
-                .h_full(),
-            )
-            .child(self.back)
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        crate::blocks::compact::folding_title_bar(
+            self.title,
+            self.fold.scrolled(),
+            window.fully_visible_bounds().top(),
+            cx,
+        )
+        .child(crate::blocks::compact::top_row_button(
+            crate::blocks::compact::TopRowEnd::Start,
+            title_edge(window, cx),
+            self.back,
+        ))
     }
 }
 
-fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
-    large_title(title, cx)
-        .px(Space::S4)
-        .mt(-Space::INSET_PANE.rems())
+fn title_edge(window: &Window, cx: &App) -> Pixels {
+    let rem = if crate::blocks::touch::CoarsePointer::get(cx) {
+        window.rem_size() * crate::blocks::touch::TOUCH_TYPE_SCALE
+    } else {
+        window.rem_size()
+    };
+    Space::INSET_PANE.rems().to_pixels(rem)
+        + Space::S4.rems().to_pixels(rem)
+        + px(LARGE_TITLE_BEARING)
+}
+
+fn settings_large_title(title: SharedString, window: &Window, cx: &App) -> ala::Div {
+    let title = large_title(title, cx).px(Space::S4);
+    if !crate::blocks::touch::CoarsePointer::get(cx) {
+        return title;
+    }
+    let rem = window.rem_size() / crate::blocks::touch::TOUCH_TYPE_SCALE;
+    let style = crate::TextStyle::TouchTitle;
+    title
+        .text_size(style.size().to_pixels(rem))
+        .line_height(style.line_height().to_pixels(rem))
+        .pb(Space::S4.rems().to_pixels(rem))
+}
+
+fn title_line(window: &Window) -> Pixels {
+    window.fully_visible_bounds().top() + px(COMPACT_TITLE_BAR_HEIGHT)
 }
 
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
@@ -289,11 +331,12 @@ impl RenderOnce for SettingsScrollColumn {
             })
             .read(cx)
             .clone();
-        let fade = cx.theme().ground().fill;
+        let fade = cx.theme().content_ground().fill;
         let title = self.large_title.map(|(title, fold)| {
             fold.0.set((-f32::from(handle.offset().y)).max(0.0));
-            settings_large_title(title, cx)
+            settings_large_title(title, window, cx)
         });
+        let line = title.is_some().then(|| title_line(window));
         div()
             .flex_1()
             .min_w_0()
@@ -318,6 +361,7 @@ impl RenderOnce for SettingsScrollColumn {
                     .overflow_y_scroll()
                     .track_scroll(&handle)
                     .p(Space::INSET_PANE)
+                    .when_some(line, ala::Styled::pt)
                     .child(
                         settings_page_content()
                             .flex_none()
@@ -327,7 +371,9 @@ impl RenderOnce for SettingsScrollColumn {
                     )
                     .child(div().flex_none().h(SettingsBottomInset::get(cx))),
             )
-            .top_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
+            .when(line.is_none(), |page| {
+                page.top_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
+            })
             .bottom_fade(&handle, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&handle)
     }
@@ -440,12 +486,15 @@ impl RenderOnce for SettingsVirtualColumn {
             });
             title
         });
-        let fade = cx.theme().ground().fill;
+        let line = title.is_some().then(|| title_line(window));
+        let fade = cx.theme().content_ground().fill;
         let mut render_item = self.render_item;
         let rows = list(list_state.clone(), move |index, window, cx| {
             let row = match (&title, index.checked_sub(lead)) {
                 (_, Some(index)) => render_item(index, window, cx),
-                (Some(title), None) => settings_large_title(title.clone(), cx).into_any_element(),
+                (Some(title), None) => {
+                    settings_large_title(title.clone(), window, cx).into_any_element()
+                }
                 (None, None) => div().into_any_element(),
             };
             div()
@@ -457,7 +506,10 @@ impl RenderOnce for SettingsVirtualColumn {
         })
         .with_sizing_behavior(ListSizingBehavior::Auto)
         .size_full()
-        .pt(Space::INSET_PANE)
+        .map(|rows| match line {
+            Some(line) => rows.pt(line),
+            None => rows.pt(Space::INSET_PANE),
+        })
         .pb(Space::INSET_PANE.rems().to_pixels(window.rem_size()) + SettingsBottomInset::get(cx));
 
         div()
@@ -467,7 +519,9 @@ impl RenderOnce for SettingsVirtualColumn {
             .h_full()
             .relative()
             .child(rows)
-            .top_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
+            .when(line.is_none(), |page| {
+                page.top_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
+            })
             .bottom_fade(&list_state, fade, SETTINGS_FADE_HEIGHT)
             .vertical_scrollbar(&list_state)
     }
@@ -501,6 +555,9 @@ const REVEAL: Duration = Duration::from_millis(280);
 const REVEAL_STAGGER: Duration = Duration::from_millis(30);
 const REVEAL_DROP: f32 = 10.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
+const LABEL_GROW: f32 = 1000.0;
+const SELECT_WIDTH: f32 = 200.0;
+const SELECT_MIN_WIDTH: f32 = 120.0;
 
 pub fn settings_list_disclosure_header(
     id: &'static str,
@@ -538,10 +595,12 @@ impl RenderOnce for SettingsDisclosure {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let muted = cx.theme().foreground.muted();
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let radius = cx
-            .theme()
-            .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
-            .radius;
+        let radius = phone_container_or(
+            cx.theme()
+                .layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest)
+                .radius,
+            cx,
+        );
         let bleed = Space::S6.rems();
         let hit = div()
             .author_id(self.id)
@@ -553,7 +612,6 @@ impl RenderOnce for SettingsDisclosure {
             .flex()
             .items_start()
             .gap(Space::S2)
-            .cursor_pointer()
             .when(coarse, |this| {
                 this.child(
                     crate::blocks::touch::press_highlight(
@@ -592,7 +650,8 @@ impl RenderOnce for SettingsDisclosure {
             )
             .child(settings_group_header(self.title.into(), cx))
             .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| on_click(event, window, cx))
+                this.click_cursor()
+                    .on_click(move |event, window, cx| on_click(event, window, cx))
             });
         div().flex().flex_col().pt(Space::S8).child(hit)
     }
@@ -745,15 +804,15 @@ impl StackPosition {
         matches!(self, Self::Only | Self::Last)
     }
 
-    const fn rounds_top(self) -> bool {
+    pub(crate) const fn rounds_top(self) -> bool {
         matches!(self, Self::Only | Self::First)
     }
 
-    const fn rounds_bottom(self) -> bool {
+    pub(crate) const fn rounds_bottom(self) -> bool {
         self.ends_run()
     }
 
-    const fn rules_above(self) -> bool {
+    pub(crate) const fn rules_above(self) -> bool {
         matches!(self, Self::Middle | Self::Last)
     }
 }
@@ -770,9 +829,18 @@ pub struct SettingEntry {
     children: Vec<AnyElement>,
     on_click: Option<(ElementId, EntryClick)>,
     id: Option<ElementId>,
+    bare: bool,
 }
 
 impl SettingEntry {
+    #[must_use]
+    pub fn bare() -> Self {
+        Self {
+            bare: true,
+            ..Self::new("")
+        }
+    }
+
     pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
@@ -785,6 +853,7 @@ impl SettingEntry {
             children: Vec::new(),
             on_click: None,
             id: None,
+            bare: false,
         }
     }
 
@@ -848,64 +917,92 @@ impl ParentElement for SettingEntry {
 }
 
 impl RenderOnce for SettingEntry {
-    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.disabled;
         let position = self.position;
         let coarse = crate::blocks::touch::CoarsePointer::get(cx);
-        let heading = if coarse {
-            let description = self
-                .description
-                .map(|description| settings_description(description, cx));
-            div()
-                .flex()
-                .flex_col()
-                .gap(Space::GAP_TIGHT)
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap(Space::S16)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_1()
-                                .min_w_0()
-                                .items_center()
-                                .gap(Space::S8)
-                                .when_some(self.title_icon, |this, icon| {
-                                    this.child(icon.with_size(crate::Size::Medium))
-                                })
-                                .child(
+        let heading = (!self.bare).then(|| {
+            if coarse {
+                let description = self
+                    .description
+                    .map(|description| settings_description(description, cx));
+                let lead = if self.title_icon.is_some() {
+                    crate::rems_from_px(crate::Size::Medium.icon_px() + Space::S8.design_px())
+                } else {
+                    ala::rems(0.0)
+                };
+                let measure = title_widths(&self.title, window, cx);
+                let floor = lead + measure.word;
+                let line = (self.title_actions.is_none()).then_some(lead + measure.line);
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(Space::GAP_TIGHT)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_x(Space::S16)
+                            .gap_y(Space::S8)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_basis(floor)
+                                    .min_w(floor)
+                                    .flex_grow(LABEL_GROW)
+                                    .flex_shrink_0()
+                                    .when_some(line, ala::Styled::max_w)
+                                    .items_center()
+                                    .gap(Space::S8)
+                                    .when_some(self.title_icon, |this, icon| {
+                                        this.child(icon.with_size(crate::Size::Medium))
+                                    })
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .type_style(crate::TextStyle::Body, cx)
+                                            .child(self.title),
+                                    )
+                                    .when_some(self.title_actions, ala::ParentElement::child),
+                            )
+                            .when_some(self.control, |this, control| {
+                                this.child(
                                     div()
-                                        .type_style(crate::TextStyle::Body, cx)
-                                        .child(self.title),
+                                        .flex()
+                                        .flex_grow_1()
+                                        .flex_shrink_0()
+                                        .items_center()
+                                        .justify_end()
+                                        .child(control),
                                 )
-                                .when_some(self.title_actions, ala::ParentElement::child),
-                        )
-                        .when_some(self.control, ala::ParentElement::child),
-                )
-                .children(description)
-        } else {
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(Space::S16)
-                .child(
-                    SettingCopy::new(self.title)
-                        .when_some(self.description, SettingCopy::description)
-                        .when_some(self.title_icon, SettingCopy::title_icon)
-                        .when_some(self.title_actions, SettingCopy::title_actions),
-                )
-                .when_some(self.control, ala::ParentElement::child)
-        };
+                            }),
+                    )
+                    .children(description)
+            } else {
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(Space::S16)
+                    .child(
+                        SettingCopy::new(self.title)
+                            .when_some(self.description, SettingCopy::description)
+                            .when_some(self.title_icon, SettingCopy::title_icon)
+                            .when_some(self.title_actions, SettingCopy::title_actions),
+                    )
+                    .when_some(self.control, ala::ParentElement::child)
+            }
+        });
 
         let theme = cx.theme();
-        let card = theme.layer(Surface::new(roles::SETTINGS_CARD), PaintState::Rest);
+        let card = theme.layer(
+            Surface::new(roles::SETTINGS_CARD).on(theme.content_ground()),
+            PaintState::Rest,
+        );
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
-        let radius = card.radius;
+        let radius = phone_container_or(card.radius, cx);
         let ends = move |this: ala::Div| {
             this.when(position.rounds_top(), |this| this.rounded_t(radius))
                 .when(position.rounds_bottom(), |this| this.rounded_b(radius))
@@ -922,7 +1019,7 @@ impl RenderOnce for SettingEntry {
                 this.opacity(0.5)
                     .child(div().absolute().inset_0().occlude())
             })
-            .child(heading)
+            .children(heading)
             .children(self.children);
 
         let press = self.on_click.as_ref().map(|(id, _)| {
@@ -957,7 +1054,7 @@ impl RenderOnce for SettingEntry {
                 this.child(
                     div()
                         .flex_none()
-                        .px(Space::INSET_CARD)
+                        .pl(Space::INSET_CARD)
                         .child(Separator::horizontal().look(RuleLook::List).h(RULE_WIDTH)),
                 )
             })
@@ -1016,7 +1113,7 @@ impl RenderOnce for SettingEntry {
                 .aria_disabled(disabled)
                 .when_some(handler, |entry, handler| {
                     entry
-                        .cursor_pointer()
+                        .click_cursor()
                         .on_click(move |event, window, cx| handler(event, window, cx))
                 })
                 .into_any_element(),
@@ -1092,9 +1189,49 @@ impl RenderOnce for SettingCopy {
     }
 }
 
+struct TitleWidths {
+    word: ala::Rems,
+    line: ala::Rems,
+}
+
+fn title_widths(text: &str, window: &mut Window, cx: &App) -> TitleWidths {
+    let rem = window.rem_size();
+    let style = crate::TextStyle::Body;
+    let mut font = ala::font(cx.theme().font_family.clone());
+    font.weight = style.weight();
+    let size = style.size().to_pixels(rem);
+    let text_system = window.text_system();
+    let font_id = text_system.resolve_font(&font);
+    let width = |run: &str| {
+        run.chars()
+            .map(|character| text_system.layout_width(font_id, size, character))
+            .fold(px(0.0), |width, advance| width + advance)
+    };
+    let rems = |width: Pixels| ala::rems((width + px(1.0)).ceil() / rem);
+    TitleWidths {
+        word: rems(
+            text.split_whitespace()
+                .map(width)
+                .fold(px(0.0), Pixels::max),
+        ),
+        line: rems(width(text.trim())),
+    }
+}
+
+#[must_use]
+pub fn settings_select_box(cx: &App) -> ala::Div {
+    let width = px(SELECT_WIDTH);
+    if crate::blocks::touch::CoarsePointer::get(cx) {
+        div().w(px(SELECT_MIN_WIDTH)).flex_grow_1().max_w(width)
+    } else {
+        div().w(width).max_w_full().flex_none()
+    }
+}
+
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(Surface::new(roles::SETTINGS_CARD))
+    let theme = cx.theme();
+    theme.ground_of(Surface::new(roles::SETTINGS_CARD).on(theme.content_ground()))
 }
 
 #[must_use]
@@ -1105,8 +1242,17 @@ pub fn settings_preview(fill: Hsla, cx: &App) -> ala::Div {
     div().overflow_hidden().layer(&Layer {
         fill,
         glass: None,
+        radius: phone_container_or(layer.radius, cx),
         ..layer
     })
+}
+
+fn phone_container_or(radius: Pixels, cx: &App) -> Pixels {
+    if crate::blocks::touch::PhoneScreen::get(cx) {
+        cx.theme().phone_radius()
+    } else {
+        radius
+    }
 }
 
 pub fn settings_provenance_badge(label: impl Into<SharedString>) -> Badge {

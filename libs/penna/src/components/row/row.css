@@ -12,6 +12,10 @@
   outline: none;
 }
 
+:is(button, a[href], [role="button"], [role="menuitem"], [role="option"], [role="tab"], [role="treeitem"]).penna-row[data-penna] {
+  cursor: var(--penna-click-cursor);
+}
+
 .penna-row .penna-text,
 .penna-fill-row .penna-text,
 .penna-item .penna-text {
@@ -47,6 +51,11 @@
   --penna-row: 0;
 }
 
+.penna-row-fill[data-penna][data-round] {
+  --penna-r: 9999px;
+  --penna-k: 1;
+}
+
 .penna-item.penna-list-item[data-penna] {
   margin: 0;
   outline: none;
@@ -62,11 +71,11 @@
   width: 100%;
 }
 
-:is(.penna-row, .penna-item)[data-penna][data-state~="focused"] {
+:is(.penna-row, .penna-item)[data-penna]:is(:focus-visible, [data-state~="focused"]) {
   --penna-ring: var(--penna-focus);
 }
 
-:is(.penna-row, .penna-item)[data-penna][data-state~="focused"]::after {
+:is(.penna-row, .penna-item)[data-penna]:is(:focus-visible, [data-state~="focused"])::after {
   content: "";
   position: absolute;
   inset: var(--penna-ring-inset, -1.5px);

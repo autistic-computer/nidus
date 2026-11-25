@@ -10,7 +10,11 @@ use ala::{
     Subscription, Window, anchored, canvas, deferred, div, prelude::FluentBuilder as _, px,
 };
 
-use crate::{Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle, v_flex};
+use crate::{
+    Selectable, StyledExt as _, Surface, SurfaceRole, TextStyle,
+    foundation::{SURFACE_RISE, motion::Presence},
+    v_flex,
+};
 use actions::Cancel;
 
 const CONTEXT: &str = "PennaPopover";
@@ -24,8 +28,15 @@ type DismissHandler = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
 
 type TriggerBuilder = Box<dyn FnOnce(bool) -> AnyElement>;
 
+type ToggleHandler = Rc<dyn Fn(bool, &mut Window, &mut App)>;
+
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))]);
+}
+
+pub trait PopoverTrigger: Selectable + IntoElement + 'static {
+    #[must_use]
+    fn opened(self, open: bool) -> Self;
 }
 
 #[derive(IntoElement)]
@@ -38,6 +49,8 @@ pub struct Popover {
     trigger: Option<TriggerBuilder>,
     content: Option<ContentBuilder>,
     on_dismiss: Option<DismissHandler>,
+    open: Option<bool>,
+    on_toggle: Option<ToggleHandler>,
 }
 
 impl Popover {
@@ -52,7 +65,21 @@ impl Popover {
             trigger: None,
             content: None,
             on_dismiss: None,
+            open: None,
+            on_toggle: None,
         }
+    }
+
+    #[must_use]
+    pub fn open(mut self, open: bool) -> Self {
+        self.open = Some(open);
+        self
+    }
+
+    #[must_use]
+    pub fn on_toggle(mut self, handler: impl Fn(bool, &mut Window, &mut App) + 'static) -> Self {
+        self.on_toggle = Some(Rc::new(handler));
+        self
     }
 
     #[must_use]
@@ -62,13 +89,9 @@ impl Popover {
     }
 
     #[must_use]
-    pub fn trigger<T>(mut self, trigger: T) -> Self
-    where
-        T: Selectable + IntoElement + 'static,
-    {
+    pub fn trigger<T: PopoverTrigger>(mut self, trigger: T) -> Self {
         self.trigger = Some(Box::new(|is_open| {
-            let selected = trigger.is_selected();
-            trigger.selected(selected || is_open).into_any_element()
+            trigger.opened(is_open).into_any_element()
         }));
         self
     }
@@ -176,34 +199,57 @@ impl RenderOnce for Popover {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| PopoverState::new(cx));
 
-        state.update(cx, |state, _| state.on_dismiss = self.on_dismiss);
+        state.update(cx, |state, cx| {
+            state.on_dismiss = self.on_dismiss;
+            if self.open.is_some_and(|open| open != state.is_open()) {
+                state.toggle_open(window, cx);
+            }
+        });
 
-        let (open, focus_handle, trigger_bounds, trigger_bounds_captured, panel_size) = {
+        let (presence, focus_handle, trigger_bounds, trigger_bounds_captured, panel_size) = {
             let state = state.read(cx);
             (
-                state.open,
+                state.presence,
                 state.focus_handle.clone(),
                 state.trigger_bounds,
                 state.trigger_bounds_captured,
                 state.panel_size,
             )
         };
+        let open = presence.is_open();
 
         let Some(trigger) = self.trigger else {
             return div().id("empty");
         };
 
         let parent_view_id = window.current_view();
+        let ask: Option<ToggleHandler> = self
+            .open
+            .map(|_| self.on_toggle.unwrap_or_else(|| Rc::new(|_, _, _| {})));
+        let dismiss = Rc::new({
+            let state = state.clone();
+            let ask = ask.clone();
+            move |window: &mut Window, cx: &mut App| {
+                match &ask {
+                    Some(ask) => ask(false, window, cx),
+                    None => state.update(cx, |state, cx| state.dismiss(window, cx)),
+                }
+                cx.notify(parent_view_id);
+            }
+        });
         let press = Rc::new({
             let state = state.clone();
             move |window: &mut Window, cx: &mut App| {
-                state.update(cx, |state, cx| {
-                    if open {
-                        state.dismiss(window, cx);
-                    } else if !state.open {
-                        state.toggle_open(window, cx);
-                    }
-                });
+                match &ask {
+                    Some(ask) => ask(!open, window, cx),
+                    None => state.update(cx, |state, cx| {
+                        if open {
+                            state.dismiss(window, cx);
+                        } else if !state.is_open() {
+                            state.toggle_open(window, cx);
+                        }
+                    }),
+                }
                 cx.notify(parent_view_id);
             }
         });
@@ -254,10 +300,19 @@ impl RenderOnce for Popover {
                 .size_full(),
             );
 
-        if !open || !trigger_bounds_captured {
+        let Some(shown) = presence
+            .shown(window, cx)
+            .filter(|_| trigger_bounds_captured)
+        else {
             return el;
-        }
+        };
 
+        let gap = Space::S4.rems().to_pixels(window.rem_size());
+        let (rest, toward) = if bottom_anchor(self.anchor) {
+            (-gap, 1.0)
+        } else {
+            (gap, -1.0)
+        };
         let panel = v_flex()
             .id("content")
             .occlude()
@@ -267,41 +322,31 @@ impl RenderOnce for Popover {
                     .p(Space::INSET_CARD)
                     .type_style(TextStyle::Body, cx)
             })
-            .map(|this| {
-                if bottom_anchor(self.anchor) {
-                    this.bottom(Space::S4)
-                } else {
-                    this.top(Space::S4)
-                }
-            });
+            .top(rest + px(toward * SURFACE_RISE * (1.0 - shown)))
+            .opacity(shown);
 
         let panel = panel
-            .track_focus(&focus_handle)
-            .key_context(CONTEXT)
-            .on_action({
-                let state = state.clone();
-                move |_: &Cancel, window, cx| {
-                    state.update(cx, |state, cx| state.dismiss(window, cx));
-                    cx.notify(parent_view_id);
-                }
+            .when(open, |this| {
+                this.track_focus(&focus_handle)
+                    .key_context(CONTEXT)
+                    .on_action({
+                        let dismiss = Rc::clone(&dismiss);
+                        move |_: &Cancel, window, cx| dismiss(window, cx)
+                    })
+                    .when(self.overlay_closable, |this| {
+                        this.on_mouse_down_out(move |_, window, cx| dismiss(window, cx))
+                    })
             })
             .when_some(self.content, |this, content| {
                 this.child(state.update(cx, |state, cx| content(state, window, cx)))
             })
-            .when(self.overlay_closable, |this| {
-                this.on_mouse_down_out({
-                    let state = state.clone();
-                    move |_, window, cx| {
-                        state.update(cx, |state, cx| state.dismiss(window, cx));
-                        cx.notify(parent_view_id);
-                    }
-                })
+            .when(!open, |this| {
+                this.child(div().absolute().inset_0().occlude())
             })
             .refine_style(&self.style);
 
         let corner = resolved_corner(self.anchor, trigger_bounds);
         let corner = panel_size.map_or(corner, |panel| {
-            let gap = Space::S4.rems().to_pixels(window.rem_size());
             fit_corner(
                 self.anchor,
                 corner,
@@ -343,7 +388,7 @@ pub struct PopoverState {
     trigger_bounds: Bounds<Pixels>,
     trigger_bounds_captured: bool,
     panel_size: Option<Size<Pixels>>,
-    open: bool,
+    presence: Presence,
     dismiss_subscription: Option<Subscription>,
     on_dismiss: Option<DismissHandler>,
 }
@@ -356,22 +401,28 @@ impl PopoverState {
             trigger_bounds: Bounds::default(),
             trigger_bounds_captured: false,
             panel_size: None,
-            open: false,
+            presence: Presence::default(),
             dismiss_subscription: None,
             on_dismiss: None,
         }
     }
 
+    #[must_use]
+    pub const fn is_open(&self) -> bool {
+        self.presence.is_open()
+    }
+
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.open {
+        if self.is_open() {
             self.toggle_open(window, cx);
         }
     }
 
     fn toggle_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open = !self.open;
+        let open = !self.is_open();
+        self.presence.set(open, cx.background_executor().now());
 
-        if self.open {
+        if open {
             self.previous_focus_handle = window.focused(cx);
             self.focus_handle.focus(window, cx);
 
@@ -385,10 +436,12 @@ impl PopoverState {
             ));
         } else {
             self.dismiss_subscription = None;
-            if let Some(prev) = self.previous_focus_handle.take()
-                && self.focus_handle.contains_focused(window, cx)
-            {
-                prev.focus(window, cx);
+            let previous = self.previous_focus_handle.take();
+            if self.focus_handle.contains_focused(window, cx) {
+                match previous {
+                    Some(previous) => previous.focus(window, cx),
+                    None => window.blur(cx),
+                }
             }
             if let Some(handler) = self.on_dismiss.clone() {
                 handler(window, cx);
@@ -446,6 +499,118 @@ mod tests {
                     .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
             )
         }
+    }
+
+    struct Controlled {
+        open: std::rc::Rc<std::cell::Cell<bool>>,
+        asked: std::rc::Rc<std::cell::RefCell<Vec<bool>>>,
+        dismissed: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Render for Controlled {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let asked = self.asked.clone();
+            let dismissed = self.dismissed.clone();
+            div().size_full().child(
+                Popover::new("popover")
+                    .trigger(Button::new("open").label("Open"))
+                    .content(|_, _, _| div().child("panel"))
+                    .open(self.open.get())
+                    .on_toggle(move |open, _, _| asked.borrow_mut().push(open))
+                    .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
+            )
+        }
+    }
+
+    struct Tipped;
+
+    impl Render for Tipped {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().size_full().child(
+                Popover::new("popover")
+                    .trigger(Button::new("open").label("Open").tooltip("Open the panel"))
+                    .content(|_, _, _| div().child("panel")),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn an_open_popover_hides_its_trigger_tooltip(cx: &mut TestAppContext) {
+        cx.update(crate::init_without_theme);
+        let (_, cx) = cx.add_window_view(|_, _| Tipped);
+        let quads = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+                window
+                    .painted_quads()
+                    .into_iter()
+                    .map(|quad| quad.bounds)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let rest = |cx: &mut VisualTestContext| {
+            cx.simulate_mouse_move(point(8., 8.), None, Modifiers::default());
+            cx.run_until_parked();
+            cx.executor()
+                .advance_clock(std::time::Duration::from_secs(1));
+        };
+        let bare = quads(cx);
+        rest(cx);
+        let tip = quads(cx)
+            .into_iter()
+            .filter(|bounds| !bare.contains(bounds))
+            .collect::<Vec<_>>();
+        assert!(!tip.is_empty(), "resting on the trigger showed no tooltip");
+
+        cx.simulate_click(point(8., 8.), Modifiers::default());
+        rest(cx);
+        let open = quads(cx);
+        assert!(
+            tip.iter().all(|bounds| !open.contains(bounds)),
+            "the tooltip stayed over the open popover"
+        );
+    }
+
+    #[ala::test]
+    fn a_controlled_popover_follows_the_app_and_asks_on_presses_and_escape(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let open = std::rc::Rc::new(std::cell::Cell::new(false));
+        let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let dismissed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (view, cx) = cx.add_window_view({
+            let (open, asked, dismissed) = (open.clone(), asked.clone(), dismissed.clone());
+            move |_, _| Controlled {
+                open,
+                asked,
+                dismissed,
+            }
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+        cx.simulate_click(point(8., 8.), Modifiers::default());
+        draw(cx);
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        assert_eq!(*asked.borrow(), [true]);
+
+        open.set(true);
+        cx.update(|_, cx| view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        cx.simulate_keystrokes("escape");
+        draw(cx);
+        assert_eq!(*asked.borrow(), [true, false]);
+        assert_eq!(dismissed.get(), 0);
+
+        open.set(false);
+        cx.update(|_, cx| view.update(cx, |_, cx| cx.notify()));
+        draw(cx);
+        assert_eq!(dismissed.get(), 1);
     }
 
     #[ala::test]

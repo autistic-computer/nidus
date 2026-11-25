@@ -6,10 +6,10 @@ use ala::{
 };
 
 use super::PopupMenu;
-use crate::components::popover::Popover;
-use crate::{Selectable, components::button::Button};
+use crate::components::button::Button;
+use crate::components::popover::{Popover, PopoverTrigger};
 
-pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement + 'static {
+pub trait DropdownMenu: Styled + PopoverTrigger + InteractiveElement {
     fn dropdown_menu(
         self,
         f: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
@@ -32,7 +32,7 @@ pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement +
 impl DropdownMenu for Button {}
 
 #[derive(IntoElement)]
-pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
+pub struct DropdownMenuPopover<T: PopoverTrigger> {
     id: ElementId,
     style: StyleRefinement,
     anchor: Anchor,
@@ -42,7 +42,7 @@ pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
 
 impl<T> DropdownMenuPopover<T>
 where
-    T: Selectable + IntoElement + 'static,
+    T: PopoverTrigger,
 {
     fn new(
         id: ElementId,
@@ -73,11 +73,12 @@ where
 #[derive(Default)]
 struct DropdownMenuState {
     menu: Option<Entity<PopupMenu>>,
+    dismissed: bool,
 }
 
 impl<T> RenderOnce for DropdownMenuPopover<T>
 where
-    T: Selectable + IntoElement + 'static,
+    T: PopoverTrigger,
 {
     fn render(self, window: &mut Window, cx: &mut ala::App) -> impl IntoElement {
         let builder = self.builder.clone();
@@ -90,16 +91,24 @@ where
             .trigger(self.trigger)
             .trigger_style(self.style)
             .anchor(self.anchor)
-            .content(move |_, window, cx| {
-                let menu = match menu_state.read(cx).menu.clone() {
+            .content(move |popover, window, cx| {
+                let state = menu_state.read(cx);
+                let kept = state
+                    .menu
+                    .clone()
+                    .filter(|_| !(state.dismissed && popover.is_open()));
+                let menu = match kept {
                     Some(menu) => menu,
                     None => {
                         let builder = builder.clone();
                         let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                            builder(menu, window, cx)
+                            let mut menu = builder(menu, window, cx);
+                            menu.in_popover = true;
+                            menu
                         });
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());
+                            state.dismissed = false;
                         });
                         menu.focus_handle(cx).focus(window, cx);
                         if window.last_input_was_keyboard() {
@@ -115,7 +124,7 @@ where
                                         state.dismiss(window, cx);
                                     });
                                     _ = menu_state.update(cx, |state, _| {
-                                        state.menu = None;
+                                        state.dismissed = true;
                                     });
                                 }
                             })

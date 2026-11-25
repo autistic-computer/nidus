@@ -3,8 +3,9 @@ use ala::{
     relative,
 };
 
+use super::resolve::Resolve;
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _,
+    ActiveTheme as _, Colorize as _, Emphasis, Ground, Icon, IconName, Sizable as _, Space,
     StyledExt as _, TextStyle, Tone, components::badge::Badge, components::icon::cap_center_drop,
     components::tooltip::Tooltip, h_flex,
 };
@@ -13,11 +14,14 @@ pub const ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 pub const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
 pub const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
 pub const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
+pub const TOUCH_ACTIVITY_GLYPH: f32 = 20.0;
+const TOUCH_ACTIVITY_LINE: f32 = 20.0;
 const COUNT_BADGE: f32 = 15.0;
 const COUNT_RING: f32 = 1.5;
 const COUNT_BADGE_LEFT: f32 = 7.5;
 const COUNT_BADGE_OVERHANG: f32 = COUNT_BADGE_LEFT + COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const COUNT_GAP: f32 = COUNT_BADGE_OVERHANG + 6.0;
+const DETAIL_YIELD: f32 = 1000.0;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActivityCount {
@@ -31,14 +35,15 @@ pub struct ActivityCount {
 pub struct ActivityMark {
     pub icon: Option<IconName>,
     pub spin: Option<f32>,
-    pub turn: Option<f32>,
-    pub shimmer: Option<u64>,
+    pub live: bool,
     pub tint: Option<Hsla>,
     pub label_color: Option<Hsla>,
     pub detail: Option<SharedString>,
+    pub detail_color: Option<Hsla>,
     pub counts: Vec<ActivityCount>,
     pub tag: Option<(SharedString, Tone)>,
     pub spread: bool,
+    pub touch: bool,
 }
 
 impl ActivityMark {
@@ -47,14 +52,15 @@ impl ActivityMark {
         Self {
             icon: None,
             spin: None,
-            turn: None,
-            shimmer: None,
+            live: false,
             tint: None,
             label_color: None,
             detail: None,
+            detail_color: None,
             counts: Vec::new(),
             tag: None,
             spread: false,
+            touch: false,
         }
     }
 
@@ -82,6 +88,16 @@ pub const fn disclosure_icon(expanded: bool) -> IconName {
     }
 }
 
+fn baseline_drop(line: TextStyle, run: TextStyle, cx: &App) -> Pixels {
+    let text = cx.text_system();
+    let font = text.resolve_font(&ala::font(cx.theme().font_family.clone()));
+    let below_center = |style: TextStyle| {
+        let size = px(style.design_px());
+        (text.ascent(font, size) + text.descent(font, size)) / 2.0
+    };
+    below_center(line) - below_center(run)
+}
+
 #[must_use]
 pub fn activity_color(cx: &App) -> Hsla {
     cx.theme().foreground.muted()
@@ -101,7 +117,15 @@ pub fn single_line(text: SharedString) -> SharedString {
 }
 
 pub fn transcript_text<E: Styled>(element: E, cx: &App) -> E {
-    element.type_style(TextStyle::ReadBody, cx)
+    element
+        .type_style(TextStyle::ReadBody, cx)
+        .font_family(cx.theme().chat_font())
+}
+
+pub fn touch_transcript_text<E: Styled>(element: E, cx: &App) -> E {
+    element
+        .type_style(TextStyle::TouchBody, cx)
+        .font_family(cx.theme().chat_font())
 }
 
 #[must_use]
@@ -129,26 +153,45 @@ pub fn activity_row(
     end: ActivityEnd,
     cx: &App,
 ) -> Stateful<Div> {
-    let drop = cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
+    let touch = mark.touch;
+    let (font, glyph_size, end_size) = if touch {
+        (
+            TextStyle::TouchSmall.design_px(),
+            TOUCH_ACTIVITY_GLYPH,
+            TOUCH_ACTIVITY_GLYPH,
+        )
+    } else {
+        (
+            ACTIVITY_ROW_FONT_SIZE,
+            ACTIVITY_ROW_FONT_SIZE,
+            ACTIVITY_DISCLOSURE_SIZE,
+        )
+    };
+    let drop = cap_center_drop(px(font), px(glyph_size), cx);
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(super::spinner(phase)),
-        (None, Some(icon)) => Some(match mark.turn {
-            Some(phase) => {
-                Icon::new(icon).transform(ala::Transformation::rotate(ala::percentage(phase)))
-            }
-            None => Icon::new(icon),
-        }),
+        (None, Some(icon)) => Some(Icon::new(icon)),
         (None, None) => None,
     }
     .map(|glyph| {
-        let glyph = glyph.size(px(ACTIVITY_ROW_FONT_SIZE));
+        let glyph = glyph.size(px(glyph_size));
         match mark.tint {
             Some(tint) => glyph.text_color(tint),
             None => glyph,
         }
     });
     let spread = mark.spread;
-    let live = mark.shimmer.is_some();
+    let detail_color = mark
+        .detail_color
+        .unwrap_or_else(|| cx.theme().foreground.muted());
+    let detail_line =
+        px(ACTIVITY_ROW_HEIGHT) + baseline_drop(TextStyle::Body, TextStyle::Small, cx) * 2.0;
+    let detail_style = if touch {
+        TextStyle::Body
+    } else {
+        TextStyle::Small
+    };
+    let live = mark.live;
     let end_icon = match end {
         ActivityEnd::None => None,
         ActivityEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
@@ -157,17 +200,26 @@ pub fn activity_row(
     let clickable = end != ActivityEnd::None;
     h_flex()
         .id(id)
-        .h(px(ACTIVITY_ROW_HEIGHT))
+        .map(|row| {
+            if touch {
+                row.min_h(px(crate::blocks::touch::TOUCH_TARGET))
+                    .gap(Space::S12)
+                    .type_style(TextStyle::TouchSmall, cx)
+                    .line_height(px(TOUCH_ACTIVITY_LINE))
+            } else {
+                row.h(px(ACTIVITY_ROW_HEIGHT))
+                    .gap_2()
+                    .type_style(TextStyle::Body, cx)
+                    .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
+            }
+        })
         .flex_none()
-        .gap_2()
         .overflow_hidden()
         .font_family(cx.theme().font_family.clone())
-        .type_style(TextStyle::Body, cx)
-        .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
         .text_color(activity_color(cx))
         .when(clickable, |row| {
             let foreground = cx.theme().foreground;
-            row.cursor_pointer()
+            row.click_cursor()
                 .hover(move |row| row.text_color(foreground))
         })
         .when_some(glyph, |this, glyph| {
@@ -180,35 +232,39 @@ pub fn activity_row(
                     .child(glyph),
             )
         })
-        .child(
-            div()
+        .map(|row| {
+            let label = single_line(label);
+            let text = div()
                 .debug_selector(|| "chat-activity-label".to_owned())
                 .min_w_0()
-                .flex_shrink_0()
+                .flex_shrink_1()
                 .when(spread, |label| label.max_w(relative(0.6)))
-                .max_w_full()
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .when_some(mark.label_color, Styled::text_color)
-                .map(|this| match mark.shimmer {
-                    Some(now) => {
-                        this.flex_shrink(1.0)
-                            .child(super::shimmer(&single_line(label), now, cx))
-                    }
-                    None => this.child(single_line(label)),
-                }),
-        )
+                .when_some(mark.label_color, Styled::text_color);
+            if live {
+                let shown = format!("{label}…");
+                row.child(Resolve::new(label, &shown, text.child(shown.clone())))
+            } else {
+                row.child(text.child(label))
+            }
+        })
         .when_some(mark.detail, |this, detail| {
             this.child(
                 div()
                     .debug_selector(|| "chat-activity-detail".to_owned())
+                    .flex_shrink(DETAIL_YIELD)
                     .when(live, Styled::flex_none)
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
                     .whitespace_nowrap()
-                    .text_color(cx.theme().foreground.faint())
+                    .type_style(detail_style, cx)
+                    .when(!touch, |detail| {
+                        detail.self_start().line_height(detail_line)
+                    })
+                    .text_color(detail_color)
                     .child(detail),
             )
         })
@@ -225,7 +281,7 @@ pub fn activity_row(
                         mark.counts
                             .into_iter()
                             .enumerate()
-                            .map(|(slot, count)| count_glyph(slot, count, drop, cx)),
+                            .map(|(slot, count)| count_glyph(slot, count, drop, glyph_size, cx)),
                     ),
             )
         })
@@ -239,7 +295,11 @@ pub fn activity_row(
         })
         .when_some(end_icon, |this, icon| {
             this.child(
-                activity_glyph(icon, ACTIVITY_DISCLOSURE_SIZE, cx)
+                div()
+                    .flex_none()
+                    .relative()
+                    .top(cap_center_drop(px(font), px(end_size), cx))
+                    .child(Icon::new(icon).size(px(end_size)))
                     .debug_selector(|| "chat-activity-chevron".to_owned()),
             )
         })
@@ -249,7 +309,13 @@ pub fn activity_row(
     clippy::disallowed_methods,
     reason = "the ring is a cutout in the color the badge sits on that parts it from the icon it overlaps, not an edge"
 )]
-fn count_glyph(slot: usize, count: ActivityCount, drop: Pixels, cx: &App) -> Stateful<Div> {
+fn count_glyph(
+    slot: usize,
+    count: ActivityCount,
+    drop: Pixels,
+    size: f32,
+    cx: &App,
+) -> Stateful<Div> {
     let ground = transcript_ground(cx);
     let (tone, emphasis) = if count.failed {
         (Tone::Danger, Emphasis::Solid)
@@ -264,7 +330,7 @@ fn count_glyph(slot: usize, count: ActivityCount, drop: Pixels, cx: &App) -> Sta
         .relative()
         .top(drop)
         .when(count.failed, |this| this.text_color(cx.theme().danger))
-        .child(Icon::new(count.icon).size(px(ACTIVITY_ROW_FONT_SIZE)))
+        .child(Icon::new(count.icon).size(px(size)))
         .child(
             div()
                 .debug_selector(|| "chat-activity-count-badge".to_owned())
