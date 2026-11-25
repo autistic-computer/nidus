@@ -65,6 +65,17 @@ pub use app_menu::*;
 pub use keyboard::*;
 pub use keystroke::*;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Haptic {
+    Selection,
+    Light,
+    Medium,
+    Heavy,
+    Success,
+    Warning,
+    Error,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowVisibility {
     Visible,
@@ -184,7 +195,12 @@ pub trait Platform: 'static {
         None
     }
 
+    fn window_control_icons(&self) -> Option<WindowControlIcons> {
+        None
+    }
+
     fn open_url(&self, url: &str);
+    fn haptic(&self, _kind: Haptic) {}
     fn on_open_urls(&self, callback: Box<dyn FnMut(Vec<String>)>);
     fn register_url_scheme(&self, url: &str) -> Task<Result<()>>;
 
@@ -257,6 +273,10 @@ pub trait Platform: 'static {
         callback: Box<dyn FnMut(SystemNotificationResponse)>,
     ) {
         _ = callback;
+    }
+
+    fn set_app_badge(&self, count: usize) {
+        _ = count;
     }
 
     fn compositor_name(&self) -> &'static str {
@@ -478,6 +498,36 @@ impl WindowButton {
 }
 
 pub const MAX_BUTTONS_PER_SIDE: usize = 3;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowControlIcon {
+    pub key: SharedString,
+    pub svg: Arc<[u8]>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WindowControlHoverStyle {
+    Breeze { negative: Option<Hsla> },
+    Adwaita,
+    Yaru,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowControlStyle {
+    pub button_size: Pixels,
+    pub icon_size: Pixels,
+    pub gap: Pixels,
+    pub hover: WindowControlHoverStyle,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowControlIcons {
+    pub minimize: WindowControlIcon,
+    pub maximize: WindowControlIcon,
+    pub restore: WindowControlIcon,
+    pub close: WindowControlIcon,
+    pub style: WindowControlStyle,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowButtonLayout {
@@ -835,6 +885,8 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
 
     fn hide_soft_keyboard(&self) {}
 
+    fn show_edit_menu(&self, _position: Point<Pixels>) {}
+
     fn text_input_state_changed(&self, _change: TextInputStateChange) {}
 
     fn play_system_bell(&self) {}
@@ -930,6 +982,9 @@ pub trait PlatformTextSystem: Send + Sync {
     fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()>;
     fn set_missing_glyph_sink(&self, _sink: Option<Arc<dyn MissingGlyphSink>>) {}
     fn all_font_names(&self) -> Vec<String>;
+    fn monospaced_font_names(&self) -> Vec<String> {
+        Vec::new()
+    }
     fn font_id(&self, descriptor: &Font) -> Result<FontId>;
     fn prewarm_fonts(&self, _font_ids: &[FontId]) {}
     fn font_generation(&self) -> u64 {

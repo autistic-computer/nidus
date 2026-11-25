@@ -1,8 +1,8 @@
 use crate::apple::metal_atlas::MetalAtlas;
 use crate::apple::metal_glass::{MetalGlass, scene_has_glass};
 use ala::{
-    AtlasTextureId, Background, Bounds, ClipMask, CustomShader, DevicePixels, PaintSurface, Path,
-    Point, PrimitiveBatch, ScaledPixels, Scene, ShaderLayer, Size, point, size,
+    AtlasTextureId, Background, Bounds, ClipMask, Corners, CustomShader, DevicePixels,
+    PaintSurface, Path, Point, PrimitiveBatch, ScaledPixels, Scene, ShaderLayer, Size, point, size,
 };
 use anyhow::{Context as _, Result};
 use block2::RcBlock;
@@ -116,6 +116,12 @@ pub struct MetalRenderer {
     is_apple_gpu: bool,
     is_unified_memory: bool,
     presents_with_transaction: bool,
+    layer_presents_with_transaction: bool,
+    presented_underlays: Vec<(
+        Bounds<ScaledPixels>,
+        Bounds<ScaledPixels>,
+        Corners<ScaledPixels>,
+    )>,
     underlay_active: bool,
     opaque: bool,
     command_queue: CommandQueue,
@@ -358,6 +364,8 @@ impl MetalRenderer {
             device,
             layer,
             presents_with_transaction: false,
+            layer_presents_with_transaction: false,
+            presented_underlays: Vec::new(),
             underlay_active: false,
             is_apple_gpu,
             is_unified_memory,
@@ -410,9 +418,6 @@ impl MetalRenderer {
 
     pub fn set_presents_with_transaction(&mut self, presents_with_transaction: bool) {
         self.presents_with_transaction = presents_with_transaction;
-        if let Some(layer) = &self.layer {
-            layer.set_presents_with_transaction(self.transactional_present());
-        }
     }
 
     pub fn set_underlay_active(&mut self, active: bool) {
@@ -422,12 +427,18 @@ impl MetalRenderer {
         self.underlay_active = active;
         if let Some(layer) = &self.layer {
             layer.set_opaque(self.layer_opaque());
-            layer.set_presents_with_transaction(self.transactional_present());
         }
     }
 
-    fn transactional_present(&self) -> bool {
-        self.presents_with_transaction || self.underlay_active
+    fn set_layer_presents_with_transaction(
+        &mut self,
+        layer: &metal::MetalLayerRef,
+        transactional: bool,
+    ) {
+        if self.layer_presents_with_transaction != transactional {
+            layer.set_presents_with_transaction(transactional);
+            self.layer_presents_with_transaction = transactional;
+        }
     }
 
     pub fn supports_glass(&mut self) -> bool {
@@ -516,6 +527,20 @@ impl MetalRenderer {
             (viewport_size.width.ceil() as i32).into(),
             (viewport_size.height.ceil() as i32).into(),
         );
+        let underlays = scene
+            .surfaces
+            .iter()
+            .filter(|surface| surface.underlay)
+            .map(|surface| {
+                (
+                    surface.bounds,
+                    surface.content_mask.bounds,
+                    surface.corner_radii,
+                )
+            })
+            .collect::<Vec<_>>();
+        let transactional = self.presents_with_transaction || underlays != self.presented_underlays;
+        self.set_layer_presents_with_transaction(&layer, transactional);
         let drawable = if let Some(drawable) = layer.next_drawable() {
             drawable
         } else {
@@ -534,7 +559,7 @@ impl MetalRenderer {
             }
         };
 
-        if self.transactional_present() {
+        if transactional {
             command_buffer.commit();
             command_buffer.wait_until_scheduled();
             drawable.present();
@@ -542,6 +567,7 @@ impl MetalRenderer {
             command_buffer.present_drawable(drawable);
             command_buffer.commit();
         }
+        self.presented_underlays = underlays;
     }
 
     fn render_frame(
@@ -1823,6 +1849,7 @@ fn write_instances(scene: &Scene, writer: &mut InstanceBufferWriter) -> Result<I
             content_mask: surface.content_mask,
             corner_radii: surface.corner_radii,
             corner_smoothing: surface.corner_smoothing,
+            quarter_turns: u32::from(surface.quarter_turns),
         }))?,
     })
 }
@@ -2160,6 +2187,7 @@ pub struct SurfaceBounds {
     pub content_mask: ClipMask<ScaledPixels>,
     pub corner_radii: ala::Corners<ScaledPixels>,
     pub corner_smoothing: f32,
+    pub quarter_turns: u32,
 }
 
 #[cfg(any(test, feature = "bench-support", feature = "test-support"))]
@@ -2328,6 +2356,16 @@ mod tests {
     }
 
     #[test]
+    fn glass_blurs_the_alpha_of_a_clear_frame() -> Result<()> {
+        let mut renderer =
+            MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
+        renderer.update_transparency(true);
+        ala::check_glass_blurs_the_alpha_of_a_clear_frame(|scene| {
+            renderer.render_scene_to_image(scene, size(64.into(), 64.into()))
+        })
+    }
+
+    #[test]
     fn rim_glass_lights_only_the_edge() -> Result<()> {
         let mut renderer =
             MetalRenderer::new_headless(Arc::new(Mutex::new(InstanceBufferPool::default())));
@@ -2418,6 +2456,7 @@ fn main(@location(0) position: vec2<f32>) -> @location(0) vec4<f32> {
             content_mask: ala::ContentMask { bounds }.into(),
             shader: CustomShader::new(shader.to_owned()),
             uniforms: tint.iter().flat_map(|value| value.to_ne_bytes()).collect(),
+            retained: false,
             scene: std::rc::Rc::new(scene),
         }
     }

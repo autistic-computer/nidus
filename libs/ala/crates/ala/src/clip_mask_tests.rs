@@ -71,6 +71,7 @@ fn glass() -> Glass {
         corner_smoothing: 2.,
         material: GlassMaterial::regular().tint(red()),
         shadow: None,
+        fade: None,
     }
 }
 
@@ -162,6 +163,7 @@ fn primitives(mono: AtlasTile, poly: AtlasTile) -> Vec<(&'static str, Primitive)
                 content_mask,
                 shader: CustomShader::new(RED_SHADER),
                 uniforms: Arc::from([]),
+                retained: false,
                 scene: Rc::new(Scene::default()),
             }
             .into(),

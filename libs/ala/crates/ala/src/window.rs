@@ -10,24 +10,25 @@ use crate::WgpuDeviceContext;
 use crate::profiler;
 use crate::{
     Action, AnyDrag, AnyElement, AnyImageCache, AnyTooltip, AnyView, App, AppContext, Arena, Asset,
-    AsyncWindowContext, AtlasTile, AvailableSpace, Background, BorderStyle, Bounds, BoxShadow,
-    Capslock, ClipMask, Context, Corners, CursorHideMode, CursorStyle, CustomShader, Decorations,
-    DevicePixels, DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId, Edges, Effect,
-    Entity, EntityId, EventEmitter, FileDropEvent, FontId, Glass, GlassMaterial, GlassShadow,
-    GlassShape, Global, GlobalElementId, GlyphId, GlyphRenderOptions, GpuSpecs, Hsla, InputHandler,
-    IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke, KeystrokeEvent, LayoutId,
-    LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite, MouseButton, MouseEvent,
-    MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
-    PlatformInputHandler, PlatformWindow, Point, PolychromeSprite, Priority, PromptButton,
-    PromptLevel, Quad, Render, RenderGlyphParams, RenderImage, RenderImageParams, RenderSvgParams,
-    Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR, SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y,
-    ScaledPixels, Scene, ScrollDelta, ShaderLayerDescriptor, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
-    SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextInputConfiguration,
-    TextInputStateChange, TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState,
-    TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
-    WindowBounds, WindowControls, WindowCornerMask, WindowDecorations, WindowOptions, WindowParams,
-    WindowTextSystem, WindowVisibility, point, prelude::*, px, rems, size, transparent_black,
+    AsyncWindowContext, AtlasTile, AvailableSpace, Axis, Background, BorderStyle, Bounds,
+    BoxShadow, Capslock, ClipMask, Context, Corners, CursorHideMode, CursorStyle, CustomShader,
+    Decorations, DevicePixels, DispatchActionListener, DispatchNodeId, DispatchTree, DisplayId,
+    Edges, Effect, Entity, EntityId, EventEmitter, FileDropEvent, FontId, Glass, GlassMaterial,
+    GlassShadow, GlassShape, Global, GlobalElementId, GlyphId, GlyphRenderOptions, GpuSpecs, Hsla,
+    InputHandler, IsZero, KeyBinding, KeyContext, KeyDownEvent, KeyEvent, Keystroke,
+    KeystrokeEvent, LayoutId, LineLayoutIndex, Modifiers, ModifiersChangedEvent, MonochromeSprite,
+    MouseButton, MouseEvent, MouseMoveEvent, MouseUpEvent, Path, Pixels, PlatformAtlas,
+    PlatformDisplay, PlatformInput, PlatformInputHandler, PlatformWindow, Point, PolychromeSprite,
+    Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams, RenderImage,
+    RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
+    SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, ScrollDelta,
+    ShaderLayerDescriptor, Shadow, SharedString, Size, StrikethroughStyle, Style, SubpixelSprite,
+    SubscriberSet, Subscription, SystemWindowTab, SystemWindowTabController, TabStopMap,
+    TaffyLayoutEngine, Task, TextInputConfiguration, TextInputStateChange, TextRenderingMode,
+    TextStyle, TextStyleRefinement, ThermalState, TransformationMatrix, Underline, UnderlineStyle,
+    WindowAppearance, WindowBackgroundAppearance, WindowBounds, WindowControls, WindowCornerMask,
+    WindowDecorations, WindowOptions, WindowParams, WindowTextSystem, WindowVisibility, point,
+    prelude::*, px, rems, size, transparent_black,
 };
 
 use crate::collections::{FxHashMap, FxHashSet};
@@ -71,6 +72,7 @@ use std::{
 use uuid::Uuid;
 
 pub(crate) mod a11y;
+pub mod flat;
 mod glyph_cache;
 pub(crate) mod glyph_runs;
 #[cfg(test)]
@@ -1086,6 +1088,13 @@ enum InputModality {
     Touch,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct TextFade {
+    pub(crate) axis: Axis,
+    pub(crate) opaque: ScaledPixels,
+    pub(crate) gone: ScaledPixels,
+}
+
 pub struct Window {
     pub(crate) handle: AnyWindowHandle,
     pub(crate) invalidator: WindowInvalidator,
@@ -1110,9 +1119,11 @@ pub struct Window {
     pub(crate) rendered_entity_stack: Vec<EntityId>,
     pub(crate) element_offset_stack: Vec<Point<Pixels>>,
     pub(crate) element_opacity: f32,
-    pub(crate) text_fade: Option<(ScaledPixels, ScaledPixels)>,
+    pub(crate) text_fade: Option<TextFade>,
     pub(crate) glass_groups: Vec<crate::GlassGroupShapes>,
     pub(crate) content_mask_stack: Vec<ClipMask<Pixels>>,
+    shadow_regions: Vec<ClipMask<Pixels>>,
+    shadow_reach: Option<Pixels>,
     pub(crate) draw_number: u64,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
     last_text_input_configuration: Option<TextInputConfiguration>,
@@ -1947,6 +1958,8 @@ impl Window {
             rendered_entity_stack: Vec::new(),
             element_offset_stack: Vec::new(),
             content_mask_stack: Vec::new(),
+            shadow_regions: Vec::new(),
+            shadow_reach: None,
             draw_number: 0,
             element_opacity: 1.0,
             text_fade: None,
@@ -2624,6 +2637,16 @@ impl Window {
         self.platform_window.hide_soft_keyboard();
     }
 
+    pub fn show_edit_menu(&self, position: Point<Pixels>) {
+        self.platform_window
+            .show_edit_menu(position.map(|length| length * self.zoom));
+    }
+
+    pub fn set_long_press_delay(&mut self, delay: Duration, cx: &mut App) {
+        self.touch_gestures.hold_after(delay);
+        self.schedule_long_press_timer(cx);
+    }
+
     pub fn on_system_back(
         &self,
         cx: &App,
@@ -3069,7 +3092,62 @@ impl Window {
 
     #[inline]
     pub(crate) fn snapped_content_mask(&self) -> ClipMask<ScaledPixels> {
-        let mask = self.clip_mask();
+        self.snap_clip(self.clip_mask())
+    }
+
+    pub(crate) fn push_shadow_region(&mut self, bounds: Bounds<Pixels>) {
+        self.invalidator.debug_assert_paint();
+        let region = self.clip_mask().clip(&bounds);
+        self.shadow_regions.push(region);
+    }
+
+    pub(crate) fn pop_shadow_region(&mut self) {
+        self.shadow_regions.pop();
+    }
+
+    pub(crate) fn with_shadow_reach<R>(
+        &mut self,
+        reach: Option<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let outer = std::mem::replace(&mut self.shadow_reach, reach);
+        let result = f(self);
+        self.shadow_reach = outer;
+        result
+    }
+
+    pub(crate) fn shadow_mask(&self, piece: Bounds<Pixels>) -> ClipMask<ScaledPixels> {
+        let clip = self.clip_mask();
+        let mut mask = match self.shadow_regions.last() {
+            Some(region) => {
+                let (inner, outer) = (clip.bounds, region.bounds);
+                let side = |crosses: bool, inner: Pixels, outer: Pixels| {
+                    if crosses { inner } else { outer }
+                };
+                region.clip(&Bounds::from_corners(
+                    point(
+                        side(piece.left() < inner.left(), inner.left(), outer.left()),
+                        side(piece.top() < inner.top(), inner.top(), outer.top()),
+                    ),
+                    point(
+                        side(piece.right() > inner.right(), inner.right(), outer.right()),
+                        side(
+                            piece.bottom() > inner.bottom(),
+                            inner.bottom(),
+                            outer.bottom(),
+                        ),
+                    ),
+                ))
+            }
+            None => clip,
+        };
+        if let Some(reach) = self.shadow_reach {
+            mask = mask.clip(&piece.dilate(reach));
+        }
+        self.snap_clip(mask)
+    }
+
+    fn snap_clip(&self, mask: ClipMask<Pixels>) -> ClipMask<ScaledPixels> {
         let bounds = self.cover_bounds(mask.bounds);
         if !mask.is_rounded() {
             return ContentMask { bounds }.into();
@@ -3140,6 +3218,14 @@ impl Window {
         self.mouse_position
     }
 
+    pub fn touch_position(&self) -> Option<Point<Pixels>> {
+        self.touch_gestures.touch_position()
+    }
+
+    pub fn tooltip_bounds(&self) -> Option<Bounds<Pixels>> {
+        self.tooltip_bounds.as_ref().map(|tooltip| tooltip.bounds)
+    }
+
     pub fn capture_pointer(&mut self, hitbox_id: HitboxId) {
         self.captured_hitbox = Some(hitbox_id);
     }
@@ -3170,7 +3256,7 @@ impl Window {
         keyboard
     }
 
-    pub(crate) fn last_input_was_touch(&self) -> bool {
+    pub fn last_input_was_touch(&self) -> bool {
         let touch = self.last_input_modality == InputModality::Touch;
         self.record_input_read(InputRead::Touch(touch));
         touch
@@ -3221,7 +3307,7 @@ impl Window {
         self.capslock
     }
 
-    #[cfg(feature = "bench-support")]
+    #[cfg(any(test, feature = "test-support", feature = "bench-support"))]
     pub fn rendered_scene(&self) -> &Scene {
         &self.rendered_frame.scene
     }
@@ -3836,7 +3922,9 @@ impl Window {
         };
         self.content_mask_stack.push(ContentMask { bounds }.into());
         self.next_frame.scene.push_transform(transform);
+        self.next_frame.scene.begin_replayable();
         let result = f(self);
+        self.next_frame.scene.end_replayable();
         self.next_frame.scene.pop_transform();
         self.content_mask_stack.pop();
         result
@@ -4123,14 +4211,24 @@ impl Window {
         fade: Option<(Pixels, Pixels)>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
+        self.with_text_fade_along(Axis::Horizontal, fade, f)
+    }
+
+    pub fn with_text_fade_along<R>(
+        &mut self,
+        axis: Axis,
+        fade: Option<(Pixels, Pixels)>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
         let Some((opaque, gone)) = fade.filter(|(opaque, gone)| opaque != gone) else {
             return f(self);
         };
         let scale_factor = self.scale_factor();
-        let previous = self.text_fade.replace((
-            opaque.scale(scale_factor).round(),
-            gone.scale(scale_factor).round(),
-        ));
+        let previous = self.text_fade.replace(TextFade {
+            axis,
+            opaque: opaque.scale(scale_factor).round(),
+            gone: gone.scale(scale_factor).round(),
+        });
         let result = f(self);
         self.text_fade = previous;
         result
@@ -4142,50 +4240,62 @@ impl Window {
         content_mask: ClipMask<ScaledPixels>,
         sprite: impl Fn(ClipMask<ScaledPixels>, f32) -> P,
     ) {
-        let Some((opaque, gone)) = self.text_fade else {
+        let Some(TextFade { axis, opaque, gone }) = self.text_fade else {
             self.next_frame
                 .scene
                 .insert_primitive(sprite(content_mask, 1.0));
             return;
         };
         let clip = content_mask.bounds;
-        let left = bounds.left().max(clip.left());
-        let right = bounds.right().min(clip.right());
+        let (start, end) = match axis {
+            Axis::Horizontal => (
+                bounds.left().max(clip.left()),
+                bounds.right().min(clip.right()),
+            ),
+            Axis::Vertical => (
+                bounds.top().max(clip.top()),
+                bounds.bottom().min(clip.bottom()),
+            ),
+        };
         let (ramp_start, ramp_end) = (opaque.min(gone), opaque.max(gone));
         let fades_out = opaque < gone;
-        if right <= ramp_start || left >= ramp_end {
-            if (right <= ramp_start) == fades_out {
+        if end <= ramp_start || start >= ramp_end {
+            if (end <= ramp_start) == fades_out {
                 self.next_frame
                     .scene
                     .insert_primitive(sprite(content_mask, 1.0));
             }
             return;
         }
-        let column = |from, to| {
-            content_mask.clip(&Bounds::from_corners(
-                point(from, clip.top()),
-                point(to, clip.bottom()),
-            ))
+        let band = |from, to| {
+            content_mask.clip(&match axis {
+                Axis::Horizontal => {
+                    Bounds::from_corners(point(from, clip.top()), point(to, clip.bottom()))
+                }
+                Axis::Vertical => {
+                    Bounds::from_corners(point(clip.left(), from), point(clip.right(), to))
+                }
+            })
         };
-        if fades_out && left < ramp_start {
+        if fades_out && start < ramp_start {
             self.next_frame
                 .scene
-                .insert_primitive(sprite(column(left, ramp_start), 1.0));
+                .insert_primitive(sprite(band(start, ramp_start), 1.0));
         }
-        let stop = right.min(ramp_end);
-        let mut x = left.max(ramp_start).floor();
-        while x < stop {
-            let next = x + ScaledPixels(1.0);
-            let opacity = (x + ScaledPixels(0.5) - gone) / (opaque - gone);
+        let stop = end.min(ramp_end);
+        let mut at = start.max(ramp_start).floor();
+        while at < stop {
+            let next = at + ScaledPixels(1.0);
+            let opacity = (at + ScaledPixels(0.5) - gone) / (opaque - gone);
             self.next_frame
                 .scene
-                .insert_primitive(sprite(column(x.max(left), next.min(stop)), opacity));
-            x = next;
+                .insert_primitive(sprite(band(at.max(start), next.min(stop)), opacity));
+            at = next;
         }
-        if !fades_out && right > ramp_end {
+        if !fades_out && end > ramp_end {
             self.next_frame
                 .scene
-                .insert_primitive(sprite(column(ramp_end, right), 1.0));
+                .insert_primitive(sprite(band(ramp_end, end), 1.0));
         }
     }
 
@@ -4466,8 +4576,30 @@ impl Window {
         uniforms: impl Into<Arc<[u8]>>,
         f: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        self.invalidator.debug_assert_paint();
+        self.push_shader_layer(bounds, shader, uniforms.into(), false);
+        let result = f(self);
+        self.next_frame.scene.pop_shader_layer();
+        result
+    }
 
+    pub fn paint_retained_shader_layer(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        shader: &CustomShader,
+        uniforms: impl Into<Arc<[u8]>>,
+    ) {
+        self.push_shader_layer(bounds, shader, uniforms.into(), true);
+        self.next_frame.scene.pop_shader_layer();
+    }
+
+    fn push_shader_layer(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        shader: &CustomShader,
+        uniforms: Arc<[u8]>,
+        retained: bool,
+    ) {
+        self.invalidator.debug_assert_paint();
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
         self.next_frame
@@ -4476,11 +4608,9 @@ impl Window {
                 bounds,
                 content_mask,
                 shader: shader.clone(),
-                uniforms: uniforms.into(),
+                uniforms,
+                retained,
             });
-        let result = f(self);
-        self.next_frame.scene.pop_shader_layer();
-        result
     }
 
     pub fn paint_glass(
@@ -4578,6 +4708,58 @@ impl Window {
         self.next_frame.scene.insert_primitive(glass);
     }
 
+    pub fn paint_fade(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        ground: Hsla,
+        clear: Pixels,
+        solid: Pixels,
+    ) -> bool {
+        self.paint_blur_fade(bounds, ground, px(0.), clear, solid)
+    }
+
+    pub fn paint_blur_fade(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        ground: Hsla,
+        blur: Pixels,
+        clear: Pixels,
+        solid: Pixels,
+    ) -> bool {
+        self.invalidator.debug_assert_paint();
+        if ground.a >= 1. || !self.supports_backdrop_sampling() {
+            return false;
+        }
+        let scale_factor = self.scale_factor();
+        let bounds = bounds.scale(scale_factor);
+        let (clear, solid) = (clear.scale(scale_factor), solid.scale(scale_factor));
+        if clear == solid || bounds.is_empty() {
+            return true;
+        }
+        let mut shapes: [(Bounds<ScaledPixels>, Corners<ScaledPixels>); crate::GLASS_MAX_SHAPES] =
+            Default::default();
+        shapes[0] = (bounds, Corners::default());
+        self.next_frame.scene.insert_primitive(Glass {
+            order: 0,
+            bounds,
+            backdrop_bounds: bounds,
+            content_mask: self.snapped_content_mask(),
+            shapes,
+            shape_count: 1,
+            corner_smoothing: self.default_corner_smoothing,
+            material: GlassMaterial {
+                tint: ground,
+                blur: px(blur.as_f32() * scale_factor),
+                refraction: px(0.),
+                opacity: self.element_opacity(),
+                ..GlassMaterial::default()
+            },
+            shadow: None,
+            fade: Some((clear, solid)),
+        });
+        true
+    }
+
     pub(crate) fn glass_primitive(
         &self,
         shapes: &[GlassShape],
@@ -4605,6 +4787,7 @@ impl Window {
             corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             material,
             shadow: None,
+            fade: None,
         }
     }
 
@@ -4652,9 +4835,11 @@ impl Window {
                 color: shadow.color.opacity(self.element_opacity()),
                 corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             };
-            self.next_frame
-                .scene
-                .insert_primitive(glass.with_shadow(caster));
+            let shadow = Glass {
+                content_mask: self.shadow_mask(shape.bounds),
+                ..glass.with_shadow(caster)
+            };
+            self.next_frame.scene.insert_primitive(shadow);
         }
     }
 
@@ -4678,8 +4863,12 @@ impl Window {
     ) {
         self.invalidator.debug_assert_paint();
 
+        if shadows.iter().all(|shadow| shadow.inset) {
+            return;
+        }
+
         let scale_factor = self.scale_factor();
-        let content_mask = self.snapped_content_mask();
+        let content_mask = self.shadow_mask(bounds);
         let opacity = self.element_opacity();
         let element_bounds = self.cover_bounds(bounds);
         let element_corner_radii = corner_radii.scale(scale_factor);
@@ -4772,6 +4961,10 @@ impl Window {
         corner_smoothing: Option<f32>,
     ) {
         self.invalidator.debug_assert_paint();
+
+        if !shadows.iter().any(|shadow| shadow.inset) {
+            return;
+        }
 
         let scale_factor = self.scale_factor();
         let content_mask = self.snapped_content_mask();
@@ -5500,9 +5693,12 @@ impl Window {
         };
 
         let content_mask = self.snapped_content_mask();
-        let corner_radii = corner_radii
-            .clamp_radii_for_quad_size(visible_bounds.size)
-            .scale(self.scale_factor());
+        let (corner_radii, corner_smoothing) = self.drawn_corners(
+            corner_radii.clamp_radii_for_quad_size(visible_bounds.size),
+            visible_bounds.size,
+            None,
+        );
+        let corner_radii = corner_radii.scale(self.scale_factor());
         let opacity = self.element_opacity();
 
         self.next_frame.scene.insert_primitive(PolychromeSprite {
@@ -5512,7 +5708,7 @@ impl Window {
             bounds: visible_bounds_snapped,
             content_mask,
             corner_radii,
-            corner_smoothing: self.default_corner_smoothing,
+            corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             pad2: 0,
             tile: sub_tile,
             opacity,
@@ -5527,10 +5723,22 @@ impl Window {
         corner_radii: Corners<Pixels>,
         image_buffer: CVPixelBuffer,
     ) {
+        self.paint_surface_turned(bounds, corner_radii, image_buffer, 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn paint_surface_turned(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        corner_radii: Corners<Pixels>,
+        image_buffer: CVPixelBuffer,
+        quarter_turns: u8,
+    ) {
         use crate::PaintSurface;
 
         self.invalidator.debug_assert_paint();
 
+        let (corner_radii, corner_smoothing) = self.drawn_corners(corner_radii, bounds.size, None);
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
         self.next_frame.scene.insert_primitive(PaintSurface {
@@ -5538,9 +5746,10 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
-            corner_smoothing: self.default_corner_smoothing,
+            corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             image_buffer: Some(image_buffer),
             underlay: false,
+            quarter_turns: quarter_turns % 4,
         });
     }
 
@@ -5555,6 +5764,7 @@ impl Window {
 
         self.invalidator.debug_assert_paint();
 
+        let (corner_radii, corner_smoothing) = self.drawn_corners(corner_radii, bounds.size, None);
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
         self.next_frame.scene.insert_primitive(PaintSurface {
@@ -5562,9 +5772,10 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
-            corner_smoothing: self.default_corner_smoothing,
+            corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             image_buffer: Some(image_buffer),
             underlay: true,
+            quarter_turns: 0,
         });
     }
 
@@ -5591,6 +5802,7 @@ impl Window {
 
         self.invalidator.debug_assert_paint();
 
+        let (corner_radii, corner_smoothing) = self.drawn_corners(corner_radii, bounds.size, None);
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
         self.next_frame.scene.insert_primitive(PaintSurface {
@@ -5598,7 +5810,7 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
-            corner_smoothing: self.default_corner_smoothing,
+            corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             texture_view: view,
         });
     }
@@ -5614,6 +5826,7 @@ impl Window {
 
         self.invalidator.debug_assert_paint();
 
+        let (corner_radii, corner_smoothing) = self.drawn_corners(corner_radii, bounds.size, None);
         let bounds = self.snap_bounds(bounds);
         let content_mask = self.snapped_content_mask();
         self.next_frame.scene.insert_primitive(PaintSurface {
@@ -5621,7 +5834,7 @@ impl Window {
             bounds,
             content_mask,
             corner_radii: corner_radii.scale(self.scale_factor()),
-            corner_smoothing: self.default_corner_smoothing,
+            corner_smoothing: corner_smoothing.unwrap_or(self.default_corner_smoothing),
             texture,
         });
     }
@@ -8207,7 +8420,7 @@ mod tests {
     }
 
     #[ala::test]
-    fn text_fade_paints_glyphs_in_columns_fading_either_way(cx: &mut TestAppContext) {
+    fn text_fade_paints_glyphs_in_columns_or_rows_fading_either_way(cx: &mut TestAppContext) {
         let window = cx.add_window(|_, _| Empty);
         cx.update_window(window.into(), |_, window, _| {
             let scaled = |left, right| {
@@ -8230,7 +8443,11 @@ mod tests {
             }
             .into();
             window.next_frame.scene.monochrome_sprites.clear();
-            window.text_fade = Some((ScaledPixels(10.0), ScaledPixels(14.0)));
+            window.text_fade = Some(super::TextFade {
+                axis: crate::Axis::Horizontal,
+                opaque: ScaledPixels(10.0),
+                gone: ScaledPixels(14.0),
+            });
             window.paint_cached_monochrome_glyph(
                 scaled(6.0, 18.0),
                 mask,
@@ -8249,7 +8466,11 @@ mod tests {
                 hsla(0., 0., 1., 1.),
                 tile,
             );
-            window.text_fade = Some((ScaledPixels(14.0), ScaledPixels(10.0)));
+            window.text_fade = Some(super::TextFade {
+                axis: crate::Axis::Horizontal,
+                opaque: ScaledPixels(14.0),
+                gone: ScaledPixels(10.0),
+            });
             window.paint_cached_monochrome_glyph(
                 scaled(6.0, 18.0),
                 mask,
@@ -8287,6 +8508,42 @@ mod tests {
                     (12.0, 13.0, 0.625),
                     (13.0, 14.0, 0.875),
                     (14.0, 18.0, 1.0),
+                ]
+            );
+            window.next_frame.scene.monochrome_sprites.clear();
+            window.text_fade = Some(super::TextFade {
+                axis: crate::Axis::Vertical,
+                opaque: ScaledPixels(10.0),
+                gone: ScaledPixels(14.0),
+            });
+            window.paint_cached_monochrome_glyph(
+                Bounds::from_corners(
+                    point(ScaledPixels(0.0), ScaledPixels(6.0)),
+                    point(ScaledPixels(20.0), ScaledPixels(18.0)),
+                ),
+                mask,
+                hsla(0., 0., 1., 1.),
+                tile,
+            );
+            window.text_fade = None;
+            let rows: Vec<_> = window
+                .next_frame
+                .scene
+                .monochrome_sprites
+                .iter()
+                .map(|sprite| {
+                    let mask = sprite.content_mask.bounds;
+                    (mask.top().0, mask.bottom().0, sprite.color.a)
+                })
+                .collect();
+            assert_eq!(
+                rows,
+                [
+                    (6.0, 10.0, 1.0),
+                    (10.0, 11.0, 0.875),
+                    (11.0, 12.0, 0.625),
+                    (12.0, 13.0, 0.375),
+                    (13.0, 14.0, 0.125),
                 ]
             );
         })
@@ -8728,6 +8985,66 @@ mod tests {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             div()
         }
+    }
+
+    #[ala::test]
+    fn a_shadow_leaves_its_clip_for_its_region_except_on_sides_it_crosses(cx: &mut TestAppContext) {
+        struct Pieces;
+
+        impl Render for Pieces {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                let piece = |left: f32, top: f32| {
+                    div()
+                        .absolute()
+                        .left(px(left))
+                        .top(px(top))
+                        .size(px(20.))
+                        .shadow(vec![crate::BoxShadow {
+                            color: hsla(0., 0., 0., 0.5),
+                            offset: point(px(0.), px(0.)),
+                            blur_radius: px(4.),
+                            spread_radius: px(0.),
+                            inset: false,
+                        }])
+                };
+                div().size(px(200.)).contain_shadows().child(
+                    div()
+                        .absolute()
+                        .left(px(50.))
+                        .top(px(50.))
+                        .size(px(100.))
+                        .overflow_hidden()
+                        .child(piece(10., 10.))
+                        .child(piece(60., -5.)),
+                )
+            }
+        }
+
+        let window = cx.add_window(|_, _| Pieces);
+        let masks = cx
+            .update_window(window.into(), |_, window, cx| {
+                window.draw(cx).clear(cx);
+                let scale = window.scale_factor();
+                let mut masks: Vec<_> = window
+                    .rendered_frame
+                    .scene
+                    .shadows
+                    .iter()
+                    .map(|shadow| {
+                        let bounds = shadow.content_mask.bounds;
+                        [
+                            bounds.left().0 / scale,
+                            bounds.top().0 / scale,
+                            bounds.right().0 / scale,
+                            bounds.bottom().0 / scale,
+                        ]
+                    })
+                    .collect();
+                masks.sort_by(|a, b| a[1].total_cmp(&b[1]));
+                masks
+            })
+            .expect("draw window");
+        assert_eq!(masks, [[0., 0., 200., 200.], [0., 50., 200., 200.]]);
     }
 
     #[ala::test]

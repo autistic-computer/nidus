@@ -442,6 +442,7 @@ impl Scene {
             content_mask: descriptor.content_mask,
             shader: descriptor.shader,
             uniforms: descriptor.uniforms,
+            retained: descriptor.retained,
             scene: Rc::new(scene),
         };
         self.target()
@@ -472,6 +473,34 @@ impl Scene {
         transform.apply(&mut placed);
         self.target().place_primitive(&mut placed);
         self.log(PaintOperation::Primitive(primitive));
+    }
+
+    pub(crate) fn take_layer_sprites(&mut self) -> Option<(DrawOrder, Vec<MonochromeSprite>)> {
+        if !self.transforms.is_empty() || !self.open_shader_layers.is_empty() {
+            return None;
+        }
+        let order = *self.layer_stack.last()?;
+        Some((order, std::mem::take(&mut self.monochrome_sprites)))
+    }
+
+    pub(crate) fn restore_layer_sprites(&mut self, sprites: Vec<MonochromeSprite>, first: usize) {
+        self.monochrome_sprites = sprites;
+        if self.replayable_depth == 0 || first == self.monochrome_sprites.len() {
+            return;
+        }
+        let start = self.sprite_log.len();
+        self.sprite_log
+            .extend_from_slice(&self.monochrome_sprites[first..]);
+        let end = self.sprite_log.len();
+        let extendable = self.paint_operations.len() > self.sealed_operations.get();
+        match self.paint_operations.last_mut() {
+            Some(PaintOperation::MonochromeSprites(range)) if extendable && range.end == start => {
+                range.end = end;
+            }
+            _ => self
+                .paint_operations
+                .push(PaintOperation::MonochromeSprites(start..end)),
+        }
     }
 
     pub(crate) fn begin_replayable(&mut self) {
@@ -1306,6 +1335,8 @@ pub struct PaintSurface {
     pub image_buffer: Option<core_video::pixel_buffer::CVPixelBuffer>,
     #[cfg(target_os = "macos")]
     pub underlay: bool,
+    #[cfg(target_os = "macos")]
+    pub quarter_turns: u8,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
     pub texture_view: wgpu::TextureView,
     #[cfg(target_os = "windows")]
@@ -1517,6 +1548,7 @@ pub(crate) struct ShaderLayerDescriptor {
     pub(crate) content_mask: ClipMask<ScaledPixels>,
     pub(crate) shader: CustomShader,
     pub(crate) uniforms: Arc<[u8]>,
+    pub(crate) retained: bool,
 }
 
 #[derive(Clone)]
@@ -1526,6 +1558,7 @@ pub struct ShaderLayer {
     pub content_mask: ClipMask<ScaledPixels>,
     pub shader: CustomShader,
     pub uniforms: Arc<[u8]>,
+    pub retained: bool,
     pub scene: Rc<Scene>,
 }
 
@@ -1535,6 +1568,7 @@ impl Debug for ShaderLayer {
             .field("order", &self.order)
             .field("bounds", &self.bounds)
             .field("shader", &self.shader)
+            .field("retained", &self.retained)
             .finish_non_exhaustive()
     }
 }
@@ -1654,6 +1688,7 @@ mod tests {
             content_mask: ContentMask { bounds }.into(),
             shader: CustomShader::new("@fragment fn main() {}"),
             uniforms: Arc::from([1u8, 2, 3]),
+            retained: false,
         }
     }
 
@@ -1671,6 +1706,7 @@ mod tests {
             corner_smoothing: 2.,
             image_buffer: Some(buffer.clone()),
             underlay: true,
+            quarter_turns: 0,
         };
         let glass = |x: f32| crate::Glass {
             order: 0,
@@ -1682,6 +1718,7 @@ mod tests {
             corner_smoothing: 2.,
             material: crate::GlassMaterial::default(),
             shadow: None,
+            fade: None,
         };
         let mut scene = Scene::default();
         scene.insert_primitive(glass(64.));

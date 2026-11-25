@@ -948,6 +948,22 @@ impl PlatformWindow for WindowsWindow {
         }
     }
 
+    fn start_window_move(&self) {
+        if !self.0.is_movable || self.state.is_fullscreen() {
+            return;
+        }
+        unsafe {
+            ReleaseCapture().log_err();
+            PostMessageW(
+                Some(self.0.hwnd),
+                WM_SYSCOMMAND,
+                WPARAM((SC_MOVE | HTCAPTION) as usize),
+                LPARAM(0),
+            )
+            .log_err();
+        }
+    }
+
     fn toggle_fullscreen(&self) {
         if unsafe { IsWindowVisible(self.0.hwnd).as_bool() } {
             self.0.toggle_fullscreen();
@@ -1040,6 +1056,10 @@ impl PlatformWindow for WindowsWindow {
 
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas> {
         self.state.renderer.borrow().sprite_atlas()
+    }
+
+    fn supports_backdrop_sampling(&self) -> bool {
+        self.state.renderer.borrow().supports_backdrop_sampling()
     }
 
     fn get_raw_handle(&self) -> HWND {

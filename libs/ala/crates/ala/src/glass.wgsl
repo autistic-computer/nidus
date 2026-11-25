@@ -27,6 +27,7 @@ struct Glass {
     clip_rect: vec4<f32>,
     clip_radii: vec4<f32>,
     clip: vec4<f32>,
+    fade: vec4<f32>,
 }
 
 struct Blur {
@@ -364,7 +365,24 @@ fn toned(color: vec4<f32>) -> vec3<f32> {
     return mix(rgb, glass.tint.rgb, glass.tint.a);
 }
 
-fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, contour: f32) -> vec4<f32> {
+fn fade(position: vec2<f32>) -> vec4<f32> {
+    let held = under(position);
+    var keep = content_clip(position) * glass.rim.w;
+    if (glass.mask.y > 0.5) {
+        let window = GlassShape(glass.mask_rect, glass.mask_radii);
+        keep *= saturate(0.5 - rounded_rect(position, window, glass.mask.x, 0.0).x);
+    }
+    let gone = saturate((position.y - glass.fade.x) / (glass.fade.y - glass.fade.x)) * keep;
+    if (glass.fade.w > 0.5) {
+        return mix(held, vec4<f32>(glass.tint.rgb * glass.tint.a, glass.tint.a), gone);
+    }
+    let rest = 1.0 - gone;
+    let seen = mix(held, backdrop(position), 1.0 - rest * rest * rest);
+    let tinted = mix(seen.rgb, glass.tint.rgb * seen.a, glass.tint.a * gone);
+    return vec4<f32>(tinted, seen.a);
+}
+
+fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, contour: f32, lift: f32) -> vec4<f32> {
     var rgb = lit;
     if (glass.glow.w > 0.0) {
         let reach = 1.0 - saturate(length(position - glass.glow.xy) / max(glass.glow.z, 1.0));
@@ -377,13 +395,14 @@ fn finish(position: vec2<f32>, color: vec4<f32>, lit: vec3<f32>, coverage: f32, 
     rgb = clamp(rgb, vec3<f32>(0.0), vec3<f32>(1.0));
 
     let strength = coverage * glass.rim.w;
-    let face = color.a + (1.0 - color.a) * glass.tint.a;
     let edge = contour * glass.rim.w;
     if (glass.tint.a < 1.0) {
         let held = under(position);
+        let face = color.a + (1.0 - color.a) * saturate(lift);
         let outlined = vec4<f32>(glass.edge_color.rgb * edge, edge) + held * (1.0 - edge);
         return mix(outlined, vec4<f32>(rgb * face, face), strength);
     }
+    let face = color.a + (1.0 - color.a) * saturate(lift);
     let body = vec4<f32>(rgb * face, face) * strength;
     let alpha = body.a + (1.0 - body.a) * edge;
     return vec4<f32>(body.rgb + glass.edge_color.rgb * (alpha - body.a), alpha);
@@ -395,6 +414,9 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     if (glass.shadow.z > 0.5) {
         return glass_shadow(position);
     }
+    if (glass.fade.z > 0.5) {
+        return fade(position);
+    }
     let rim_only = glass.edge_color.w > 0.5;
     if (on_face(position)) {
         if (rim_only) {
@@ -404,7 +426,7 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         if (glass.tint.a < 1.0) {
             color = backdrop(position);
         }
-        return finish(position, color, toned(color), 1.0, 0.0);
+        return finish(position, color, toned(color), 1.0, 0.0, 0.0);
     }
     let field = glass_field(position);
     let distance = field.x;
@@ -433,12 +455,14 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     contour = contour * clip;
     let coverage = saturate(0.5 - distance) * clip;
     if (coverage <= 0.0) {
-        return finish(position, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0), 0.0, contour);
+        return finish(position, vec4<f32>(0.0, 0.0, 0.0, 1.0), vec3<f32>(0.0), 0.0, contour, 0.0);
     }
 
     let depth = max(-distance, 0.0);
+    let inset = select(0.0, contour_width, rim_only && glass.rim.y > 0.0);
+    let lit_depth = depth - inset;
     let bezel = clamp(glass.optics.x, 1e-3, max(field.w * 0.5, 1e-3));
-    let edge = 1.0 - saturate(depth / bezel);
+    let edge = 1.0 - saturate(max(lit_depth, 0.0) / bezel);
     let refraction = clamp(glass.optics.y, -field.w, field.w);
     let pull = refraction * (1.0 - sqrt(max(1.0 - edge * edge, 0.0)));
     let offset = -normal * pull;
@@ -458,23 +482,33 @@ fn fs_glass(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
 
     var glint = 0.0;
     var glow = 0.0;
-    if (edge > 0.0) {
+    if (edge > 0.0 && lit_depth >= 0.0) {
         let glint_width = max(glass.light.w, 1e-3);
-        let line = saturate(1.0 - depth / glint_width) + 0.2 * saturate(1.0 - depth / (glint_width * 4.0));
+        let line = saturate(1.0 - lit_depth / glint_width) + 0.2 * saturate(1.0 - lit_depth / (glint_width * 4.0));
         let lobe = facing * facing;
         let directional_lobe = 0.06 + 0.94 * toward * toward + 0.12 * pow(away, 4.0);
-        glint = glass.light.z * line * mix(mix(0.15, 1.0, lobe), directional_lobe, directionality);
+        var lit = mix(mix(0.15, 1.0, lobe), directional_lobe, directionality);
+        if (glass.clip.z > 0.0) {
+            lit = mix(lit, 1.0, glass.clip.z);
+        }
+        glint = glass.light.z * line * lit;
         glow = glass.rim.x * edge * edge * edge * mix(1.0, 0.25 + 0.75 * toward, directionality);
     }
 
     if (rim_only) {
         let veil = glow * glass.light_color.a;
         let light = glass.light_color.rgb * (glint * (1.0 - veil) + glow);
-        return vec4<f32>(light, veil) * (coverage * glass.rim.w);
+        let cover = saturate(max(veil, max(light.r, max(light.g, light.b))));
+        let lit = vec4<f32>(light, cover) * (coverage * glass.rim.w);
+        if (inset > 0.0) {
+            let shade = glass.rim.y * saturate(inset - depth + 0.5) * coverage * glass.rim.w;
+            return vec4<f32>(glass.edge_color.rgb * shade, shade) + lit * (1.0 - shade);
+        }
+        return lit;
     }
 
     var rgb = toned(color) + glass.light_color.rgb * glint;
     rgb = rgb * (1.0 - glow * glass.light_color.a) + glass.light_color.rgb * glow;
 
-    return finish(position, color, rgb, coverage, contour);
+    return finish(position, color, rgb, coverage, contour, glint + glow);
 }

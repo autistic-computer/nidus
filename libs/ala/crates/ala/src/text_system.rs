@@ -265,6 +265,13 @@ impl TextSystem {
         names
     }
 
+    pub fn monospaced_font_names(&self) -> Vec<String> {
+        let mut names = self.platform_text_system.monospaced_font_names();
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
     pub fn add_fonts(&self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         let sources = SvgFonts::sources(&fonts);
         self.platform_text_system.add_fonts(fonts)?;
@@ -872,12 +879,9 @@ impl WindowTextSystem {
             }
         }
 
-        let layout = self.line_layout_cache.layout_line(
-            &SharedString::new(text),
-            font_size,
-            &font_runs,
-            force_width,
-        );
+        let layout = self
+            .line_layout_cache
+            .layout_line(text, font_size, &font_runs, force_width);
 
         self.font_runs_pool.lock().push(font_runs);
 

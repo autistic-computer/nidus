@@ -20,7 +20,11 @@ mod menu;
 #[cfg(target_os = "ios")]
 mod perf;
 #[cfg(target_os = "ios")]
+mod picker;
+#[cfg(target_os = "ios")]
 mod platform;
+#[cfg(target_os = "ios")]
+mod scanner;
 #[cfg(target_os = "ios")]
 mod text_input;
 #[cfg(target_os = "ios")]
@@ -37,11 +41,15 @@ pub use ffi::*;
 #[cfg(target_os = "ios")]
 pub use menu::MenuCommand;
 #[cfg(target_os = "ios")]
-pub use platform::IosPlatform;
+pub use picker::{can_pick, pick};
+#[cfg(target_os = "ios")]
+pub use platform::{IosPlatform, clipboard_image};
+#[cfg(target_os = "ios")]
+pub use scanner::{can_scan, scan_code};
 #[cfg(target_os = "ios")]
 pub(crate) use window::*;
 #[cfg(target_os = "ios")]
 pub use window::{
-    Accessibility, accessibility, request_paste, set_compact_keyboard, set_status_bar_on_dark,
-    show_edit_menu,
+    Accessibility, accessibility, hardware_keyboard, request_paste, set_app_key_row,
+    set_compact_keyboard, set_status_bar_on_dark, show_edit_menu, soft_keyboard,
 };

@@ -30,7 +30,7 @@ The ios and android backends have no upstream counterpart.
 
 | Upstream | ala |
 |---|---|
-| `crates/gpui/src/` | `crates/ala/src/` |
+| `crates/gpui/src/` | `crates/ala/src/`, with `gpui.rs` renamed to `ala.rs` |
 | `crates/gpui_macros/src/` | `crates/ala-macros/src/` |
 | `crates/refineable/derive_refineable/src/` | `crates/ala-macros/src/derive_refineable.rs` |
 | `crates/gpui_platform/src/` | `crates/ala-platform/src/ala_platform.rs` |
@@ -50,7 +50,9 @@ root file moved down one directory, so a patch to `crates/gpui_wgpu/src/gpui_wgp
 
 ```bash
 git -C <upstream-checkout> format-patch -1 <sha> --stdout -- crates/gpui crates/gpui_wgpu \
-  | sed -e 's#crates/gpui_wgpu/src/#crates/ala-platform/src/wgpu/#g' -e 's#crates/gpui/#crates/ala/#g' \
+  | sed -e 's#crates/gpui_wgpu/src/gpui_wgpu\.rs#crates/ala-platform/src/wgpu.rs#g' \
+        -e 's#crates/gpui_wgpu/src/#crates/ala-platform/src/wgpu/#g' \
+        -e 's#crates/gpui/src/gpui\.rs#crates/ala/src/ala.rs#g' -e 's#crates/gpui/#crates/ala/#g' \
         -e 's/\bgpui_wgpu::/ala_platform::wgpu::/g' -e 's/\bgpui::/ala::/g' > fix.patch
 git am -3 fix.patch
 ```
@@ -115,6 +117,24 @@ CSS-correct spread shadows, per-window content zoom (`Window::set_zoom()`), a us
 liquid glass, the iOS UIKit and Android backends, and the wgpu subpixel offset kept in device
 pixels.
 
+Retained shader layers: `Window::paint_retained_shader_layer` paints a custom shader with no
+children and lets the renderer keep its output. The shader may read only its uniforms and the
+layer position; binding 0 holds an empty texture. The wgpu renderer renders the shader into a
+texture the size of the layer, in the frame's format, and draws that texture inside the open
+render pass on every frame whose shader, uniform bytes and layer size in device pixels match the
+last one, so moving the layer by whole pixels reuses it too. Entries no frame drew are freed at
+the end of the next frame, and resizing the surface frees them all. Because the kept output is
+rounded to the frame's format before it is blended, partly transparent pixels can land 1/255 away
+from the same shader drawn with `paint_shader_layer`; fully opaque and fully transparent pixels
+match it exactly. The Metal renderer ignores the flag and runs the shader on every frame like any
+shader layer.
+`ALA_RETAIN_SHADER_LAYERS=0` draws retained layers through the per-frame path, so one build
+measures both. `ALA_GPU_TIMES=1` makes the wgpu renderer print one line per frame with its GPU time
+and the number of custom shaders it ran; the time comes from timestamp queries around every render
+pass where the adapter has them, otherwise from waiting for the GPU after every frame. A frame with
+one render pass reports `NaN`, because Apple GPUs return that pass's start and end samples out of
+order.
+
 ## Gotchas when changing renderers or pulling upstream work
 
 - GPU-facing structs must stay a multiple of 8 bytes (const-asserted in `scene.rs`), or every draw
@@ -178,6 +198,10 @@ Each backend compiles for its own target only. From macOS:
   language rules `fxc` follows. It catches syntax, type and missing-symbol errors; what it
   misses is what only shader model 4 rejects, such as gradient sampling inside varying flow
   control.
+- Windows glass uses the shared `glass.wgsl`. Its HLSL translator is pinned to naga 24 for
+  fixed sampler registers on D3D11. The backend compiles the five shader entries once per
+  process and falls back to the solid material if the device cannot create the pipeline.
+  Run the `glass_samples_the_windows_frame` test on Windows for the GPU readback checks.
 - iOS: `cargo clippy -p ala-platform --all-features --target aarch64-apple-ios`.
 - Android: point `CC_aarch64_linux_android`, `AR_aarch64_linux_android` and
   `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` at the NDK's
